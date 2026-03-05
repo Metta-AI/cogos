@@ -1,0 +1,12 @@
+name: cleanup-stale-tasks
+program_name: hello
+description: Find and close tasks that have been running too long
+tools:
+  - task list
+  - task update
+priority: 2.0
+runner: lambda
+limits:
+  time_seconds: 60
+metadata:
+  max_age_hours: 24
