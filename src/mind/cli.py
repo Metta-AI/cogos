@@ -19,12 +19,14 @@ from brain.db.models import (
     ProgramType,
     Resource,
     ResourceType,
+    RunStatus,
     Task,
     TaskStatus,
     Trigger,
     TriggerConfig,
 )
 from brain.db.repository import Repository
+from mind.program import load_program, load_programs_dir, sync_program, validate_tools
 
 
 def _repo() -> Repository:
@@ -74,68 +76,47 @@ def mind(ctx: click.Context, use_json: bool) -> None:
 # ═══════════════════════════════════════════════════════════
 
 
+_DEFAULT_PROGRAMS_DIR = "eggs/ovo/programs"
+
+
 @mind.group()
 def program() -> None:
     """Manage programs."""
 
 
-@program.command("create")
-@click.argument("name")
-@click.option("--type", "program_type", type=click.Choice(["prompt", "python"]), default="prompt")
-@click.option("--content", default="")
-@click.option("--content-file", type=click.Path(exists=True))
-@click.option("--includes", default="", help="Comma-separated memory keys")
-@click.option("--tools", default="", help="Comma-separated mind CLI commands")
-@click.option("--metadata", "metadata_json", default="{}", help="JSON metadata")
-@click.pass_context
-def program_create(
-    ctx: click.Context,
-    name: str,
-    program_type: str,
-    content: str,
-    content_file: str | None,
-    includes: str,
-    tools: str,
-    metadata_json: str,
-) -> None:
-    """Create or update a program."""
-    if content_file:
-        content = Path(content_file).read_text()
-
-    includes_list = [s.strip() for s in includes.split(",") if s.strip()] if includes else []
-    tools_list = [s.strip() for s in tools.split(",") if s.strip()] if tools else []
-
-    prog = Program(
-        name=name,
-        program_type=ProgramType(program_type),
-        content=content,
-        includes=includes_list,
-        tools=tools_list,
-        metadata=json.loads(metadata_json),
-    )
-
-    repo = _repo()
-    prog_id = repo.upsert_program(prog)
-    _output({"id": str(prog_id), "name": name, "status": "created"}, use_json=ctx.obj["json"])
-
-
 @program.command("list")
+@click.option("--max", "limit", type=int, default=50, help="Max programs to show")
+@click.option("--all", "show_all", is_flag=True, help="Include disabled programs")
+@click.option("--disabled", is_flag=True, help="Show only disabled programs")
 @click.pass_context
-def program_list(ctx: click.Context) -> None:
+def program_list(ctx: click.Context, limit: int, show_all: bool, disabled: bool) -> None:
     """List all programs."""
     repo = _repo()
     programs = repo.list_programs()
+
+    if disabled:
+        programs = [p for p in programs if not p.metadata.get("enabled", True)]
+    elif not show_all:
+        programs = [p for p in programs if p.metadata.get("enabled", True)]
+
+    programs = programs[:limit]
     data = [
-        {"name": p.name, "type": p.program_type.value, "includes": p.includes, "tools": p.tools}
+        {
+            "name": p.name,
+            "type": p.program_type.value,
+            "enabled": p.metadata.get("enabled", True),
+            "includes": p.includes,
+            "tools": p.tools,
+        }
         for p in programs
     ]
     _output(data, use_json=ctx.obj["json"])
 
 
-@program.command("show")
+@program.command("info")
 @click.argument("name")
 @click.pass_context
-def program_show(ctx: click.Context, name: str) -> None:
+def program_info(ctx: click.Context, name: str) -> None:
     """Show a program's details."""
     repo = _repo()
     prog = repo.get_program(name)
@@ -145,44 +126,30 @@ def program_show(ctx: click.Context, name: str) -> None:
     _output(prog.model_dump(mode="json"), use_json=ctx.obj["json"])
 
 
-@program.command("update")
-@click.argument("name")
-@click.option("--content", default=None)
-@click.option("--content-file", type=click.Path(exists=True))
-@click.option("--includes", default=None, help="Comma-separated memory keys")
-@click.option("--tools", default=None, help="Comma-separated mind CLI commands")
-@click.option("--metadata", "metadata_json", default=None, help="JSON metadata")
+@program.command("add")
+@click.argument("path", type=click.Path(exists=True))
 @click.pass_context
-def program_update(
-    ctx: click.Context,
-    name: str,
-    content: str | None,
-    content_file: str | None,
-    includes: str | None,
-    tools: str | None,
-    metadata_json: str | None,
-) -> None:
-    """Update an existing program."""
+def program_add(ctx: click.Context, path: str) -> None:
+    """Add a program from a .py or .md file.
+
+    Validates tools, checks memory includes, and registers triggers.
+    """
+    bundle = load_program(Path(path))
     repo = _repo()
-    prog = repo.get_program(name)
-    if not prog:
-        click.echo(f"Program '{name}' not found.", err=True)
+    prog_id, issues = sync_program(bundle, repo)
+
+    for issue in issues:
+        prefix = "ERROR" if issue.level == "error" else "WARN"
+        click.echo(f"  [{prefix}] {issue.program}: {issue.message}", err=True)
+
+    if not prog_id:
+        click.echo("Failed to add program (see errors above).", err=True)
         sys.exit(1)
 
-    if content_file:
-        prog.content = Path(content_file).read_text()
-    elif content is not None:
-        prog.content = content
-
-    if includes is not None:
-        prog.includes = [s.strip() for s in includes.split(",") if s.strip()]
-    if tools is not None:
-        prog.tools = [s.strip() for s in tools.split(",") if s.strip()]
-    if metadata_json is not None:
-        prog.metadata = json.loads(metadata_json)
-
-    repo.upsert_program(prog)
-    _output({"name": name, "status": "updated"}, use_json=ctx.obj["json"])
+    result = {"id": prog_id, "name": bundle.program.name, "status": "added"}
+    if bundle.triggers:
+        result["triggers"] = len(bundle.triggers)
+    _output(result, use_json=ctx.obj["json"])
 
 
 @program.command("delete")
@@ -195,6 +162,101 @@ def program_delete(ctx: click.Context, name: str) -> None:
         _output({"name": name, "status": "deleted"}, use_json=ctx.obj["json"])
     else:
         click.echo(f"Program '{name}' not found.", err=True)
+        sys.exit(1)
+
+
+@program.command("disable")
+@click.argument("name")
+@click.option("--enable", is_flag=True, help="Re-enable instead of disabling")
+@click.pass_context
+def program_disable(ctx: click.Context, name: str, enable: bool) -> None:
+    """Disable (or --enable) a program."""
+    repo = _repo()
+    prog = repo.get_program(name)
+    if not prog:
+        click.echo(f"Program '{name}' not found.", err=True)
+        sys.exit(1)
+    prog.metadata["enabled"] = enable
+    repo.upsert_program(prog)
+    state = "enabled" if enable else "disabled"
+    _output({"name": name, "status": state}, use_json=ctx.obj["json"])
+
+
+@program.command("runs")
+@click.argument("name")
+@click.option("--limit", type=int, default=20)
+@click.pass_context
+def program_runs(ctx: click.Context, name: str, limit: int) -> None:
+    """List recent runs for a program."""
+    repo = _repo()
+    runs = repo.query_runs(program_name=name, limit=limit)
+    data = [
+        {
+            "id": str(r.id),
+            "status": r.status.value,
+            "tokens": r.tokens_input + r.tokens_output,
+            "cost_usd": str(r.cost_usd),
+            "duration_ms": r.duration_ms,
+            "started_at": str(r.started_at) if r.started_at else None,
+        }
+        for r in runs
+    ]
+    _output(data, use_json=ctx.obj["json"])
+
+
+@program.command("update")
+@click.argument("path", default=_DEFAULT_PROGRAMS_DIR, type=click.Path())
+@click.option("--dry-run", is_flag=True, help="Show what would change without writing")
+@click.pass_context
+def program_update(ctx: click.Context, path: str, dry_run: bool) -> None:
+    """Sync programs from a directory (recursive .py/.md files).
+
+    Validates tools, checks memory includes, and registers triggers.
+    Default path: eggs/ovo/programs/
+    """
+    root = Path(path)
+    if not root.is_dir():
+        click.echo(f"Not a directory: {root}", err=True)
+        sys.exit(1)
+
+    bundles = load_programs_dir(root)
+    if not bundles:
+        click.echo(f"No .py or .md program files found under {root}", err=True)
+        sys.exit(1)
+
+    if dry_run:
+        all_issues: list = []
+        for b in bundles:
+            tool_issues = validate_tools(b)
+            all_issues.extend(tool_issues)
+            trigs = f" +{len(b.triggers)} triggers" if b.triggers else ""
+            click.echo(f"  {b.program.name} ({b.program.program_type.value}){trigs}")
+        for issue in all_issues:
+            prefix = "ERROR" if issue.level == "error" else "WARN"
+            click.echo(f"  [{prefix}] {issue.program}: {issue.message}", err=True)
+        click.echo(f"\n{len(bundles)} program(s) would be synced.")
+        return
+
+    repo = _repo()
+    results = []
+    had_errors = False
+    for b in bundles:
+        prog_id, issues = sync_program(b, repo)
+        for issue in issues:
+            prefix = "ERROR" if issue.level == "error" else "WARN"
+            click.echo(f"  [{prefix}] {b.program.name}: {issue.message}", err=True)
+        if not prog_id:
+            click.echo(f"  SKIPPED: {b.program.name}", err=True)
+            had_errors = True
+            continue
+        trigs = f" +{len(b.triggers)} triggers" if b.triggers else ""
+        click.echo(f"  synced: {b.program.name}{trigs}")
+        results.append({"name": b.program.name, "id": prog_id, "type": b.program.program_type.value})
+
+    click.echo(f"\n{len(results)} program(s) synced.")
+    if ctx.obj["json"]:
+        click.echo(json.dumps(results, indent=2))
+    if had_errors:
         sys.exit(1)
 
 
