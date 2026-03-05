@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.scripts]
-cogent = "cli.__main__:main"
+cogent = "cli.__main__:entry"
 mind = "mind.cli:mind"
 polis = "polis.cli:polis"
 discord-bridge = "channels.discord.bridge:main"
