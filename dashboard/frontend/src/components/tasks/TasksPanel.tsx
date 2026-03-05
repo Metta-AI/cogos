@@ -778,147 +778,106 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
 
             {/* Task details (read-only) */}
             {!isEditing && (
-              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-[var(--text-muted)]">Full name</span>
-                <span className="font-mono text-[var(--text-secondary)]">{task.name}</span>
-                {task.description && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Description</span>
-                    <span className="text-[var(--text-secondary)]">{task.description}</span>
-                  </>
+              <div className="space-y-2">
+                {/* Top bar: key fields inline */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                  <span className="font-mono text-[var(--text-secondary)]" title="Full name">{task.name}</span>
+                  <span className="font-mono px-1.5 py-0.5 rounded text-[var(--accent)]" style={{ background: "var(--accent-glow)" }}>{task.program_name ?? "--"}</span>
+                  {task.runner && <span className="text-[var(--text-muted)]">runner:<span className="text-[var(--text-secondary)] ml-0.5">{task.runner}</span></span>}
+                  <span className="text-[var(--text-muted)]">creator:<span className="text-[var(--text-secondary)] ml-0.5">{task.creator ?? "--"}</span></span>
+                  {task.recurrent && <span className="text-[var(--info)]">↻ recurrent</span>}
+                  {task.clear_context && <span className="text-[var(--warning)]">clear-ctx</span>}
+                  {task.parent_task_id && <span className="text-[var(--text-muted)]">parent:<span className="font-mono text-[var(--text-secondary)] ml-0.5">{task.parent_task_id.slice(0, 8)}</span></span>}
+                  {task.source_event && <span className="text-[var(--text-muted)]">event:<span className="text-[var(--text-secondary)] ml-0.5">{task.source_event}</span></span>}
+                </div>
+
+                {/* Tags row: memory, tools, resources */}
+                {((task.memory_keys?.length ?? 0) > 0 || (task.tools?.length ?? 0) > 0 || (task.resources?.length ?? 0) > 0) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                    {task.memory_keys && task.memory_keys.length > 0 && (
+                      <span className="text-[var(--text-muted)]">mem: <span className="font-mono text-[var(--text-secondary)]">{task.memory_keys.join(", ")}</span></span>
+                    )}
+                    {task.tools && task.tools.length > 0 && (
+                      <span className="text-[var(--text-muted)]">tools: <span className="font-mono text-[var(--text-secondary)]">{task.tools.join(", ")}</span></span>
+                    )}
+                    {task.resources && task.resources.length > 0 && (
+                      <span className="text-[var(--text-muted)]">resources: <span className="font-mono text-[var(--text-secondary)]">{task.resources.join(", ")}</span></span>
+                    )}
+                  </div>
                 )}
-                <span className="text-[var(--text-muted)]">Status</span>
-                <span className="text-[var(--text-secondary)]">{task.status ?? "--"}</span>
-                <span className="text-[var(--text-muted)]">Priority</span>
-                <span className="text-[var(--text-secondary)]">{(task.priority ?? 0).toFixed(2)}</span>
-                <span className="text-[var(--text-muted)]">Program</span>
-                <span className="font-mono text-[var(--text-secondary)]">{task.program_name ?? "--"}</span>
-                {task.runner && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Runner</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{task.runner}</span>
-                  </>
-                )}
-                <span className="text-[var(--text-muted)]">Creator</span>
-                <span className="text-[var(--text-secondary)]">{task.creator ?? "--"}</span>
-                {task.parent_task_id && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Parent task</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{task.parent_task_id}</span>
-                  </>
-                )}
-                {task.source_event && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Source event</span>
-                    <span className="text-[var(--text-secondary)]">{task.source_event}</span>
-                  </>
-                )}
-                <span className="text-[var(--text-muted)]">Clear context</span>
-                <span className="text-[var(--text-secondary)]">{task.clear_context ? "yes" : "no"}</span>
-                {task.content && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Content</span>
-                    <span className="text-[var(--text-secondary)] whitespace-pre-wrap break-all">{task.content}</span>
-                  </>
-                )}
-                {task.memory_keys && task.memory_keys.length > 0 && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Memory keys</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{task.memory_keys.join(", ")}</span>
-                  </>
-                )}
-                {task.tools && task.tools.length > 0 && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Tools</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{task.tools.join(", ")}</span>
-                  </>
-                )}
-                {task.resources && task.resources.length > 0 && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Resources</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{task.resources.join(", ")}</span>
-                  </>
-                )}
-                {task.limits && Object.keys(task.limits).length > 0 && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Limits</span>
-                    <span className="font-mono text-[var(--text-secondary)]">{JSON.stringify(task.limits)}</span>
-                  </>
-                )}
-                {task.metadata && Object.keys(task.metadata).length > 0 && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Metadata</span>
-                    <span className="font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-all">{JSON.stringify(task.metadata, null, 2)}</span>
-                  </>
-                )}
-                {task.last_run_status && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Last run</span>
-                    <span className="text-[var(--text-secondary)]">
-                      <Badge variant={STATUS_VARIANT[task.last_run_status] ?? "neutral"}>{task.last_run_status}</Badge>
-                      {task.last_run_at && <span className="ml-2">{fmtRelative(task.last_run_at)}</span>}
+
+                {/* Stats row: timestamps, run counts, last run */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] py-1" style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+                  <span className="text-[var(--text-muted)]">created <span className="text-[var(--text-secondary)]">{fmtRelative(task.created_at)}</span></span>
+                  <span className="text-[var(--text-muted)]">updated <span className="text-[var(--text-secondary)]">{fmtRelative(task.updated_at)}</span></span>
+                  {task.completed_at && <span className="text-[var(--text-muted)]">completed <span className="text-[var(--text-secondary)]">{fmtRelative(task.completed_at)}</span></span>}
+                  {task.last_run_status && (
+                    <span className="text-[var(--text-muted)]">last run: <Badge variant={STATUS_VARIANT[task.last_run_status] ?? "neutral"}>{task.last_run_status}</Badge>{task.last_run_at && <span className="ml-1 text-[var(--text-secondary)]">{fmtRelative(task.last_run_at)}</span>}</span>
+                  )}
+                  {task.last_run_error && <span className="text-red-400 truncate max-w-[300px]" title={task.last_run_error}>{task.last_run_error}</span>}
+                  {task.run_counts && (
+                    <span className="flex items-center gap-1.5 font-mono">
+                      <span className="text-[var(--text-muted)]">runs:</span>
+                      {["1m", "5m", "1h", "24h", "7d"].map((w) => (
+                        <span key={w} className="text-[var(--text-muted)]">{w}:<span className="text-[var(--text-secondary)]">{task.run_counts![w] ?? 0}</span></span>
+                      ))}
                     </span>
-                  </>
+                  )}
+                </div>
+
+                {/* Limits / metadata inline if present */}
+                {((task.limits && Object.keys(task.limits).length > 0) || (task.metadata && Object.keys(task.metadata).length > 0)) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                    {task.limits && Object.keys(task.limits).length > 0 && (
+                      <span className="text-[var(--text-muted)]">limits: <span className="font-mono text-[var(--text-secondary)]">{JSON.stringify(task.limits)}</span></span>
+                    )}
+                    {task.metadata && Object.keys(task.metadata).length > 0 && (
+                      <span className="text-[var(--text-muted)]">meta: <span className="font-mono text-[var(--text-secondary)]">{JSON.stringify(task.metadata)}</span></span>
+                    )}
+                  </div>
                 )}
-                {task.last_run_error && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Last error</span>
-                    <span className="text-red-400 whitespace-pre-wrap break-all">{task.last_run_error}</span>
-                  </>
+
+                {/* Description */}
+                {task.description && (
+                  <div className="text-[11px] text-[var(--text-secondary)]">{task.description}</div>
                 )}
-                <span className="text-[var(--text-muted)]">Created</span>
-                <span className="text-[var(--text-secondary)]">{fmtRelative(task.created_at)}</span>
-                <span className="text-[var(--text-muted)]">Updated</span>
-                <span className="text-[var(--text-secondary)]">{fmtRelative(task.updated_at)}</span>
-                {task.completed_at && (
-                  <>
-                    <span className="text-[var(--text-muted)]">Completed</span>
-                    <span className="text-[var(--text-secondary)]">{fmtRelative(task.completed_at)}</span>
-                  </>
+
+                {/* Content — main area */}
+                {task.content && (
+                  <pre
+                    className="text-[11px] font-mono text-[var(--text-primary)] whitespace-pre-wrap break-all p-2 rounded overflow-auto"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", maxHeight: "300px" }}
+                  >{task.content}</pre>
                 )}
               </div>
             )}
 
             {/* Recent Runs */}
-            <div>
-              <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium mb-1.5">
-                Recent Runs
-              </div>
-              {expandedRuns.length === 0 ? (
-                <div className="text-[11px] text-[var(--text-muted)] italic">No runs yet</div>
-              ) : (
-                <div className="space-y-1">
+            {expandedRuns.length > 0 && (
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium mb-1">
+                  Runs ({expandedRuns.length})
+                </div>
+                <div className="space-y-0.5">
                   {expandedRuns.map((run) => (
                     <div
                       key={run.id}
-                      className="flex items-center gap-2 px-2 py-1 rounded"
+                      className="flex items-center gap-2 px-2 py-0.5 rounded text-[10px]"
                       style={{ background: "var(--bg-surface)" }}
                     >
                       <Badge variant={STATUS_VARIANT[run.status ?? ""] ?? "neutral"}>
                         {run.status ?? "?"}
                       </Badge>
-                      <span className="font-mono text-[11px] text-[var(--text-secondary)]">
-                        {run.program_name}
-                      </span>
-                      {run.duration_ms != null && (
-                        <span className="text-[10px] text-[var(--text-muted)]">
-                          {run.duration_ms}ms
-                        </span>
-                      )}
+                      <span className="font-mono text-[var(--text-secondary)]">{run.program_name}</span>
+                      {run.duration_ms != null && <span className="text-[var(--text-muted)]">{run.duration_ms}ms</span>}
                       <div className="flex-1" />
-                      <span className="text-[10px] text-[var(--text-muted)]">
-                        {fmtRelative(run.started_at)}
-                      </span>
-                      {run.error && (
-                        <span className="text-[10px] text-red-400 truncate max-w-[200px]" title={run.error}>
-                          {run.error}
-                        </span>
-                      )}
+                      <span className="text-[var(--text-muted)]">{fmtRelative(run.started_at)}</span>
+                      {run.error && <span className="text-red-400 truncate max-w-[200px]" title={run.error}>{run.error}</span>}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>
