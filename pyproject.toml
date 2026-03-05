@@ -22,6 +22,7 @@ dependencies = [
     "google-auth>=2.25",
     "aws-cdk-lib>=2.170.0",
     "constructs>=10.0",
+    "pydantic-settings>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -46,18 +47,22 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
-packages = ["src/cli", "src/body", "src/brain", "src/mind", "src/memory", "src/channels", "src/channels/discord", "src/channels/github", "src/channels/gmail", "src/channels/asana", "src/channels/calendar", "src/polis"]
+packages = ["src/cli", "src/body", "src/brain", "src/mind", "src/memory", "src/channels", "src/channels/discord", "src/channels/github", "src/channels/gmail", "src/channels/asana", "src/channels/calendar", "src/polis", "src/dashboard"]
 
 [tool.pyright]
 pythonVersion = "3.12"
-include = ["src/body", "src/cli", "src/mind", "src/memory", "src/polis", "tests"]
+include = ["src/body", "src/cli", "src/mind", "src/memory", "src/polis", "src/dashboard", "tests"]
 exclude = [".venv", "dist", "node_modules"]
 typeCheckingMode = "basic"
 reportMissingImports = true
 reportMissingTypeStubs = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["dashboard"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 timeout = 60
 pythonpath = ["src"]
+addopts = "--import-mode=importlib"
