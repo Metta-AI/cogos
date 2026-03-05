@@ -1,6 +1,5 @@
 """Route registration tests for events, triggers, and memory routers."""
 
-from fastapi.testclient import TestClient
 
 from dashboard.app import create_app
 

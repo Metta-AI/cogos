@@ -67,7 +67,7 @@ export interface Trigger {
   trigger_type: string | null;
   event_pattern: string | null;
   cron_expression: string | null;
-  skill_name: string | null;
+  program_name: string | null;
   priority: number | null;
   enabled: boolean;
   created_at: string | null;

@@ -164,6 +164,30 @@ class Repository:
         return rows[0] if rows else None
 
     # ═══════════════════════════════════════════════════════════
+    # RAW QUERY (for dashboard / ad-hoc SQL)
+    # ═══════════════════════════════════════════════════════════
+
+    def query(self, sql: str, params: dict[str, Any] | None = None) -> list[dict]:
+        """Execute raw SQL and return rows as list[dict].
+
+        Params use :name placeholders.  Pass a plain dict, e.g.
+        ``{"cogent_id": "x", "limit": 10}``.
+        """
+        api_params = [self._param(k, v) for k, v in params.items()] if params else None
+        return self._rows_to_dicts(self._execute(sql, api_params))
+
+    def query_one(self, sql: str, params: dict[str, Any] | None = None) -> dict | None:
+        """Execute raw SQL and return first row or None."""
+        rows = self.query(sql, params)
+        return rows[0] if rows else None
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> int:
+        """Execute a write statement and return number of affected rows."""
+        api_params = [self._param(k, v) for k, v in params.items()] if params else None
+        response = self._execute(sql, api_params)
+        return response.get("numberOfRecordsUpdated", 0)
+
+    # ═══════════════════════════════════════════════════════════
     # EVENTS (append-only log)
     # ═══════════════════════════════════════════════════════════
 

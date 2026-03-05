@@ -1,4 +1,4 @@
-from dashboard.models import StatusResponse, Program, Event, Trigger
+from dashboard.models import Event, Program, StatusResponse, Trigger
 
 
 def test_status_response_defaults():

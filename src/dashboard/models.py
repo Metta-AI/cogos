@@ -104,7 +104,7 @@ class Trigger(BaseModel):
     trigger_type: str | None = None
     event_pattern: str | None = None
     cron_expression: str | None = None
-    skill_name: str | None = None
+    program_name: str | None = None
     priority: int | None = None
     enabled: bool = True
     created_at: str | None = None

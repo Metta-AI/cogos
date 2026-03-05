@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from dashboard.database import fetch_all
+from dashboard.db import get_repo
 from dashboard.models import Session, SessionsResponse
 
 router = APIRouter()
@@ -26,17 +26,19 @@ def _try_parse_json(val: Any) -> Any:
 
 
 @router.get("/sessions", response_model=SessionsResponse)
-async def get_sessions(name: str):
-    conv_rows = await fetch_all(
+def get_sessions(name: str):
+    repo = get_repo()
+
+    conv_rows = repo.query(
         "SELECT id::text, context_key, status, cli_session_id, "
         "started_at::text, last_active::text, metadata "
-        "FROM conversations WHERE cogent_id = $1 "
+        "FROM conversations WHERE cogent_id = :cid "
         "ORDER BY last_active DESC",
-        name,
+        {"cid": name},
     )
 
-    # Execution stats per conversation
-    stats_rows = await fetch_all(
+    # Run stats per conversation
+    stats_rows = repo.query(
         "SELECT conversation_id::text, "
         "count(*) AS runs, "
         "count(*) FILTER (WHERE status = 'completed') AS ok, "
@@ -44,9 +46,9 @@ async def get_sessions(name: str):
         "COALESCE(SUM(tokens_input), 0) AS tokens_in, "
         "COALESCE(SUM(tokens_output), 0) AS tokens_out, "
         "COALESCE(SUM(cost_usd), 0)::float AS total_cost "
-        "FROM executions WHERE cogent_id = $1 "
+        "FROM runs WHERE cogent_id = :cid "
         "GROUP BY conversation_id",
-        name,
+        {"cid": name},
     )
     stats_by_id: dict[str, dict] = {r["conversation_id"]: r for r in stats_rows}
 

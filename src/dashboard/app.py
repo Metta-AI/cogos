@@ -6,14 +6,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from dashboard.config import settings
-from dashboard.database import close_pool, get_pool
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await get_pool()
     yield
-    await close_pool()
 
 
 def create_app() -> FastAPI:

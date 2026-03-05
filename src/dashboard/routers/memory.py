@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query
 
-from dashboard.database import fetch_all
+from dashboard.db import get_repo
 from dashboard.models import MemoryItem, MemoryResponse
 
 router = APIRouter(tags=["memory"])
@@ -29,27 +29,29 @@ def _derive_group(name: str) -> str:
 
 
 @router.get("/memory", response_model=MemoryResponse)
-async def list_memory(
+def list_memory(
     name: str,
     scope: str | None = Query(None),
     limit: int = Query(200, le=1000),
 ) -> MemoryResponse:
+    repo = get_repo()
+
     if scope:
-        sql = (
+        rows = repo.query(
             "SELECT id::text, scope, type, name, content, provenance, "
             "created_at::text, updated_at::text "
-            "FROM memory WHERE cogent_id = $1 AND scope = $2 "
-            "ORDER BY name, scope LIMIT $3"
+            "FROM memory WHERE cogent_id = :cid AND scope = :scope "
+            "ORDER BY name, scope LIMIT :lim",
+            {"cid": name, "scope": scope, "lim": limit},
         )
-        rows = await fetch_all(sql, name, scope, limit)
     else:
-        sql = (
+        rows = repo.query(
             "SELECT id::text, scope, type, name, content, provenance, "
             "created_at::text, updated_at::text "
-            "FROM memory WHERE cogent_id = $1 "
-            "ORDER BY name, scope LIMIT $2"
+            "FROM memory WHERE cogent_id = :cid "
+            "ORDER BY name, scope LIMIT :lim",
+            {"cid": name, "lim": limit},
         )
-        rows = await fetch_all(sql, name, limit)
 
     items = [
         MemoryItem(

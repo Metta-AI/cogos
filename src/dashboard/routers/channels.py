@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from dashboard.database import fetch_all
-from dashboard.models import ChannelsResponse
+from dashboard.db import get_repo
+from dashboard.models import Channel, ChannelsResponse
 
 router = APIRouter(tags=["channels"])
 
 
 @router.get("/channels", response_model=ChannelsResponse)
-async def list_channels(name: str) -> ChannelsResponse:
-    rows = await fetch_all(
+def list_channels(name: str) -> ChannelsResponse:
+    repo = get_repo()
+    rows = repo.query(
         "SELECT name, type, enabled, created_at::text "
-        "FROM channels WHERE cogent_id = $1 ORDER BY name",
-        name,
+        "FROM channels WHERE cogent_id = :cid ORDER BY name",
+        {"cid": name},
     )
-    return ChannelsResponse(cogent_id=name, count=len(rows), channels=rows)
+    channels = [Channel(**r) for r in rows]
+    return ChannelsResponse(cogent_id=name, count=len(channels), channels=channels)

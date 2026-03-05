@@ -1,4 +1,6 @@
-import pytest
+from fastapi.testclient import TestClient
+
+from dashboard.app import create_app
 from dashboard.ws import ConnectionManager
 
 
@@ -11,10 +13,6 @@ def test_disconnect_nonexistent():
     m = ConnectionManager()
     # Should not raise
     m.disconnect("test", None)
-
-
-from fastapi.testclient import TestClient
-from dashboard.app import create_app
 
 
 def test_ws_endpoint_accepts():

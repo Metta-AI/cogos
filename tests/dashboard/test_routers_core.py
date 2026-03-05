@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from dashboard.app import create_app
-
-_HAS_DB = bool(os.environ.get("TEST_DATABASE_URL"))
-
 
 # ---------------------------------------------------------------------------
 # Route registration tests (no DB required)
@@ -24,8 +21,6 @@ def client():
 
 def test_status_route_registered(client: TestClient):
     resp = client.get("/api/cogents/test-cogent/status")
-    # Without a running DB the handler will fail, but a 404 would mean
-    # the route is not registered at all.
     assert resp.status_code != 404
 
 
@@ -77,30 +72,40 @@ def test_try_parse_json_sessions():
 
 
 # ---------------------------------------------------------------------------
-# Integration tests (require a real database)
+# Mock-based API tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(not _HAS_DB, reason="TEST_DATABASE_URL not set")
-class TestWithDatabase:
-    """These tests only run when a test database is available."""
-
-    def test_status_returns_zeros(self, client: TestClient):
-        resp = client.get("/api/cogents/nonexistent-cogent/status")
+def test_status_with_mock_repo():
+    mock_repo = MagicMock()
+    mock_repo.query_one.return_value = {
+        "active_sessions": 2,
+        "total_conversations": 5,
+        "trigger_count": 3,
+        "unresolved_alerts": 1,
+        "recent_events": 10,
+    }
+    with patch("dashboard.routers.status.get_repo", return_value=mock_repo):
+        app = create_app()
+        client = TestClient(app)
+        resp = client.get("/api/cogents/test/status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["cogent_id"] == "nonexistent-cogent"
-        assert data["active_sessions"] == 0
+        assert data["active_sessions"] == 2
+        assert data["cogent_id"] == "test"
 
-    def test_programs_empty(self, client: TestClient):
-        resp = client.get("/api/cogents/nonexistent-cogent/programs")
+
+def test_programs_with_mock_repo():
+    mock_repo = MagicMock()
+    mock_repo.query.side_effect = [
+        [],  # run stats
+        [{"name": "code-review", "program_type": "markdown",
+          "description": "Review code", "sla": "{}", "triggers": "[]"}],
+    ]
+    with patch("dashboard.routers.programs.get_repo", return_value=mock_repo):
+        app = create_app()
+        client = TestClient(app)
+        resp = client.get("/api/cogents/test/programs")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 0
-        assert data["programs"] == []
-
-    def test_sessions_empty(self, client: TestClient):
-        resp = client.get("/api/cogents/nonexistent-cogent/sessions")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["count"] == 0
-        assert data["sessions"] == []
+        assert data["count"] == 1
+        assert data["programs"][0]["name"] == "code-review"

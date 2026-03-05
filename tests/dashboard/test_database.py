@@ -1,21 +1,19 @@
-import os
-import pytest
-import asyncpg
+"""Tests for the dashboard db module."""
 
-TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "postgresql://cogent:cogent_dev@localhost:5432/cogent_test")
+from unittest.mock import MagicMock, patch
 
-
-@pytest.fixture
-async def db_pool():
-    pool = await asyncpg.create_pool(TEST_DB_URL, min_size=1, max_size=2)
-    yield pool
-    await pool.close()
+from dashboard.db import get_repo
 
 
-@pytest.mark.skipif(
-    not os.environ.get("TEST_DATABASE_URL") and not os.environ.get("CI"),
-    reason="No TEST_DATABASE_URL set and not in CI; skipping database test",
-)
-async def test_pool_connects(db_pool):
-    row = await db_pool.fetchrow("SELECT 1 AS val")
-    assert row["val"] == 1
+def test_get_repo_returns_repository():
+    """get_repo creates a Repository via create()."""
+    import dashboard.db as db_mod
+
+    db_mod._repo = None  # reset singleton
+    mock_repo = MagicMock()
+    with patch("dashboard.db.Repository") as MockRepo:
+        MockRepo.create.return_value = mock_repo
+        result = get_repo()
+        assert result is mock_repo
+        MockRepo.create.assert_called_once()
+    db_mod._repo = None  # cleanup
