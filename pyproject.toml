@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Autonomous software engineering agent built on the Viable System Model"
 requires-python = ">=3.12"
 dependencies = [
-    "asyncpg>=0.30.0",
+    "aws-cdk-lib>=2.170.0",
+    "constructs>=10.0",
     "click>=8.1",
     "pydantic>=2.0",
-    "uvloop>=0.21.0",
     "pyyaml>=6.0",
     "boto3>=1.35",
     "aiohttp>=3.11",
@@ -20,8 +20,6 @@ dependencies = [
     "discord.py>=2.3",
     "google-api-python-client>=2.100",
     "google-auth>=2.25",
-    "aws-cdk-lib>=2.170.0",
-    "constructs>=10.0",
     "pydantic-settings>=2.0",
 ]
 
@@ -52,7 +50,7 @@ packages = ["src/cli", "src/body", "src/brain", "src/mind", "src/memory", "src/c
 
 [tool.pyright]
 pythonVersion = "3.12"
-include = ["src/body", "src/cli", "src/mind", "src/memory", "src/polis", "src/dashboard", "tests"]
+include = ["src/body", "src/brain", "src/cli", "src/mind", "src/memory", "src/polis", "src/dashboard", "tests"]
 exclude = [".venv", "dist", "node_modules"]
 typeCheckingMode = "basic"
 reportMissingImports = true
