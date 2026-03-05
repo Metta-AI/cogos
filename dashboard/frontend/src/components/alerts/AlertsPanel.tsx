@@ -414,7 +414,7 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
         </button>
 
         {showResolved && (
-          <div className="mt-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden" style={{ opacity: 0.7 }}>
+          <div className="mt-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden">
             <table className="w-full text-left text-[12px]">
               <thead>
                 <tr className="border-b border-[var(--border)]">
