@@ -23,7 +23,6 @@ class ComputeConstruct(Construct):
         *,
         config: BrainConfig,
         vpc: ec2.IVpc,
-        lambda_sg: ec2.ISecurityGroup,
         ecs_sg: ec2.ISecurityGroup,
         db_cluster_arn: str,
         db_secret_arn: str,
@@ -61,20 +60,19 @@ class ComputeConstruct(Construct):
             ),
         ]
 
-        vpc_policy = iam.ManagedPolicy.from_aws_managed_policy_name(
-            "service-role/AWSLambdaVPCAccessExecutionRole"
+        lambda_basic = iam.ManagedPolicy.from_aws_managed_policy_name(
+            "service-role/AWSLambdaBasicExecutionRole"
         )
 
-        # Orchestrator role (separate to avoid circular deps with EventBridge rule)
+        # Orchestrator role
         orchestrator_role = iam.Role(
             self,
             "OrchestratorRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[vpc_policy],
+            managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
             orchestrator_role.add_to_policy(stmt)
-        # Orchestrator needs to invoke executor Lambda and run ECS tasks
         orchestrator_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["lambda:InvokeFunction"],
@@ -93,7 +91,7 @@ class ComputeConstruct(Construct):
             self,
             "ExecutorRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[vpc_policy],
+            managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
             executor_role.add_to_policy(stmt)
@@ -104,7 +102,7 @@ class ComputeConstruct(Construct):
             )
         )
 
-        # Orchestrator Lambda
+        # Orchestrator Lambda (no VPC — uses only AWS APIs)
         self.orchestrator = lambda_.Function(
             self,
             "Orchestrator",
@@ -119,12 +117,9 @@ class ComputeConstruct(Construct):
                 **env,
                 "EXECUTOR_FUNCTION_NAME": f"cogent-{safe_name}-executor",
             },
-            vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[lambda_sg],
         )
 
-        # Executor Lambda
+        # Executor Lambda (no VPC — uses only AWS APIs: Data API, Bedrock, EventBridge)
         self.executor = lambda_.Function(
             self,
             "Executor",
@@ -136,10 +131,6 @@ class ComputeConstruct(Construct):
             timeout=Duration.seconds(config.executor_timeout_s),
             role=executor_role,
             environment=env,
-            vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[lambda_sg],
-            filesystem=lambda_.FileSystem.from_efs_access_point(access_point, "/mnt/cogent"),
         )
 
         # ECS Cluster

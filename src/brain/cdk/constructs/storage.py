@@ -20,7 +20,7 @@ class StorageConstruct(Construct):
         *,
         config: BrainConfig,
         vpc: ec2.IVpc,
-        security_groups: list[ec2.ISecurityGroup],
+        security_group: ec2.ISecurityGroup,
     ) -> None:
         super().__init__(scope, id)
 
@@ -33,9 +33,8 @@ class StorageConstruct(Construct):
             performance_mode=efs.PerformanceMode.GENERAL_PURPOSE,
             throughput_mode=efs.ThroughputMode.ELASTIC,
         )
-        # Allow security groups to mount EFS
-        for sg in security_groups:
-            self.filesystem.connections.allow_default_port_from(sg)
+        # Allow ECS security group to mount EFS
+        self.filesystem.connections.allow_default_port_from(security_group)
 
         self.access_point = self.filesystem.add_access_point(
             "CogentAp",

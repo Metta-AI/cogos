@@ -23,7 +23,7 @@ class BrainStack(Stack):
 
         safe_name = config.cogent_name.replace(".", "-")
 
-        # 1. Network
+        # 1. Network (VPC for ECS and Aurora only — Lambdas don't need VPC)
         self.network = NetworkConstruct(self, "Network", config=config)
 
         # 2. Database
@@ -35,13 +35,13 @@ class BrainStack(Stack):
             security_group=self.network.db_sg,
         )
 
-        # 3. Storage
+        # 3. Storage (EFS for ECS tasks only)
         self.storage = StorageConstruct(
             self,
             "Storage",
             config=config,
             vpc=self.network.vpc,
-            security_groups=[self.network.ecs_sg, self.network.lambda_sg],
+            security_group=self.network.ecs_sg,
         )
 
         # 4. EventBridge bus (created before compute so we have the name)
@@ -57,7 +57,6 @@ class BrainStack(Stack):
             "Compute",
             config=config,
             vpc=self.network.vpc,
-            lambda_sg=self.network.lambda_sg,
             ecs_sg=self.network.ecs_sg,
             db_cluster_arn=self.database.cluster_arn,
             db_secret_arn=self.database.secret.secret_arn if self.database.secret else "",

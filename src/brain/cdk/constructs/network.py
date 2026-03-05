@@ -34,14 +34,6 @@ class NetworkConstruct(Construct):
             ],
         )
 
-        self.lambda_sg = ec2.SecurityGroup(
-            self,
-            "LambdaSg",
-            vpc=self.vpc,
-            description="Security group for Lambda functions",
-            allow_all_outbound=True,
-        )
-
         self.ecs_sg = ec2.SecurityGroup(
             self,
             "EcsSg",
@@ -57,12 +49,7 @@ class NetworkConstruct(Construct):
             description="Security group for Aurora database",
         )
 
-        # Allow Lambda and ECS to connect to Aurora
-        self.db_sg.add_ingress_rule(
-            self.lambda_sg,
-            ec2.Port.tcp(5432),
-            "Lambda to Aurora",
-        )
+        # Allow ECS to connect to Aurora
         self.db_sg.add_ingress_rule(
             self.ecs_sg,
             ec2.Port.tcp(5432),
