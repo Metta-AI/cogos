@@ -1,0 +1,167 @@
+"""Core polis CDK stack: ECS cluster, ECR repo, Route53, DynamoDB, agent watcher Lambda."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import aws_cdk as cdk
+from aws_cdk import (
+    Duration,
+    RemovalPolicy,
+    aws_dynamodb as dynamodb,
+    aws_ecr as ecr,
+    aws_ecs as ecs,
+    aws_events as events,
+    aws_events_targets as targets,
+    aws_iam as iam,
+    aws_lambda as lambda_,
+    aws_route53 as route53,
+)
+from constructs import Construct
+
+from polis.config import PolisConfig
+
+WATCHER_HANDLER_DIR = Path(__file__).resolve().parent.parent.parent / "watcher"
+
+
+class PolisStack(cdk.Stack):
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        config: PolisConfig,
+        org_id: str,
+        **kwargs,
+    ) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+
+        # --- ECS Cluster ---
+        self.cluster = ecs.Cluster(
+            self,
+            "Cluster",
+            cluster_name="cogent-polis",
+            enable_fargate_capacity_providers=True,
+            container_insights_v2=ecs.ContainerInsights.ENABLED,
+        )
+
+        # --- ECR Repository ---
+        self.ecr_repo = ecr.Repository(
+            self,
+            "ECR",
+            repository_name="cogent",
+            image_tag_mutability=ecr.TagMutability.MUTABLE,
+            image_scan_on_push=True,
+            lifecycle_rules=[
+                ecr.LifecycleRule(
+                    description="Expire untagged images after 30 days",
+                    tag_status=ecr.TagStatus.UNTAGGED,
+                    max_image_age=Duration.days(30),
+                ),
+                ecr.LifecycleRule(
+                    description="Keep last 50 images",
+                    max_image_count=50,
+                ),
+            ],
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # Allow cross-account pulls from the org
+        self.ecr_repo.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowOrgPull",
+                actions=[
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:BatchCheckLayerAvailability",
+                ],
+                principals=[iam.AnyPrincipal()],
+                conditions={"StringEquals": {"aws:PrincipalOrgID": org_id}},
+            )
+        )
+
+        # --- Route53 Hosted Zone (import existing) ---
+        self.hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
+            self,
+            "HostedZone",
+            hosted_zone_id="Z059653727QDSCT3DI6DS",
+            zone_name=config.domain,
+        )
+
+        # --- DynamoDB Status Table ---
+        self.status_table = dynamodb.Table(
+            self,
+            "StatusTable",
+            table_name="cogent-status",
+            partition_key=dynamodb.Attribute(
+                name="cogent_name",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="ttl",
+            removal_policy=cdk.RemovalPolicy.DESTROY,
+        )
+
+        # --- Agent Watcher Lambda ---
+        self.watcher_fn = lambda_.Function(
+            self,
+            "WatcherLambda",
+            function_name="cogent-watcher",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.handler",
+            code=lambda_.Code.from_asset(str(WATCHER_HANDLER_DIR)),
+            timeout=Duration.seconds(120),
+            environment={
+                "DYNAMO_TABLE": self.status_table.table_name,
+            },
+        )
+
+        # Watcher permissions
+        self.status_table.grant_read_write_data(self.watcher_fn)
+
+        self.watcher_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cloudformation:ListStacks",
+                    "cloudformation:DescribeStacks",
+                ],
+                resources=["*"],
+            )
+        )
+        self.watcher_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecs:ListServices",
+                    "ecs:DescribeServices",
+                    "ecs:ListClusters",
+                ],
+                resources=["*"],
+            )
+        )
+        self.watcher_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:ListSecrets"],
+                resources=["*"],
+            )
+        )
+        self.watcher_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["cloudwatch:GetMetricData"],
+                resources=["*"],
+            )
+        )
+
+        # Schedule: every 1 minute
+        rule = events.Rule(
+            self,
+            "WatcherSchedule",
+            schedule=events.Schedule.rate(Duration.minutes(1)),
+        )
+        rule.add_target(targets.LambdaFunction(self.watcher_fn))
+
+        # --- Outputs ---
+        cdk.CfnOutput(self, "ECRRepositoryUri", value=self.ecr_repo.repository_uri)
+        cdk.CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
+        cdk.CfnOutput(self, "HostedZoneId", value=self.hosted_zone.hosted_zone_id)
+        cdk.CfnOutput(self, "Domain", value=config.domain)
+        cdk.CfnOutput(self, "StatusTableArn", value=self.status_table.table_arn)

@@ -20,6 +20,8 @@ dependencies = [
     "discord.py>=2.3",
     "google-api-python-client>=2.100",
     "google-auth>=2.25",
+    "aws-cdk-lib>=2.170.0",
+    "constructs>=10.0",
 ]
 
 [project.optional-dependencies]
