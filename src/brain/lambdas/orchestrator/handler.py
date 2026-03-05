@@ -11,7 +11,7 @@ import time
 
 import boto3
 
-from brain.db.models import ComputeTier, Trigger
+from brain.db.models import Trigger
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
 from brain.lambdas.shared.events import from_eventbridge
@@ -33,7 +33,7 @@ class TriggerCache:
         now = time.time()
         if now - self._last_refresh > self._ttl:
             repo = get_repo()
-            self._triggers = repo.list_triggers(cogent_id, enabled_only=True)
+            self._triggers = repo.list_triggers(enabled_only=True)
             self._last_refresh = now
             logger.info(f"Refreshed trigger cache: {len(self._triggers)} enabled triggers")
         return self._triggers
@@ -114,19 +114,14 @@ def handler(event: dict, context) -> dict:
                 }
             )
 
-            # Load program to check compute tier
-            program = repo.get_program(config.cogent_id, trigger.program_name)
+            # Verify program exists
+            program = repo.get_program(trigger.program_name)
             if not program:
                 logger.warning(f"Program not found: {trigger.program_name}")
                 continue
 
-            # Dispatch based on compute tier
-            if program.compute_tier == ComputeTier.ECS:
-                # Dispatch to ECS Fargate for heavy compute
-                _dispatch_ecs(config, ecs_client, payload, trigger.program_name)
-            else:
-                # Dispatch to Lambda executor for standard compute
-                _dispatch_lambda(config, lambda_client, payload, trigger.program_name)
+            # Dispatch to Lambda executor
+            _dispatch_lambda(config, lambda_client, payload, trigger.program_name)
 
             dispatched += 1
 

@@ -13,11 +13,10 @@ def list_resources(name: str) -> ResourcesResponse:
     repo = get_repo()
     rows = repo.query(
         "SELECT id::text, context_key, cli_session_id "
-        "FROM conversations WHERE cogent_id = :cid AND status = 'active'",
-        {"cid": name},
+        "FROM conversations WHERE status = 'active'",
     )
     return ResourcesResponse(
-        cogent_id=name,
+        cogent_name=name,
         active_sessions=len(rows),
         conversations=rows,
     )

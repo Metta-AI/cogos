@@ -17,7 +17,7 @@ def _get_secrets_client(region: str | None = None):
     return boto3.client("secretsmanager", region_name=region)
 
 
-def get_channel_token(cogent_id: str, channel: str) -> str | None:
+def get_channel_token(channel: str) -> str | None:
     """Get a channel's access token.
 
     Checks env var <CHANNEL>_BOT_TOKEN first, then Secrets Manager.
@@ -28,9 +28,14 @@ def get_channel_token(cogent_id: str, channel: str) -> str | None:
         logger.info("Using %s from environment", env_key)
         return env_token
 
+    cogent_name = os.environ.get("COGENT_NAME")
+    if not cogent_name:
+        logger.error("COGENT_NAME not set in environment")
+        return None
+
     try:
         sm = _get_secrets_client()
-        secret_id = f"identity_service/{cogent_id}/{channel}"
+        secret_id = f"identity_service/{cogent_name}/{channel}"
         resp = sm.get_secret_value(SecretId=secret_id)
         data = json.loads(resp["SecretString"])
         return data.get("access_token")
@@ -39,11 +44,16 @@ def get_channel_token(cogent_id: str, channel: str) -> str | None:
         return None
 
 
-def get_channel_secret(cogent_id: str, channel: str) -> dict[str, Any] | None:
+def get_channel_secret(channel: str) -> dict[str, Any] | None:
     """Get the full secret dict for a channel."""
+    cogent_name = os.environ.get("COGENT_NAME")
+    if not cogent_name:
+        logger.error("COGENT_NAME not set in environment")
+        return None
+
     try:
         sm = _get_secrets_client()
-        secret_id = f"identity_service/{cogent_id}/{channel}"
+        secret_id = f"identity_service/{cogent_name}/{channel}"
         resp = sm.get_secret_value(SecretId=secret_id)
         return json.loads(resp["SecretString"])
     except Exception:

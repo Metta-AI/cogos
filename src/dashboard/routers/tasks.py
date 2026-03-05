@@ -16,22 +16,22 @@ def list_tasks(
     repo = get_repo()
     if status:
         rows = repo.query(
-            "SELECT id::text, title, description, status, priority, source, "
-            "external_id, metadata, error, created_at::text, updated_at::text, "
-            "completed_at::text FROM tasks WHERE cogent_id = :cid AND status = :status "
+            "SELECT id::text, name, description, status, priority, creator, "
+            "parent_task_id::text, source_event, limits, metadata, "
+            "created_at::text, updated_at::text, completed_at::text "
+            "FROM tasks WHERE status = :status "
             "ORDER BY created_at DESC",
-            {"cid": name, "status": status},
+            {"status": status},
         )
     else:
         rows = repo.query(
-            "SELECT id::text, title, description, status, priority, source, "
-            "external_id, metadata, error, created_at::text, updated_at::text, "
-            "completed_at::text FROM tasks WHERE cogent_id = :cid "
-            "ORDER BY created_at DESC",
-            {"cid": name},
+            "SELECT id::text, name, description, status, priority, creator, "
+            "parent_task_id::text, source_event, limits, metadata, "
+            "created_at::text, updated_at::text, completed_at::text "
+            "FROM tasks ORDER BY created_at DESC",
         )
     tasks = [Task(**r) for r in rows]
-    return TasksResponse(cogent_id=name, count=len(tasks), tasks=tasks)
+    return TasksResponse(cogent_name=name, count=len(tasks), tasks=tasks)
 
 
 @router.get("/tasks/{task_id}")
@@ -39,42 +39,24 @@ def get_task(name: str, task_id: str) -> dict:
     repo = get_repo()
 
     task = repo.query_one(
-        "SELECT id::text, title, description, status, priority, source, "
-        "external_id, metadata, error, created_at::text, updated_at::text, "
-        "completed_at::text FROM tasks WHERE id = :tid::uuid AND cogent_id = :cid",
-        {"tid": task_id, "cid": name},
+        "SELECT id::text, name, description, status, priority, creator, "
+        "parent_task_id::text, source_event, limits, metadata, "
+        "created_at::text, updated_at::text, completed_at::text "
+        "FROM tasks WHERE id = :tid::uuid",
+        {"tid": task_id},
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    events = repo.query(
-        "SELECT id::text, event_type, source, payload, created_at::text "
-        "FROM events WHERE cogent_id = :cid AND payload::text LIKE '%' || :tid || '%' "
-        "ORDER BY created_at DESC LIMIT 50",
-        {"cid": name, "tid": task_id},
-    )
-
-    created_at = task.get("created_at")
-    completed_at = task.get("completed_at")
     runs = repo.query(
         "SELECT id::text, program_name, status, started_at::text, "
         "completed_at::text, duration_ms, tokens_input, tokens_output, "
-        "cost_usd::float, error FROM runs WHERE cogent_id = :cid "
-        "AND started_at >= :start AND (:end IS NULL OR started_at <= :end) "
+        "cost_usd::float, error FROM runs WHERE task_id = :tid::uuid "
         "ORDER BY started_at DESC LIMIT 50",
-        {"cid": name, "start": created_at, "end": completed_at},
-    )
-
-    conversations = repo.query(
-        "SELECT id::text, context_key, status, started_at::text, "
-        "last_active::text FROM conversations WHERE cogent_id = :cid "
-        "AND context_key LIKE '%' || :tid || '%'",
-        {"cid": name, "tid": task_id},
+        {"tid": task_id},
     )
 
     return {
         "task": task,
-        "events": events,
-        "executions": runs,
-        "conversations": conversations,
+        "runs": runs,
     }

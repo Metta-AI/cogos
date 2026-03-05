@@ -13,9 +13,8 @@ def list_alerts(name: str) -> AlertsResponse:
     repo = get_repo()
     rows = repo.query(
         "SELECT id::text, severity, alert_type, source, message, metadata, "
-        "created_at::text FROM alerts WHERE cogent_id = :cid "
-        "AND resolved_at IS NULL ORDER BY created_at DESC",
-        {"cid": name},
+        "created_at::text FROM alerts "
+        "WHERE resolved_at IS NULL ORDER BY created_at DESC",
     )
     alerts = [Alert(**r) for r in rows]
-    return AlertsResponse(cogent_id=name, count=len(alerts), alerts=alerts)
+    return AlertsResponse(cogent_name=name, count=len(alerts), alerts=alerts)

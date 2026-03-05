@@ -5,16 +5,17 @@ import pathlib
 SCHEMA_PATH = pathlib.Path(__file__).resolve().parents[2] / "src" / "brain" / "db" / "schema.sql"
 
 EXPECTED_TABLES = [
-    "memory",
+    "conversations",
+    "events",
     "programs",
     "triggers",
-    "channels",
-    "tasks",
-    "conversations",
+    "cron",
+    "memory",
     "runs",
-    "traces",
-    "events",
+    "tasks",
     "alerts",
+    "channels",
+    "traces",
     "budget",
 ]
 

@@ -46,20 +46,20 @@ def list_events(
         rows = repo.query(
             "SELECT id, event_type, source, payload, parent_event_id, created_at "
             "FROM events "
-            "WHERE cogent_id = :cid AND created_at > now() - interval '"
+            "WHERE created_at > now() - interval '"
             + interval
             + "' AND event_type LIKE :etype "
             "ORDER BY created_at DESC LIMIT :lim",
-            {"cid": name, "etype": f"%{type}%", "lim": limit},
+            {"etype": f"%{type}%", "lim": limit},
         )
     else:
         rows = repo.query(
             "SELECT id, event_type, source, payload, parent_event_id, created_at "
             "FROM events "
-            "WHERE cogent_id = :cid AND created_at > now() - interval '"
+            "WHERE created_at > now() - interval '"
             + interval
             + "' ORDER BY created_at DESC LIMIT :lim",
-            {"cid": name, "lim": limit},
+            {"lim": limit},
         )
 
     events = [
@@ -73,7 +73,7 @@ def list_events(
         )
         for r in rows
     ]
-    return EventsResponse(cogent_id=name, count=len(events), events=events)
+    return EventsResponse(cogent_name=name, count=len(events), events=events)
 
 
 @router.get("/events/{event_id}/tree", response_model=EventTreeResponse)
@@ -100,10 +100,10 @@ def event_tree(name: str, event_id: int) -> EventTreeResponse:
     rows = repo.query(
         """
         WITH RECURSIVE tree AS (
-          SELECT id, cogent_id, event_type, source, payload, parent_event_id, created_at
+          SELECT id, event_type, source, payload, parent_event_id, created_at
           FROM events WHERE id = :rid
           UNION ALL
-          SELECT e.id, e.cogent_id, e.event_type, e.source, e.payload, e.parent_event_id, e.created_at
+          SELECT e.id, e.event_type, e.source, e.payload, e.parent_event_id, e.created_at
           FROM events e JOIN tree t ON e.parent_event_id = t.id
         ) SELECT * FROM tree ORDER BY created_at
         """,

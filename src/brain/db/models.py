@@ -26,11 +26,10 @@ class MemoryType(str, enum.Enum):
 
 
 class TaskStatus(str, enum.Enum):
-    PROPOSED = "proposed"
-    APPROVED = "approved"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
+    PENDING = "pending"
+    RUNNING = "running"
     FAILED = "failed"
+    COMPLETED = "completed"
 
 
 class RunStatus(str, enum.Enum):
@@ -66,14 +65,9 @@ class BudgetPeriod(str, enum.Enum):
     MONTHLY = "monthly"
 
 
-class TriggerType(str, enum.Enum):
-    EVENT = "event"
-    CRON = "cron"
-
-
-class ComputeTier(str, enum.Enum):
-    LAMBDA = "lambda"
-    ECS = "ecs"
+class ProgramType(str, enum.Enum):
+    PROMPT = "prompt"
+    PYTHON = "python"
 
 
 # --- Core Models ---
@@ -93,19 +87,13 @@ class MemoryRecord(BaseModel):
 
 
 class Program(BaseModel):
-    cogent_id: str
+    id: UUID = Field(default_factory=uuid4)
     name: str
-    program_type: str = "markdown"
-    source: str = "golden"
-    description: str = ""
+    program_type: ProgramType = ProgramType.PROMPT
     content: str = ""
-    triggers: list[dict[str, Any]] = Field(default_factory=list)
-    resources: dict[str, Any] = Field(default_factory=dict)
-    sla: dict[str, Any] = Field(default_factory=dict)
-    enabled: bool = True
-    version: int = 1
-    compute_tier: ComputeTier = ComputeTier.LAMBDA
+    includes: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -127,16 +115,15 @@ class Channel(BaseModel):
 
 class Task(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
-    title: str
+    name: str
     description: str = ""
-    status: TaskStatus = TaskStatus.PROPOSED
+    status: TaskStatus = TaskStatus.PENDING
     priority: int = 0
-    source: str = "agent"
-    channel_id: UUID | None = None
-    external_id: str | None = None
+    parent_task_id: UUID | None = None
+    creator: str = ""
+    source_event: str | None = None
+    limits: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    error: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     completed_at: datetime | None = None
@@ -158,6 +145,7 @@ class Run(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     cogent_id: str
     program_name: str
+    task_id: UUID | None = None
     trigger_id: UUID | None = None
     conversation_id: UUID | None = None
     status: RunStatus = RunStatus.RUNNING
@@ -220,29 +208,30 @@ class Budget(BaseModel):
     updated_at: datetime | None = None
 
 
-# --- Trigger Models (consolidated from mind/models.py) ---
-
-
-class RetryPolicy(BaseModel):
-    max_attempts: int = 1
-    backoff: Literal["none", "linear", "exponential"] = "none"
-    backoff_base_seconds: float = 5.0
+# --- Trigger & Cron Models ---
 
 
 class TriggerConfig(BaseModel):
-    retry: RetryPolicy = Field(default_factory=RetryPolicy)
+    retry_max_attempts: int = 1
+    retry_backoff: Literal["none", "linear", "exponential"] = "none"
+    retry_backoff_base_seconds: float = 5.0
     on_failure: str | None = None
-    context_key_template: str | None = None
 
 
 class Trigger(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
-    trigger_type: TriggerType = TriggerType.EVENT
-    event_pattern: str = ""
-    cron_expression: str = ""
-    program_name: str = ""
+    program_name: str
+    event_pattern: str
     priority: int = 10
     config: TriggerConfig = Field(default_factory=TriggerConfig)
     enabled: bool = True
+    created_at: datetime | None = None
+
+
+class Cron(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    cron_expression: str
+    event_pattern: str
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None

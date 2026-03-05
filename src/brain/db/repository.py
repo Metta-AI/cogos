@@ -19,14 +19,15 @@ from brain.db.models import (
     BudgetPeriod,
     Channel,
     ChannelType,
-    ComputeTier,
     Conversation,
     ConversationStatus,
+    Cron,
     Event,
     MemoryRecord,
     MemoryScope,
     MemoryType,
     Program,
+    ProgramType,
     Run,
     RunStatus,
     Task,
@@ -34,7 +35,6 @@ from brain.db.models import (
     Trace,
     Trigger,
     TriggerConfig,
-    TriggerType,
 )
 
 logger = logging.getLogger(__name__)
@@ -419,119 +419,72 @@ class Repository:
     # PROGRAMS
     # ═══════════════════════════════════════════════════════════
 
-    def upsert_program(
-        self,
-        cogent_id: str,
-        name: str,
-        *,
-        program_type: str = "markdown",
-        source: str = "golden",
-        description: str = "",
-        content: str = "",
-        triggers: list[dict] | None = None,
-        resources: dict | None = None,
-        sla: dict | None = None,
-        enabled: bool = True,
-        version: int = 1,
-        compute_tier: ComputeTier = ComputeTier.LAMBDA,
-        tools: list[str] | None = None,
-    ) -> None:
-        self._execute(
-            """INSERT INTO programs (cogent_id, name, program_type, source, description, content,
-                                   triggers, resources, sla, enabled, version, compute_tier, tools)
-               VALUES (:cogent_id, :name, :program_type, :source, :description, :content,
-                       :triggers::jsonb, :resources::jsonb, :sla::jsonb, :enabled, :version,
-                       :compute_tier, :tools::jsonb)
-               ON CONFLICT (cogent_id, name)
-               DO UPDATE SET program_type = EXCLUDED.program_type, source = EXCLUDED.source,
-                            description = EXCLUDED.description, content = EXCLUDED.content,
-                            triggers = EXCLUDED.triggers, resources = EXCLUDED.resources,
-                            sla = EXCLUDED.sla, enabled = EXCLUDED.enabled,
-                            version = EXCLUDED.version, compute_tier = EXCLUDED.compute_tier,
-                            tools = EXCLUDED.tools, updated_at = now()""",
+    def upsert_program(self, program: Program) -> UUID:
+        """Insert or update a program by name."""
+        response = self._execute(
+            """INSERT INTO programs (id, name, program_type, content, includes, tools, metadata)
+               VALUES (:id, :name, :program_type, :content, :includes::jsonb, :tools::jsonb, :metadata::jsonb)
+               ON CONFLICT (name)
+               DO UPDATE SET program_type = EXCLUDED.program_type, content = EXCLUDED.content,
+                            includes = EXCLUDED.includes, tools = EXCLUDED.tools,
+                            metadata = EXCLUDED.metadata, updated_at = now()
+               RETURNING id, created_at, updated_at""",
             [
-                self._param("cogent_id", cogent_id),
-                self._param("name", name),
-                self._param("program_type", program_type),
-                self._param("source", source),
-                self._param("description", description),
-                self._param("content", content),
-                self._param("triggers", triggers or []),
-                self._param("resources", resources or {}),
-                self._param("sla", sla or {}),
-                self._param("enabled", enabled),
-                self._param("version", version),
-                self._param("compute_tier", compute_tier.value),
-                self._param("tools", tools or []),
+                self._param("id", program.id),
+                self._param("name", program.name),
+                self._param("program_type", program.program_type.value),
+                self._param("content", program.content),
+                self._param("includes", program.includes),
+                self._param("tools", program.tools),
+                self._param("metadata", program.metadata),
             ],
         )
+        row = self._first_row(response)
+        if row:
+            program.created_at = datetime.fromisoformat(row["created_at"])
+            program.updated_at = datetime.fromisoformat(row["updated_at"])
+            return UUID(row["id"])
+        raise RuntimeError("Failed to upsert program")
 
-    def get_program(self, cogent_id: str, name: str) -> Program | None:
-        """Get a program by cogent_id and name."""
+    def get_program(self, name: str) -> Program | None:
+        """Get a program by name."""
         response = self._execute(
-            "SELECT * FROM programs WHERE cogent_id = :cogent_id AND name = :name",
-            [
-                self._param("cogent_id", cogent_id),
-                self._param("name", name),
-            ],
+            "SELECT * FROM programs WHERE name = :name",
+            [self._param("name", name)],
         )
         row = self._first_row(response)
         return self._program_from_row(row) if row else None
 
-    def list_programs(self, cogent_id: str, *, source: str | None = None) -> list[dict]:
-        if source:
-            response = self._execute(
-                "SELECT * FROM programs WHERE cogent_id = :cogent_id AND source = :source ORDER BY name",
-                [
-                    self._param("cogent_id", cogent_id),
-                    self._param("source", source),
-                ],
-            )
-        else:
-            response = self._execute(
-                "SELECT * FROM programs WHERE cogent_id = :cogent_id ORDER BY name",
-                [self._param("cogent_id", cogent_id)],
-            )
-        return self._rows_to_dicts(response)
+    def list_programs(self) -> list[Program]:
+        response = self._execute("SELECT * FROM programs ORDER BY name")
+        return [self._program_from_row(r) for r in self._rows_to_dicts(response)]
 
-    def delete_program(self, cogent_id: str, name: str) -> bool:
+    def delete_program(self, name: str) -> bool:
         response = self._execute(
-            "DELETE FROM programs WHERE cogent_id = :cogent_id AND name = :name",
-            [
-                self._param("cogent_id", cogent_id),
-                self._param("name", name),
-            ],
+            "DELETE FROM programs WHERE name = :name",
+            [self._param("name", name)],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def _program_from_row(self, row: dict) -> Program:
-        triggers = row.get("triggers", [])
-        if isinstance(triggers, str):
-            triggers = json.loads(triggers)
-        resources = row.get("resources", {})
-        if isinstance(resources, str):
-            resources = json.loads(resources)
-        sla = row.get("sla", {})
-        if isinstance(sla, str):
-            sla = json.loads(sla)
+        includes = row.get("includes", [])
+        if isinstance(includes, str):
+            includes = json.loads(includes)
         tools = row.get("tools", [])
         if isinstance(tools, str):
             tools = json.loads(tools)
+        metadata = row.get("metadata", {})
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
 
         return Program(
-            cogent_id=row["cogent_id"],
+            id=UUID(row["id"]),
             name=row["name"],
-            program_type=row.get("program_type", "markdown"),
-            source=row.get("source", "golden"),
-            description=row.get("description", ""),
+            program_type=ProgramType(row.get("program_type", "prompt")),
             content=row.get("content", ""),
-            triggers=triggers,
-            resources=resources,
-            sla=sla,
-            enabled=row.get("enabled", True),
-            version=row.get("version", 1),
-            compute_tier=ComputeTier(row.get("compute_tier", "lambda")),
+            includes=includes,
             tools=tools,
+            metadata=metadata,
             created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
             updated_at=datetime.fromisoformat(row["updated_at"]) if row.get("updated_at") else None,
         )
@@ -594,22 +547,22 @@ class Repository:
 
     def create_task(self, task: Task) -> UUID:
         response = self._execute(
-            """INSERT INTO tasks (id, cogent_id, title, description, status, priority, source,
-                                  external_id, metadata, error)
-               VALUES (:id, :cogent_id, :title, :description, :status, :priority, :source,
-                       :external_id, :metadata::jsonb, :error)
+            """INSERT INTO tasks (id, name, description, status, priority, parent_task_id,
+                                  creator, source_event, limits, metadata)
+               VALUES (:id, :name, :description, :status, :priority, :parent_task_id,
+                       :creator, :source_event, :limits::jsonb, :metadata::jsonb)
                RETURNING id, created_at, updated_at""",
             [
                 self._param("id", task.id),
-                self._param("cogent_id", task.cogent_id),
-                self._param("title", task.title),
+                self._param("name", task.name),
                 self._param("description", task.description),
                 self._param("status", task.status.value),
                 self._param("priority", task.priority),
-                self._param("source", task.source),
-                self._param("external_id", task.external_id),
+                self._param("parent_task_id", task.parent_task_id),
+                self._param("creator", task.creator),
+                self._param("source_event", task.source_event),
+                self._param("limits", task.limits),
                 self._param("metadata", task.metadata),
-                self._param("error", task.error),
             ],
         )
         row = self._first_row(response)
@@ -627,13 +580,7 @@ class Repository:
         row = self._first_row(response)
         return self._task_from_row(row) if row else None
 
-    def update_task_status(
-        self,
-        task_id: UUID,
-        status: TaskStatus,
-        *,
-        error: str | None = None,
-    ) -> bool:
+    def update_task_status(self, task_id: UUID, status: TaskStatus) -> bool:
         if status == TaskStatus.COMPLETED:
             response = self._execute(
                 """UPDATE tasks SET status = :status, completed_at = now(), updated_at = now()
@@ -641,16 +588,6 @@ class Repository:
                 [
                     self._param("id", task_id),
                     self._param("status", status.value),
-                ],
-            )
-        elif error:
-            response = self._execute(
-                """UPDATE tasks SET status = :status, error = :error, updated_at = now()
-                   WHERE id = :id""",
-                [
-                    self._param("id", task_id),
-                    self._param("status", status.value),
-                    self._param("error", error),
                 ],
             )
         else:
@@ -663,50 +600,26 @@ class Repository:
             )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
-    def claim_task(self, cogent_id: str, role: str) -> Task | None:
-        """Atomically claim the next approved task (highest priority first)."""
-        response = self._execute(
-            """UPDATE tasks SET status = 'in_progress', updated_at = now()
-               WHERE id = (
-                   SELECT id FROM tasks
-                   WHERE cogent_id = :cogent_id AND status = 'approved'
-                   ORDER BY priority DESC, created_at ASC
-                   LIMIT 1
-                   FOR UPDATE SKIP LOCKED
-               )
-               RETURNING *""",
-            [self._param("cogent_id", cogent_id)],
-        )
-        row = self._first_row(response)
-        if row is None:
-            return None
-        return self._task_from_row(row)
-
     def list_tasks(
         self,
-        cogent_id: str,
         *,
         status: TaskStatus | None = None,
         limit: int = 50,
     ) -> list[Task]:
         if status:
             response = self._execute(
-                """SELECT * FROM tasks WHERE cogent_id = :cogent_id AND status = :status
+                """SELECT * FROM tasks WHERE status = :status
                    ORDER BY priority DESC, created_at DESC LIMIT :limit""",
                 [
-                    self._param("cogent_id", cogent_id),
                     self._param("status", status.value),
                     self._param("limit", limit),
                 ],
             )
         else:
             response = self._execute(
-                """SELECT * FROM tasks WHERE cogent_id = :cogent_id
+                """SELECT * FROM tasks
                    ORDER BY priority DESC, created_at DESC LIMIT :limit""",
-                [
-                    self._param("cogent_id", cogent_id),
-                    self._param("limit", limit),
-                ],
+                [self._param("limit", limit)],
             )
         return [self._task_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -714,18 +627,20 @@ class Repository:
         metadata = row.get("metadata", {})
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
+        limits = row.get("limits", {})
+        if isinstance(limits, str):
+            limits = json.loads(limits)
         return Task(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
-            title=row["title"],
+            name=row["name"],
             description=row.get("description", ""),
             status=TaskStatus(row["status"]),
             priority=row.get("priority", 0),
-            source=row.get("source", "agent"),
-            channel_id=UUID(row["channel_id"]) if row.get("channel_id") else None,
-            external_id=row.get("external_id"),
+            parent_task_id=UUID(row["parent_task_id"]) if row.get("parent_task_id") else None,
+            creator=row.get("creator", ""),
+            source_event=row.get("source_event"),
+            limits=limits,
             metadata=metadata,
-            error=row.get("error"),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             completed_at=datetime.fromisoformat(row["completed_at"]) if row.get("completed_at") else None,
@@ -825,10 +740,10 @@ class Repository:
 
     def insert_run(self, run: Run) -> UUID:
         response = self._execute(
-            """INSERT INTO runs (id, cogent_id, program_name, trigger_id, conversation_id,
+            """INSERT INTO runs (id, cogent_id, program_name, task_id, trigger_id, conversation_id,
                                  status, tokens_input, tokens_output, cost_usd,
                                  duration_ms, events_emitted, error, model_version)
-               VALUES (:id, :cogent_id, :program_name, :trigger_id, :conversation_id,
+               VALUES (:id, :cogent_id, :program_name, :task_id, :trigger_id, :conversation_id,
                        :status, :tokens_input, :tokens_output, :cost_usd,
                        :duration_ms, :events_emitted::jsonb, :error, :model_version)
                RETURNING id, started_at""",
@@ -836,6 +751,7 @@ class Repository:
                 self._param("id", run.id),
                 self._param("cogent_id", run.cogent_id),
                 self._param("program_name", run.program_name),
+                self._param("task_id", run.task_id),
                 self._param("trigger_id", run.trigger_id),
                 self._param("conversation_id", run.conversation_id),
                 self._param("status", run.status.value),
@@ -912,6 +828,7 @@ class Repository:
             id=UUID(row["id"]),
             cogent_id=row["cogent_id"],
             program_name=row["program_name"],
+            task_id=UUID(row["task_id"]) if row.get("task_id") else None,
             trigger_id=UUID(row["trigger_id"]) if row.get("trigger_id") else None,
             conversation_id=UUID(row["conversation_id"]) if row.get("conversation_id") else None,
             status=RunStatus(row["status"]),
@@ -978,18 +895,13 @@ class Repository:
 
     def insert_trigger(self, trigger: Trigger) -> UUID:
         response = self._execute(
-            """INSERT INTO triggers (id, cogent_id, trigger_type, event_pattern, cron_expression,
-                                     program_name, priority, config, enabled)
-               VALUES (:id, :cogent_id, :trigger_type, :event_pattern, :cron_expression,
-                       :program_name, :priority, :config::jsonb, :enabled)
+            """INSERT INTO triggers (id, program_name, event_pattern, priority, config, enabled)
+               VALUES (:id, :program_name, :event_pattern, :priority, :config::jsonb, :enabled)
                RETURNING id, created_at""",
             [
                 self._param("id", trigger.id),
-                self._param("cogent_id", trigger.cogent_id),
-                self._param("trigger_type", trigger.trigger_type.value),
-                self._param("event_pattern", trigger.event_pattern),
-                self._param("cron_expression", trigger.cron_expression),
                 self._param("program_name", trigger.program_name),
+                self._param("event_pattern", trigger.event_pattern),
                 self._param("priority", trigger.priority),
                 self._param("config", trigger.config.model_dump()),
                 self._param("enabled", trigger.enabled),
@@ -1009,33 +921,25 @@ class Repository:
         row = self._first_row(response)
         return self._trigger_from_row(row) if row else None
 
-    def list_triggers(self, cogent_id: str, *, enabled_only: bool = True) -> list[Trigger]:
+    def list_triggers(self, *, enabled_only: bool = True, program_name: str | None = None) -> list[Trigger]:
+        conditions = []
+        params = []
         if enabled_only:
-            response = self._execute(
-                "SELECT * FROM triggers WHERE cogent_id = :cogent_id AND enabled = true ORDER BY priority",
-                [self._param("cogent_id", cogent_id)],
-            )
-        else:
-            response = self._execute(
-                "SELECT * FROM triggers WHERE cogent_id = :cogent_id ORDER BY priority",
-                [self._param("cogent_id", cogent_id)],
-            )
+            conditions.append("enabled = true")
+        if program_name:
+            conditions.append("program_name = :program_name")
+            params.append(self._param("program_name", program_name))
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        response = self._execute(
+            f"SELECT * FROM triggers{where} ORDER BY priority",
+            params or None,
+        )
         return [self._trigger_from_row(r) for r in self._rows_to_dicts(response)]
 
     def delete_trigger(self, trigger_id: UUID) -> bool:
         response = self._execute(
             "DELETE FROM triggers WHERE id = :id",
             [self._param("id", trigger_id)],
-        )
-        return response.get("numberOfRecordsUpdated", 0) == 1
-
-    def update_trigger_config(self, trigger_id: UUID, config: TriggerConfig) -> bool:
-        response = self._execute(
-            "UPDATE triggers SET config = :config::jsonb WHERE id = :id",
-            [
-                self._param("id", trigger_id),
-                self._param("config", config.model_dump()),
-            ],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
@@ -1055,14 +959,73 @@ class Repository:
             config = json.loads(config)
         return Trigger(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
-            trigger_type=TriggerType(row["trigger_type"]),
-            event_pattern=row.get("event_pattern", ""),
-            cron_expression=row.get("cron_expression", ""),
             program_name=row["program_name"],
+            event_pattern=row.get("event_pattern", ""),
             priority=row.get("priority", 10),
             config=TriggerConfig(**config) if config else TriggerConfig(),
             enabled=row.get("enabled", True),
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    # ═══════════════════════════════════════════════════════════
+    # CRON
+    # ═══════════════════════════════════════════════════════════
+
+    def insert_cron(self, cron: Cron) -> UUID:
+        response = self._execute(
+            """INSERT INTO cron (id, cron_expression, event_pattern, enabled, metadata)
+               VALUES (:id, :cron_expression, :event_pattern, :enabled, :metadata::jsonb)
+               RETURNING id, created_at""",
+            [
+                self._param("id", cron.id),
+                self._param("cron_expression", cron.cron_expression),
+                self._param("event_pattern", cron.event_pattern),
+                self._param("enabled", cron.enabled),
+                self._param("metadata", cron.metadata),
+            ],
+        )
+        row = self._first_row(response)
+        if row:
+            cron.created_at = datetime.fromisoformat(row["created_at"])
+            return UUID(row["id"])
+        raise RuntimeError("Failed to insert cron")
+
+    def list_cron(self, *, enabled_only: bool = False) -> list[Cron]:
+        if enabled_only:
+            response = self._execute(
+                "SELECT * FROM cron WHERE enabled = true ORDER BY created_at"
+            )
+        else:
+            response = self._execute("SELECT * FROM cron ORDER BY created_at")
+        return [self._cron_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def delete_cron(self, cron_id: UUID) -> bool:
+        response = self._execute(
+            "DELETE FROM cron WHERE id = :id",
+            [self._param("id", cron_id)],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
+
+    def update_cron_enabled(self, cron_id: UUID, enabled: bool) -> bool:
+        response = self._execute(
+            "UPDATE cron SET enabled = :enabled WHERE id = :id",
+            [
+                self._param("id", cron_id),
+                self._param("enabled", enabled),
+            ],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
+
+    def _cron_from_row(self, row: dict) -> Cron:
+        metadata = row.get("metadata", {})
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        return Cron(
+            id=UUID(row["id"]),
+            cron_expression=row["cron_expression"],
+            event_pattern=row["event_pattern"],
+            enabled=row.get("enabled", True),
+            metadata=metadata,
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 

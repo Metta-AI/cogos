@@ -32,9 +32,8 @@ def get_sessions(name: str):
     conv_rows = repo.query(
         "SELECT id::text, context_key, status, cli_session_id, "
         "started_at::text, last_active::text, metadata "
-        "FROM conversations WHERE cogent_id = :cid "
+        "FROM conversations "
         "ORDER BY last_active DESC",
-        {"cid": name},
     )
 
     # Run stats per conversation
@@ -46,9 +45,8 @@ def get_sessions(name: str):
         "COALESCE(SUM(tokens_input), 0) AS tokens_in, "
         "COALESCE(SUM(tokens_output), 0) AS tokens_out, "
         "COALESCE(SUM(cost_usd), 0)::float AS total_cost "
-        "FROM runs WHERE cogent_id = :cid "
+        "FROM runs "
         "GROUP BY conversation_id",
-        {"cid": name},
     )
     stats_by_id: dict[str, dict] = {r["conversation_id"]: r for r in stats_rows}
 
@@ -74,4 +72,4 @@ def get_sessions(name: str):
             )
         )
 
-    return SessionsResponse(cogent_id=name, count=len(sessions), sessions=sessions)
+    return SessionsResponse(cogent_name=name, count=len(sessions), sessions=sessions)

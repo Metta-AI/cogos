@@ -29,7 +29,7 @@ def handler(event: dict, context) -> dict:
     program_name = trigger_data.get("program_name", "")
 
     # Load program
-    program = repo.get_program(config.cogent_id, program_name)
+    program = repo.get_program(program_name)
     if not program:
         logger.error(f"Program not found: {program_name}")
         return {"statusCode": 404, "error": f"Program not found: {program_name}"}

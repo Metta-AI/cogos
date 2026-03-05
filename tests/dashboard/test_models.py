@@ -2,9 +2,9 @@ from dashboard.models import Event, Program, StatusResponse, Trigger
 
 
 def test_status_response_defaults():
-    s = StatusResponse(cogent_id="test")
+    s = StatusResponse(cogent_name="test")
     assert s.active_sessions == 0
-    assert s.cogent_id == "test"
+    assert s.cogent_name == "test"
 
 
 def test_program_from_dict():

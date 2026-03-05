@@ -42,16 +42,14 @@ def get_programs(name: str):
         "count(*) FILTER (WHERE status = 'failed') AS fail, "
         "COALESCE(SUM(cost_usd), 0)::float AS total_cost, "
         "MAX(started_at)::text AS last_run "
-        "FROM runs WHERE cogent_id = :cid "
+        "FROM runs "
         "GROUP BY program_name",
-        {"cid": name},
     )
     stats_by_name: dict[str, dict] = {r["program_name"]: r for r in stats_rows}
 
     # Program definitions
     prog_rows = repo.query(
-        "SELECT name, program_type, description, sla, triggers FROM programs WHERE cogent_id = :cid",
-        {"cid": name},
+        "SELECT name, program_type, includes, tools, metadata FROM programs",
     )
 
     programs: list[Program] = []
@@ -60,18 +58,15 @@ def get_programs(name: str):
     for row in prog_rows:
         pname = row["name"]
         seen.add(pname)
-        sla = _try_parse_json(row.get("sla")) or {}
-        triggers_json = _try_parse_json(row.get("triggers")) or []
+        metadata = _try_parse_json(row.get("metadata")) or {}
         stats = stats_by_name.get(pname, {})
 
         programs.append(
             Program(
                 name=pname,
-                type=row.get("program_type") or "markdown",
-                description=row.get("description") or "",
-                complexity=sla.get("complexity"),
-                model=sla.get("model"),
-                trigger_count=len(triggers_json) if isinstance(triggers_json, list) else 0,
+                type=row.get("program_type") or "prompt",
+                description=metadata.get("description", ""),
+                trigger_count=0,
                 runs=stats.get("runs", 0),
                 ok=stats.get("ok", 0),
                 fail=stats.get("fail", 0),
@@ -94,7 +89,7 @@ def get_programs(name: str):
                 )
             )
 
-    return ProgramsResponse(cogent_id=name, count=len(programs), programs=programs)
+    return ProgramsResponse(cogent_name=name, count=len(programs), programs=programs)
 
 
 @router.get("/programs/{program_name}/executions", response_model=ExecutionsResponse)
@@ -104,9 +99,9 @@ def get_program_executions(name: str, program_name: str):
         "SELECT id::text, program_name, conversation_id::text, status, "
         "started_at::text, completed_at::text, duration_ms, "
         "tokens_input, tokens_output, COALESCE(cost_usd, 0)::float AS cost_usd, error "
-        "FROM runs WHERE cogent_id = :cid AND program_name = :pname "
+        "FROM runs WHERE program_name = :pname "
         "ORDER BY started_at DESC",
-        {"cid": name, "pname": program_name},
+        {"pname": program_name},
     )
     executions = [Execution(**r) for r in rows]
-    return ExecutionsResponse(cogent_id=name, count=len(executions), executions=executions)
+    return ExecutionsResponse(cogent_name=name, count=len(executions), executions=executions)

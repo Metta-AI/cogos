@@ -40,17 +40,17 @@ def list_memory(
         rows = repo.query(
             "SELECT id::text, scope, type, name, content, provenance, "
             "created_at::text, updated_at::text "
-            "FROM memory WHERE cogent_id = :cid AND scope = :scope "
+            "FROM memory WHERE scope = :scope "
             "ORDER BY name, scope LIMIT :lim",
-            {"cid": name, "scope": scope, "lim": limit},
+            {"scope": scope, "lim": limit},
         )
     else:
         rows = repo.query(
             "SELECT id::text, scope, type, name, content, provenance, "
             "created_at::text, updated_at::text "
-            "FROM memory WHERE cogent_id = :cid "
+            "FROM memory "
             "ORDER BY name, scope LIMIT :lim",
-            {"cid": name, "lim": limit},
+            {"lim": limit},
         )
 
     items = [
@@ -67,4 +67,4 @@ def list_memory(
         )
         for r in rows
     ]
-    return MemoryResponse(cogent_id=name, count=len(items), memory=items)
+    return MemoryResponse(cogent_name=name, count=len(items), memory=items)

@@ -13,8 +13,7 @@ def list_channels(name: str) -> ChannelsResponse:
     repo = get_repo()
     rows = repo.query(
         "SELECT name, type, enabled, created_at::text "
-        "FROM channels WHERE cogent_id = :cid ORDER BY name",
-        {"cid": name},
+        "FROM channels ORDER BY name",
     )
     channels = [Channel(**r) for r in rows]
-    return ChannelsResponse(cogent_id=name, count=len(channels), channels=channels)
+    return ChannelsResponse(cogent_name=name, count=len(channels), channels=channels)

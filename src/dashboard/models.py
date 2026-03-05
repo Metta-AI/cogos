@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 class StatusResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     active_sessions: int = 0
     total_conversations: int = 0
     trigger_count: int = 0
@@ -30,12 +30,9 @@ class Execution(BaseModel):
 
 class Program(BaseModel):
     name: str
-    type: str = "markdown"
+    type: str = "prompt"
     description: str = ""
-    complexity: str | None = None
-    model: str | None = None
     trigger_count: int = 0
-    group: str = ""
     runs: int = 0
     ok: int = 0
     fail: int = 0
@@ -44,13 +41,13 @@ class Program(BaseModel):
 
 
 class ProgramsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     programs: list[Program]
 
 
 class ExecutionsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     executions: list[Execution]
 
@@ -72,7 +69,7 @@ class Session(BaseModel):
 
 
 class SessionsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     sessions: list[Session]
 
@@ -87,7 +84,7 @@ class Event(BaseModel):
 
 
 class EventsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     events: list[Event]
 
@@ -101,9 +98,7 @@ class EventTreeResponse(BaseModel):
 class Trigger(BaseModel):
     id: str
     name: str = ""
-    trigger_type: str | None = None
     event_pattern: str | None = None
-    cron_expression: str | None = None
     program_name: str | None = None
     priority: int | None = None
     enabled: bool = True
@@ -115,7 +110,7 @@ class Trigger(BaseModel):
 
 
 class TriggersResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     triggers: list[Trigger]
 
@@ -143,28 +138,29 @@ class MemoryItem(BaseModel):
 
 
 class MemoryResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     memory: list[MemoryItem]
 
 
 class Task(BaseModel):
     id: str
-    title: str | None = None
+    name: str | None = None
     description: str | None = None
     status: str | None = None
     priority: int | None = None
-    source: str | None = None
-    external_id: str | None = None
+    creator: str | None = None
+    parent_task_id: str | None = None
+    source_event: str | None = None
+    limits: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
-    error: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None
 
 
 class TasksResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     tasks: list[Task]
 
@@ -177,7 +173,7 @@ class Channel(BaseModel):
 
 
 class ChannelsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     channels: list[Channel]
 
@@ -193,12 +189,12 @@ class Alert(BaseModel):
 
 
 class AlertsResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     count: int
     alerts: list[Alert]
 
 
 class ResourcesResponse(BaseModel):
-    cogent_id: str
+    cogent_name: str
     active_sessions: int = 0
     conversations: list[dict[str, Any]] = []

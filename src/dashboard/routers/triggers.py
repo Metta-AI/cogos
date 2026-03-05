@@ -13,34 +13,30 @@ def list_triggers(name: str) -> TriggersResponse:
     repo = get_repo()
     rows = repo.query(
         """
-        SELECT t.id::text, t.trigger_type, t.event_pattern, t.cron_expression,
-          t.program_name, t.priority, t.enabled, t.created_at::text,
-          (SELECT count(*) FROM runs r WHERE r.cogent_id = :cid
-            AND r.program_name = t.program_name AND r.started_at > now() - interval '1 minute') AS fired_1m,
-          (SELECT count(*) FROM runs r WHERE r.cogent_id = :cid
-            AND r.program_name = t.program_name AND r.started_at > now() - interval '5 minutes') AS fired_5m,
-          (SELECT count(*) FROM runs r WHERE r.cogent_id = :cid
-            AND r.program_name = t.program_name AND r.started_at > now() - interval '1 hour') AS fired_1h,
-          (SELECT count(*) FROM runs r WHERE r.cogent_id = :cid
-            AND r.program_name = t.program_name AND r.started_at > now() - interval '24 hours') AS fired_24h
-        FROM triggers t WHERE t.cogent_id = :cid ORDER BY t.priority
+        SELECT t.id::text, t.event_pattern, t.program_name, t.priority, t.enabled, t.created_at::text,
+          (SELECT count(*) FROM runs r
+            WHERE r.program_name = t.program_name AND r.started_at > now() - interval '1 minute') AS fired_1m,
+          (SELECT count(*) FROM runs r
+            WHERE r.program_name = t.program_name AND r.started_at > now() - interval '5 minutes') AS fired_5m,
+          (SELECT count(*) FROM runs r
+            WHERE r.program_name = t.program_name AND r.started_at > now() - interval '1 hour') AS fired_1h,
+          (SELECT count(*) FROM runs r
+            WHERE r.program_name = t.program_name AND r.started_at > now() - interval '24 hours') AS fired_24h
+        FROM triggers t ORDER BY t.priority
         """,
-        {"cid": name},
     )
 
     triggers = []
     for r in rows:
         prog = r.get("program_name") or ""
-        pattern = r.get("event_pattern") or r.get("cron_expression") or ""
+        pattern = r.get("event_pattern") or ""
         trigger_name = f"{prog}:{pattern}" if pattern else prog
 
         triggers.append(
             Trigger(
                 id=r["id"],
                 name=trigger_name,
-                trigger_type=r.get("trigger_type"),
                 event_pattern=r.get("event_pattern"),
-                cron_expression=r.get("cron_expression"),
                 program_name=r.get("program_name"),
                 priority=r.get("priority"),
                 enabled=r.get("enabled", True),
@@ -52,7 +48,7 @@ def list_triggers(name: str) -> TriggersResponse:
             )
         )
 
-    return TriggersResponse(cogent_id=name, count=len(triggers), triggers=triggers)
+    return TriggersResponse(cogent_name=name, count=len(triggers), triggers=triggers)
 
 
 @router.post("/triggers/toggle", response_model=ToggleResponse)
@@ -60,7 +56,7 @@ def toggle_triggers(name: str, body: ToggleRequest) -> ToggleResponse:
     repo = get_repo()
     count = repo.execute(
         "UPDATE triggers SET enabled = :enabled"
-        " WHERE id = ANY(string_to_array(:ids, ',')::uuid[]) AND cogent_id = :cid",
-        {"enabled": body.enabled, "ids": ",".join(body.ids), "cid": name},
+        " WHERE id = ANY(string_to_array(:ids, ',')::uuid[])",
+        {"enabled": body.enabled, "ids": ",".join(body.ids)},
     )
     return ToggleResponse(updated=count, enabled=body.enabled)

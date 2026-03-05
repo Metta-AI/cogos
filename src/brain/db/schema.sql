@@ -40,42 +40,43 @@ EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'pgvector not available, skipping embedding column';
 END $$;
 
--- Program content + executable metadata
+-- Program definitions
 CREATE TABLE IF NOT EXISTS programs (
-    cogent_id     TEXT NOT NULL,
-    name          TEXT NOT NULL,
-    program_type  TEXT NOT NULL DEFAULT 'markdown' CHECK (program_type IN ('markdown', 'python')),
-    source        TEXT NOT NULL DEFAULT 'golden' CHECK (source IN ('golden', 'local')),
-    description   TEXT NOT NULL DEFAULT '',
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name          TEXT NOT NULL UNIQUE,
+    program_type  TEXT NOT NULL DEFAULT 'prompt' CHECK (program_type IN ('prompt', 'python')),
     content       TEXT NOT NULL DEFAULT '',
-    triggers      JSONB NOT NULL DEFAULT '[]',
-    resources     JSONB NOT NULL DEFAULT '{}',
-    sla           JSONB NOT NULL DEFAULT '{}',
-    compute_tier  TEXT NOT NULL DEFAULT 'lambda' CHECK (compute_tier IN ('lambda', 'ecs')),
+    includes      JSONB NOT NULL DEFAULT '[]',
     tools         JSONB NOT NULL DEFAULT '[]',
-    enabled       BOOLEAN NOT NULL DEFAULT true,
-    version       INTEGER NOT NULL DEFAULT 1,
+    metadata      JSONB NOT NULL DEFAULT '{}',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (cogent_id, name)
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_programs_type ON programs (cogent_id, program_type);
+CREATE INDEX IF NOT EXISTS idx_programs_name ON programs (name);
 
 -- Event→program wiring
 CREATE TABLE IF NOT EXISTS triggers (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    cogent_id       TEXT NOT NULL,
-    trigger_type    TEXT NOT NULL CHECK (trigger_type IN ('event', 'cron')),
-    event_pattern   TEXT NOT NULL DEFAULT '',
-    cron_expression TEXT NOT NULL DEFAULT '',
-    program_name    TEXT NOT NULL,
+    program_name    TEXT NOT NULL REFERENCES programs(name),
+    event_pattern   TEXT NOT NULL,
     priority        INTEGER NOT NULL DEFAULT 10,
     config          JSONB NOT NULL DEFAULT '{}',
     enabled         BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_triggers_cogent ON triggers (cogent_id, enabled);
-CREATE INDEX IF NOT EXISTS idx_triggers_event ON triggers (cogent_id, event_pattern) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_triggers_enabled ON triggers (event_pattern) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_triggers_program ON triggers (program_name);
+
+-- Cron schedules (emit events on schedule)
+CREATE TABLE IF NOT EXISTS cron (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cron_expression TEXT NOT NULL,
+    event_pattern   TEXT NOT NULL,
+    enabled         BOOLEAN NOT NULL DEFAULT true,
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cron_enabled ON cron (enabled) WHERE enabled = true;
 
 -- ═══════════════════════════════════════════════════════════
 -- WORK
@@ -98,25 +99,23 @@ CREATE INDEX IF NOT EXISTS idx_channels_type ON channels (cogent_id, type);
 
 -- Work queue
 CREATE TABLE IF NOT EXISTS tasks (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    cogent_id   TEXT NOT NULL,
-    title       TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    status      TEXT NOT NULL DEFAULT 'proposed'
-                CHECK (status IN ('proposed', 'approved', 'in_progress', 'completed', 'failed')),
-    priority    INTEGER NOT NULL DEFAULT 0,
-    source      TEXT NOT NULL DEFAULT 'agent',
-    channel_id  UUID REFERENCES channels(id),
-    external_id TEXT,
-    metadata    JSONB NOT NULL DEFAULT '{}',
-    error       TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    completed_at TIMESTAMPTZ
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'running', 'failed', 'completed')),
+    priority        INTEGER NOT NULL DEFAULT 0,
+    parent_task_id  UUID REFERENCES tasks(id),
+    creator         TEXT NOT NULL DEFAULT '',
+    source_event    TEXT,
+    limits          JSONB NOT NULL DEFAULT '{}',
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at    TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (cogent_id, status, priority DESC);
-CREATE INDEX IF NOT EXISTS idx_tasks_channel ON tasks (channel_id) WHERE channel_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_tasks_external ON tasks (external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks (parent_task_id) WHERE parent_task_id IS NOT NULL;
 
 -- Multi-turn conversation routing
 CREATE TABLE IF NOT EXISTS conversations (
@@ -139,6 +138,7 @@ CREATE TABLE IF NOT EXISTS runs (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cogent_id       TEXT NOT NULL,
     program_name    TEXT NOT NULL,
+    task_id         UUID REFERENCES tasks(id),
     trigger_id      UUID REFERENCES triggers(id),
     conversation_id UUID REFERENCES conversations(id),
     status          TEXT NOT NULL DEFAULT 'running'
