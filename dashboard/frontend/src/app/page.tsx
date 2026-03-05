@@ -90,7 +90,7 @@ export default function DashboardPage() {
           <ChannelsPanel channels={data.channels} cogentName={cogentName} onRefresh={refresh} />
         )}
         {activeTab === "events" && (
-          <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} />
+          <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} onNavigate={handleTabChange} />
         )}
         {activeTab === "triggers" && (
           <TriggersPanel triggers={data.triggers} cogentName={cogentName} programs={data.programs.map(p => p.name)} onRefresh={refresh} />
