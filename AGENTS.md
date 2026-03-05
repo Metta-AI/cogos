@@ -1,4 +1,52 @@
-# Agents
+# Cogent — Autonomous Software Engineering Agent
+
+Built on the Viable System Model. Each cogent is an autonomous agent with its own ECS task, database, and channel integrations.
+
+## Project Layout
+
+```
+src/
+  body/         # Agent runtime (ECS task)
+  brain/        # LLM reasoning engine
+  mind/         # Agent personality and goals
+  memory/       # Persistent memory (PostgreSQL)
+  channels/     # External integrations (Discord, GitHub, Gmail, Asana, Calendar)
+  cli/          # Main cogent CLI
+  polis/        # Shared infrastructure hub (see docs/polis/)
+docs/
+  polis/        # Polis design and CLI reference
+tests/
+```
+
+## Polis — Shared Infrastructure
+
+Polis manages the shared AWS resources that all cogents depend on: ECS cluster, ECR container registry, Route53 DNS, secrets, and monitoring.
+
+- **Design**: [docs/polis/design.md](docs/polis/design.md) — Architecture, module structure, resource details
+- **CLI Reference**: [docs/polis/cli.md](docs/polis/cli.md) — All commands with examples and options
+
+Key commands:
+
+```bash
+polis status                     # Show infrastructure health
+polis secrets list --cogent NAME # List a cogent's secrets
+polis cogents list               # All cogents with CPU/memory/channels
+```
+
+## AWS Infrastructure
+
+- **Organization**: o-n7g18rzou1
+- **Polis account**: 901289084804 (us-east-1)
+- **ECR**: 901289084804.dkr.ecr.us-east-1.amazonaws.com/cogent
+- **Domain**: softmax-cogents.com
+- **Auth profile**: `softmax-org` (SSO admin on management account 111005867451)
+
+## Secret Path Conventions
+
+```
+cogent/{name}/{channel}    # Per-cogent channel creds (e.g., cogent/alpha/discord)
+polis/shared/{key}         # Org-wide shared keys (e.g., polis/shared/jwt-signing-key)
+```
 
 ## Dashboard Testing with agent-browser
 
@@ -100,3 +148,11 @@ The backend serves REST API under `/api/cogents/{name}/`:
 - **Frontend**: Next.js 15 + React 19 + Tailwind v4, port 5174
 - **Real-time**: WebSocket via PostgreSQL LISTEN/NOTIFY
 - **Auth**: API key in `x-api-key` header (SHA-256 hashed, stored in Secrets Manager)
+
+## Development
+
+```bash
+uv sync --all-extras          # Install dependencies
+uv run pytest                 # Run tests
+uv run polis status           # Check infrastructure
+```
