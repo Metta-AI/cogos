@@ -28,6 +28,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    from dashboard.routers import alerts, channels, resources, tasks
+
+    app.include_router(tasks.router, prefix="/api/cogents/{name}")
+    app.include_router(channels.router, prefix="/api/cogents/{name}")
+    app.include_router(alerts.router, prefix="/api/cogents/{name}")
+    app.include_router(resources.router, prefix="/api/cogents/{name}")
+
     @app.get("/healthz")
     async def healthz() -> dict:
         return {"ok": True}
