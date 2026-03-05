@@ -31,6 +31,33 @@ def list_alerts(name: str) -> AlertsResponse:
     return AlertsResponse(cogent_name=name, count=len(alerts), alerts=alerts)
 
 
+@router.get("/alerts/resolved", response_model=AlertsResponse)
+def list_resolved_alerts(name: str, limit: int = 25) -> AlertsResponse:
+    repo = get_repo()
+    db_alerts = repo.get_resolved_alerts(limit)
+    alerts = [
+        Alert(
+            id=str(a.id),
+            severity=a.severity.value if a.severity else None,
+            alert_type=a.alert_type,
+            source=a.source,
+            message=a.message,
+            metadata=a.metadata,
+            resolved_at=str(a.resolved_at) if a.resolved_at else None,
+            created_at=str(a.created_at) if a.created_at else None,
+        )
+        for a in db_alerts
+    ]
+    return AlertsResponse(cogent_name=name, count=len(alerts), alerts=alerts)
+
+
+@router.post("/alerts/resolve-all")
+def resolve_all_alerts(name: str) -> dict:
+    repo = get_repo()
+    count = repo.resolve_all_alerts()
+    return {"resolved_count": count}
+
+
 @router.post("/alerts/{alert_id}/resolve")
 def resolve_alert(name: str, alert_id: str) -> dict:
     repo = get_repo()

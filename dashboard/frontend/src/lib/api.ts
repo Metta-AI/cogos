@@ -207,6 +207,22 @@ export async function getAlerts(name: string): Promise<Alert[]> {
   return r.alerts;
 }
 
+export async function getResolvedAlerts(name: string, limit = 25): Promise<Alert[]> {
+  const r = await fetchJSON<{ alerts: Alert[] }>(
+    `/api/cogents/${name}/alerts/resolved?limit=${limit}`,
+  );
+  return r.alerts;
+}
+
+export async function resolveAllAlerts(name: string): Promise<{ resolved_count: number }> {
+  const resp = await fetch(`/api/cogents/${name}/alerts/resolve-all`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
 export async function resolveAlert(
   name: string,
   alertId: string,

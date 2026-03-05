@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Alert } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
-import { resolveAlert, createAlert, deleteAlert } from "@/lib/api";
+import { resolveAlert, resolveAllAlerts, getResolvedAlerts, createAlert, deleteAlert } from "@/lib/api";
 import { fmtRelative } from "@/lib/format";
 
 interface AlertsPanelProps {
@@ -25,6 +25,10 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
   const [creating, setCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [resolving, setResolving] = useState<Set<string>>(new Set());
+  const [resolvingAll, setResolvingAll] = useState(false);
+  const [resolvedAlerts, setResolvedAlerts] = useState<Alert[]>([]);
+  const [showResolved, setShowResolved] = useState(false);
+  const [resolvedLimit, setResolvedLimit] = useState(25);
 
   // Create form state
   const [newSeverity, setNewSeverity] = useState("warning");
@@ -39,6 +43,7 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
       try {
         await resolveAlert(cogentName, alertId);
         onRefresh();
+        if (showResolved) fetchResolved();
       } finally {
         setResolving((s) => {
           const next = new Set(s);
@@ -47,7 +52,7 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
         });
       }
     },
-    [cogentName, onRefresh],
+    [cogentName, onRefresh, showResolved, fetchResolved],
   );
 
   const handleDelete = useCallback(
@@ -58,6 +63,28 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
     },
     [cogentName, onRefresh],
   );
+
+  const fetchResolved = useCallback(async () => {
+    try {
+      const resolved = await getResolvedAlerts(cogentName, resolvedLimit);
+      setResolvedAlerts(resolved);
+    } catch { /* ignore */ }
+  }, [cogentName, resolvedLimit]);
+
+  useEffect(() => {
+    if (showResolved) fetchResolved();
+  }, [showResolved, fetchResolved]);
+
+  const handleResolveAll = useCallback(async () => {
+    setResolvingAll(true);
+    try {
+      await resolveAllAlerts(cogentName);
+      onRefresh();
+      if (showResolved) fetchResolved();
+    } finally {
+      setResolvingAll(false);
+    }
+  }, [cogentName, onRefresh, showResolved, fetchResolved]);
 
   const handleCreate = useCallback(async () => {
     if (!newMessage.trim()) return;
@@ -92,19 +119,35 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
         <div className="text-[11px] text-[var(--text-muted)]">
           {alerts.length} unresolved alert{alerts.length !== 1 ? "s" : ""}
         </div>
-        {!creating && (
-          <button
-            onClick={() => setCreating(true)}
-            className="text-[11px] px-3 py-1 rounded border cursor-pointer transition-colors"
-            style={{
-              color: "var(--accent)",
-              borderColor: "var(--accent)",
-              background: "transparent",
-            }}
-          >
-            + New Alert
-          </button>
-        )}
+        <div className="flex gap-2">
+          {alerts.length > 0 && (
+            <button
+              onClick={handleResolveAll}
+              disabled={resolvingAll}
+              className="text-[11px] px-3 py-1 rounded border cursor-pointer transition-colors disabled:opacity-40"
+              style={{
+                color: "var(--accent)",
+                borderColor: "var(--accent)",
+                background: "transparent",
+              }}
+            >
+              {resolvingAll ? "Resolving..." : "Resolve All"}
+            </button>
+          )}
+          {!creating && (
+            <button
+              onClick={() => setCreating(true)}
+              className="text-[11px] px-3 py-1 rounded border cursor-pointer transition-colors"
+              style={{
+                color: "var(--accent)",
+                borderColor: "var(--accent)",
+                background: "transparent",
+              }}
+            >
+              + New Alert
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Create form */}
@@ -353,6 +396,73 @@ export function AlertsPanel({ alerts, cogentName, onRefresh }: AlertsPanelProps)
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Resolved alerts section */}
+      <div className="mt-6">
+        <button
+          onClick={() => setShowResolved((v) => !v)}
+          className="text-[11px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1"
+        >
+          <span style={{ display: "inline-block", transform: showResolved ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 150ms" }}>
+            ▶
+          </span>
+          Resolved Alerts
+          {resolvedAlerts.length > 0 && showResolved && (
+            <span className="text-[var(--text-muted)]">({resolvedAlerts.length})</span>
+          )}
+        </button>
+
+        {showResolved && (
+          <div className="mt-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden" style={{ opacity: 0.7 }}>
+            <table className="w-full text-left text-[12px]">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="px-4 py-2 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">Severity</th>
+                  <th className="px-3 py-2 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">Type</th>
+                  <th className="px-3 py-2 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">Source</th>
+                  <th className="px-3 py-2 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">Message</th>
+                  <th className="px-3 py-2 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">Resolved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resolvedAlerts.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-[var(--text-muted)] text-[13px] py-6 text-center">
+                      No resolved alerts
+                    </td>
+                  </tr>
+                )}
+                {resolvedAlerts.map((a) => {
+                  const severity = a.severity ?? "info";
+                  const msg = a.message ?? "--";
+                  const truncated = msg.length > 100 ? msg.slice(0, 100) + "..." : msg;
+                  return (
+                    <tr key={a.id} className="border-b border-[var(--border)] last:border-0">
+                      <td className="px-4 py-2">
+                        <Badge variant={SEVERITY_VARIANT[severity] ?? "neutral"}>{severity}</Badge>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[var(--text-secondary)]">{a.alert_type ?? "--"}</td>
+                      <td className="px-3 py-2 font-mono text-[var(--text-muted)]">{a.source ?? "--"}</td>
+                      <td className="px-3 py-2 text-[var(--text-secondary)]" title={msg}>{truncated}</td>
+                      <td className="px-3 py-2 text-[var(--text-muted)] text-[11px]">{fmtRelative(a.resolved_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {resolvedAlerts.length >= resolvedLimit && (
+              <div className="text-center py-2 border-t border-[var(--border)]">
+                <button
+                  onClick={() => setResolvedLimit((l) => l + 25)}
+                  className="text-[11px] text-[var(--accent)] bg-transparent border-0 cursor-pointer hover:underline"
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

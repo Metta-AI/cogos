@@ -1231,6 +1231,20 @@ class Repository:
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
+    def resolve_all_alerts(self) -> int:
+        response = self._execute(
+            "UPDATE alerts SET resolved_at = now() WHERE resolved_at IS NULL",
+        )
+        return response.get("numberOfRecordsUpdated", 0)
+
+    def get_resolved_alerts(self, limit: int = 25) -> list[Alert]:
+        response = self._execute(
+            """SELECT * FROM alerts WHERE resolved_at IS NOT NULL
+               ORDER BY resolved_at DESC LIMIT :limit""",
+            [self._param("limit", limit)],
+        )
+        return [self._alert_from_row(r) for r in self._rows_to_dicts(response)]
+
     def _alert_from_row(self, row: dict) -> Alert:
         metadata = row.get("metadata", {})
         if isinstance(metadata, str):

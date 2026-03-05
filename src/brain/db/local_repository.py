@@ -476,6 +476,23 @@ class LocalRepository:
         self._save()
         return True
 
+    def resolve_all_alerts(self) -> int:
+        count = 0
+        now = datetime.utcnow()
+        for alert in self._alerts.values():
+            if alert.resolved_at is None:
+                alert.resolved_at = now
+                count += 1
+        if count:
+            self._save()
+        return count
+
+    def get_resolved_alerts(self, limit: int = 25) -> list[Alert]:
+        self._maybe_reload()
+        resolved = [a for a in self._alerts.values() if a.resolved_at is not None]
+        resolved.sort(key=lambda a: a.resolved_at or datetime.min, reverse=True)
+        return resolved[:limit]
+
     def delete_alert(self, alert_id: UUID) -> bool:
         if alert_id in self._alerts:
             del self._alerts[alert_id]
