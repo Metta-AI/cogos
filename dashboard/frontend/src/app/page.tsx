@@ -34,8 +34,9 @@ export default function DashboardPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  // For now, hardcode cogent name. Will come from URL/config later.
-  const cogentName = "cogent";
+  const cogentName = typeof window !== "undefined"
+    ? window.location.hostname.split(".")[0]
+    : "cogent";
   const { data, loading, error, refresh, timeRange, setTimeRange, connected } = useCogentData(cogentName);
 
   const STUCK_THRESHOLD_MS = 10 * 60 * 1000;

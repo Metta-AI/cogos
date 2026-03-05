@@ -549,6 +549,162 @@ def cogents_status(name: str):
 
 
 # ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+
+@polis.group()
+def dashboard():
+    """Dashboard deployment commands."""
+    pass
+
+
+@dashboard.command("deploy")
+@click.argument("name")
+@click.option("--profile", default=None, help="AWS profile")
+@click.pass_context
+def dashboard_deploy(ctx: click.Context, name: str, profile: str | None):
+    """Deploy (or update) a cogent's dashboard in the polis account."""
+    import boto3
+
+    config: PolisConfig = ctx.obj["config"]
+    session, _ = get_polis_session()
+    store = SecretStore(session=session)
+
+    safe_name = name.replace(".", "-")
+
+    # 1. Get identity (cert ARN)
+    try:
+        identity = store.get(f"cogent/{name}/identity")
+    except Exception:
+        console.print(f"[red]No identity found for {name}. Run: polis cogents create {name}[/red]")
+        return
+    cert_arn = identity.get("certificate_arn", "")
+    if not cert_arn:
+        console.print("[red]No certificate ARN in identity secret[/red]")
+        return
+
+    # 2. Get brain stack outputs (DB ARNs etc) from the brain account
+    brain_session = boto3.Session()  # uses current credentials (brain account)
+    brain_account_id = brain_session.client("sts").get_caller_identity()["Account"]
+    cf = brain_session.client("cloudformation", region_name="us-east-1")
+    try:
+        resp = cf.describe_stacks(StackName=f"cogent-{safe_name}-brain")
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+    except Exception as e:
+        console.print(f"[red]Could not read brain stack outputs: {e}[/red]")
+        return
+
+    db_cluster_arn = outputs.get("ClusterArn", "")
+    db_secret_arn = outputs.get("SecretArn", "")
+    event_bus_name = outputs.get("EventBusName", "")
+    sessions_bucket = outputs.get("SessionsBucket", "")
+
+    if not db_cluster_arn:
+        console.print("[red]Brain stack missing ClusterArn output[/red]")
+        return
+
+    console.print(f"Deploying dashboard for [bold]{name}[/bold]...")
+    console.print(f"  Brain account: {brain_account_id}")
+    console.print(f"  DB cluster: {db_cluster_arn}")
+
+    # 3. CDK deploy the dashboard stack
+    org_id = get_org_id()
+    _cdk_cmd(
+        [
+            "deploy",
+            f"cogent-{safe_name}-dashboard",
+            "--require-approval", "never",
+            "-c", f"org_id={org_id}",
+            "-c", f"cogent_name={name}",
+            "-c", f"certificate_arn={cert_arn}",
+            "-c", f"brain_account_id={brain_account_id}",
+            "-c", f"db_cluster_arn={db_cluster_arn}",
+            "-c", f"db_secret_arn={db_secret_arn}",
+            "-c", f"event_bus_name={event_bus_name}",
+            "-c", f"sessions_bucket_name={sessions_bucket}",
+        ],
+        profile=profile,
+    )
+
+    # 4. Update Route53 to point at the ALB
+    console.print("  Updating DNS...")
+    _update_dashboard_dns(session, safe_name, config.domain)
+
+    console.print(f"\n[green]Dashboard deployed: https://{safe_name}.{config.domain}[/green]")
+
+
+@dashboard.command("destroy")
+@click.argument("name")
+@click.confirmation_option(prompt="Are you sure?")
+@click.option("--profile", default=None, help="AWS profile")
+def dashboard_destroy(name: str, profile: str | None):
+    """Destroy a cogent's dashboard stack."""
+    safe_name = name.replace(".", "-")
+    org_id = get_org_id()
+    _cdk_cmd(
+        [
+            "destroy",
+            f"cogent-{safe_name}-dashboard",
+            "--force",
+            "-c", f"org_id={org_id}",
+            "-c", f"cogent_name={name}",
+        ],
+        profile=profile,
+    )
+    console.print(f"Dashboard for {name} destroyed.")
+
+
+def _update_dashboard_dns(session, safe_name: str, domain: str):
+    """Update Route53 A-record to alias the dashboard ALB."""
+    import boto3
+
+    # Get ALB DNS from the dashboard stack outputs in polis account
+    cfn = session.client("cloudformation", region_name="us-east-1")
+    resp = cfn.describe_stacks(StackName=f"cogent-{safe_name}-dashboard")
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+    alb_dns = outputs.get("AlbDns", "")
+    if not alb_dns:
+        console.print("[yellow]  No AlbDns output found, skipping DNS update[/yellow]")
+        return
+
+    # Get the ALB hosted zone ID (needed for alias records)
+    elbv2 = session.client("elbv2", region_name="us-east-1")
+    lbs = elbv2.describe_load_balancers()["LoadBalancers"]
+    alb_zone_id = ""
+    for lb in lbs:
+        if lb["DNSName"] == alb_dns:
+            alb_zone_id = lb["CanonicalHostedZoneId"]
+            break
+    if not alb_zone_id:
+        console.print(f"[yellow]  Could not find ALB zone ID for {alb_dns}[/yellow]")
+        return
+
+    r53 = session.client("route53")
+    r53.change_resource_record_sets(
+        HostedZoneId=HOSTED_ZONE_ID,
+        ChangeBatch={
+            "Comment": f"Dashboard ALB for {safe_name}",
+            "Changes": [
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": f"{safe_name}.{domain}",
+                        "Type": "A",
+                        "AliasTarget": {
+                            "HostedZoneId": alb_zone_id,
+                            "DNSName": f"dualstack.{alb_dns}",
+                            "EvaluateTargetHealth": True,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+    console.print(f"  [green]DNS updated: {safe_name}.{domain} -> {alb_dns}[/green]")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

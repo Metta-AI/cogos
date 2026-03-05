@@ -78,7 +78,23 @@ class Repository:
                 "(DB_RESOURCE_ARN, DB_SECRET_ARN, DB_NAME)"
             )
 
-        client = boto3.client("rds-data", region_name=region)
+        # Support cross-account access via role assumption (e.g. polis dashboard)
+        role_arn = os.environ.get("AWS_ROLE_ARN", "")
+        if role_arn:
+            sts = boto3.client("sts", region_name=region)
+            creds = sts.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName="dashboard",
+            )["Credentials"]
+            session = boto3.Session(
+                aws_access_key_id=creds["AccessKeyId"],
+                aws_secret_access_key=creds["SecretAccessKey"],
+                aws_session_token=creds["SessionToken"],
+                region_name=region,
+            )
+            client = session.client("rds-data", region_name=region)
+        else:
+            client = boto3.client("rds-data", region_name=region)
         return cls(client, resource_arn, secret_arn, database)
 
     def __enter__(self) -> Repository:
