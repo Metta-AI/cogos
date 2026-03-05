@@ -512,7 +512,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
           </select>
           <label className="text-[10px] text-[var(--text-muted)] uppercase shrink-0">Priority</label>
           <input
-            type="number" step="any"
+            type="number" step="0.01"
             value={form.priority ?? 0}
             onChange={(e) => setForm((p) => ({ ...p, priority: parseFloat(e.target.value) || 0 }))}
             style={{ ...inputStyle, width: "60px" }}
@@ -628,7 +628,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
               ))}
             </span>
           )}
-          <span className="font-mono text-[11px] text-[var(--text-muted)]">p{task.priority ?? 0}</span>
+          <span className="font-mono text-[11px] text-[var(--text-muted)]">p{(task.priority ?? 0).toFixed(2)}</span>
           {/* Last ran / time stuck */}
           {isStuck(task) ? (
             <span className="text-[10px] text-[var(--warning)]" title="Time stuck">
@@ -738,7 +738,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
                 <span className="text-[var(--text-muted)]">Status</span>
                 <span className="text-[var(--text-secondary)]">{task.status ?? "--"}</span>
                 <span className="text-[var(--text-muted)]">Priority</span>
-                <span className="text-[var(--text-secondary)]">{task.priority ?? 0}</span>
+                <span className="text-[var(--text-secondary)]">{(task.priority ?? 0).toFixed(2)}</span>
                 <span className="text-[var(--text-muted)]">Program</span>
                 <span className="font-mono text-[var(--text-secondary)]">{task.program_name ?? "--"}</span>
                 {task.runner && (
@@ -961,6 +961,16 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
         </div>
       )}
 
+      {/* Stuck */}
+      {renderSection(
+        "Stuck",
+        stuckTasks,
+        "#f59e0b",
+        "#78350f",
+        "rgba(245, 158, 11, 0.08)",
+        <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#f59e0b" }} />,
+      )}
+
       {/* Currently Running */}
       {renderSection(
         "Currently Running",
@@ -972,16 +982,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
           className="inline-block w-[6px] h-[6px] rounded-full"
           style={{ background: "var(--accent)", animation: "pulse-dot 1.5s ease-in-out infinite" }}
         />,
-      )}
-
-      {/* Stuck */}
-      {renderSection(
-        "Stuck",
-        stuckTasks,
-        "#f59e0b",
-        "#78350f",
-        "rgba(245, 158, 11, 0.08)",
-        <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#f59e0b" }} />,
       )}
 
       {/* Recently Finished */}
