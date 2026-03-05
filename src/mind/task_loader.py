@@ -64,7 +64,7 @@ def _load_markdown(path: Path, rel: str) -> Task:
     name = rel.removesuffix(".md")
     fm.setdefault("name", name)
     fm.setdefault("program_name", "do-content")
-    fm["content"] = body
+    fm["content"] = body.strip()
 
     return _task_from_dict(fm)
 
