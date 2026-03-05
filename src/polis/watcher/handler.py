@@ -234,12 +234,17 @@ def _poll_metrics(cw, items: list[dict]) -> dict[str, dict[str, int]]:
 
 
 def _cleanup_stale(table, seen_names: set[str]) -> None:
-    """Remove DynamoDB entries for cogents that no longer have stacks."""
+    """Remove DynamoDB entries for cogents that no longer have stacks.
+
+    Preserves REGISTERED entries (created by `polis cogents create` but
+    not yet deployed).
+    """
     try:
-        resp = table.scan(ProjectionExpression="cogent_name")
+        resp = table.scan(ProjectionExpression="cogent_name, stack_status")
         for item in resp.get("Items", []):
             name = item["cogent_name"]
-            if name not in seen_names:
+            status = item.get("stack_status", "")
+            if name not in seen_names and status != "REGISTERED":
                 table.delete_item(Key={"cogent_name": name})
                 logger.info("Cleaned up stale entry: %s", name)
     except Exception:

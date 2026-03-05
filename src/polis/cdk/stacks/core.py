@@ -159,9 +159,81 @@ class PolisStack(cdk.Stack):
         )
         rule.add_target(targets.LambdaFunction(self.watcher_fn))
 
+        # --- Polis Admin Role (assumable by any account in the org) ---
+        self.admin_role = iam.Role(
+            self,
+            "PolisAdminRole",
+            role_name="cogent-polis-admin",
+            assumed_by=iam.OrganizationPrincipal(org_id),
+        )
+
+        # Route53, ACM, DynamoDB, Secrets Manager, ECS, ECR, CloudFormation
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "route53:ChangeResourceRecordSets",
+                    "route53:ListResourceRecordSets",
+                    "route53:GetHostedZone",
+                ],
+                resources=[f"arn:aws:route53:::hostedzone/{self.hosted_zone.hosted_zone_id}"],
+            )
+        )
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "acm:RequestCertificate",
+                    "acm:DescribeCertificate",
+                    "acm:DeleteCertificate",
+                    "acm:ListCertificates",
+                    "acm:AddTagsToCertificate",
+                ],
+                resources=["*"],
+            )
+        )
+        self.status_table.grant_read_write_data(self.admin_role)
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:PutSecretValue",
+                    "secretsmanager:CreateSecret",
+                    "secretsmanager:DeleteSecret",
+                    "secretsmanager:ListSecrets",
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:UpdateSecretVersionStage",
+                    "secretsmanager:RotateSecret",
+                ],
+                resources=["*"],
+            )
+        )
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecs:DescribeClusters",
+                    "ecs:DescribeServices",
+                    "ecs:ListServices",
+                    "ecr:DescribeRepositories",
+                ],
+                resources=["*"],
+            )
+        )
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "dynamodb:DescribeTable",
+                    "dynamodb:Scan",
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:DeleteItem",
+                ],
+                resources=[self.status_table.table_arn],
+            )
+        )
+
         # --- Outputs ---
         cdk.CfnOutput(self, "ECRRepositoryUri", value=self.ecr_repo.repository_uri)
         cdk.CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
         cdk.CfnOutput(self, "HostedZoneId", value=self.hosted_zone.hosted_zone_id)
         cdk.CfnOutput(self, "Domain", value=config.domain)
         cdk.CfnOutput(self, "StatusTableArn", value=self.status_table.table_arn)
+        cdk.CfnOutput(self, "PolisAdminRoleArn", value=self.admin_role.role_arn)

@@ -81,25 +81,30 @@ def create_polis_account(session: boto3.Session | None = None) -> str:
 def get_polis_session(session: boto3.Session | None = None) -> tuple[boto3.Session, str]:
     """Assume a role into the polis account. Returns (session, account_id)."""
     session = session or get_org_session()
-
-    # Try fast path with known account ID first
     account_id = POLIS_ACCOUNT_ID
+
+    # Try cogent-polis-admin (works from any account in the org)
     try:
-        return _assume_into(session, account_id), account_id
+        return _assume_role(session, account_id, "cogent-polis-admin"), account_id
     except Exception:
         pass
 
-    # Fall back to org lookup
-    account_id = find_polis_account(session)
-    if not account_id:
-        raise ValueError(f"No active account named '{POLIS_ACCOUNT_NAME}' found in org")
-    return _assume_into(session, account_id), account_id
+    # Fall back to OrganizationAccountAccessRole (management account only)
+    try:
+        return _assume_role(session, account_id, "OrganizationAccountAccessRole"), account_id
+    except Exception:
+        pass
+
+    raise ValueError(
+        f"Cannot assume into polis account {account_id}. "
+        "Ensure your AWS profile has permission to assume cogent-polis-admin."
+    )
 
 
-def _assume_into(session: boto3.Session, account_id: str) -> boto3.Session:
-    """Assume OrganizationAccountAccessRole into an account."""
+def _assume_role(session: boto3.Session, account_id: str, role_name: str) -> boto3.Session:
+    """Assume a role in the given account."""
     sts = session.client("sts")
-    role_arn = f"arn:aws:iam::{account_id}:role/OrganizationAccountAccessRole"
+    role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
     resp = sts.assume_role(RoleArn=role_arn, RoleSessionName="polis-cli")
     creds = resp["Credentials"]
     return boto3.Session(

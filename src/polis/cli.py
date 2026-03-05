@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -23,14 +24,19 @@ from polis.secrets.store import SecretStore
 
 console = Console()
 
+# CDK commands need org admin access (OrganizationAccountAccessRole).
+# Default profile for CDK operations when --profile is not specified.
+CDK_PROFILE = "softmax-org"
+
 
 @click.group()
-@click.option("--profile", default="softmax-org", help="AWS profile for org operations")
+@click.option("--profile", default=None, help="AWS profile override (default: use active profile)")
 @click.pass_context
-def polis(ctx: click.Context, profile: str):
+def polis(ctx: click.Context, profile: str | None):
     """Manage the polis shared infrastructure."""
     ctx.ensure_object(dict)
     ctx.obj["config"] = PolisConfig()
+    ctx.obj["profile"] = profile
     set_profile(profile)
 
 
@@ -42,8 +48,12 @@ def polis(ctx: click.Context, profile: str):
 @polis.command()
 @click.pass_context
 def create(ctx: click.Context):
-    """Create the polis account and deploy CDK stacks."""
+    """Create the polis account and deploy CDK stacks (requires org admin)."""
     config: PolisConfig = ctx.obj["config"]
+    profile = ctx.obj["profile"]
+
+    # Org operations need admin — use CDK_PROFILE if no explicit profile
+    set_profile(profile or CDK_PROFILE)
 
     console.print(f"Creating polis: [bold]{config.name}[/bold]")
 
@@ -60,26 +70,33 @@ def create(ctx: click.Context):
 
     # Deploy CDK
     console.print("  Deploying CDK stacks...")
-    _cdk_deploy(org_id)
+    _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
     console.print("[green]Polis created successfully.[/green]")
 
 
 @polis.command()
 @click.pass_context
 def update(ctx: click.Context):
-    """Update the polis CDK stacks."""
+    """Update the polis CDK stacks (requires org admin)."""
+    profile = ctx.obj["profile"]
+
+    # Org operations need admin — use CDK_PROFILE if no explicit profile
+    set_profile(profile or CDK_PROFILE)
+
     org_id = get_org_id()
     console.print("Updating CDK stacks...")
-    _cdk_deploy(org_id)
+    _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
     console.print("[green]Polis updated.[/green]")
 
 
 @polis.command()
+@click.pass_context
 @click.confirmation_option(prompt="Are you sure you want to destroy the polis stacks?")
-def destroy():
-    """Tear down the polis CDK stacks."""
+def destroy(ctx: click.Context):
+    """Tear down the polis CDK stacks (requires org admin)."""
+    profile = ctx.obj["profile"]
     console.print("Destroying CDK stacks...")
-    _cdk_cmd(["destroy", "--all", "--force"])
+    _cdk_cmd(["destroy", "--all", "--force"], profile=profile or CDK_PROFILE)
     console.print("[green]Polis stacks destroyed.[/green]")
 
 
@@ -536,15 +553,19 @@ def cogents_status(name: str):
 # ---------------------------------------------------------------------------
 
 
-def _cdk_deploy(org_id: str):
+def _cdk_deploy(org_id: str, profile: str | None = None):
     """Run cdk deploy with the org_id context."""
-    _cdk_cmd(["deploy", "--all", "--require-approval", "never", "-c", f"org_id={org_id}"])
+    _cdk_cmd(
+        ["deploy", "--all", "--require-approval", "never", "-c", f"org_id={org_id}"],
+        profile=profile,
+    )
 
 
-def _cdk_cmd(args: list[str]):
-    """Run a CDK CLI command."""
+def _cdk_cmd(args: list[str], profile: str | None = None):
+    """Run a CDK CLI command. Uses CDK_PROFILE for org-level access."""
     cmd = ["npx", "cdk", *args, "--app", "python -m polis.cdk.app"]
-    result = subprocess.run(cmd, capture_output=False)
+    env = {**os.environ, "AWS_PROFILE": profile or CDK_PROFILE}
+    result = subprocess.run(cmd, capture_output=False, env=env)
     if result.returncode != 0:
         console.print(f"[red]CDK command failed (exit {result.returncode})[/red]")
         sys.exit(result.returncode)
