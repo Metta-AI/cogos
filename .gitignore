@@ -171,3 +171,4 @@ __marimo__/
 # CDK
 cdk.out/
 cdk.context.json
+dogfood-output*/
