@@ -95,8 +95,11 @@ def handler(event: dict, context) -> dict:
                 logger.info(f"Skipping cascade: {trigger.program_name} triggered by itself")
                 continue
 
-            # Use program name as stable session key so programs retain context
-            session_id = f"program-{trigger.program_name}"
+            # Session ID: caller can specify via event payload, otherwise default to program name
+            session_id = (
+                brain_event.payload.get("session_id")
+                or f"program-{trigger.program_name}"
+            )
 
             # Build executor payload
             payload = json.dumps(
