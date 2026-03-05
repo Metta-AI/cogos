@@ -9,6 +9,8 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from uuid import UUID
+
 from brain.db.models import Event, Run, RunStatus
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
@@ -85,6 +87,14 @@ def main() -> None:
         logger.error(f"Program not found: {program_name}")
         sys.exit(1)
 
+    # Extract task context from payload
+    task_data = payload.get("task", {})
+    task_id = task_data.get("id")
+    task_content = task_data.get("content", "")
+    task_memory_keys = task_data.get("memory_keys", [])
+    task_tools = task_data.get("tools", [])
+    clear_context = task_data.get("clear_context", False)
+
     # Create run record
     run = Run(
         program_name=program_name,
@@ -92,9 +102,14 @@ def main() -> None:
         status=RunStatus.RUNNING,
         model_version="claude-code",
     )
+    if task_id:
+        run.task_id = UUID(task_id)
     run_id = repo.insert_run(run)
     logger.info(f"Created run {run_id}")
 
+    # Session management: task_id for continuity unless clear_context
+    if task_id and not clear_context:
+        session_id = session_id or task_id
     # Use session_id from env or fall back to run_id
     if not session_id:
         session_id = str(run_id)
@@ -107,21 +122,26 @@ def main() -> None:
     start_time = time.time()
 
     try:
+        # Merge tools from program and task
+        all_tools = list(set((program.tools or []) + task_tools))
+
         # Build Claude Code CLI command
         cmd = ["claude"]
 
         model = program.model_version or "sonnet"
         cmd.extend(["--model", model])
 
-        if program.tools:
-            cmd.extend(["--allowedTools", ",".join(program.tools)])
+        if all_tools:
+            cmd.extend(["--allowedTools", ",".join(all_tools)])
 
         # Resume existing session or start fresh
         if restored_session:
             cmd.append("--resume")
 
-        # Build prompt with event context
+        # Build prompt: program content + task content + event context
         prompt = program.content
+        if task_content:
+            prompt += f"\n\n{task_content}"
         if event_data.get("payload"):
             prompt += f"\n\nEvent context:\n{json.dumps(event_data['payload'], indent=2)}"
 

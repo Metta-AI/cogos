@@ -7,6 +7,7 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
+from uuid import UUID
 
 import boto3
 
@@ -26,6 +27,7 @@ def handler(event: dict, context) -> dict:
 
     trigger_data = event.get("trigger", {})
     event_data = event.get("event", {})
+    task_data = event.get("task", {})
     program_name = trigger_data.get("program_name", "")
 
     # Load program
@@ -40,12 +42,16 @@ def handler(event: dict, context) -> dict:
         trigger_id=trigger_data.get("id"),
         status=RunStatus.RUNNING,
     )
+    task_id_str = task_data.get("id")
+    if task_id_str:
+        run.task_id = UUID(task_id_str)
     run_id = repo.insert_run(run)
     logger.info(f"Starting run {run_id} for program {program_name}")
 
     start_time = time.time()
     try:
-        run = execute_program(program, event_data, run, config)
+        run = execute_program(program, event_data, run, config,
+                              task_data=task_data if task_data else None)
         run.status = RunStatus.COMPLETED
         run.duration_ms = int((time.time() - start_time) * 1000)
         run.completed_at = datetime.now(timezone.utc)
@@ -88,9 +94,23 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": 500, "error": str(e)}
 
 
-def execute_program(program: Program, event_data: dict, run: Run, config) -> Run:
+def execute_program(program: Program, event_data: dict, run: Run, config,
+                    task_data: dict | None = None) -> Run:
     """Execute program via Bedrock converse API with tool-use loop."""
     bedrock = boto3.client("bedrock-runtime", region_name=config.region)
+
+    # Merge task overrides into a program copy
+    if task_data:
+        merged_memory_keys = list(set(
+            (program.memory_keys or []) + (task_data.get("memory_keys") or [])
+        ))
+        merged_tools = list(set(
+            (program.tools or []) + (task_data.get("tools") or [])
+        ))
+        program = program.model_copy(update={
+            "memory_keys": merged_memory_keys,
+            "tools": merged_tools,
+        })
 
     # Build system prompt with memory context
     from memory.context_engine import ContextEngine
@@ -102,14 +122,17 @@ def execute_program(program: Program, event_data: dict, run: Run, config) -> Run
 
     system = context_engine.build_system_prompt(program, event_data)
 
-    # Build user message with event context
-    user_text = f"Event: {event_data.get('event_type', 'unknown')}\n"
+    # Build user message: task content + event context
+    user_text = ""
+    if task_data and task_data.get("content"):
+        user_text += task_data["content"] + "\n\n"
+    user_text += f"Event: {event_data.get('event_type', 'unknown')}\n"
     if event_data.get("payload"):
         user_text += f"Payload: {json.dumps(event_data['payload'], indent=2)}\n"
 
     messages = [{"role": "user", "content": [{"text": user_text}]}]
 
-    # Build tool config from program.tools
+    # Build tool config from merged program tools
     tool_config = _build_tool_config(program.tools) if program.tools else None
 
     model_id = program.model_version or "anthropic.claude-sonnet-4-20250514"

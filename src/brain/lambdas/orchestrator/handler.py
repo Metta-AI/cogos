@@ -125,8 +125,19 @@ def handler(event: dict, context) -> dict:
                 logger.warning(f"Program not found: {trigger.program_name}")
                 continue
 
-            # Dispatch to Lambda executor
-            _dispatch_lambda(config, lambda_client, payload, trigger.program_name)
+            # Determine runner: event payload override > program default > lambda
+            event_payload = brain_event.payload or {}
+            runner = event_payload.get("runner") or program.runner or "lambda"
+
+            if runner == "ecs":
+                # Derive session_id from task for context continuity
+                task_id = event_payload.get("task_id")
+                clear_context = event_payload.get("clear_context", False)
+                session_id = task_id if (task_id and not clear_context) else None
+                _dispatch_ecs(config, ecs_client, payload, trigger.program_name,
+                              session_id=session_id)
+            else:
+                _dispatch_lambda(config, lambda_client, payload, trigger.program_name)
 
             dispatched += 1
 
@@ -147,15 +158,14 @@ def _dispatch_lambda(config, lambda_client, payload: str, program_name: str):
     logger.info(f"Dispatched to Lambda: {program_name}")
 
 
-def _dispatch_ecs(config, ecs_client, payload: str, program_name: str, session_id: str = ""):
+def _dispatch_ecs(config, ecs_client, payload: str, program_name: str,
+                  session_id: str | None = None):
     """Run executor as ECS Fargate task for heavy compute."""
     subnets = [s.strip() for s in config.ecs_subnets.split(",") if s.strip()]
 
-    env_overrides = [
-        {"name": "EXECUTOR_PAYLOAD", "value": payload},
-    ]
+    env_vars = [{"name": "EXECUTOR_PAYLOAD", "value": payload}]
     if session_id:
-        env_overrides.append({"name": "CLAUDE_CODE_SESSION", "value": session_id})
+        env_vars.append({"name": "CLAUDE_CODE_SESSION", "value": session_id})
 
     ecs_client.run_task(
         cluster=config.ecs_cluster_arn,
@@ -172,7 +182,7 @@ def _dispatch_ecs(config, ecs_client, payload: str, program_name: str, session_i
             "containerOverrides": [
                 {
                     "name": "Executor",
-                    "environment": env_overrides,
+                    "environment": env_vars,
                 }
             ]
         },
