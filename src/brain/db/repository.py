@@ -27,6 +27,9 @@ from brain.db.models import (
     MemoryScope,
     Program,
     ProgramType,
+    Resource,
+    ResourceType,
+    ResourceUsage,
     Run,
     RunStatus,
     Task,
@@ -450,13 +453,14 @@ class Repository:
         """Insert or update a program by name."""
         response = self._execute(
             """INSERT INTO programs
-                   (id, name, program_type, content, includes, tools, memory_keys, metadata)
+                   (id, name, program_type, content, includes, tools, memory_keys, metadata, runner)
                VALUES (:id, :name, :program_type, :content, :includes::jsonb,
-                       :tools::jsonb, :memory_keys::jsonb, :metadata::jsonb)
+                       :tools::jsonb, :memory_keys::jsonb, :metadata::jsonb, :runner)
                ON CONFLICT (name)
                DO UPDATE SET program_type = EXCLUDED.program_type, content = EXCLUDED.content,
                             includes = EXCLUDED.includes, tools = EXCLUDED.tools,
                             memory_keys = EXCLUDED.memory_keys, metadata = EXCLUDED.metadata,
+                            runner = EXCLUDED.runner,
                             updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
@@ -468,6 +472,7 @@ class Repository:
                 self._param("tools", program.tools),
                 self._param("memory_keys", program.memory_keys),
                 self._param("metadata", program.metadata),
+                self._param("runner", program.runner),
             ],
         )
         row = self._first_row(response)
@@ -521,6 +526,7 @@ class Repository:
                 else row.get("memory_keys", [])
             ),
             metadata=metadata,
+            runner=row.get("runner"),
             created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
             updated_at=datetime.fromisoformat(row["updated_at"]) if row.get("updated_at") else None,
         )
@@ -580,17 +586,28 @@ class Repository:
 
     def create_task(self, task: Task) -> UUID:
         response = self._execute(
-            """INSERT INTO tasks (id, name, description, status, priority, parent_task_id,
+            """INSERT INTO tasks (id, name, description, program_name, content,
+                                  memory_keys, tools, status, priority, runner,
+                                  clear_context, resources, parent_task_id,
                                   creator, source_event, limits, metadata)
-               VALUES (:id, :name, :description, :status, :priority, :parent_task_id,
+               VALUES (:id, :name, :description, :program_name, :content,
+                       :memory_keys::jsonb, :tools::jsonb, :status, :priority, :runner,
+                       :clear_context, :resources::jsonb, :parent_task_id,
                        :creator, :source_event, :limits::jsonb, :metadata::jsonb)
                RETURNING id, created_at, updated_at""",
             [
                 self._param("id", task.id),
                 self._param("name", task.name),
                 self._param("description", task.description),
+                self._param("program_name", task.program_name),
+                self._param("content", task.content),
+                self._param("memory_keys", task.memory_keys),
+                self._param("tools", task.tools),
                 self._param("status", task.status.value),
                 self._param("priority", task.priority),
+                self._param("runner", task.runner),
+                self._param("clear_context", task.clear_context),
+                self._param("resources", task.resources),
                 self._param("parent_task_id", task.parent_task_id),
                 self._param("creator", task.creator),
                 self._param("source_event", task.source_event),
@@ -605,10 +622,71 @@ class Repository:
             return UUID(row["id"])
         raise RuntimeError("Failed to create task")
 
+    def upsert_task(self, task: Task, *, update_priority: bool = False) -> UUID:
+        """Upsert task by name. Priority preserved unless update_priority=True."""
+        priority_clause = "priority = EXCLUDED.priority," if update_priority else ""
+        response = self._execute(
+            f"""INSERT INTO tasks (id, name, description, program_name, content,
+                                  memory_keys, tools, status, priority, runner,
+                                  clear_context, resources, parent_task_id,
+                                  creator, source_event, limits, metadata)
+               VALUES (:id, :name, :description, :program_name, :content,
+                       :memory_keys::jsonb, :tools::jsonb, :status, :priority, :runner,
+                       :clear_context, :resources::jsonb, :parent_task_id,
+                       :creator, :source_event, :limits::jsonb, :metadata::jsonb)
+               ON CONFLICT (name) DO UPDATE SET
+                   description = EXCLUDED.description,
+                   program_name = EXCLUDED.program_name,
+                   content = EXCLUDED.content,
+                   memory_keys = EXCLUDED.memory_keys,
+                   tools = EXCLUDED.tools,
+                   {priority_clause}
+                   runner = EXCLUDED.runner,
+                   clear_context = EXCLUDED.clear_context,
+                   resources = EXCLUDED.resources,
+                   limits = EXCLUDED.limits,
+                   metadata = EXCLUDED.metadata,
+                   updated_at = now()
+               RETURNING id, created_at, updated_at""",
+            [
+                self._param("id", task.id),
+                self._param("name", task.name),
+                self._param("description", task.description),
+                self._param("program_name", task.program_name),
+                self._param("content", task.content),
+                self._param("memory_keys", task.memory_keys),
+                self._param("tools", task.tools),
+                self._param("status", task.status.value),
+                self._param("priority", task.priority),
+                self._param("runner", task.runner),
+                self._param("clear_context", task.clear_context),
+                self._param("resources", task.resources),
+                self._param("parent_task_id", task.parent_task_id),
+                self._param("creator", task.creator),
+                self._param("source_event", task.source_event),
+                self._param("limits", task.limits),
+                self._param("metadata", task.metadata),
+            ],
+        )
+        row = self._first_row(response)
+        if row:
+            task.created_at = datetime.fromisoformat(row["created_at"])
+            task.updated_at = datetime.fromisoformat(row["updated_at"])
+            return UUID(row["id"])
+        raise RuntimeError("Failed to upsert task")
+
     def get_task(self, task_id: UUID) -> Task | None:
         response = self._execute(
             "SELECT * FROM tasks WHERE id = :id",
             [self._param("id", task_id)],
+        )
+        row = self._first_row(response)
+        return self._task_from_row(row) if row else None
+
+    def get_task_by_name(self, name: str) -> Task | None:
+        response = self._execute(
+            "SELECT * FROM tasks WHERE name = :name",
+            [self._param("name", name)],
         )
         row = self._first_row(response)
         return self._task_from_row(row) if row else None
@@ -663,12 +741,28 @@ class Repository:
         limits = row.get("limits", {})
         if isinstance(limits, str):
             limits = json.loads(limits)
+        memory_keys = row.get("memory_keys", [])
+        if isinstance(memory_keys, str):
+            memory_keys = json.loads(memory_keys)
+        tools = row.get("tools", [])
+        if isinstance(tools, str):
+            tools = json.loads(tools)
+        resources = row.get("resources", [])
+        if isinstance(resources, str):
+            resources = json.loads(resources)
         return Task(
             id=UUID(row["id"]),
             name=row["name"],
             description=row.get("description", ""),
+            program_name=row.get("program_name", "do-content"),
+            content=row.get("content", ""),
+            memory_keys=memory_keys,
+            tools=tools,
             status=TaskStatus(row["status"]),
-            priority=row.get("priority", 0),
+            priority=row.get("priority", 0.0),
+            runner=row.get("runner"),
+            clear_context=row.get("clear_context", False),
+            resources=resources,
             parent_task_id=UUID(row["parent_task_id"]) if row.get("parent_task_id") else None,
             creator=row.get("creator", ""),
             source_event=row.get("source_event"),
@@ -1201,3 +1295,104 @@ class Repository:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
+
+    # ═══════════════════════════════════════════════════════════
+    # RESOURCES
+    # ═══════════════════════════════════════════════════════════
+
+    def upsert_resource(self, resource: Resource) -> str:
+        """Insert or update a resource by name."""
+        response = self._execute(
+            """INSERT INTO resources (name, resource_type, capacity, metadata)
+               VALUES (:name, :resource_type, :capacity, :metadata::jsonb)
+               ON CONFLICT (name)
+               DO UPDATE SET resource_type = EXCLUDED.resource_type,
+                            capacity = EXCLUDED.capacity,
+                            metadata = EXCLUDED.metadata
+               RETURNING name, created_at""",
+            [
+                self._param("name", resource.name),
+                self._param("resource_type", resource.resource_type.value),
+                self._param("capacity", resource.capacity),
+                self._param("metadata", resource.metadata),
+            ],
+        )
+        row = self._first_row(response)
+        if row:
+            resource.created_at = datetime.fromisoformat(row["created_at"])
+            return row["name"]
+        raise RuntimeError("Failed to upsert resource")
+
+    def get_resource(self, name: str) -> Resource | None:
+        response = self._execute(
+            "SELECT * FROM resources WHERE name = :name",
+            [self._param("name", name)],
+        )
+        row = self._first_row(response)
+        return self._resource_from_row(row) if row else None
+
+    def list_resources(self) -> list[Resource]:
+        response = self._execute("SELECT * FROM resources ORDER BY name")
+        return [self._resource_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def delete_resource(self, name: str) -> bool:
+        response = self._execute(
+            "DELETE FROM resources WHERE name = :name",
+            [self._param("name", name)],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
+
+    def _resource_from_row(self, row: dict) -> Resource:
+        metadata = row.get("metadata", {})
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        return Resource(
+            name=row["name"],
+            resource_type=ResourceType(row["resource_type"]),
+            capacity=row.get("capacity", 1.0),
+            metadata=metadata,
+            created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
+        )
+
+    def insert_resource_usage(self, usage: ResourceUsage) -> int:
+        """Record resource usage for a run."""
+        response = self._execute(
+            """INSERT INTO resource_usage (resource_name, run_id, amount)
+               VALUES (:resource_name, :run_id, :amount)
+               RETURNING id, created_at""",
+            [
+                self._param("resource_name", usage.resource_name),
+                self._param("run_id", usage.run_id),
+                self._param("amount", usage.amount),
+            ],
+        )
+        row = self._first_row(response)
+        if row:
+            usage.id = row["id"]
+            usage.created_at = datetime.fromisoformat(row["created_at"])
+            return row["id"]
+        raise RuntimeError("Failed to insert resource usage")
+
+    def get_consumable_usage(self, resource_name: str) -> float:
+        """Sum total usage for a consumable resource."""
+        response = self._execute(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM resource_usage WHERE resource_name = :name",
+            [self._param("name", resource_name)],
+        )
+        row = self._first_row(response)
+        return float(row["total"]) if row else 0.0
+
+    def get_pool_usage(self, resource_name: str) -> int:
+        """Count running tasks that consume this pool resource."""
+        response = self._execute(
+            """SELECT COUNT(*) as cnt FROM tasks
+               WHERE status = 'running'
+               AND (
+                   runner = :name
+                   OR :name = 'concurrent-tasks'
+                   OR resources::jsonb ? :name
+               )""",
+            [self._param("name", resource_name)],
+        )
+        row = self._first_row(response)
+        return int(row["cnt"]) if row else 0
