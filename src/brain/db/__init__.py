@@ -1,5 +1,6 @@
 """Brain database layer — models, repository, schema, migrations."""
 
+from brain.db.repository import Repository
 from brain.db.models import (
     Alert,
     AlertSeverity,
@@ -25,6 +26,7 @@ from brain.db.models import (
 )
 
 __all__ = [
+    "Repository",
     "Alert",
     "AlertSeverity",
     "Budget",
