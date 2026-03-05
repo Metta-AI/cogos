@@ -9,6 +9,11 @@ import { ProgramsPanel } from "@/components/programs/ProgramsPanel";
 import { SessionsPanel } from "@/components/sessions/SessionsPanel";
 import { ChannelsPanel } from "@/components/channels/ChannelsPanel";
 import { EventsPanel } from "@/components/events/EventsPanel";
+import { TriggersPanel } from "@/components/triggers/TriggersPanel";
+import { MemoryPanel } from "@/components/memory/MemoryPanel";
+import { ResourcesPanel } from "@/components/resources/ResourcesPanel";
+import { TasksPanel } from "@/components/tasks/TasksPanel";
+import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -58,15 +63,20 @@ export default function DashboardPage() {
         {activeTab === "events" && (
           <EventsPanel events={data.events} cogentName={cogentName} />
         )}
-        {!["overview", "programs", "sessions", "channels", "events"].includes(activeTab) && (
-          <div
-            style={{
-              color: "var(--text-muted)",
-              fontSize: "13px",
-            }}
-          >
-            {activeTab} panel (coming soon)
-          </div>
+        {activeTab === "triggers" && (
+          <TriggersPanel triggers={data.triggers} cogentName={cogentName} />
+        )}
+        {activeTab === "memory" && (
+          <MemoryPanel memory={data.memory} />
+        )}
+        {activeTab === "resources" && (
+          <ResourcesPanel data={data} />
+        )}
+        {activeTab === "tasks" && (
+          <TasksPanel tasks={data.tasks} cogentName={cogentName} />
+        )}
+        {activeTab === "alerts" && (
+          <AlertsPanel alerts={data.alerts} />
         )}
       </main>
     </div>
