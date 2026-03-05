@@ -81,7 +81,7 @@ def test_status_returns_data_with_mock():
         resp = client.get("/api/cogents/test/status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["cogent_id"] == "test"
+        assert data["cogent_name"] == "test"
         assert data["active_sessions"] == 0
 
 

@@ -75,7 +75,6 @@ class ProgramType(str, enum.Enum):
 
 class MemoryRecord(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     scope: MemoryScope
     type: MemoryType
     name: str | None = None
@@ -100,7 +99,6 @@ class Program(BaseModel):
 
 class Channel(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     type: ChannelType
     name: str
     external_id: str | None = None
@@ -131,7 +129,6 @@ class Task(BaseModel):
 
 class Conversation(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     context_key: str = ""
     channel_id: UUID | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
@@ -143,7 +140,6 @@ class Conversation(BaseModel):
 
 class Run(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     program_name: str
     task_id: UUID | None = None
     trigger_id: UUID | None = None
@@ -174,7 +170,6 @@ class Trace(BaseModel):
 
 class Event(BaseModel):
     id: int | None = None
-    cogent_id: str
     event_type: str
     source: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -184,7 +179,6 @@ class Event(BaseModel):
 
 class Alert(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     severity: AlertSeverity
     alert_type: str
     source: str
@@ -197,7 +191,6 @@ class Alert(BaseModel):
 
 class Budget(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    cogent_id: str
     period: BudgetPeriod
     period_start: date
     tokens_spent: int = 0

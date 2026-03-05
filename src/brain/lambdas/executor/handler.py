@@ -36,7 +36,6 @@ def handler(event: dict, context) -> dict:
 
     # Create run record
     run = Run(
-        cogent_id=config.cogent_id,
         program_name=program_name,
         trigger_id=trigger_data.get("id"),
         status=RunStatus.RUNNING,
@@ -55,7 +54,6 @@ def handler(event: dict, context) -> dict:
         # Emit completion event
         put_event(
             Event(
-                cogent_id=config.cogent_id,
                 event_type=f"program:completed:{program_name}",
                 source=program_name,
                 payload={"run_id": str(run.id), "duration_ms": run.duration_ms},
@@ -78,7 +76,6 @@ def handler(event: dict, context) -> dict:
         # Emit failure event
         put_event(
             Event(
-                cogent_id=config.cogent_id,
                 event_type=f"program:failed:{program_name}",
                 source=program_name,
                 payload={"run_id": str(run.id), "error": str(e)[:1000]},

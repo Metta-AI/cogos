@@ -193,11 +193,10 @@ class Repository:
 
     def append_event(self, event: Event) -> int:
         response = self._execute(
-            """INSERT INTO events (cogent_id, event_type, source, payload, parent_event_id)
-               VALUES (:cogent_id, :event_type, :source, :payload::jsonb, :parent_event_id)
+            """INSERT INTO events (event_type, source, payload, parent_event_id)
+               VALUES (:event_type, :source, :payload::jsonb, :parent_event_id)
                RETURNING id, created_at""",
             [
-                self._param("cogent_id", event.cogent_id),
                 self._param("event_type", event.event_type),
                 self._param("source", event.source),
                 self._param("payload", event.payload),
@@ -213,29 +212,26 @@ class Repository:
 
     def get_events(
         self,
-        cogent_id: str,
         *,
         event_type: str | None = None,
         limit: int = 100,
     ) -> list[Event]:
         if event_type:
             response = self._execute(
-                """SELECT id, cogent_id, event_type, source, payload, parent_event_id, created_at
-                   FROM events WHERE cogent_id = :cogent_id AND event_type = :event_type
+                """SELECT id, event_type, source, payload, parent_event_id, created_at
+                   FROM events WHERE event_type = :event_type
                    ORDER BY created_at DESC LIMIT :limit""",
                 [
-                    self._param("cogent_id", cogent_id),
                     self._param("event_type", event_type),
                     self._param("limit", limit),
                 ],
             )
         else:
             response = self._execute(
-                """SELECT id, cogent_id, event_type, source, payload, parent_event_id, created_at
-                   FROM events WHERE cogent_id = :cogent_id
+                """SELECT id, event_type, source, payload, parent_event_id, created_at
+                   FROM events
                    ORDER BY created_at DESC LIMIT :limit""",
                 [
-                    self._param("cogent_id", cogent_id),
                     self._param("limit", limit),
                 ],
             )
@@ -245,10 +241,10 @@ class Repository:
         """Get an event and all its descendants (full causal tree)."""
         response = self._execute(
             """WITH RECURSIVE tree AS (
-                 SELECT id, cogent_id, event_type, source, payload, parent_event_id, created_at
+                 SELECT id, event_type, source, payload, parent_event_id, created_at
                  FROM events WHERE id = :event_id
                  UNION ALL
-                 SELECT e.id, e.cogent_id, e.event_type, e.source, e.payload, e.parent_event_id, e.created_at
+                 SELECT e.id, e.event_type, e.source, e.payload, e.parent_event_id, e.created_at
                  FROM events e JOIN tree t ON e.parent_event_id = t.id
                )
                SELECT * FROM tree ORDER BY created_at""",
@@ -279,7 +275,6 @@ class Repository:
             payload = json.loads(payload)
         return Event(
             id=row["id"],
-            cogent_id=row["cogent_id"],
             event_type=row["event_type"],
             source=row.get("source"),
             payload=payload,
@@ -293,15 +288,14 @@ class Repository:
 
     def insert_memory(self, mem: MemoryRecord) -> UUID:
         response = self._execute(
-            """INSERT INTO memory (id, cogent_id, scope, type, name, content, provenance)
-               VALUES (:id, :cogent_id, :scope, :type, :name, :content, :provenance::jsonb)
-               ON CONFLICT (cogent_id, scope, name) WHERE name IS NOT NULL
+            """INSERT INTO memory (id, scope, type, name, content, provenance)
+               VALUES (:id, :scope, :type, :name, :content, :provenance::jsonb)
+               ON CONFLICT (scope, name) WHERE name IS NOT NULL
                DO UPDATE SET content = EXCLUDED.content, provenance = EXCLUDED.provenance,
                             type = EXCLUDED.type, updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
                 self._param("id", mem.id),
-                self._param("cogent_id", mem.cogent_id),
                 self._param("scope", mem.scope.value),
                 self._param("type", mem.type.value),
                 self._param("name", mem.name),
@@ -326,15 +320,14 @@ class Repository:
 
     def query_memory(
         self,
-        cogent_id: str,
         *,
         scope: MemoryScope | None = None,
         type: MemoryType | None = None,
         name: str | None = None,
         limit: int = 50,
     ) -> list[MemoryRecord]:
-        conditions = ["cogent_id = :cogent_id"]
-        params = [self._param("cogent_id", cogent_id)]
+        conditions = []
+        params = []
 
         if scope:
             conditions.append("scope = :scope")
@@ -358,7 +351,6 @@ class Repository:
 
     def query_memory_by_prefixes(
         self,
-        cogent_id: str,
         prefixes: list[str],
     ) -> list[MemoryRecord]:
         """Fetch memory records matching any of the given name prefixes.
@@ -370,7 +362,7 @@ class Repository:
             return []
 
         conditions = []
-        params = [self._param("cogent_id", cogent_id)]
+        params = []
         for i, prefix in enumerate(prefixes):
             param_name = f"prefix_{i}"
             params.append(self._param(param_name, prefix + "%"))
@@ -379,8 +371,7 @@ class Repository:
         prefix_filter = " OR ".join(conditions)
         response = self._execute(
             f"""SELECT * FROM memory
-                WHERE cogent_id = :cogent_id
-                  AND ({prefix_filter})
+                WHERE ({prefix_filter})
                 ORDER BY scope ASC, name ASC""",
             params,
         )
@@ -405,7 +396,6 @@ class Repository:
             provenance = json.loads(provenance)
         return MemoryRecord(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             scope=MemoryScope(row["scope"]),
             type=MemoryType(row["type"]),
             name=row.get("name"),
@@ -495,15 +485,14 @@ class Repository:
 
     def upsert_channel(self, channel: Channel) -> UUID:
         response = self._execute(
-            """INSERT INTO channels (id, cogent_id, type, name, external_id, secret_arn, config, enabled)
-               VALUES (:id, :cogent_id, :type, :name, :external_id, :secret_arn, :config::jsonb, :enabled)
-               ON CONFLICT (cogent_id, type, name)
+            """INSERT INTO channels (id, type, name, external_id, secret_arn, config, enabled)
+               VALUES (:id, :type, :name, :external_id, :secret_arn, :config::jsonb, :enabled)
+               ON CONFLICT (type, name)
                DO UPDATE SET external_id = EXCLUDED.external_id, secret_arn = EXCLUDED.secret_arn,
                             config = EXCLUDED.config, enabled = EXCLUDED.enabled
                RETURNING id, created_at""",
             [
                 self._param("id", channel.id),
-                self._param("cogent_id", channel.cogent_id),
                 self._param("type", channel.type.value),
                 self._param("name", channel.name),
                 self._param("external_id", channel.external_id),
@@ -518,10 +507,9 @@ class Repository:
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert channel")
 
-    def list_channels(self, cogent_id: str) -> list[Channel]:
+    def list_channels(self) -> list[Channel]:
         response = self._execute(
-            "SELECT * FROM channels WHERE cogent_id = :cogent_id ORDER BY type, name",
-            [self._param("cogent_id", cogent_id)],
+            "SELECT * FROM channels ORDER BY type, name",
         )
         return [self._channel_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -531,7 +519,6 @@ class Repository:
             config = json.loads(config)
         return Channel(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             type=ChannelType(row["type"]),
             name=row["name"],
             external_id=row.get("external_id"),
@@ -652,16 +639,15 @@ class Repository:
 
     def upsert_conversation(self, conv: Conversation) -> UUID:
         response = self._execute(
-            """INSERT INTO conversations (id, cogent_id, context_key, channel_id, status,
+            """INSERT INTO conversations (id, context_key, channel_id, status,
                                           cli_session_id, metadata)
-               VALUES (:id, :cogent_id, :context_key, :channel_id, :status, :cli_session_id, :metadata::jsonb)
+               VALUES (:id, :context_key, :channel_id, :status, :cli_session_id, :metadata::jsonb)
                ON CONFLICT (id)
                DO UPDATE SET status = EXCLUDED.status, cli_session_id = EXCLUDED.cli_session_id,
                             metadata = EXCLUDED.metadata, last_active = now()
                RETURNING id, started_at, last_active""",
             [
                 self._param("id", conv.id),
-                self._param("cogent_id", conv.cogent_id),
                 self._param("context_key", conv.context_key),
                 self._param("channel_id", conv.channel_id),
                 self._param("status", conv.status.value),
@@ -676,13 +662,12 @@ class Repository:
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert conversation")
 
-    def get_conversation_by_context(self, cogent_id: str, context_key: str) -> Conversation | None:
+    def get_conversation_by_context(self, context_key: str) -> Conversation | None:
         response = self._execute(
             """SELECT * FROM conversations
-               WHERE cogent_id = :cogent_id AND context_key = :context_key AND status != 'closed'
+               WHERE context_key = :context_key AND status != 'closed'
                ORDER BY last_active DESC LIMIT 1""",
             [
-                self._param("cogent_id", cogent_id),
                 self._param("context_key", context_key),
             ],
         )
@@ -691,23 +676,20 @@ class Repository:
 
     def list_conversations(
         self,
-        cogent_id: str,
         *,
         status: ConversationStatus | None = None,
     ) -> list[Conversation]:
         if status:
             response = self._execute(
-                """SELECT * FROM conversations WHERE cogent_id = :cogent_id AND status = :status
+                """SELECT * FROM conversations WHERE status = :status
                    ORDER BY last_active DESC""",
                 [
-                    self._param("cogent_id", cogent_id),
                     self._param("status", status.value),
                 ],
             )
         else:
             response = self._execute(
-                "SELECT * FROM conversations WHERE cogent_id = :cogent_id ORDER BY last_active DESC",
-                [self._param("cogent_id", cogent_id)],
+                "SELECT * FROM conversations ORDER BY last_active DESC",
             )
         return [self._conversation_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -724,7 +706,6 @@ class Repository:
             metadata = json.loads(metadata)
         return Conversation(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             context_key=row.get("context_key", ""),
             channel_id=UUID(row["channel_id"]) if row.get("channel_id") else None,
             status=ConversationStatus(row["status"]),
@@ -740,16 +721,15 @@ class Repository:
 
     def insert_run(self, run: Run) -> UUID:
         response = self._execute(
-            """INSERT INTO runs (id, cogent_id, program_name, task_id, trigger_id, conversation_id,
+            """INSERT INTO runs (id, program_name, task_id, trigger_id, conversation_id,
                                  status, tokens_input, tokens_output, cost_usd,
                                  duration_ms, events_emitted, error, model_version)
-               VALUES (:id, :cogent_id, :program_name, :task_id, :trigger_id, :conversation_id,
+               VALUES (:id, :program_name, :task_id, :trigger_id, :conversation_id,
                        :status, :tokens_input, :tokens_output, :cost_usd,
                        :duration_ms, :events_emitted::jsonb, :error, :model_version)
                RETURNING id, started_at""",
             [
                 self._param("id", run.id),
-                self._param("cogent_id", run.cogent_id),
                 self._param("program_name", run.program_name),
                 self._param("task_id", run.task_id),
                 self._param("trigger_id", run.trigger_id),
@@ -794,14 +774,13 @@ class Repository:
 
     def query_runs(
         self,
-        cogent_id: str,
         *,
         program_name: str | None = None,
         status: RunStatus | None = None,
         limit: int = 50,
     ) -> list[Run]:
-        conditions = ["cogent_id = :cogent_id"]
-        params = [self._param("cogent_id", cogent_id)]
+        conditions = []
+        params = []
 
         if program_name:
             conditions.append("program_name = :program_name")
@@ -810,11 +789,15 @@ class Repository:
             conditions.append("status = :status")
             params.append(self._param("status", status.value))
 
-        where = " AND ".join(conditions)
+        if conditions:
+            where = " AND ".join(conditions)
+            where_clause = f"WHERE {where}"
+        else:
+            where_clause = ""
         params.append(self._param("limit", limit))
 
         response = self._execute(
-            f"""SELECT * FROM runs WHERE {where}
+            f"""SELECT * FROM runs {where_clause}
                 ORDER BY started_at DESC LIMIT :limit""",
             params,
         )
@@ -826,7 +809,6 @@ class Repository:
             events = json.loads(events)
         return Run(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             program_name=row["program_name"],
             task_id=UUID(row["task_id"]) if row.get("task_id") else None,
             trigger_id=UUID(row["trigger_id"]) if row.get("trigger_id") else None,
@@ -1035,12 +1017,11 @@ class Repository:
 
     def create_alert(self, alert: Alert) -> UUID:
         response = self._execute(
-            """INSERT INTO alerts (id, cogent_id, severity, alert_type, source, message, metadata)
-               VALUES (:id, :cogent_id, :severity, :alert_type, :source, :message, :metadata::jsonb)
+            """INSERT INTO alerts (id, severity, alert_type, source, message, metadata)
+               VALUES (:id, :severity, :alert_type, :source, :message, :metadata::jsonb)
                RETURNING id, created_at""",
             [
                 self._param("id", alert.id),
-                self._param("cogent_id", alert.cogent_id),
                 self._param("severity", alert.severity.value),
                 self._param("alert_type", alert.alert_type),
                 self._param("source", alert.source),
@@ -1054,11 +1035,10 @@ class Repository:
             return UUID(row["id"])
         raise RuntimeError("Failed to create alert")
 
-    def get_unresolved_alerts(self, cogent_id: str) -> list[Alert]:
+    def get_unresolved_alerts(self) -> list[Alert]:
         response = self._execute(
-            """SELECT * FROM alerts WHERE cogent_id = :cogent_id AND resolved_at IS NULL
+            """SELECT * FROM alerts WHERE resolved_at IS NULL
                ORDER BY created_at DESC""",
-            [self._param("cogent_id", cogent_id)],
         )
         return [self._alert_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -1075,7 +1055,6 @@ class Repository:
             metadata = json.loads(metadata)
         return Alert(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             severity=AlertSeverity(row["severity"]),
             alert_type=row["alert_type"],
             source=row["source"],
@@ -1092,7 +1071,6 @@ class Repository:
 
     def get_or_create_budget(
         self,
-        cogent_id: str,
         period: BudgetPeriod,
         period_start: date,
         *,
@@ -1100,12 +1078,11 @@ class Repository:
         cost_limit_usd: Decimal = Decimal("0"),
     ) -> Budget:
         response = self._execute(
-            """INSERT INTO budget (cogent_id, period, period_start, token_limit, cost_limit_usd)
-               VALUES (:cogent_id, :period, :period_start, :token_limit, :cost_limit_usd)
-               ON CONFLICT (cogent_id, period, period_start) DO NOTHING
+            """INSERT INTO budget (period, period_start, token_limit, cost_limit_usd)
+               VALUES (:period, :period_start, :token_limit, :cost_limit_usd)
+               ON CONFLICT (period, period_start) DO NOTHING
                RETURNING *""",
             [
-                self._param("cogent_id", cogent_id),
                 self._param("period", period.value),
                 self._param("period_start", period_start),
                 self._param("token_limit", token_limit),
@@ -1117,9 +1094,8 @@ class Repository:
             return self._budget_from_row(row)
 
         response = self._execute(
-            "SELECT * FROM budget WHERE cogent_id = :cogent_id AND period = :period AND period_start = :period_start",
+            "SELECT * FROM budget WHERE period = :period AND period_start = :period_start",
             [
-                self._param("cogent_id", cogent_id),
                 self._param("period", period.value),
                 self._param("period_start", period_start),
             ],
@@ -1131,7 +1107,6 @@ class Repository:
 
     def record_spend(
         self,
-        cogent_id: str,
         period: BudgetPeriod,
         period_start: date,
         *,
@@ -1141,10 +1116,9 @@ class Repository:
         response = self._execute(
             """UPDATE budget SET tokens_spent = tokens_spent + :tokens,
                       cost_spent_usd = cost_spent_usd + :cost_usd, updated_at = now()
-               WHERE cogent_id = :cogent_id AND period = :period AND period_start = :period_start
+               WHERE period = :period AND period_start = :period_start
                RETURNING *""",
             [
-                self._param("cogent_id", cogent_id),
                 self._param("period", period.value),
                 self._param("period_start", period_start),
                 self._param("tokens", tokens),
@@ -1156,11 +1130,10 @@ class Repository:
             raise RuntimeError("Failed to record spend")
         return self._budget_from_row(row)
 
-    def check_budget(self, cogent_id: str, period: BudgetPeriod, period_start: date) -> Budget | None:
+    def check_budget(self, period: BudgetPeriod, period_start: date) -> Budget | None:
         response = self._execute(
-            "SELECT * FROM budget WHERE cogent_id = :cogent_id AND period = :period AND period_start = :period_start",
+            "SELECT * FROM budget WHERE period = :period AND period_start = :period_start",
             [
-                self._param("cogent_id", cogent_id),
                 self._param("period", period.value),
                 self._param("period_start", period_start),
             ],
@@ -1171,7 +1144,6 @@ class Repository:
     def _budget_from_row(self, row: dict) -> Budget:
         return Budget(
             id=UUID(row["id"]),
-            cogent_id=row["cogent_id"],
             period=BudgetPeriod(row["period"]),
             period_start=(
                 date.fromisoformat(row["period_start"]) if isinstance(row["period_start"], str) else row["period_start"]

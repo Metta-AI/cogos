@@ -9,7 +9,6 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LambdaConfig:
     cogent_name: str
-    cogent_id: str
     db_cluster_arn: str
     db_secret_arn: str
     db_name: str
@@ -32,7 +31,6 @@ def get_config() -> LambdaConfig:
     if _config is None:
         _config = LambdaConfig(
             cogent_name=os.environ["COGENT_NAME"],
-            cogent_id=os.environ.get("COGENT_ID", os.environ["COGENT_NAME"]),
             db_cluster_arn=os.environ["DB_CLUSTER_ARN"],
             db_secret_arn=os.environ["DB_SECRET_ARN"],
             db_name=os.environ.get("DB_NAME", "cogent"),

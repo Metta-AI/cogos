@@ -17,8 +17,6 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "logger": record.name,
         }
-        if hasattr(record, "cogent_id"):
-            log_entry["cogent_id"] = record.cogent_id
         if hasattr(record, "run_id"):
             log_entry["run_id"] = record.run_id
         if record.exc_info:

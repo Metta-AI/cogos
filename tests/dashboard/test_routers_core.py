@@ -91,7 +91,7 @@ def test_status_with_mock_repo():
         assert resp.status_code == 200
         data = resp.json()
         assert data["active_sessions"] == 2
-        assert data["cogent_id"] == "test"
+        assert data["cogent_name"] == "test"
 
 
 def test_programs_with_mock_repo():

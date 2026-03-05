@@ -33,14 +33,13 @@ def main() -> None:
     logger.info(f"ECS executor starting for program: {program_name}")
 
     # Load program
-    program = repo.get_program(config.cogent_id, program_name)
+    program = repo.get_program(program_name)
     if not program:
         logger.error(f"Program not found: {program_name}")
         sys.exit(1)
 
     # Create run record
     run = Run(
-        cogent_id=config.cogent_id,
         program_name=program_name,
         trigger_id=trigger_data.get("id"),
         status=RunStatus.RUNNING,
@@ -103,7 +102,6 @@ def main() -> None:
             event_type = f"program:failed:{program_name}"
         put_event(
             Event(
-                cogent_id=config.cogent_id,
                 event_type=event_type,
                 source=program_name,
                 payload={"run_id": str(run.id), "duration_ms": duration_ms},

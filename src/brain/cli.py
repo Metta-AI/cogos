@@ -21,9 +21,9 @@ class DefaultCommandGroup(click.Group):
 def get_cogent_name(ctx: click.Context) -> str:
     """Return the cogent name from the root context."""
     obj = ctx.find_root().obj
-    name = obj.get("cogent_id") if obj else None
+    name = obj.get("cogent_name") if obj else None
     if not name:
-        raise click.UsageError("No cogent specified. Use: cogent <name> <command> or set COGENT_ID env var.")
+        raise click.UsageError("No cogent specified. Use: cogent <name> <command> or set COGENT_NAME env var.")
     return name
 
 

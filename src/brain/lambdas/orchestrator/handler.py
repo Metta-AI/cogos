@@ -28,7 +28,7 @@ class TriggerCache:
         self._last_refresh: float = 0
         self._ttl = ttl_seconds
 
-    def get_triggers(self, cogent_id: str) -> list[Trigger]:
+    def get_triggers(self) -> list[Trigger]:
         """Load enabled triggers from DB, with 60s TTL caching."""
         now = time.time()
         if now - self._last_refresh > self._ttl:
@@ -58,7 +58,6 @@ def handler(event: dict, context) -> dict:
     # Parse the incoming EventBridge event
     try:
         brain_event = from_eventbridge(event)
-        brain_event.cogent_id = config.cogent_id
         logger.info(f"Parsed event: type={brain_event.event_type} source={brain_event.source}")
     except Exception:
         logger.exception("Failed to parse EventBridge event")
@@ -74,7 +73,7 @@ def handler(event: dict, context) -> dict:
         return {"statusCode": 500, "body": "event_log_failed"}
 
     # Load enabled triggers (cached with 60s TTL)
-    triggers = _cache.get_triggers(config.cogent_id)
+    triggers = _cache.get_triggers()
 
     # Match triggers against event type
     matched = [t for t in triggers if _match_pattern(t.event_pattern, brain_event.event_type)]
@@ -109,7 +108,6 @@ def handler(event: dict, context) -> dict:
                         "event_type": brain_event.event_type,
                         "source": brain_event.source,
                         "payload": brain_event.payload,
-                        "cogent_id": brain_event.cogent_id,
                     },
                 }
             )

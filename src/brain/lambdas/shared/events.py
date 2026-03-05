@@ -12,11 +12,10 @@ from brain.db.models import Event
 def to_eventbridge(event: Event, bus_name: str) -> dict:
     """Convert Event model to EventBridge PutEvents entry."""
     return {
-        "Source": f"cogent.{event.cogent_id}",
+        "Source": "cogent",
         "DetailType": event.event_type,
         "Detail": json.dumps(
             {
-                "cogent_id": event.cogent_id,
                 "event_type": event.event_type,
                 "source": event.source,
                 "payload": event.payload,
@@ -33,7 +32,6 @@ def from_eventbridge(eb_event: dict) -> Event:
     if isinstance(detail, str):
         detail = json.loads(detail)
     return Event(
-        cogent_id=detail.get("cogent_id", ""),
         event_type=detail.get("event_type", eb_event.get("detail-type", "")),
         source=detail.get("source", eb_event.get("source", "")),
         payload=detail.get("payload", {}),
