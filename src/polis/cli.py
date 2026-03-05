@@ -335,7 +335,29 @@ def cogents_create(ctx: click.Context, name: str):
                 )
                 console.print("  [green]Validation record created[/green]")
 
-    # 3. Secrets — create identity secret for the cogent
+    # 3. DynamoDB — register in cogent-status table
+    console.print("  Registering in status table...")
+    ddb = session.resource("dynamodb")
+    table_resource = ddb.Table("cogent-status")
+    table_resource.put_item(
+        Item={
+            "cogent_name": name,
+            "stack_status": "REGISTERED",
+            "running_count": 0,
+            "desired_count": 0,
+            "image_tag": "-",
+            "channels": {},
+            "domain": subdomain,
+            "certificate_arn": cert_arn,
+            "cpu_1m": 0,
+            "cpu_10m": 0,
+            "mem_pct": 0,
+            "updated_at": int(time.time()),
+        },
+    )
+    console.print("  [green]Status record created[/green]")
+
+    # 4. Secrets — create identity secret for the cogent
     console.print("  Creating identity secret...")
     store = SecretStore(session=session)
     identity_path = f"cogent/{name}/identity"
@@ -418,7 +440,16 @@ def cogents_destroy(ctx: click.Context, name: str):
     except Exception as e:
         console.print(f"  [yellow]Certificate cleanup: {e}[/yellow]")
 
-    # 3. Delete all secrets under cogent/{name}/
+    # 3. Delete DynamoDB status record
+    try:
+        ddb = session.resource("dynamodb")
+        table_resource = ddb.Table("cogent-status")
+        table_resource.delete_item(Key={"cogent_name": name})
+        console.print(f"  [green]Deleted status record[/green]")
+    except Exception as e:
+        console.print(f"  [yellow]Status cleanup: {e}[/yellow]")
+
+    # 4. Delete all secrets under cogent/{name}/
     store = SecretStore(session=session)
     secrets_list = store.list(f"cogent/{name}/")
     for s in secrets_list:
@@ -430,7 +461,7 @@ def cogents_destroy(ctx: click.Context, name: str):
 
 @cogents.command("list")
 def cogents_list():
-    """List all cogents with status from DynamoDB."""
+    """List all cogents registered in the polis."""
     session, _ = get_polis_session()
     ddb = session.resource("dynamodb")
     table_resource = ddb.Table("cogent-status")
@@ -449,7 +480,8 @@ def cogents_list():
 
     table = Table(title="Cogents")
     table.add_column("Name", style="bold")
-    table.add_column("Stack Status")
+    table.add_column("Status")
+    table.add_column("Domain")
     table.add_column("Tasks")
     table.add_column("Image")
     table.add_column("CPU (1m)")
@@ -465,11 +497,12 @@ def cogents_list():
         ch_str = ", ".join(f"{k}:{v}" for k, v in sorted(channels.items())) if channels else "-"
 
         stack_status = item.get("stack_status", "?")
-        status_style = "green" if "COMPLETE" in stack_status else "yellow"
+        status_style = "green" if "COMPLETE" in stack_status else "cyan" if stack_status == "REGISTERED" else "yellow"
 
         table.add_row(
             item.get("cogent_name", "?"),
             f"[{status_style}]{stack_status}[/{status_style}]",
+            item.get("domain", "-"),
             tasks,
             str(item.get("image_tag", "-")),
             str(item.get("cpu_1m", "-")),
