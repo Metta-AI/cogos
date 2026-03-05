@@ -1,0 +1,10 @@
+name: tool-conventions
+scope: cogent
+content: |
+  Tool usage conventions:
+
+  - Always use `memory get` before acting on stored context
+  - Use `event send` to communicate results, not direct messages
+  - Prefer `task create` over inline work for multi-step operations
+  - Resource limits are hard — never exceed declared capacity
+  - Log errors via `event send` with type "error" before retrying

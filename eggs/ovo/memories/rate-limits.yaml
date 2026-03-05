@@ -1,0 +1,12 @@
+name: rate-limits
+scope: polis
+content: |
+  External API rate limits:
+
+  - Discord API: 50 requests/second, 10k/10min
+  - GitHub API: 5000 requests/hour (authenticated)
+  - Claude API: per-model limits, check budget before each call
+  - Email (SES): 14/second send rate
+
+  When approaching limits, back off exponentially. Log a warning event
+  at 80% utilization and an alert at 95%.

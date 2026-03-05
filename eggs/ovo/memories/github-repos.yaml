@@ -1,0 +1,12 @@
+name: github-repos
+scope: cogent
+content: |
+  Watched GitHub repositories:
+
+  - Metta-AI/cogents-v1: main cogents framework repo
+    - Review PRs labeled "needs-review"
+    - Monitor CI failures on main branch
+    - Track issues labeled "cogent"
+provenance:
+  source: bootstrap
+  updated_by: operator

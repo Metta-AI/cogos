@@ -1014,3 +1014,37 @@ def memory_delete(ctx: click.Context, memory_id: str) -> None:
         click.echo(f"Memory '{memory_id}' not found.", err=True)
         sys.exit(1)
     _output({"id": memory_id, "status": "deleted"}, use_json=ctx.obj["json"])
+
+
+@memory.command("load")
+@click.argument("memories_dir", type=click.Path(exists=True))
+@click.option("--force", is_flag=True, help="Replace existing entries with same name")
+@click.pass_context
+def memory_load(ctx: click.Context, memories_dir: str, force: bool) -> None:
+    """Load memory entries from a directory of .md and .yaml files."""
+    from mind.memory_loader import load_memories_from_dir
+
+    repo = _repo()
+    memories = load_memories_from_dir(Path(memories_dir))
+
+    existing = {m.name: m for m in repo.query_memory(limit=10000)}
+    added = 0
+    skipped = 0
+    replaced = 0
+
+    for mem in memories:
+        if mem.name in existing:
+            if force:
+                repo.delete_memory(existing[mem.name].id)
+                repo.insert_memory(mem)
+                replaced += 1
+            else:
+                skipped += 1
+        else:
+            repo.insert_memory(mem)
+            added += 1
+
+    _output(
+        {"added": added, "replaced": replaced, "skipped": skipped, "total": len(memories)},
+        use_json=ctx.obj["json"],
+    )
