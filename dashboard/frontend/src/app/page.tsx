@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Sidebar, type TabId } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { useCogentData } from "@/hooks/useCogentData";
+import { OverviewPanel } from "@/components/overview/OverviewPanel";
+import { ProgramsPanel } from "@/components/programs/ProgramsPanel";
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -40,15 +42,17 @@ export default function DashboardPage() {
           bottom: 0,
         }}
       >
-        {/* Panel placeholders — will be replaced by actual panel components */}
-        <div
-          style={{
-            color: "var(--text-muted)",
-            fontSize: "13px",
-          }}
-        >
-          {activeTab} panel (coming soon)
-        </div>
+        {activeTab === "overview" && <OverviewPanel data={data} />}
+        {activeTab !== "overview" && (
+          <div
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "13px",
+            }}
+          >
+            {activeTab} panel (coming soon)
+          </div>
+        )}
       </main>
     </div>
   );
