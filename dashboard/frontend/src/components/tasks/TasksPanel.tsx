@@ -392,6 +392,25 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
     onRefresh();
   }, [cogentName, onRefresh]);
 
+  const handleRunCopy = useCallback(async (e: React.MouseEvent, task: Task) => {
+    e.stopPropagation();
+    await api.createTask(cogentName, {
+      name: task.name ?? "copy",
+      description: task.description || undefined,
+      content: task.content || undefined,
+      program_name: task.program_name || undefined,
+      priority: task.priority ?? undefined,
+      runner: task.runner || undefined,
+      clear_context: task.clear_context ?? undefined,
+      memory_keys: task.memory_keys?.length ? task.memory_keys : undefined,
+      tools: task.tools?.length ? task.tools : undefined,
+      resources: task.resources?.length ? task.resources : undefined,
+      creator: "dashboard",
+      status: "running",
+    });
+    onRefresh();
+  }, [cogentName, onRefresh]);
+
   const handleCreate = useCallback(async () => {
     if (!newTask.name?.trim()) return;
     await api.createTask(cogentName, {
@@ -599,8 +618,29 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
             <Badge variant="error">{task.last_run_status}</Badge>
           )}
           <div className="flex-1" />
+          {/* Run counts */}
+          {task.run_counts && (
+            <span className="flex gap-1.5 text-[10px] font-mono text-[var(--text-muted)]">
+              {["1m", "5m", "1h", "24h", "7d"].map((w) => (
+                <span key={w} title={`Runs in ${w}`}>
+                  <span className="text-[var(--text-secondary)]">{task.run_counts![w] ?? 0}</span>
+                </span>
+              ))}
+            </span>
+          )}
           <span className="font-mono text-[11px] text-[var(--text-muted)]">p{task.priority ?? 0}</span>
-          <span className="text-[10px] text-[var(--text-muted)]">{fmtRelative(task.updated_at)}</span>
+          {/* Last ran / time stuck */}
+          {isStuck(task) ? (
+            <span className="text-[10px] text-[var(--warning)]" title="Time stuck">
+              stuck {fmtRelative(task.updated_at)}
+            </span>
+          ) : task.last_run_at ? (
+            <span className="text-[10px] text-[var(--text-muted)]" title="Last ran">
+              ran {fmtRelative(task.last_run_at)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-[var(--text-muted)]">{fmtRelative(task.updated_at)}</span>
+          )}
 
           {isConfirming ? (
             <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -628,7 +668,15 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
                 >
                   ■
                 </button>
-              ) : task.status !== "completed" && (
+              ) : task.status === "completed" ? (
+                <button
+                  onClick={(e) => handleRunCopy(e, task)}
+                  className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--success)] text-[11px]"
+                  title="Run Copy"
+                >
+                  ⧉▶
+                </button>
+              ) : (
                 <button
                   onClick={(e) => handleRunTask(e, task.id)}
                   className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--success)] text-[11px]"
@@ -895,6 +943,21 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
               Create
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Run count column headers */}
+      {tasks.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-1 mb-1">
+          <div className="flex-1" />
+          <span className="flex gap-1.5 text-[9px] font-mono text-[var(--text-muted)] uppercase tracking-wide">
+            {["1m", "5m", "1h", "24h", "7d"].map((w) => (
+              <span key={w} style={{ minWidth: "16px", textAlign: "center" }}>{w}</span>
+            ))}
+          </span>
+          <span className="text-[9px] text-[var(--text-muted)]" style={{ minWidth: "28px" }} />
+          <span className="text-[9px] text-[var(--text-muted)]" style={{ minWidth: "70px" }} />
+          <span style={{ minWidth: "60px" }} />
         </div>
       )}
 

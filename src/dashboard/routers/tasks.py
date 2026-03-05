@@ -47,15 +47,33 @@ def list_tasks(
     db_tasks = repo.list_tasks(status=task_status)
     tasks = [_task_to_response(t) for t in db_tasks]
 
-    # Annotate with last run info
+    # Annotate with last run info and run counts
+    from datetime import datetime, timedelta
     all_runs = repo.query_runs(limit=10000)
-    # Build lookup: task_id -> most recent run (runs are sorted desc by started_at)
+    now = datetime.utcnow()
+    windows = {
+        "1m": timedelta(minutes=1),
+        "5m": timedelta(minutes=5),
+        "1h": timedelta(hours=1),
+        "24h": timedelta(hours=24),
+        "7d": timedelta(days=7),
+    }
+    # Build lookup: task_id -> most recent run and run counts
     last_run_by_task: dict[str, object] = {}
+    run_counts_by_task: dict[str, dict[str, int]] = {}
     for r in all_runs:
         if r.task_id:
             tid = str(r.task_id)
             if tid not in last_run_by_task:
                 last_run_by_task[tid] = r
+            if tid not in run_counts_by_task:
+                run_counts_by_task[tid] = {k: 0 for k in windows}
+            run_time = r.started_at or r.completed_at
+            if run_time:
+                age = now - run_time
+                for label, window in windows.items():
+                    if age <= window:
+                        run_counts_by_task[tid][label] += 1
 
     for t in tasks:
         r = last_run_by_task.get(t.id)
@@ -63,6 +81,7 @@ def list_tasks(
             t.last_run_status = r.status.value if r.status else None
             t.last_run_error = r.error
             t.last_run_at = str(r.completed_at or r.started_at) if (r.completed_at or r.started_at) else None
+        t.run_counts = run_counts_by_task.get(t.id, {k: 0 for k in windows})
 
     return TasksResponse(cogent_name=name, count=len(tasks), tasks=tasks)
 

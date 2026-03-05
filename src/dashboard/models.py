@@ -193,6 +193,7 @@ class Task(BaseModel):
     last_run_status: str | None = None
     last_run_error: str | None = None
     last_run_at: str | None = None
+    run_counts: dict[str, int] | None = None
 
 
 class TaskCreate(BaseModel):
