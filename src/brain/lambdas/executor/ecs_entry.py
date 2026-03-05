@@ -70,12 +70,14 @@ def main() -> None:
 
     logger.info(f"ECS executor starting for program: {program_name}")
 
-    # Session management: use CLAUDE_CODE_SESSION or generate from run context
-    session_id = os.environ.get("CLAUDE_CODE_SESSION", "")
+    # Session management: env var > payload > empty (will use run_id later)
+    session_id = os.environ.get("CLAUDE_CODE_SESSION", "") or payload.get("session_id", "")
+    restored_session = False
 
-    # Restore session from S3 if requested
+    # Restore session from S3 if we have a session_id
     if session_id and config.sessions_bucket:
         s3_sync_down(config.sessions_bucket, session_id)
+        restored_session = True
 
     # Load program
     program = repo.get_program(program_name)
@@ -113,6 +115,10 @@ def main() -> None:
 
         if program.tools:
             cmd.extend(["--allowedTools", ",".join(program.tools)])
+
+        # Resume existing session or start fresh
+        if restored_session:
+            cmd.append("--resume")
 
         # Build prompt with event context
         prompt = program.content

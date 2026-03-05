@@ -95,6 +95,9 @@ def handler(event: dict, context) -> dict:
                 logger.info(f"Skipping cascade: {trigger.program_name} triggered by itself")
                 continue
 
+            # Use program name as stable session key so programs retain context
+            session_id = f"program-{trigger.program_name}"
+
             # Build executor payload
             payload = json.dumps(
                 {
@@ -109,6 +112,7 @@ def handler(event: dict, context) -> dict:
                         "source": brain_event.source,
                         "payload": brain_event.payload,
                     },
+                    "session_id": session_id,
                 }
             )
 
@@ -140,9 +144,15 @@ def _dispatch_lambda(config, lambda_client, payload: str, program_name: str):
     logger.info(f"Dispatched to Lambda: {program_name}")
 
 
-def _dispatch_ecs(config, ecs_client, payload: str, program_name: str):
+def _dispatch_ecs(config, ecs_client, payload: str, program_name: str, session_id: str = ""):
     """Run executor as ECS Fargate task for heavy compute."""
     subnets = [s.strip() for s in config.ecs_subnets.split(",") if s.strip()]
+
+    env_overrides = [
+        {"name": "EXECUTOR_PAYLOAD", "value": payload},
+    ]
+    if session_id:
+        env_overrides.append({"name": "CLAUDE_CODE_SESSION", "value": session_id})
 
     ecs_client.run_task(
         cluster=config.ecs_cluster_arn,
@@ -159,9 +169,9 @@ def _dispatch_ecs(config, ecs_client, payload: str, program_name: str):
             "containerOverrides": [
                 {
                     "name": "Executor",
-                    "environment": [{"name": "EXECUTOR_PAYLOAD", "value": payload}],
+                    "environment": env_overrides,
                 }
             ]
         },
     )
-    logger.info(f"Dispatched to ECS: {program_name}")
+    logger.info(f"Dispatched to ECS: {program_name} (session={session_id})")
