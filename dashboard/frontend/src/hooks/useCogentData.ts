@@ -1,8 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import * as api from "@/lib/api";
-import type { DashboardData, TimeRange } from "@/lib/types";
+import type {
+  DashboardData,
+  TimeRange,
+  Session,
+  DashboardEvent,
+  Trigger,
+  Alert,
+  Task,
+  StatusResponse,
+} from "@/lib/types";
+import { useWebSocket } from "./useWebSocket";
 
 export function useCogentData(cogentName: string) {
   const [data, setData] = useState<DashboardData>({
@@ -18,6 +28,8 @@ export function useCogentData(cogentName: string) {
   });
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
+
+  const { connected, lastMessage } = useWebSocket(cogentName);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -46,9 +58,105 @@ export function useCogentData(cogentName: string) {
     setLoading(false);
   }, [cogentName, timeRange]);
 
+  // Initial fetch
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { data, loading, refresh, timeRange, setTimeRange };
+  // Merge real-time WebSocket messages into data
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const { type, data: payload } = lastMessage;
+
+    setData((prev) => {
+      switch (type) {
+        case "event":
+          return {
+            ...prev,
+            events: [payload as DashboardEvent, ...prev.events],
+          };
+
+        case "session_update": {
+          const session = payload as Session;
+          const idx = prev.sessions.findIndex((s) => s.id === session.id);
+          if (idx >= 0) {
+            const updated = [...prev.sessions];
+            updated[idx] = session;
+            return { ...prev, sessions: updated };
+          }
+          return { ...prev, sessions: [session, ...prev.sessions] };
+        }
+
+        case "trigger_fired": {
+          const fired = payload as Trigger;
+          const idx = prev.triggers.findIndex((t) => t.id === fired.id);
+          if (idx >= 0) {
+            const updated = [...prev.triggers];
+            updated[idx] = { ...updated[idx], ...fired };
+            return { ...prev, triggers: updated };
+          }
+          return prev;
+        }
+
+        case "alert":
+          return {
+            ...prev,
+            alerts: [payload as Alert, ...prev.alerts],
+          };
+
+        case "status":
+          return {
+            ...prev,
+            status: payload as StatusResponse,
+          };
+
+        case "task_update": {
+          const task = payload as Task;
+          const idx = prev.tasks.findIndex((t) => t.id === task.id);
+          if (idx >= 0) {
+            const updated = [...prev.tasks];
+            updated[idx] = task;
+            return { ...prev, tasks: updated };
+          }
+          return { ...prev, tasks: [task, ...prev.tasks] };
+        }
+
+        default:
+          return prev;
+      }
+    });
+  }, [lastMessage]);
+
+  // Fallback polling: if WS not connected after 5s, poll every 30s
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!connectedRef.current) {
+        pollingRef.current = setInterval(() => {
+          if (!connectedRef.current) {
+            refresh();
+          }
+        }, 30000);
+      }
+    }, 5000);
+
+    return () => {
+      clearTimeout(timeout);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [refresh]);
+
+  // Stop polling once WS connects
+  useEffect(() => {
+    if (connected && pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, [connected]);
+
+  return { data, loading, refresh, timeRange, setTimeRange, connected };
 }
