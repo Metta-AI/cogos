@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Sidebar, type TabId, VALID_TABS } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { useCogentData } from "@/hooks/useCogentData";
@@ -38,6 +38,14 @@ export default function DashboardPage() {
   const cogentName = "cogent";
   const { data, loading, error, refresh, timeRange, setTimeRange, connected } = useCogentData(cogentName);
 
+  const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
+  const stuckTaskCount = useMemo(() => {
+    return data.tasks.filter(
+      (t) => t.status === "running" && t.updated_at &&
+        Date.now() - new Date(t.updated_at).getTime() > STUCK_THRESHOLD_MS,
+    ).length;
+  }, [data.tasks]);
+
   const statusText = loading && !data.status
     ? "connecting..."
     : error
@@ -52,7 +60,7 @@ export default function DashboardPage() {
         activeTab={activeTab}
         onTabChange={handleTabChange}
         alertCount={data.status?.unresolved_alerts}
-        triggerCount={data.status?.trigger_count}
+        stuckTaskCount={stuckTaskCount}
       />
       <Header
         cogentName={cogentName}

@@ -114,10 +114,10 @@ interface SidebarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   alertCount?: number;
-  triggerCount?: number;
+  stuckTaskCount?: number;
 }
 
-export function Sidebar({ activeTab, onTabChange, alertCount, triggerCount }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, alertCount, stuckTaskCount }: SidebarProps) {
   return (
     <nav
       className="fixed top-0 left-0 bottom-0 flex flex-col items-center py-2 z-50"
@@ -131,7 +131,7 @@ export function Sidebar({ activeTab, onTabChange, alertCount, triggerCount }: Si
         const isActive = activeTab === tab.id;
         const badgeCount =
           tab.id === "alerts" ? alertCount :
-          tab.id === "triggers" ? triggerCount :
+          tab.id === "tasks" ? stuckTaskCount :
           undefined;
 
         return (
@@ -185,7 +185,7 @@ export function Sidebar({ activeTab, onTabChange, alertCount, triggerCount }: Si
                   height: "14px",
                   fontSize: "8px",
                   padding: "0 3px",
-                  background: tab.id === "alerts" ? "var(--error)" : "var(--warning)",
+                  background: tab.id === "alerts" ? "var(--error)" : tab.id === "tasks" ? "var(--warning)" : "var(--warning)",
                 }}
               >
                 {badgeCount > 99 ? "99+" : badgeCount}

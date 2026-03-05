@@ -67,7 +67,7 @@ cd dashboard/frontend && npm run dev
 ### Quick Start
 
 ```bash
-agent-browser open http://localhost:5174 && agent-browser wait --load networkidle && agent-browser snapshot -i
+npx agent-browser open http://localhost:5174 && npx agent-browser wait --load networkidle && npx agent-browser snapshot -i
 ```
 
 ### Dashboard Panels to Test
@@ -91,24 +91,24 @@ The dashboard has 10 tabs accessible via the sidebar:
 
 ```bash
 # Open dashboard and orient
-agent-browser open http://localhost:5174
-agent-browser wait --load networkidle
-agent-browser snapshot -i
+npx agent-browser open http://localhost:5174
+npx agent-browser wait --load networkidle
+npx agent-browser snapshot -i
 
 # Click through each sidebar tab
-agent-browser click @e{N}  # Use ref from snapshot for sidebar tab
-agent-browser wait --load networkidle
-agent-browser snapshot -i
+npx agent-browser click @e{N}  # Use ref from snapshot for sidebar tab
+npx agent-browser wait --load networkidle
+npx agent-browser snapshot -i
 
 # Test interactive elements (expand rows, toggle switches, etc.)
-agent-browser click @e{N}
-agent-browser snapshot -i
+npx agent-browser click @e{N}
+npx agent-browser snapshot -i
 
 # Check for console errors
-agent-browser console
+npx agent-browser console
 
 # Take annotated screenshots for visual review
-agent-browser screenshot --annotate ./test-output/dashboard.png
+npx agent-browser screenshot --annotate ./test-output/dashboard.png
 ```
 
 ### Dogfooding
