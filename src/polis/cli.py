@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 
 import click
 from rich.console import Console
@@ -227,6 +228,204 @@ def secrets_rotate(path: str):
 @polis.group()
 def cogents():
     """Manage cogents in the polis."""
+
+
+HOSTED_ZONE_ID = "Z059653727QDSCT3DI6DS"
+
+
+def _cogent_subdomain(name: str, domain: str) -> str:
+    """Convert cogent name to subdomain (dots become dashes)."""
+    return f"{name.replace('.', '-')}.{domain}"
+
+
+@cogents.command("create")
+@click.argument("name")
+@click.pass_context
+def cogents_create(ctx: click.Context, name: str):
+    """Register a cogent's identity in the polis (domain, certificate, secrets)."""
+    config: PolisConfig = ctx.obj["config"]
+    session, _ = get_polis_session()
+
+    subdomain = _cogent_subdomain(name, config.domain)
+    console.print(f"Creating cogent identity: [bold]{name}[/bold]")
+
+    # 1. Route53 — placeholder A record for the subdomain
+    console.print(f"  Registering domain: [cyan]{subdomain}[/cyan]")
+    r53 = session.client("route53")
+    r53.change_resource_record_sets(
+        HostedZoneId=HOSTED_ZONE_ID,
+        ChangeBatch={
+            "Comment": f"Register cogent {name}",
+            "Changes": [
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": subdomain,
+                        "Type": "A",
+                        "TTL": 300,
+                        "ResourceRecords": [{"Value": "127.0.0.1"}],
+                    },
+                }
+            ],
+        },
+    )
+    console.print("  [green]Domain registered[/green]")
+
+    # 2. ACM — request certificate with DNS validation
+    console.print(f"  Requesting ACM certificate for [cyan]{subdomain}[/cyan]")
+    acm = session.client("acm")
+
+    # Check for existing certificate first
+    cert_arn = None
+    paginator = acm.get_paginator("list_certificates")
+    for page in paginator.paginate(CertificateStatuses=["PENDING_VALIDATION", "ISSUED"]):
+        for cert in page["CertificateSummaryList"]:
+            if cert["DomainName"] == subdomain:
+                cert_arn = cert["CertificateArn"]
+                console.print(f"  Certificate already exists: {cert_arn}")
+                break
+        if cert_arn:
+            break
+
+    if not cert_arn:
+        resp = acm.request_certificate(
+            DomainName=subdomain,
+            ValidationMethod="DNS",
+            Tags=[
+                {"Key": "cogent", "Value": name},
+                {"Key": "managed-by", "Value": "polis"},
+            ],
+        )
+        cert_arn = resp["CertificateArn"]
+        console.print(f"  Certificate requested: {cert_arn}")
+
+        # Wait for DNS validation records to appear
+        console.print("  Waiting for validation records...")
+        for _ in range(30):
+            desc = acm.describe_certificate(CertificateArn=cert_arn)
+            options = desc["Certificate"].get("DomainValidationOptions", [])
+            if options and "ResourceRecord" in options[0]:
+                break
+            time.sleep(2)
+        else:
+            console.print("[yellow]  Timed out waiting for validation records[/yellow]")
+
+        # Create DNS validation record in Route53
+        desc = acm.describe_certificate(CertificateArn=cert_arn)
+        for opt in desc["Certificate"].get("DomainValidationOptions", []):
+            rr = opt.get("ResourceRecord")
+            if rr:
+                console.print(f"  Creating validation record: {rr['Name']}")
+                r53.change_resource_record_sets(
+                    HostedZoneId=HOSTED_ZONE_ID,
+                    ChangeBatch={
+                        "Comment": f"ACM validation for {subdomain}",
+                        "Changes": [
+                            {
+                                "Action": "UPSERT",
+                                "ResourceRecordSet": {
+                                    "Name": rr["Name"],
+                                    "Type": rr["Type"],
+                                    "TTL": 300,
+                                    "ResourceRecords": [{"Value": rr["Value"]}],
+                                },
+                            }
+                        ],
+                    },
+                )
+                console.print("  [green]Validation record created[/green]")
+
+    # 3. Secrets — create identity secret for the cogent
+    console.print("  Creating identity secret...")
+    store = SecretStore(session=session)
+    identity_path = f"cogent/{name}/identity"
+    try:
+        store.get(identity_path, use_cache=False)
+        console.print(f"  Secret already exists: {identity_path}")
+    except Exception:
+        store.put(
+            identity_path,
+            {
+                "cogent_name": name,
+                "domain": subdomain,
+                "certificate_arn": cert_arn,
+                "created_by": "polis",
+            },
+        )
+        console.print(f"  [green]Secret created: {identity_path}[/green]")
+
+    # Summary
+    console.print()
+    table = Table(title=f"Cogent Identity: {name}")
+    table.add_column("Resource", style="bold")
+    table.add_column("Value")
+    table.add_row("Domain", subdomain)
+    table.add_row("Certificate", cert_arn)
+    table.add_row("Identity Secret", identity_path)
+    console.print(table)
+    console.print(f"\n[green]Cogent {name} registered in polis.[/green]")
+
+
+@cogents.command("destroy")
+@click.argument("name")
+@click.confirmation_option(prompt="Are you sure you want to destroy this cogent's identity?")
+@click.pass_context
+def cogents_destroy(ctx: click.Context, name: str):
+    """Remove a cogent's identity from the polis (domain, certificate, secrets)."""
+    config: PolisConfig = ctx.obj["config"]
+    session, _ = get_polis_session()
+
+    subdomain = _cogent_subdomain(name, config.domain)
+    console.print(f"Destroying cogent identity: [bold]{name}[/bold]")
+
+    # 1. Delete Route53 records
+    r53 = session.client("route53")
+    try:
+        resp = r53.list_resource_record_sets(
+            HostedZoneId=HOSTED_ZONE_ID,
+            StartRecordName=subdomain,
+            MaxItems="10",
+        )
+        changes = []
+        for rrs in resp["ResourceRecordSets"]:
+            if rrs["Name"].rstrip(".") == subdomain or rrs["Name"].rstrip(".").startswith(
+                f"_"
+            ):
+                # Only delete A records for the subdomain and CNAME validation records
+                if rrs["Type"] in ("A", "CNAME") and subdomain in rrs["Name"]:
+                    changes.append({"Action": "DELETE", "ResourceRecordSet": rrs})
+
+        if changes:
+            r53.change_resource_record_sets(
+                HostedZoneId=HOSTED_ZONE_ID,
+                ChangeBatch={"Comment": f"Remove cogent {name}", "Changes": changes},
+            )
+            console.print(f"  [green]Deleted {len(changes)} DNS record(s)[/green]")
+        else:
+            console.print("  No DNS records found")
+    except Exception as e:
+        console.print(f"  [yellow]DNS cleanup: {e}[/yellow]")
+
+    # 2. Delete ACM certificate
+    acm = session.client("acm")
+    try:
+        paginator = acm.get_paginator("list_certificates")
+        for page in paginator.paginate():
+            for cert in page["CertificateSummaryList"]:
+                if cert["DomainName"] == subdomain:
+                    acm.delete_certificate(CertificateArn=cert["CertificateArn"])
+                    console.print(f"  [green]Deleted certificate: {cert['CertificateArn']}[/green]")
+    except Exception as e:
+        console.print(f"  [yellow]Certificate cleanup: {e}[/yellow]")
+
+    # 3. Delete all secrets under cogent/{name}/
+    store = SecretStore(session=session)
+    secrets_list = store.list(f"cogent/{name}/")
+    for s in secrets_list:
+        store.delete(s)
+        console.print(f"  [green]Deleted secret: {s}[/green]")
+
+    console.print(f"\n[green]Cogent {name} removed from polis.[/green]")
 
 
 @cogents.command("list")
