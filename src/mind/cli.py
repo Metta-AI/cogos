@@ -26,7 +26,7 @@ from brain.db.models import (
     TriggerConfig,
 )
 from brain.db.repository import Repository
-from mind.program import load_program, load_programs_dir, sync_program, validate_tools
+from mind.program import load_program, load_programs_dir, sync_program, validate_bundle
 
 
 def _repo() -> Repository:
@@ -227,7 +227,7 @@ def program_update(ctx: click.Context, path: str, dry_run: bool) -> None:
     if dry_run:
         all_issues: list = []
         for b in bundles:
-            tool_issues = validate_tools(b)
+            tool_issues = validate_bundle(b)
             all_issues.extend(tool_issues)
             trigs = f" +{len(b.triggers)} triggers" if b.triggers else ""
             click.echo(f"  {b.program.name} ({b.program.program_type.value}){trigs}")
@@ -462,8 +462,11 @@ def task_enable(ctx: click.Context, task_id: str) -> None:
 @click.option("--force", is_flag=True, default=False, help="Skip validation")
 @click.pass_context
 def task_load(ctx: click.Context, tasks_dir: str, update_priority: bool, force: bool) -> None:
-    """Load tasks from a directory of .md, .yaml, .yml, and .py files."""
-    from mind.task_loader import load_tasks_from_dir
+    """Load tasks from a directory of .md, .yaml, .yml, and .py files.
+
+    Validates programs exist, tools are valid, and memory keys are present.
+    """
+    from mind.task_loader import load_tasks_from_dir, validate_task
 
     tasks_path = Path(tasks_dir)
     loaded_tasks = load_tasks_from_dir(tasks_path)
@@ -476,18 +479,14 @@ def task_load(ctx: click.Context, tasks_dir: str, update_priority: bool, force: 
 
     # Validation (unless --force)
     if not force:
-        errors: list[str] = []
+        all_issues = []
         for t in loaded_tasks:
-            prog = repo.get_program(t.program_name)
-            if not prog:
-                errors.append(f"Task '{t.name}': program '{t.program_name}' not found")
-            for key in t.memory_keys:
-                mem = repo.query_memory(name=key, limit=1)
-                if not mem:
-                    errors.append(f"Task '{t.name}': memory key '{key}' not found")
+            all_issues.extend(validate_task(t, repo))
+        errors = [i for i in all_issues if i.level == "error"]
+        for issue in all_issues:
+            prefix = "ERROR" if issue.level == "error" else "WARN"
+            click.echo(f"  [{prefix}] {issue.name}: {issue.message}", err=True)
         if errors:
-            for err in errors:
-                click.echo(f"ERROR: {err}", err=True)
             sys.exit(1)
 
     created = 0
@@ -496,7 +495,6 @@ def task_load(ctx: click.Context, tasks_dir: str, update_priority: bool, force: 
     for t in loaded_tasks:
         existing = repo.get_task_by_name(t.name)
         if existing:
-            # Preserve status, creator, parent_task_id from existing
             t.status = existing.status
             t.creator = existing.creator
             t.parent_task_id = existing.parent_task_id
