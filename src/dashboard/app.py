@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from dashboard.config import settings
+from dashboard.database import close_pool, get_pool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await get_pool()
+    yield
+    await close_pool()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Cogent Dashboard API", version="0.1.0")
+    app = FastAPI(title="Cogent Dashboard API", version="0.1.0", lifespan=lifespan)
 
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(
