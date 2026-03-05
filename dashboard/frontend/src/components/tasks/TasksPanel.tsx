@@ -189,6 +189,8 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<Partial<Task>>({ name: "", description: "", content: "", priority: 0.0, program_name: "do-content" });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
+  const [editingPriorityValue, setEditingPriorityValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
@@ -391,6 +393,15 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
     await api.updateTask(cogentName, taskId, { status: "runnable" });
     onRefresh();
   }, [cogentName, onRefresh]);
+
+  const handlePrioritySave = useCallback(async (taskId: string) => {
+    const val = parseFloat(editingPriorityValue);
+    if (!isNaN(val)) {
+      await api.updateTask(cogentName, taskId, { priority: val });
+      onRefresh();
+    }
+    setEditingPriorityId(null);
+  }, [cogentName, onRefresh, editingPriorityValue]);
 
   const handleRunCopy = useCallback(async (e: React.MouseEvent, task: Task) => {
     e.stopPropagation();
@@ -628,7 +639,48 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs }: T
               ))}
             </span>
           )}
-          <span className="font-mono text-[11px] text-[var(--text-muted)]">p{(task.priority ?? 0).toFixed(2)}</span>
+          {editingPriorityId === task.id ? (
+            <input
+              type="number"
+              step="0.01"
+              autoFocus
+              value={editingPriorityValue}
+              onChange={(e) => setEditingPriorityValue(e.target.value)}
+              onBlur={() => handlePrioritySave(task.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handlePrioritySave(task.id);
+                if (e.key === "Escape") setEditingPriorityId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-[11px] text-center"
+              style={{
+                width: "48px",
+                padding: "1px 4px",
+                background: "var(--bg-base)",
+                border: "1px solid var(--accent)",
+                borderRadius: "4px",
+                color: "var(--text-primary)",
+                outline: "none",
+              }}
+            />
+          ) : (
+            <span
+              className="font-mono text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)]"
+              style={{
+                padding: "1px 4px",
+                border: "1px solid var(--border)",
+                borderRadius: "4px",
+              }}
+              title="Click to edit priority"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingPriorityId(task.id);
+                setEditingPriorityValue((task.priority ?? 0).toFixed(2));
+              }}
+            >
+              {(task.priority ?? 0).toFixed(2)}
+            </span>
+          )}
           {/* Last ran / time stuck */}
           {isStuck(task) ? (
             <span className="text-[10px] text-[var(--warning)]" title="Time stuck">
