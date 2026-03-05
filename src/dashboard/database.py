@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -48,3 +49,22 @@ async def apply_schema() -> None:
     sql = schema_path.read_text()
     pool = await get_pool()
     await pool.execute(sql)
+
+
+async def start_listener(cogent_name: str) -> None:
+    """Listen for PostgreSQL NOTIFY and broadcast to WebSocket clients."""
+    from dashboard.ws import manager
+
+    pool = await get_pool()
+    conn = await pool.acquire()
+    channel = f"cogent_{cogent_name.replace('.', '_').replace('-', '_')}_events"
+    try:
+        await conn.add_listener(channel, lambda conn, pid, channel, payload:
+            asyncio.get_event_loop().create_task(
+                manager.broadcast(cogent_name, json.loads(payload))
+            )
+        )
+        while True:
+            await asyncio.sleep(60)
+    finally:
+        await pool.release(conn)

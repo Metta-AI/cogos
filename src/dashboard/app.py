@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from dashboard.config import settings
@@ -55,6 +55,17 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict:
         return {"ok": True}
+
+    from dashboard.ws import manager
+
+    @app.websocket("/ws/cogents/{name}")
+    async def ws_endpoint(ws: WebSocket, name: str):
+        await manager.connect(name, ws)
+        try:
+            while True:
+                await ws.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(name, ws)
 
     return app
 
