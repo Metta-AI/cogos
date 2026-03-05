@@ -43,7 +43,6 @@ class ComputeConstruct(Construct):
             "DB_SECRET_ARN": db_secret_arn,
             "DB_NAME": "cogent",
             "EVENT_BUS_NAME": event_bus_name,
-            "AWS_REGION": config.region,
         }
 
         # Lambda execution role

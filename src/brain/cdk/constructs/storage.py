@@ -29,11 +29,12 @@ class StorageConstruct(Construct):
             "Efs",
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[security_group],
             removal_policy=RemovalPolicy.RETAIN,
             performance_mode=efs.PerformanceMode.GENERAL_PURPOSE,
             throughput_mode=efs.ThroughputMode.ELASTIC,
         )
+        # Allow ECS security group to mount EFS
+        self.filesystem.connections.allow_default_port_from(security_group)
 
         self.access_point = self.filesystem.add_access_point(
             "CogentAp",
