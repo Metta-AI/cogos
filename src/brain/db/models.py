@@ -33,7 +33,7 @@ class TaskStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class ExecutionStatus(str, enum.Enum):
+class RunStatus(str, enum.Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -71,6 +71,11 @@ class TriggerType(str, enum.Enum):
     CRON = "cron"
 
 
+class ComputeTier(str, enum.Enum):
+    LAMBDA = "lambda"
+    ECS = "ecs"
+
+
 # --- Core Models ---
 
 
@@ -87,10 +92,10 @@ class MemoryRecord(BaseModel):
     updated_at: datetime | None = None
 
 
-class Skill(BaseModel):
+class Program(BaseModel):
     cogent_id: str
     name: str
-    skill_type: str = "markdown"
+    program_type: str = "markdown"
     source: str = "golden"
     description: str = ""
     content: str = ""
@@ -99,6 +104,8 @@ class Skill(BaseModel):
     sla: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     version: int = 1
+    compute_tier: ComputeTier = ComputeTier.LAMBDA
+    tools: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -147,26 +154,27 @@ class Conversation(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class Execution(BaseModel):
+class Run(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     cogent_id: str
-    skill_name: str
+    program_name: str
     trigger_id: UUID | None = None
     conversation_id: UUID | None = None
-    status: ExecutionStatus = ExecutionStatus.RUNNING
+    status: RunStatus = RunStatus.RUNNING
     tokens_input: int = 0
     tokens_output: int = 0
     cost_usd: Decimal = Decimal("0")
     duration_ms: int | None = None
     events_emitted: list[str] = Field(default_factory=list)
     error: str | None = None
+    model_version: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
 
 class Trace(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    execution_id: UUID
+    run_id: UUID
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     memory_ops: list[dict[str, Any]] = Field(default_factory=list)
     model_version: str | None = None
@@ -233,7 +241,7 @@ class Trigger(BaseModel):
     trigger_type: TriggerType = TriggerType.EVENT
     event_pattern: str = ""
     cron_expression: str = ""
-    skill_name: str = ""
+    program_name: str = ""
     priority: int = 10
     config: TriggerConfig = Field(default_factory=TriggerConfig)
     enabled: bool = True
