@@ -12,16 +12,14 @@ interface EventsPanelProps {
   cogentName: string;
   triggers: Trigger[];
   timeRange: TimeRange;
-  onNavigate?: (tab: string) => void;
+  onTabChange?: (tab: string) => void;
 }
 
-const PROGRAM_COLOR = "#60a5fa"; // blue-400
-const PROGRAM_BG = "rgba(96, 165, 250, 0.1)";
-
-export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigate }: EventsPanelProps) {
+export function EventsPanel({ events, cogentName, triggers, timeRange, onTabChange }: EventsPanelProps) {
   const [expandedId, setExpandedId] = useState<string | number | null>(null);
   const [treeId, setTreeId] = useState<string | number | null>(null);
 
+  // Filter events by time range
   const filteredEvents = useMemo(() => {
     const cutoff = Date.now() - timeRangeToMs(timeRange);
     return events.filter((e) => {
@@ -30,6 +28,7 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
     });
   }, [events, timeRange]);
 
+  // Build trigger lookup: event_pattern -> program_name[]
   const triggerMap = useMemo(() => {
     const map: Record<string, string[]> = {};
     for (const t of triggers) {
@@ -45,6 +44,7 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
     if (!eventType) return [];
     const programs: string[] = [];
     for (const [pattern, progs] of Object.entries(triggerMap)) {
+      // Simple glob match: pattern may use * as wildcard
       const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
       if (regex.test(eventType)) {
         programs.push(...progs);
@@ -58,25 +58,6 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
     setTreeId(null);
   }, []);
 
-  const goToPrograms = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onNavigate) onNavigate("programs");
-  }, [onNavigate]);
-
-  // Compute max widths for column alignment
-  const colWidths = useMemo(() => {
-    let maxType = 0;
-    let maxSource = 0;
-    for (const evt of filteredEvents) {
-      if (evt.event_type) maxType = Math.max(maxType, evt.event_type.length);
-      if (evt.source) maxSource = Math.max(maxSource, evt.source.length);
-    }
-    return {
-      type: Math.min(maxType * 7 + 16, 280),
-      source: Math.min(maxSource * 7 + 8, 180),
-    };
-  }, [filteredEvents]);
-
   return (
     <div>
       <div className="text-[var(--text-muted)] text-xs mb-3">
@@ -88,6 +69,17 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
       )}
 
       <div className="rounded-md overflow-hidden" style={{ border: filteredEvents.length ? "1px solid var(--border)" : "none" }}>
+        {filteredEvents.length > 0 && (
+          <div
+            className="grid items-center px-3 py-1.5 text-[10px] uppercase tracking-wide font-medium text-[var(--text-muted)]"
+            style={{ gridTemplateColumns: "minmax(120px, 1fr) minmax(100px, 2fr) minmax(80px, 1fr) 60px", background: "var(--bg-deep)", borderBottom: "1px solid var(--border)" }}
+          >
+            <span>Event</span>
+            <span>Content</span>
+            <span>Triggers</span>
+            <span className="text-right">Time</span>
+          </div>
+        )}
         {filteredEvents.map((evt) => {
           const isExpanded = expandedId === evt.id;
           const matchedPrograms = getMatchingPrograms(evt.event_type);
@@ -95,8 +87,9 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
           return (
             <div key={evt.id}>
               <div
-                className="flex items-center gap-0 px-3 py-2 cursor-pointer transition-colors"
+                className="grid items-center px-3 py-2 cursor-pointer transition-colors"
                 style={{
+                  gridTemplateColumns: "minmax(120px, 1fr) minmax(100px, 2fr) minmax(80px, 1fr) 60px",
                   background: isExpanded ? "var(--bg-hover)" : "var(--bg-surface)",
                   borderBottom: "1px solid var(--border)",
                 }}
@@ -108,41 +101,23 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
                   if (!isExpanded) e.currentTarget.style.background = "var(--bg-surface)";
                 }}
               >
-                {/* Event type column */}
-                <span
-                  className="shrink-0 truncate"
-                  style={{ width: colWidths.type }}
-                >
-                  <Badge variant="accent">{evt.event_type ?? "event"}</Badge>
+                <span><Badge variant="accent">{evt.event_type ?? "event"}</Badge></span>
+                <span className="text-[11px] text-[var(--text-secondary)] truncate">
+                  {evt.source ?? (evt.payload ? JSON.stringify(evt.payload).slice(0, 60) : "--")}
                 </span>
-
-                {/* Source column */}
-                <span
-                  className="shrink-0 text-[11px] text-[var(--text-secondary)] truncate"
-                  style={{ width: colWidths.source }}
-                >
-                  {evt.source ?? ""}
-                </span>
-
-                {/* Programs column */}
-                <span className="flex gap-1 min-w-0 flex-1">
+                <span className="flex gap-1 flex-wrap">
                   {matchedPrograms.map((p) => (
                     <span
                       key={p}
-                      className="font-mono text-[10px] px-1.5 py-0.5 rounded cursor-pointer hover:underline"
-                      style={{ color: PROGRAM_COLOR, background: PROGRAM_BG }}
-                      onClick={goToPrograms}
-                      title={`Go to programs → ${p}`}
+                      className="font-mono text-[10px] px-1.5 py-0.5 rounded text-[var(--info)] cursor-pointer hover:underline"
+                      style={{ background: "rgba(59,130,246,0.1)" }}
+                      onClick={(e) => { e.stopPropagation(); onTabChange?.("programs"); }}
                     >
                       {p}
                     </span>
                   ))}
                 </span>
-
-                {/* Time column */}
-                <span className="shrink-0 text-[10px] text-[var(--text-muted)] ml-2" style={{ minWidth: "60px", textAlign: "right" }}>
-                  {fmtRelative(evt.created_at)}
-                </span>
+                <span className="text-[10px] text-[var(--text-muted)] text-right">{fmtRelative(evt.created_at)}</span>
               </div>
 
               {isExpanded && (
@@ -151,6 +126,7 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
                   style={{ background: "var(--bg-deep)", borderBottom: "1px solid var(--border)" }}
                 >
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                    <span className="text-[var(--text-muted)]">id: <span className="font-mono text-[var(--text-secondary)]">{String(evt.id)}</span></span>
                     <span className="text-[var(--text-muted)]">type: <span className="font-mono text-[var(--text-secondary)]">{evt.event_type ?? "--"}</span></span>
                     {evt.source && <span className="text-[var(--text-muted)]">source: <span className="text-[var(--text-secondary)]">{evt.source}</span></span>}
                     {evt.parent_event_id != null && <span className="text-[var(--text-muted)]">parent: <span className="font-mono text-[var(--text-secondary)]">{evt.parent_event_id}</span></span>}
@@ -163,9 +139,9 @@ export function EventsPanel({ events, cogentName, triggers, timeRange, onNavigat
                       {matchedPrograms.map((p) => (
                         <span
                           key={p}
-                          className="font-mono px-1.5 py-0.5 rounded cursor-pointer hover:underline"
-                          style={{ color: PROGRAM_COLOR, background: PROGRAM_BG }}
-                          onClick={goToPrograms}
+                          className="font-mono px-1.5 py-0.5 rounded text-[var(--info)] cursor-pointer hover:underline"
+                          style={{ background: "rgba(59,130,246,0.1)" }}
+                          onClick={(e) => { e.stopPropagation(); onTabChange?.("programs"); }}
                         >
                           {p}
                         </span>

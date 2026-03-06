@@ -12,3 +12,5 @@ skills
 .claude
 node_modules
 *.egg-info
+cdk.out
+cdk.out.*
