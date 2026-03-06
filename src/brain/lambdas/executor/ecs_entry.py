@@ -96,9 +96,15 @@ def main() -> None:
     clear_context = task_data.get("clear_context", False)
 
     # Create run record
+    trigger_id_raw = trigger_data.get("id")
+    try:
+        trigger_id = UUID(trigger_id_raw) if trigger_id_raw else None
+    except (ValueError, AttributeError):
+        trigger_id = None
+
     run = Run(
         program_name=program_name,
-        trigger_id=trigger_data.get("id"),
+        trigger_id=trigger_id,
         status=RunStatus.RUNNING,
         model_version="claude-code",
     )
@@ -128,15 +134,15 @@ def main() -> None:
         # Build Claude Code CLI command
         cmd = ["claude"]
 
-        model = program.model_version or "sonnet"
+        model = program.metadata.get("model_version") or "sonnet"
         cmd.extend(["--model", model])
 
         if all_tools:
             cmd.extend(["--allowedTools", ",".join(all_tools)])
 
-        # Resume existing session or start fresh
-        if restored_session:
-            cmd.append("--resume")
+        # Resume existing session if we have data from S3
+        if restored_session and os.path.isdir(CLAUDE_DIR) and os.listdir(CLAUDE_DIR):
+            cmd.extend(["--resume", session_id])
 
         # Build prompt: program content + task content + event context
         prompt = program.content
@@ -145,7 +151,7 @@ def main() -> None:
         if event_data.get("payload"):
             prompt += f"\n\nEvent context:\n{json.dumps(event_data['payload'], indent=2)}"
 
-        cmd.extend(["--prompt", prompt])
+        cmd.extend(["--print", prompt])
 
         # Set working directory
         os.makedirs(WORKSPACE_DIR, exist_ok=True)

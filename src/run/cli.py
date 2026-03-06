@@ -102,7 +102,7 @@ def _launch_shell_task(name: str) -> None:
     cmd = [
         "cogent", name,
         "mind", "task", "create", f"shell-{safe_name}",
-        "--program", "vsm/s1/do-content",
+        "--program", "hello",
         "--content", "Interactive shell session",
         "--runner", "ecs",
         "--run",

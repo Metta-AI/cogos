@@ -399,6 +399,15 @@ def update_stack(ctx: click.Context, profile: str):
             cert_arn = cert["CertificateArn"]
             break
 
+    # Look up ECR repo URI
+    ecr_repo_uri = ""
+    try:
+        ecr_client = session.client("ecr")
+        repos = ecr_client.describe_repositories(repositoryNames=["cogent"])["repositories"]
+        ecr_repo_uri = repos[0]["repositoryUri"]
+    except Exception:
+        click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
+
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [
         "cdk",
@@ -406,6 +415,7 @@ def update_stack(ctx: click.Context, profile: str):
         f"cogent-{safe_name}-brain",
         "-c", f"cogent_name={name}",
         "-c", f"certificate_arn={cert_arn}",
+        "-c", f"ecr_repo_uri={ecr_repo_uri}",
         "--app", "python -m brain.cdk.app",
         "--require-approval", "never",
     ]

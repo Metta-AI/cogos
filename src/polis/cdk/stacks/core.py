@@ -270,8 +270,13 @@ class PolisStack(cdk.Stack):
             iam.PolicyStatement(
                 actions=[
                     "lambda:GetFunction",
+                    "lambda:InvokeFunction",
                     "lambda:ListFunctions",
                     "lambda:UpdateFunctionCode",
+                    "logs:DescribeLogGroups",
+                    "logs:DescribeLogStreams",
+                    "logs:GetLogEvents",
+                    "logs:FilterLogEvents",
                 ],
                 resources=["*"],
             )
@@ -283,6 +288,7 @@ class PolisStack(cdk.Stack):
                     "events:ListEventBuses",
                     "events:ListRules",
                     "events:DescribeRule",
+                    "events:PutEvents",
                 ],
                 resources=["*"],
             )

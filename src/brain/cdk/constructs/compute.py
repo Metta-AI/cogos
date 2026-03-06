@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 from aws_cdk import Duration
+from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -198,6 +199,15 @@ class ComputeConstruct(Construct):
         for stmt in data_api_statements:
             task_role.add_to_policy(stmt)
         sessions_bucket.grant_read_write(task_role)
+        task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                ],
+                resources=["*"],
+            )
+        )
 
         # SSM permissions for ECS Exec
         task_role.add_to_policy(
@@ -251,5 +261,35 @@ class ComputeConstruct(Construct):
             "Executor",
             image=image,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="executor"),
-            environment=env,
+            environment={
+                **env,
+                "CLAUDE_CODE_USE_BEDROCK": "1",
+            },
+        )
+
+        # Look up default VPC for ECS task networking
+        vpc = ec2.Vpc.from_lookup(self, "EcsVpc", is_default=True)
+        ecs_sg = ec2.SecurityGroup(
+            self, "EcsTaskSG",
+            vpc=vpc,
+            description=f"cogent-{safe_name} ECS executor tasks",
+            allow_all_outbound=True,
+        )
+        public_subnets = vpc.select_subnets(subnet_type=ec2.SubnetType.PUBLIC)
+
+        # Wire ECS config into orchestrator so it can launch tasks
+        polis_cluster = ecs.Cluster.from_cluster_attributes(
+            self, "PolisCluster", cluster_name="cogent-polis", vpc=vpc, security_groups=[],
+        )
+        self.orchestrator.add_environment(
+            "ECS_CLUSTER_ARN", polis_cluster.cluster_arn
+        )
+        self.orchestrator.add_environment(
+            "ECS_TASK_DEFINITION", self.task_definition.task_definition_arn
+        )
+        self.orchestrator.add_environment(
+            "ECS_SUBNETS", ",".join(s.subnet_id for s in public_subnets.subnets)
+        )
+        self.orchestrator.add_environment(
+            "ECS_SECURITY_GROUP", ecs_sg.security_group_id
         )
