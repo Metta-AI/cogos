@@ -81,6 +81,8 @@ class BrainStack(Stack):
 
         # Outputs
         CfnOutput(self, "ClusterArn", value=self.database.cluster_arn)
+        if self.database.secret:
+            CfnOutput(self, "SecretArn", value=self.database.secret.secret_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "EcsClusterArn", value=self.compute.ecs_cluster_arn)
         CfnOutput(self, "SessionsBucket", value=self.storage.bucket.bucket_name)

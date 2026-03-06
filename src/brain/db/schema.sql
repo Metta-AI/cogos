@@ -126,25 +126,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, priority DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks (parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_unique_name ON tasks (name);
 
--- Resource pool and budget tracking
-CREATE TABLE IF NOT EXISTS resources (
-    name          TEXT PRIMARY KEY,
-    resource_type TEXT NOT NULL CHECK (resource_type IN ('pool', 'consumable')),
-    capacity      DOUBLE PRECISION NOT NULL DEFAULT 1,
-    metadata      JSONB NOT NULL DEFAULT '{}',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS resource_usage (
-    id            BIGSERIAL PRIMARY KEY,
-    resource_name TEXT NOT NULL REFERENCES resources(name),
-    run_id        UUID NOT NULL REFERENCES runs(id),
-    amount        DOUBLE PRECISION NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_resource_usage_resource ON resource_usage (resource_name);
-CREATE INDEX IF NOT EXISTS idx_resource_usage_run ON resource_usage (run_id);
-
 -- Multi-turn conversation routing
 CREATE TABLE IF NOT EXISTS conversations (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -193,6 +174,25 @@ CREATE TABLE IF NOT EXISTS traces (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_traces_run ON traces (run_id);
+
+-- Resource pool and budget tracking
+CREATE TABLE IF NOT EXISTS resources (
+    name          TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL CHECK (resource_type IN ('pool', 'consumable')),
+    capacity      DOUBLE PRECISION NOT NULL DEFAULT 1,
+    metadata      JSONB NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS resource_usage (
+    id            BIGSERIAL PRIMARY KEY,
+    resource_name TEXT NOT NULL REFERENCES resources(name),
+    run_id        UUID NOT NULL REFERENCES runs(id),
+    amount        DOUBLE PRECISION NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_resource_usage_resource ON resource_usage (resource_name);
+CREATE INDEX IF NOT EXISTS idx_resource_usage_run ON resource_usage (run_id);
 
 -- ═══════════════════════════════════════════════════════════
 -- INFRASTRUCTURE

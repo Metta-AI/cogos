@@ -29,28 +29,13 @@ def memory():
 @memory.command("create")
 @click.pass_context
 def create_cmd(ctx: click.Context):
-    """Ensure memory schema is applied to the database."""
-    import asyncio
-
+    """Ensure memory schema is applied to the database via Data API."""
     from brain.db.migrations import apply_schema
 
     name = get_cogent_name(ctx)
     click.echo(f"Applying memory schema for cogent-{name}...")
 
-    # Build DSN from environment
-    import os
-
-    dsn = os.environ.get("DATABASE_URL", "")
-    if not dsn:
-        # Fall back to constructing from brain DB env vars
-        db_host = os.environ.get("DB_HOST", "localhost")
-        db_port = os.environ.get("DB_PORT", "5432")
-        db_name = os.environ.get("DB_NAME", "cogent")
-        db_user = os.environ.get("DB_USER", "cogent")
-        db_pass = os.environ.get("DB_PASSWORD", "cogent_dev")
-        dsn = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-
-    version = asyncio.run(apply_schema(dsn))
+    version = apply_schema()
     click.echo(f"Schema at version {version}.")
 
 

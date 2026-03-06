@@ -1,132 +1,191 @@
-"""Simple migration runner: apply schema.sql, track version."""
+"""Simple migration runner: apply schema.sql via RDS Data API, track version."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-import asyncpg
+import boto3
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 
-async def get_current_version(conn: asyncpg.Connection) -> int | None:
+def _get_data_client():
+    """Return (rds-data client, resource_arn, secret_arn, database)."""
+    client = boto3.client("rds-data", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    resource_arn = os.environ["DB_CLUSTER_ARN"]
+    secret_arn = os.environ["DB_SECRET_ARN"]
+    database = os.environ.get("DB_NAME", "cogent")
+    return client, resource_arn, secret_arn, database
+
+
+def _execute(client, resource_arn: str, secret_arn: str, database: str, sql: str) -> dict:
+    """Execute a single SQL statement via Data API."""
+    return client.execute_statement(
+        resourceArn=resource_arn,
+        secretArn=secret_arn,
+        database=database,
+        sql=sql,
+    )
+
+
+def _execute_script(client, resource_arn: str, secret_arn: str, database: str, sql: str) -> None:
+    """Execute a multi-statement SQL script in a transaction.
+
+    Uses Data API's beginTransaction/commitTransaction to ensure FK ordering
+    doesn't matter (all created atomically).
+    """
+    tx = client.begin_transaction(
+        resourceArn=resource_arn,
+        secretArn=secret_arn,
+        database=database,
+    )
+    tx_id = tx["transactionId"]
     try:
-        row = await conn.fetchrow("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
-        return row["version"] if row else None
-    except asyncpg.UndefinedTableError:
+        statements = _split_sql(sql)
+        for stmt in statements:
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            client.execute_statement(
+                resourceArn=resource_arn,
+                secretArn=secret_arn,
+                database=database,
+                sql=stmt,
+                transactionId=tx_id,
+            )
+        client.commit_transaction(
+            resourceArn=resource_arn,
+            secretArn=secret_arn,
+            transactionId=tx_id,
+        )
+    except Exception:
+        client.rollback_transaction(
+            resourceArn=resource_arn,
+            secretArn=secret_arn,
+            transactionId=tx_id,
+        )
+        raise
+
+
+def _split_sql(sql: str) -> list[str]:
+    """Split SQL script into individual statements, respecting DO $$ blocks."""
+    statements = []
+    current = []
+    in_dollar_block = False
+
+    for line in sql.split("\n"):
+        stripped = line.strip()
+
+        # Track DO $$ ... END $$; blocks
+        if not in_dollar_block and ("DO $$" in stripped or "DO $$ BEGIN" in stripped):
+            in_dollar_block = True
+            current.append(line)
+            continue
+
+        if in_dollar_block:
+            current.append(line)
+            if "END $$;" in stripped:
+                in_dollar_block = False
+                statements.append("\n".join(current))
+                current = []
+            continue
+
+        # Outside dollar blocks, split on semicolons
+        if stripped.endswith(";") and not stripped.startswith("--"):
+            current.append(line)
+            statements.append("\n".join(current))
+            current = []
+        else:
+            current.append(line)
+
+    # Any trailing content
+    remainder = "\n".join(current).strip()
+    if remainder:
+        statements.append(remainder)
+
+    return statements
+
+
+def get_current_version(client, resource_arn: str, secret_arn: str, database: str) -> int | None:
+    try:
+        resp = _execute(client, resource_arn, secret_arn, database,
+                        "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        records = resp.get("records", [])
+        if records:
+            return records[0][0]["longValue"]
         return None
+    except (client.exceptions.BadRequestException, client.exceptions.DatabaseErrorException) as e:
+        if "does not exist" in str(e).lower() or "relation" in str(e).lower():
+            return None
+        raise
 
 
 # Incremental migrations keyed by target version.
-# Add new migrations here as the schema evolves.
-MIGRATIONS: dict[int, str] = {
-    3: """
-        ALTER TABLE memory DROP COLUMN IF EXISTS type;
-        ALTER TABLE programs ADD COLUMN IF NOT EXISTS memory_keys JSONB NOT NULL DEFAULT '[]';
-        INSERT INTO schema_version (version) VALUES (3) ON CONFLICT DO NOTHING;
-    """,
-    4: """
-        -- New task columns
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS program_name TEXT NOT NULL DEFAULT 'do-content';
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT '';
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS memory_keys JSONB NOT NULL DEFAULT '[]';
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tools JSONB NOT NULL DEFAULT '[]';
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS runner TEXT CHECK (runner IN ('lambda', 'ecs')) DEFAULT NULL;
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS clear_context BOOLEAN NOT NULL DEFAULT false;
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS resources JSONB NOT NULL DEFAULT '[]';
-
-        -- Change priority from int to double precision
-        ALTER TABLE tasks ALTER COLUMN priority TYPE DOUBLE PRECISION;
-
-        -- Update status CHECK constraint
-        ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
-        ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
-            CHECK (status IN ('runnable', 'running', 'completed', 'disabled'));
-        UPDATE tasks SET status = 'runnable' WHERE status = 'pending';
-        UPDATE tasks SET status = 'runnable' WHERE status = 'failed';
-        ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'runnable';
-
-        -- Unique index on tasks.name
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_unique_name ON tasks (name);
-
-        -- Add runner column to programs
-        ALTER TABLE programs ADD COLUMN IF NOT EXISTS runner TEXT CHECK (runner IN ('lambda', 'ecs')) DEFAULT NULL;
-
-        -- Add FK from tasks.program_name to programs.name (ensure program exists first)
-        INSERT INTO programs (name, content) VALUES ('do-content', '')
-            ON CONFLICT (name) DO NOTHING;
-        ALTER TABLE tasks ADD CONSTRAINT tasks_program_name_fkey
-            FOREIGN KEY (program_name) REFERENCES programs(name);
-
-        -- Resources tables
-        CREATE TABLE IF NOT EXISTS resources (
-            name          TEXT PRIMARY KEY,
-            resource_type TEXT NOT NULL CHECK (resource_type IN ('pool', 'consumable')),
-            capacity      DOUBLE PRECISION NOT NULL DEFAULT 1,
-            metadata      JSONB NOT NULL DEFAULT '{}',
-            created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-
-        CREATE TABLE IF NOT EXISTS resource_usage (
-            id            BIGSERIAL PRIMARY KEY,
-            resource_name TEXT NOT NULL REFERENCES resources(name),
-            run_id        UUID NOT NULL REFERENCES runs(id),
-            amount        DOUBLE PRECISION NOT NULL,
-            created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS idx_resource_usage_resource ON resource_usage (resource_name);
-        CREATE INDEX IF NOT EXISTS idx_resource_usage_run ON resource_usage (run_id);
-
-        INSERT INTO schema_version (version) VALUES (4) ON CONFLICT DO NOTHING;
-    """,
+MIGRATIONS: dict[int, list[str]] = {
+    # Each value is a list of individual statements (Data API doesn't support multi-statement).
 }
 
 
-async def apply_schema(dsn: str) -> int:
+def apply_schema(
+    resource_arn: str | None = None,
+    secret_arn: str | None = None,
+    database: str | None = None,
+) -> int:
     """Apply schema.sql if not already applied, then run incremental migrations."""
-    conn = await asyncpg.connect(dsn)
-    try:
-        current = await get_current_version(conn)
-        if current is None:
-            schema_sql = SCHEMA_FILE.read_text()
-            await conn.execute(schema_sql)
-            row = await conn.fetchrow("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
-            return row["version"]
+    if resource_arn and secret_arn:
+        client = boto3.client("rds-data", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+        database = database or "cogent"
+    else:
+        client, resource_arn, secret_arn, database = _get_data_client()
 
-        for version in sorted(MIGRATIONS.keys()):
-            if version > current:
-                await conn.execute(MIGRATIONS[version])
-                current = version
-
-        return current
-    finally:
-        await conn.close()
-
-
-async def reset_schema(dsn: str) -> int:
-    """Drop all tables and re-apply schema. For testing only."""
-    conn = await asyncpg.connect(dsn)
-    try:
-        await conn.execute("""
-            DROP TABLE IF EXISTS resource_usage CASCADE;
-            DROP TABLE IF EXISTS resources CASCADE;
-            DROP TABLE IF EXISTS traces CASCADE;
-            DROP TABLE IF EXISTS runs CASCADE;
-            DROP TABLE IF EXISTS conversations CASCADE;
-            DROP TABLE IF EXISTS tasks CASCADE;
-            DROP TABLE IF EXISTS channels CASCADE;
-            DROP TABLE IF EXISTS triggers CASCADE;
-            DROP TABLE IF EXISTS programs CASCADE;
-            DROP TABLE IF EXISTS memory CASCADE;
-            DROP TABLE IF EXISTS events CASCADE;
-            DROP TABLE IF EXISTS alerts CASCADE;
-            DROP TABLE IF EXISTS budget CASCADE;
-            DROP TABLE IF EXISTS schema_version CASCADE;
-        """)
+    current = get_current_version(client, resource_arn, secret_arn, database)
+    if current is None:
         schema_sql = SCHEMA_FILE.read_text()
-        await conn.execute(schema_sql)
+        _execute_script(client, resource_arn, secret_arn, database, schema_sql)
+        current = get_current_version(client, resource_arn, secret_arn, database)
+        return current or 0
 
-        row = await conn.fetchrow("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
-        return row["version"]
-    finally:
-        await conn.close()
+    for version in sorted(MIGRATIONS.keys()):
+        if version > current:
+            for stmt in MIGRATIONS[version]:
+                _execute(client, resource_arn, secret_arn, database, stmt)
+            current = version
+
+    return current
+
+
+def reset_schema(
+    resource_arn: str | None = None,
+    secret_arn: str | None = None,
+    database: str | None = None,
+) -> int:
+    """Drop all tables and re-apply schema. For testing only."""
+    if resource_arn and secret_arn:
+        client = boto3.client("rds-data", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+        database = database or "cogent"
+    else:
+        client, resource_arn, secret_arn, database = _get_data_client()
+
+    drop_sql = """
+        DROP TABLE IF EXISTS resource_usage CASCADE;
+        DROP TABLE IF EXISTS resources CASCADE;
+        DROP TABLE IF EXISTS traces CASCADE;
+        DROP TABLE IF EXISTS runs CASCADE;
+        DROP TABLE IF EXISTS conversations CASCADE;
+        DROP TABLE IF EXISTS tasks CASCADE;
+        DROP TABLE IF EXISTS channels CASCADE;
+        DROP TABLE IF EXISTS triggers CASCADE;
+        DROP TABLE IF EXISTS programs CASCADE;
+        DROP TABLE IF EXISTS memory CASCADE;
+        DROP TABLE IF EXISTS events CASCADE;
+        DROP TABLE IF EXISTS alerts CASCADE;
+        DROP TABLE IF EXISTS budget CASCADE;
+        DROP TABLE IF EXISTS schema_version CASCADE;
+    """
+    _execute_script(client, resource_arn, secret_arn, database, drop_sql)
+    schema_sql = SCHEMA_FILE.read_text()
+    _execute_script(client, resource_arn, secret_arn, database, schema_sql)
+
+    current = get_current_version(client, resource_arn, secret_arn, database)
+    return current or 0

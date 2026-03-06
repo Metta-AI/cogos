@@ -63,6 +63,30 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
         raise click.ClickException("CDK deploy failed")
     click.echo(f"Brain infrastructure for cogent-{name} deployed.")
 
+    # Fetch stack outputs + resources so memory schema can use Data API
+    import os
+
+    import boto3
+
+    cf = boto3.client("cloudformation", region_name="us-east-1")
+    try:
+        resp = cf.describe_stacks(StackName=f"cogent-{safe_name}-brain")
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+        if "ClusterArn" in outputs:
+            os.environ["DB_CLUSTER_ARN"] = outputs["ClusterArn"]
+        if "SecretArn" in outputs:
+            os.environ["DB_SECRET_ARN"] = outputs["SecretArn"]
+        else:
+            # SecretArn may not be an output yet — look it up from stack resources
+            resources = cf.list_stack_resources(StackName=f"cogent-{safe_name}-brain")
+            for r in resources.get("StackResourceSummaries", []):
+                if "Secret" in r["LogicalResourceId"] and "Attachment" not in r["LogicalResourceId"]:
+                    if r["PhysicalResourceId"].startswith("arn:aws:secretsmanager:"):
+                        os.environ["DB_SECRET_ARN"] = r["PhysicalResourceId"]
+                        break
+    except Exception as e:
+        click.echo(f"Warning: could not read stack outputs: {e}")
+
     # Apply memory schema
     click.echo("Applying memory schema...")
     ctx.invoke(_memory_create)
