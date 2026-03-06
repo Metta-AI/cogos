@@ -205,11 +205,36 @@ CREATE TABLE IF NOT EXISTS events (
     source          TEXT,
     payload         JSONB NOT NULL DEFAULT '{}',
     parent_event_id BIGINT REFERENCES events(id),
+    status          TEXT NOT NULL DEFAULT 'proposed'
+                    CHECK (status IN ('proposed', 'sent')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_events_created ON events (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events (event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_parent ON events (parent_event_id) WHERE parent_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_proposed ON events (id) WHERE status = 'proposed';
+
+-- Auto-emit task:run event when a task is scheduled
+CREATE OR REPLACE FUNCTION task_scheduled_trigger() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'scheduled' AND (OLD IS NULL OR OLD.status != 'scheduled') THEN
+        INSERT INTO events (event_type, source, payload, status)
+        VALUES (
+            'task:run',
+            'db-trigger',
+            jsonb_build_object('task_id', NEW.id::text, 'task_name', NEW.name),
+            'proposed'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS task_scheduled ON tasks;
+CREATE TRIGGER task_scheduled
+    AFTER INSERT OR UPDATE OF status ON tasks
+    FOR EACH ROW
+    EXECUTE FUNCTION task_scheduled_trigger();
 
 -- Algedonic emergency alerts
 CREATE TABLE IF NOT EXISTS alerts (
@@ -247,4 +272,4 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- Insert initial schema version
-INSERT INTO schema_version (version) VALUES (4) ON CONFLICT DO NOTHING;
+INSERT INTO schema_version (version) VALUES (5) ON CONFLICT DO NOTHING;

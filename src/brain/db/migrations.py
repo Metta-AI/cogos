@@ -69,7 +69,7 @@ def _execute_script(client, resource_arn: str, secret_arn: str, database: str, s
 
 
 def _split_sql(sql: str) -> list[str]:
-    """Split SQL script into individual statements, respecting DO $$ blocks."""
+    """Split SQL script into individual statements, respecting $$ blocks."""
     statements = []
     current = []
     in_dollar_block = False
@@ -77,18 +77,19 @@ def _split_sql(sql: str) -> list[str]:
     for line in sql.split("\n"):
         stripped = line.strip()
 
-        # Track DO $$ ... END $$; blocks
-        if not in_dollar_block and ("DO $$" in stripped or "DO $$ BEGIN" in stripped):
-            in_dollar_block = True
+        # Track $$ delimited blocks (DO $$, CREATE FUNCTION ... AS $$, etc.)
+        dollar_count = stripped.count("$$")
+        if dollar_count % 2 == 1:
+            # Odd number of $$ toggles the block state
+            in_dollar_block = not in_dollar_block
             current.append(line)
+            if not in_dollar_block and stripped.endswith(";"):
+                statements.append("\n".join(current))
+                current = []
             continue
 
         if in_dollar_block:
             current.append(line)
-            if "END $$;" in stripped:
-                in_dollar_block = False
-                statements.append("\n".join(current))
-                current = []
             continue
 
         # Outside dollar blocks, split on semicolons
@@ -123,7 +124,32 @@ def get_current_version(client, resource_arn: str, secret_arn: str, database: st
 
 # Incremental migrations keyed by target version.
 MIGRATIONS: dict[int, list[str]] = {
-    # Each value is a list of individual statements (Data API doesn't support multi-statement).
+    5: [
+        # Add status column to events table for proposed/sent tracking
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('proposed', 'sent'))",
+        "CREATE INDEX IF NOT EXISTS idx_events_proposed ON events (id) WHERE status = 'proposed'",
+        # Trigger to auto-emit task:run event when a task is scheduled
+        """CREATE OR REPLACE FUNCTION task_scheduled_trigger() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'scheduled' AND (OLD IS NULL OR OLD.status != 'scheduled') THEN
+        INSERT INTO events (event_type, source, payload, status)
+        VALUES (
+            'task:run',
+            'db-trigger',
+            jsonb_build_object('task_id', NEW.id::text, 'task_name', NEW.name),
+            'proposed'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql""",
+        "DROP TRIGGER IF EXISTS task_scheduled ON tasks",
+        """CREATE TRIGGER task_scheduled
+    AFTER INSERT OR UPDATE OF status ON tasks
+    FOR EACH ROW
+    EXECUTE FUNCTION task_scheduled_trigger()""",
+        "INSERT INTO schema_version (version) VALUES (5) ON CONFLICT DO NOTHING",
+    ],
 }
 
 

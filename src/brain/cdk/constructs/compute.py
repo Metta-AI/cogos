@@ -166,6 +166,29 @@ class ComputeConstruct(Construct):
             environment=env,
         )
 
+        # Dispatcher Lambda — polls proposed events and publishes to EventBridge
+        dispatcher_role = iam.Role(
+            self,
+            "DispatcherRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            managed_policies=[lambda_basic],
+        )
+        for stmt in data_api_statements:
+            dispatcher_role.add_to_policy(stmt)
+
+        self.dispatcher = lambda_.Function(
+            self,
+            "Dispatcher",
+            function_name=f"cogent-{safe_name}-dispatcher",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="brain.lambdas.dispatcher.handler.handler",
+            code=lambda_code,
+            memory_size=256,
+            timeout=Duration.seconds(60),
+            role=dispatcher_role,
+            environment=env,
+        )
+
         # ECS Task Role (for long-running tasks on shared cogent-polis cluster)
         task_role = iam.Role(
             self,

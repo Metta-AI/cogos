@@ -202,16 +202,17 @@ class Repository:
     # EVENTS (append-only log)
     # ═══════════════════════════════════════════════════════════
 
-    def append_event(self, event: Event) -> int:
+    def append_event(self, event: Event, *, status: str = "sent") -> int:
         response = self._execute(
-            """INSERT INTO events (event_type, source, payload, parent_event_id)
-               VALUES (:event_type, :source, :payload::jsonb, :parent_event_id)
+            """INSERT INTO events (event_type, source, payload, parent_event_id, status)
+               VALUES (:event_type, :source, :payload::jsonb, :parent_event_id, :status)
                RETURNING id, created_at""",
             [
                 self._param("event_type", event.event_type),
                 self._param("source", event.source),
                 self._param("payload", event.payload),
                 self._param("parent_event_id", event.parent_event_id),
+                self._param("status", status),
             ],
         )
         row = self._first_row(response)
@@ -280,6 +281,24 @@ class Repository:
             return []
         return self.get_event_tree(root_row["id"])
 
+    def get_proposed_events(self, *, limit: int = 50) -> list[Event]:
+        """Fetch events with status='proposed' for dispatch."""
+        response = self._execute(
+            """SELECT id, event_type, source, payload, parent_event_id, status, created_at
+               FROM events WHERE status = 'proposed'
+               ORDER BY id ASC LIMIT :limit""",
+            [self._param("limit", limit)],
+        )
+        return [self._event_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def mark_event_sent(self, event_id: int) -> bool:
+        """Mark an event as sent after publishing to EventBridge."""
+        response = self._execute(
+            "UPDATE events SET status = 'sent' WHERE id = :id",
+            [self._param("id", event_id)],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
+
     def _event_from_row(self, row: dict) -> Event:
         payload = row["payload"]
         if isinstance(payload, str):
@@ -290,6 +309,7 @@ class Repository:
             source=row.get("source"),
             payload=payload,
             parent_event_id=row.get("parent_event_id"),
+            status=row.get("status", "sent"),
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 

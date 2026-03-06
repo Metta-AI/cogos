@@ -1,41 +1,17 @@
 from __future__ import annotations
 
 import logging
-import os
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from brain.db.models import Event, Task as DbTask, TaskStatus
-from brain.lambdas.shared.events import put_event
+from brain.db.models import Task as DbTask, TaskStatus
 from dashboard.db import get_repo
 from dashboard.models import Task, TaskCreate, TaskUpdate, TasksResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tasks"])
-
-
-def _send_task_run_event(cogent_name: str, task: DbTask) -> None:
-    """Fire a task:run event to EventBridge and log to DB."""
-    repo = get_repo()
-    ev = Event(
-        event_type="task:run",
-        source="dashboard",
-        payload={"task_id": str(task.id), "task_name": task.name},
-    )
-    repo.append_event(ev)
-
-    bus_name = os.environ.get("EVENT_BUS_NAME")
-    if not bus_name:
-        safe = cogent_name.replace(".", "-")
-        bus_name = f"cogent-{safe}"
-
-    try:
-        put_event(ev, bus_name)
-        logger.info("Sent task:run event for task %s (%s)", task.name, task.id)
-    except Exception:
-        logger.exception("Failed to publish task:run event for task %s", task.id)
 
 
 def _task_to_response(t: DbTask) -> Task:
@@ -138,10 +114,6 @@ def create_task(name: str, body: TaskCreate) -> Task:
         metadata=body.metadata or {},
     )
     repo.create_task(db_task)
-
-    if db_task.status == TaskStatus.SCHEDULED:
-        _send_task_run_event(name, db_task)
-
     return _task_to_response(db_task)
 
 
@@ -160,11 +132,8 @@ def update_task(name: str, task_id: str, body: TaskUpdate) -> Task:
         t.content = body.content
     if body.program_name is not None:
         t.program_name = body.program_name
-    scheduled = False
     if body.status is not None:
         t.status = TaskStatus(body.status)
-        if t.status == TaskStatus.SCHEDULED:
-            scheduled = True
         if t.status == TaskStatus.COMPLETED:
             from datetime import datetime
             t.completed_at = datetime.utcnow()
@@ -194,10 +163,6 @@ def update_task(name: str, task_id: str, body: TaskUpdate) -> Task:
         t.metadata = body.metadata
 
     repo.update_task(t)
-
-    if scheduled:
-        _send_task_run_event(name, t)
-
     return _task_to_response(t)
 
 

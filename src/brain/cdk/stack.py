@@ -67,7 +67,7 @@ class BrainStack(Stack):
             event_bus_name=self.event_bus.event_bus_name,
         )
 
-        # 5. EventBridge rule
+        # 5. EventBridge rules
         events.Rule(
             self,
             "CatchAllRule",
@@ -77,6 +77,15 @@ class BrainStack(Stack):
                 source=events.Match.prefix("cogent."),
             ),
             targets=[targets.LambdaFunction(self.compute.orchestrator)],
+        )
+
+        # Dispatcher schedule — polls proposed events every minute
+        events.Rule(
+            self,
+            "DispatcherSchedule",
+            rule_name=f"cogent-{safe_name}-dispatcher-schedule",
+            schedule=events.Schedule.rate(Duration.minutes(1)),
+            targets=[targets.LambdaFunction(self.compute.dispatcher)],
         )
 
         # 6. Monitoring

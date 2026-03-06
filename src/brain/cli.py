@@ -60,7 +60,7 @@ def status_cmd(ctx: click.Context):
 
     # Lambda functions
     lam = session.client("lambda")
-    for suffix in ("orchestrator", "executor"):
+    for suffix in ("orchestrator", "executor", "dispatcher"):
         fn_name = f"cogent-{safe_name}-{suffix}"
         try:
             fn = lam.get_function(FunctionName=fn_name)
@@ -219,11 +219,14 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
         raise click.ClickException("CDK deploy failed")
     click.echo(f"Brain infrastructure for cogent-{name} deployed in polis account.")
 
-    # Re-assume role after CDK deploy (original session may have expired)
-    polis_session, _ = get_polis_session()
-    polis_creds = polis_session.get_credentials().get_frozen_credentials()
-    cf = polis_session.client("cloudformation", region_name="us-east-1")
+    # Re-assume role with full admin to read stack outputs (cogent-polis-admin lacks CF perms)
+    from polis.aws import _assume_role, get_org_session, POLIS_ACCOUNT_ID
     try:
+        admin_session = _assume_role(
+            get_org_session(), POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole",
+        )
+        admin_creds = admin_session.get_credentials().get_frozen_credentials()
+        cf = admin_session.client("cloudformation", region_name="us-east-1")
         resp = cf.describe_stacks(StackName=f"cogent-{safe_name}-brain")
         outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
         if "ClusterArn" in outputs:
@@ -238,10 +241,10 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
                         os.environ["DB_SECRET_ARN"] = r["PhysicalResourceId"]
                         break
         # Set AWS credentials so apply_schema() can access RDS Data API in polis account
-        os.environ["AWS_ACCESS_KEY_ID"] = polis_creds.access_key
-        os.environ["AWS_SECRET_ACCESS_KEY"] = polis_creds.secret_key
-        if polis_creds.token:
-            os.environ["AWS_SESSION_TOKEN"] = polis_creds.token
+        os.environ["AWS_ACCESS_KEY_ID"] = admin_creds.access_key
+        os.environ["AWS_SECRET_ACCESS_KEY"] = admin_creds.secret_key
+        if admin_creds.token:
+            os.environ["AWS_SESSION_TOKEN"] = admin_creds.token
     except Exception as e:
         click.echo(f"Warning: could not read stack outputs: {e}")
 
@@ -254,7 +257,6 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     if cert_arn:
         click.echo("Updating DNS...")
         try:
-            from polis.aws import _assume_role, get_org_session, POLIS_ACCOUNT_ID
             dns_session = _assume_role(
                 get_org_session(), POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole",
             )

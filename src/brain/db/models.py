@@ -177,6 +177,7 @@ class Event(BaseModel):
     source: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     parent_event_id: int | None = None
+    status: str = "proposed"
     created_at: datetime | None = None
 
 

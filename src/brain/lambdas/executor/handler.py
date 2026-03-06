@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -199,57 +198,110 @@ def execute_program(program: Program, event_data: dict, run: Run, config,
     return run
 
 
+TOOL_SCHEMAS: dict[str, dict] = {
+    "memory_get": {
+        "description": "Retrieve a memory value by key name.",
+        "inputSchema": {"json": {
+            "type": "object",
+            "properties": {"key": {"type": "string", "description": "The memory key to retrieve"}},
+            "required": ["key"],
+        }},
+    },
+    "memory_put": {
+        "description": "Store a value in memory under a key name.",
+        "inputSchema": {"json": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "The memory key name"},
+                "value": {"type": "string", "description": "The value to store"},
+            },
+            "required": ["key", "value"],
+        }},
+    },
+    "event_send": {
+        "description": "Send an event to the event bus.",
+        "inputSchema": {"json": {
+            "type": "object",
+            "properties": {
+                "event_type": {"type": "string", "description": "The event type (e.g. 'greeting', 'alert')"},
+                "payload": {"type": "object", "description": "JSON payload for the event", "default": {}},
+            },
+            "required": ["event_type"],
+        }},
+    },
+}
+
+
 def _build_tool_config(tools: list[str]) -> dict:
-    """Build Bedrock tool config from program tool names (mind CLI commands)."""
+    """Build Bedrock tool config from program tool names."""
     tool_specs = []
     for tool_name in tools:
-        tool_specs.append(
-            {
+        safe_name = tool_name.replace(":", "_").replace("-", "_").replace(" ", "_")
+        schema = TOOL_SCHEMAS.get(safe_name)
+        if schema:
+            tool_specs.append({"toolSpec": {"name": safe_name, **schema}})
+        else:
+            # Fallback for unknown tools
+            tool_specs.append({
                 "toolSpec": {
-                    "name": tool_name.replace(":", "_").replace("-", "_"),
-                    "description": f"Execute mind CLI command: {tool_name}",
-                    "inputSchema": {
-                        "json": {
-                            "type": "object",
-                            "properties": {
-                                "args": {
-                                    "type": "string",
-                                    "description": f"Arguments for the {tool_name} command",
-                                }
-                            },
-                        }
-                    },
+                    "name": safe_name,
+                    "description": f"Execute command: {tool_name}",
+                    "inputSchema": {"json": {
+                        "type": "object",
+                        "properties": {"args": {"type": "string", "description": f"Arguments for {tool_name}"}},
+                    }},
                 }
-            }
-        )
+            })
     return {"tools": tool_specs}
 
 
 def _execute_tool(tool_use: dict, config) -> str:
-    """Execute a mind CLI tool and return result."""
+    """Execute a tool natively in-process (no subprocess/CLI dependency)."""
     tool_name = tool_use.get("name", "")
     tool_input = tool_use.get("input", {})
-    args = tool_input.get("args", "")
 
-    # Convert tool name back to CLI command format
-    cmd_name = tool_name.replace("_", "-")
+    repo = get_repo()
 
     try:
-        result = subprocess.run(
-            ["mind", cmd_name] + (args.split() if args else []),
-            capture_output=True,
-            text=True,
-            timeout=300,
-            cwd="/tmp",
-        )
-        output = result.stdout
-        if result.returncode != 0:
-            output += f"\nError (exit {result.returncode}): {result.stderr}"
-        return output[:10000]
-    except subprocess.TimeoutExpired:
-        return f"Tool {cmd_name} timed out after 300s"
+        if tool_name == "memory_get":
+            key = tool_input.get("key", "").strip()
+            if not key:
+                return "Error: memory get requires a key"
+            results = repo.query_memory(name=key)
+            if results:
+                return f"{results[0].name}: {results[0].content}"
+            return f"Memory '{key}' not found"
+
+        elif tool_name == "memory_put":
+            key = tool_input.get("key", "").strip()
+            value = tool_input.get("value", "")
+            if not key or not value:
+                return "Error: memory put requires key and value"
+            from brain.db.models import MemoryRecord, MemoryScope
+            mem = MemoryRecord(name=key, scope=MemoryScope.COGENT, content=value)
+            repo.insert_memory(mem)
+            return f"Stored memory '{key}'"
+
+        elif tool_name == "event_send":
+            event_type = tool_input.get("event_type", "").strip()
+            if not event_type:
+                return "Error: event send requires event_type"
+            payload = tool_input.get("payload", {})
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    payload = {"message": payload}
+            ev = Event(event_type=event_type, source="tool", payload=payload)
+            event_id = repo.append_event(ev)
+            put_event(ev, config.event_bus_name)
+            return f"Event sent: id={event_id} type={event_type}"
+
+        else:
+            return f"Unknown tool: {tool_name}"
+
     except Exception as e:
-        return f"Tool {cmd_name} failed: {e}"
+        return f"Tool {tool_name} failed: {e}"
 
 
 def execute_python_program(
