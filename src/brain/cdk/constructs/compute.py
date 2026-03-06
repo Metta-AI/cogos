@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from aws_cdk import BundlingOptions, DockerImage, Duration
+import os
+import shutil
+import subprocess
+import tempfile
+
+from aws_cdk import Duration
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -12,26 +17,29 @@ from constructs import Construct
 from brain.cdk.config import BrainConfig
 
 
-class _LocalBundler:
-    """Bundle Lambda code locally: install deps + copy src."""
+def _build_lambda_package() -> str:
+    """Build Lambda package with deps into a temp directory. Returns path."""
+    build_dir = os.path.join(tempfile.gettempdir(), "cogent-lambda-build")
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
 
-    def try_bundle(self, output_dir: str, *, image=None, **kwargs) -> bool:
-        import shutil
-        import subprocess
-
-        subprocess.check_call(
-            ["pip", "install", "pydantic", "boto3", "-t", output_dir, "--quiet"],
-        )
-        # Copy src/ contents into output
-        src_dir = "src"
-        for item in __import__("os").listdir(src_dir):
-            s = __import__("os").path.join(src_dir, item)
-            d = __import__("os").path.join(output_dir, item)
-            if __import__("os").path.isdir(s):
-                shutil.copytree(s, d, dirs_exist_ok=True)
-            else:
-                shutil.copy2(s, d)
-        return True
+    # Install pydantic (boto3 is in Lambda runtime)
+    subprocess.check_call(
+        ["pip", "install", "pydantic", "-t", build_dir, "--quiet",
+         "--platform", "manylinux2014_x86_64", "--only-binary=:all:",
+         "--python-version", "3.12", "--implementation", "cp"],
+    )
+    # Copy src/ contents
+    src_dir = "src"
+    for item in os.listdir(src_dir):
+        s = os.path.join(src_dir, item)
+        d = os.path.join(build_dir, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, dirs_exist_ok=True)
+        else:
+            shutil.copy2(s, d)
+    return build_dir
 
 
 class ComputeConstruct(Construct):
@@ -121,14 +129,8 @@ class ComputeConstruct(Construct):
             )
         )
 
-        # Lambda code with bundled dependencies (local bundling, no Docker)
-        lambda_code = lambda_.Code.from_asset(
-            ".",
-            bundling=BundlingOptions(
-                image=DockerImage.from_registry("dummy"),
-                local=_LocalBundler(),
-            ),
-        )
+        # Lambda code with bundled dependencies
+        lambda_code = lambda_.Code.from_asset(_build_lambda_package())
 
         # Orchestrator Lambda (no VPC — uses only AWS APIs)
         self.orchestrator = lambda_.Function(
