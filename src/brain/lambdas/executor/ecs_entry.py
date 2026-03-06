@@ -14,7 +14,7 @@ from uuid import UUID
 from brain.db.models import Event, Run, RunStatus
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
-from brain.lambdas.shared.events import put_event
+from brain.lambdas.shared.events import emit_run_result, put_event
 from brain.lambdas.shared.logging import setup_logging
 
 logger = setup_logging()
@@ -178,7 +178,7 @@ def main() -> None:
         run.completed_at = datetime.now(timezone.utc)
         repo.update_run(run)
 
-        # Emit event
+        # Emit program-level event
         if run.status == RunStatus.COMPLETED:
             event_type = f"program:completed:{program_name}"
         else:
@@ -193,6 +193,16 @@ def main() -> None:
             config.event_bus_name,
         )
 
+        emit_run_result(
+            succeeded=(run.status == RunStatus.COMPLETED),
+            run_id=str(run.id),
+            task_id=task_id,
+            source=program_name,
+            parent_event_id=event_data.get("id"),
+            bus_name=config.event_bus_name,
+            error=run.error,
+        )
+
     except subprocess.TimeoutExpired:
         duration_ms = int((time.time() - start_time) * 1000)
         run.status = RunStatus.TIMEOUT
@@ -202,6 +212,16 @@ def main() -> None:
         repo.update_run(run)
         logger.error(f"Run {run_id} timed out after {duration_ms}ms")
 
+        emit_run_result(
+            succeeded=False,
+            run_id=str(run.id),
+            task_id=task_id,
+            source=program_name,
+            parent_event_id=event_data.get("id"),
+            bus_name=config.event_bus_name,
+            error="timeout",
+        )
+
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         run.status = RunStatus.FAILED
@@ -210,6 +230,16 @@ def main() -> None:
         run.completed_at = datetime.now(timezone.utc)
         repo.update_run(run)
         logger.error(f"Run {run_id} failed: {e}")
+
+        emit_run_result(
+            succeeded=False,
+            run_id=str(run.id),
+            task_id=task_id,
+            source=program_name,
+            parent_event_id=event_data.get("id"),
+            bus_name=config.event_bus_name,
+            error=str(e),
+        )
 
     finally:
         # Final S3 sync before exit

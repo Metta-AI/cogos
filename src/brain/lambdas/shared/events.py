@@ -43,3 +43,30 @@ def put_event(event: Event, bus_name: str) -> None:
     """Publish an event to EventBridge."""
     client = boto3.client("events")
     client.put_events(Entries=[to_eventbridge(event, bus_name)])
+
+
+def emit_run_result(
+    *,
+    succeeded: bool,
+    run_id: str,
+    task_id: str | None,
+    source: str,
+    parent_event_id: str | None,
+    bus_name: str,
+    error: str | None = None,
+) -> None:
+    """Emit run:succeeded or run:failed event for task lifecycle triggers."""
+    if not task_id:
+        return
+    payload: dict = {"run_id": run_id, "task_id": task_id}
+    if not succeeded and error:
+        payload["error"] = error[:1000]
+    put_event(
+        Event(
+            event_type="run:succeeded" if succeeded else "run:failed",
+            source=source,
+            payload=payload,
+            parent_event_id=parent_event_id,
+        ),
+        bus_name,
+    )

@@ -13,7 +13,7 @@ import boto3
 from brain.db.models import Event, Program, ProgramType, Run, RunStatus
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
-from brain.lambdas.shared.events import put_event
+from brain.lambdas.shared.events import emit_run_result, put_event
 from brain.lambdas.shared.logging import setup_logging
 
 logger = setup_logging()
@@ -76,6 +76,15 @@ def handler(event: dict, context) -> dict:
             config.event_bus_name,
         )
 
+        emit_run_result(
+            succeeded=True,
+            run_id=str(run.id),
+            task_id=task_id_str,
+            source=program_name,
+            parent_event_id=event_data.get("id"),
+            bus_name=config.event_bus_name,
+        )
+
         logger.info(f"Run {run_id} completed in {run.duration_ms}ms")
         return {"statusCode": 200, "run_id": str(run_id)}
 
@@ -96,6 +105,16 @@ def handler(event: dict, context) -> dict:
                 parent_event_id=event_data.get("id"),
             ),
             config.event_bus_name,
+        )
+
+        emit_run_result(
+            succeeded=False,
+            run_id=str(run.id),
+            task_id=task_id_str,
+            source=program_name,
+            parent_event_id=event_data.get("id"),
+            bus_name=config.event_bus_name,
+            error=str(e),
         )
 
         logger.error(f"Run {run_id} failed: {e}")
