@@ -24,9 +24,11 @@ def _build_lambda_package() -> str:
         shutil.rmtree(build_dir)
     os.makedirs(build_dir)
 
+    import sys
+
     # Install pydantic (boto3 is in Lambda runtime)
     subprocess.check_call(
-        ["pip", "install", "pydantic", "-t", build_dir, "--quiet",
+        [sys.executable, "-m", "pip", "install", "pydantic", "-t", build_dir, "--quiet",
          "--platform", "manylinux2014_x86_64", "--only-binary=:all:",
          "--python-version", "3.12", "--implementation", "cp"],
     )
