@@ -135,7 +135,6 @@ def _status_style(value: str) -> tuple[str, str]:
 @polis.command()
 def status():
     """Show polis resource status and per-cogent component health."""
-    import boto3
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     try:
@@ -144,9 +143,7 @@ def status():
         console.print(f"[red]{e}[/red]")
         return
 
-    brain_session = boto3.Session(region_name="us-east-1")
-
-    # -- Parallel queries ------------------------------------------------
+    # -- Parallel queries (all via polis_session) --------------------------
     results = {}
 
     def _query_ecr():
@@ -185,10 +182,14 @@ def status():
                 desc = ecs.describe_services(cluster="cogent-polis", services=arns)
                 for svc in desc.get("services", []):
                     name = svc["serviceName"]
-                    if "-dashboard-" in name:
-                        cogent = name.split("-dashboard-")[0]
+                    if "-DashService" in name or "-dashboard-" in name:
+                        sep = "-DashService" if "-DashService" in name else "-dashboard-"
+                        cogent = name.split(sep)[0]
                         if cogent.startswith("cogent-"):
                             cogent = cogent[len("cogent-"):]
+                        # Strip -brain suffix (e.g. "dr-alpha-brain" -> "dr-alpha")
+                        if cogent.endswith("-brain"):
+                            cogent = cogent[:-len("-brain")]
                         r = svc.get("runningCount", 0)
                         d = svc.get("desiredCount", 0)
                         dashboards[cogent] = f"ACTIVE {r}/{d}" if svc.get("status") == "ACTIVE" else svc.get("status", "?")
@@ -196,22 +197,8 @@ def status():
             pass
         return cluster, dashboards
 
-    def _query_polis_lambdas():
-        """Watcher and rotation lambda status."""
-        lam = polis_session.client("lambda")
-        out = {}
-        try:
-            resp = lam.list_functions()
-            for f in resp["Functions"]:
-                fn = f["FunctionName"]
-                if fn in ("cogent-watcher", "cogent-secret-rotation"):
-                    out[fn] = "ok"
-        except Exception:
-            pass
-        return out
-
     def _query_cogents_and_secrets():
-        """DynamoDB cogent status + secrets channels."""
+        """DynamoDB cogent status + secrets list."""
         ddb = polis_session.resource("dynamodb")
         tbl = ddb.Table("cogent-status")
         items = tbl.scan().get("Items", [])
@@ -229,108 +216,10 @@ def status():
             pass
         return items, secrets_by_cogent
 
-    # Brain resource queries — each returns partial dict updates
-    import threading
-    brain_cogents: dict[str, dict] = {}
-    brain_lock = threading.Lock()
-
-    def _brain_ensure(safe_name: str) -> dict:
-        with brain_lock:
-            if safe_name not in brain_cogents:
-                brain_cogents[safe_name] = {}
-            return brain_cogents[safe_name]
-
-    def _q_brain_stacks():
-        cf = brain_session.client("cloudformation")
-        resp = cf.list_stacks(StackStatusFilter=[
-            "CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE",
-            "CREATE_IN_PROGRESS", "UPDATE_IN_PROGRESS", "CREATE_FAILED", "UPDATE_FAILED",
-        ])
-        for s in resp.get("StackSummaries", []):
-            name = s["StackName"]
-            if name.startswith("cogent-") and name.endswith("-brain"):
-                safe = name[len("cogent-"):-len("-brain")]
-                _brain_ensure(safe)["stack"] = s["StackStatus"]
-
-    def _q_brain_lambdas():
-        lam = brain_session.client("lambda")
-        resp = lam.list_functions()
-        for f in resp["Functions"]:
-            fn = f["FunctionName"]
-            if not fn.startswith("cogent-"):
-                continue
-            for suffix in ("-orchestrator", "-executor"):
-                if fn.endswith(suffix):
-                    safe = fn[len("cogent-"):-len(suffix)]
-                    _brain_ensure(safe)[suffix.lstrip("-")] = f.get("State") or "ok"
-
-    def _q_brain_rds():
-        rds = brain_session.client("rds")
-        resp = rds.describe_db_clusters()
-        for c in resp["DBClusters"]:
-            cid = c["DBClusterIdentifier"]
-            if cid.startswith("cogent-") and "-brain-" in cid:
-                safe = cid.split("-brain-")[0][len("cogent-"):]
-                _brain_ensure(safe)["database"] = c["Status"]
-
-    def _q_brain_ecs():
-        ecs = brain_session.client("ecs")
-        resp = ecs.list_clusters()
-        cogent_arns = [a for a in resp["clusterArns"] if "cogent-" in a]
-        if cogent_arns:
-            desc = ecs.describe_clusters(clusters=cogent_arns)
-            for c in desc["clusters"]:
-                cname = c["clusterName"]
-                if cname.startswith("cogent-"):
-                    safe = cname[len("cogent-"):]
-                    running = c.get("runningTasksCount", 0)
-                    pending = c.get("pendingTasksCount", 0)
-                    _brain_ensure(safe)["ecs"] = f"{c['status']} tasks:{running}" + (f"+{pending}p" if pending else "")
-
-    def _q_brain_s3():
-        s3 = brain_session.client("s3")
-        resp = s3.list_buckets()
-        for b in resp["Buckets"]:
-            bname = b["Name"]
-            if bname.startswith("cogent-") and bname.endswith("-sessions"):
-                safe = bname[len("cogent-"):-len("-sessions")]
-                _brain_ensure(safe)["s3"] = "ok"
-
-    def _q_brain_events():
-        eb = brain_session.client("events")
-        resp = eb.list_event_buses()
-        for bus in resp["EventBuses"]:
-            bname = bus["Name"]
-            if bname.startswith("cogent-"):
-                safe = bname[len("cogent-"):]
-                _brain_ensure(safe)["eventbridge"] = "ok"
-
-    def _q_brain_alarms():
-        cw = brain_session.client("cloudwatch")
-        resp = cw.describe_alarms(AlarmNamePrefix="cogent-")
-        for a in resp["MetricAlarms"]:
-            aname = a["AlarmName"]
-            state = a["StateValue"]
-            for suffix in ("-orchestrator-errors", "-executor-errors", "-executor-duration"):
-                if aname.endswith(suffix):
-                    safe = aname[len("cogent-"):-len(suffix)]
-                    with brain_lock:
-                        alarms = _brain_ensure(safe).setdefault("alarms", {})
-                        alarms[suffix.lstrip("-")] = state
-
-    # All queries in a single flat pool — no nesting
     all_fns = {
         "ecr": _query_ecr,
         "polis_ecs": _query_polis_ecs,
-        "polis_lambdas": _query_polis_lambdas,
         "cogents_secrets": _query_cogents_and_secrets,
-        "brain_stacks": _q_brain_stacks,
-        "brain_lambdas": _q_brain_lambdas,
-        "brain_rds": _q_brain_rds,
-        "brain_ecs": _q_brain_ecs,
-        "brain_s3": _q_brain_s3,
-        "brain_events": _q_brain_events,
-        "brain_alarms": _q_brain_alarms,
     }
 
     with ThreadPoolExecutor(max_workers=len(all_fns)) as pool:
@@ -338,12 +227,9 @@ def status():
         for fut in as_completed(futures):
             key = futures[fut]
             try:
-                val = fut.result()
-                if not key.startswith("brain_"):
-                    results[key] = val
+                results[key] = fut.result()
             except Exception:
-                if not key.startswith("brain_"):
-                    results[key] = None
+                results[key] = None
 
     # -- Polis Resources table -------------------------------------------
     table = Table(title="Polis")
@@ -364,78 +250,58 @@ def status():
     else:
         table.add_row("ECS Cluster", "[red]not found[/red]", "")
 
-    polis_lambdas = results.get("polis_lambdas") or {}
-    for lname, state in polis_lambdas.items():
-        s, d = _status_style(state or "not found")
-        table.add_row(f"Lambda", f"[{s}]{d}[/{s}]", lname)
-
     console.print(table)
 
-    # -- Cogents table ---------------------------------------------------
+    # -- Per-cogent sub-tables (data from watcher via DynamoDB) ----------
     cogent_items, secrets_by_cogent = results.get("cogents_secrets") or ([], {})
-    brain_resources = brain_cogents
 
     if not cogent_items:
         console.print("\nNo cogents registered.")
         return
 
-    console.print()
     items = sorted(cogent_items, key=lambda x: x.get("cogent_name", ""))
-
-    ct = Table(title="Cogents")
-    ct.add_column("Name", style="bold")
-    ct.add_column("Identity")
-    ct.add_column("Stack")
-    ct.add_column("DB")
-    ct.add_column("Orchestrator")
-    ct.add_column("Executor")
-    ct.add_column("ECS")
-    ct.add_column("S3")
-    ct.add_column("Events")
-    ct.add_column("Dashboard")
-    ct.add_column("Secrets")
-    ct.add_column("Alarms")
 
     for item in items:
         name = item.get("cogent_name", "?")
         safe_name = name.replace(".", "-")
-        br = brain_resources.get(safe_name, {})
 
         def _cell(val):
             s, d = _status_style(str(val) if val else "-")
             return f"[{s}]{d}[/{s}]"
 
-        # Secrets count
+        # Secrets
         secs = secrets_by_cogent.get(name, [])
-        sec_str = str(len(secs)) if secs else "-"
 
-        # Alarms: count in alarm state
-        alarms = br.get("alarms", {})
-        alarm_count = sum(1 for v in alarms.values() if v == "ALARM")
-        total_alarms = len(alarms)
-        if not alarms:
-            alarm_str = "[dim]-[/dim]"
-        elif alarm_count:
-            alarm_str = f"[red]{alarm_count}/{total_alarms} ALARM[/red]"
+        # Channels from watcher
+        channels = item.get("channels", {})
+        if channels:
+            ok = sum(1 for v in channels.values() if v == "ok")
+            stale = sum(1 for v in channels.values() if v == "stale")
+            if stale:
+                ch_str = f"[red]{ok} ok, {stale} stale[/red]"
+            else:
+                ch_str = f"[green]{ok} ok[/green]"
         else:
-            alarm_str = f"[green]{total_alarms} ok[/green]"
+            ch_str = "[dim]-[/dim]"
 
-        ct.add_row(
-            name,
-            _cell(item.get("stack_status")),
-            _cell(br.get("stack")),
-            _cell(br.get("database")),
-            _cell(br.get("orchestrator")),
-            _cell(br.get("executor")),
-            _cell(br.get("ecs")),
-            _cell(br.get("s3")),
-            _cell(br.get("eventbridge")),
-            _cell(dashboards.get(safe_name)),
-            f"[cyan]{sec_str}[/cyan]" if secs else "[dim]-[/dim]",
-            alarm_str,
-        )
+        # Tasks
+        running = int(item.get("running_count", 0))
+        desired = int(item.get("desired_count", 0))
+        tasks_str = f"{running}/{desired}"
 
-    console.print(ct)
+        console.print()
+        ct = Table(title=f"[bold]{name}[/bold]", show_header=False, padding=(0, 1))
+        ct.add_column("Component", style="bold")
+        ct.add_column("Status")
+        ct.add_row("Stack", _cell(item.get("stack_status")))
+        ct.add_row("Tasks", _cell(tasks_str if desired else None))
+        ct.add_row("Image", _cell(item.get("image_tag")))
+        ct.add_row("CPU (1m/10m)", _cell(f"{int(item.get('cpu_1m', 0))}%/{int(item.get('cpu_10m', 0))}%" if item.get("cpu_1m") else None))
+        ct.add_row("Memory", _cell(f"{int(item.get('mem_pct', 0))}%" if item.get("mem_pct") else None))
+        ct.add_row("Dashboard", _cell(dashboards.get(safe_name)))
+        ct.add_row("Channels", ch_str)
+        ct.add_row("Secrets", f"[cyan]{len(secs)}[/cyan]" if secs else "[dim]-[/dim]")
+        console.print(ct)
 
     # -- ECR Images table ------------------------------------------------
     if ecr_images:
