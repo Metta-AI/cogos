@@ -33,9 +33,39 @@ def update():
     pass
 
 
-def _get_session(profile: str) -> boto3.Session:
+def _get_session(profile: str | None = None) -> boto3.Session:
     """Get a boto3 session for the brain account (current AWS account)."""
-    return boto3.Session(profile_name=profile, region_name=DEFAULT_REGION)
+    if profile and profile != "softmax-org":
+        return boto3.Session(profile_name=profile, region_name=DEFAULT_REGION)
+    # Default: use current credentials (brain resources are in the cogent account, not org)
+    return boto3.Session(region_name=DEFAULT_REGION)
+
+
+def _ensure_db_env(name: str) -> None:
+    """Ensure DB_CLUSTER_ARN and DB_SECRET_ARN are set from CloudFormation stack."""
+    if os.environ.get("DB_CLUSTER_ARN") and os.environ.get("DB_SECRET_ARN"):
+        return
+
+    safe_name = name.replace(".", "-")
+    stack_name = f"cogent-{safe_name}-brain"
+    cf = boto3.client("cloudformation", region_name=DEFAULT_REGION)
+
+    resp = cf.describe_stacks(StackName=stack_name)
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+
+    if "ClusterArn" in outputs:
+        os.environ["DB_CLUSTER_ARN"] = outputs["ClusterArn"]
+    if "SecretArn" in outputs:
+        os.environ["DB_SECRET_ARN"] = outputs["SecretArn"]
+
+    # SecretArn may not be a stack output yet — look it up from resources
+    if not os.environ.get("DB_SECRET_ARN"):
+        resources = cf.list_stack_resources(StackName=stack_name)
+        for r in resources.get("StackResourceSummaries", []):
+            if "Secret" in r["LogicalResourceId"] and "Attachment" not in r["LogicalResourceId"]:
+                if r["PhysicalResourceId"].startswith("arn:aws:secretsmanager:"):
+                    os.environ["DB_SECRET_ARN"] = r["PhysicalResourceId"]
+                    break
 
 
 def _package_lambda_code() -> bytes:
@@ -152,16 +182,18 @@ def update_ecs(ctx: click.Context, profile: str, skip_health: bool):
 
 
 @update.command("rds")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help="AWS profile")
 @click.option("--force", is_flag=True, help="Force re-run migrations")
 @click.pass_context
-def update_rds(ctx: click.Context, profile: str, force: bool):
+def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
+    from brain.db.migrations import apply_schema
+
     name = get_cogent_name(ctx)
+    _ensure_db_env(name)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
-    # For now, placeholder — needs Data API version of apply_schema
-    click.echo("  Data API migrations not yet implemented.")
-    click.echo("  Use: python -c 'from brain.db.migrations import apply_schema; ...'")
+    version = apply_schema()
+    click.echo(f"  Schema at version {version}.")
 
 
 @update.command("stack")
