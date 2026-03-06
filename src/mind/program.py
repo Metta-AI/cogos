@@ -51,7 +51,7 @@ class ProgramBundle:
 # ─── File parsers ───────────────────────────────────────────
 
 
-def _parse_md(path: Path) -> ProgramBundle:
+def _parse_md(path: Path, rel: str | None = None) -> ProgramBundle:
     """Parse a .md file: YAML frontmatter -> metadata, body -> content."""
     text = path.read_text()
     try:
@@ -59,7 +59,8 @@ def _parse_md(path: Path) -> ProgramBundle:
     except ValueError as exc:
         raise ValueError(f"{path}: {exc}") from exc
 
-    name = fm.pop("name", path.stem)
+    default_name = rel.removesuffix(".md") if rel else path.stem
+    name = fm.pop("name", default_name)
     program_type = fm.pop("program_type", "prompt")
     includes = fm.pop("includes", [])
     tools = fm.pop("tools", [])
@@ -81,26 +82,27 @@ def _parse_md(path: Path) -> ProgramBundle:
     return ProgramBundle(program=prog, triggers=triggers)
 
 
-def _parse_py(path: Path) -> ProgramBundle:
+def _parse_py(path: Path, rel: str | None = None) -> ProgramBundle:
     """Parse a .py file: CogentMindProgram config -> metadata, full source -> content.
 
     If no CogentMindProgram assignment is found, infer name from filename
     and treat as a python program with the source as content.
     """
+    default_name = rel.removesuffix(".py") if rel else path.stem
     source = path.read_text()
     try:
         kwargs = extract_pydantic_config(source, "CogentMindProgram")
     except (ValueError, SyntaxError):
         # No config block — infer from filename
         prog = Program(
-            name=path.stem,
+            name=default_name,
             program_type=ProgramType.PYTHON,
             content=source,
         )
         return ProgramBundle(program=prog, triggers=[])
 
     cfg = CogentMindProgram(**kwargs)
-    name = cfg.name or path.stem
+    name = cfg.name or default_name
     prog = Program(
         name=name,
         program_type=ProgramType(cfg.program_type),
@@ -117,18 +119,25 @@ def _parse_py(path: Path) -> ProgramBundle:
 # ─── Public API ─────────────────────────────────────────────
 
 
-def load_program(path: Path) -> ProgramBundle:
+def load_program(path: Path, rel: str | None = None) -> ProgramBundle:
     """Load a single program from a .py or .md file."""
     if path.suffix == ".md":
-        return _parse_md(path)
+        return _parse_md(path, rel=rel)
     if path.suffix == ".py":
-        return _parse_py(path)
+        return _parse_py(path, rel=rel)
     raise ValueError(f"Unsupported file type: {path.suffix}")
 
 
 def load_programs_dir(root: Path) -> list[ProgramBundle]:
-    """Recursively load all .py and .md programs under a directory."""
-    return [load_program(p) for p in scan_dir(root, {".py", ".md"})]
+    """Recursively load all .py and .md programs under a directory.
+
+    Program names are derived from relative paths (e.g. vsm/s1/do-content).
+    """
+    bundles = []
+    for p in scan_dir(root, {".py", ".md"}):
+        rel = str(p.relative_to(root))
+        bundles.append(load_program(p, rel=rel))
+    return bundles
 
 
 def validate_bundle(bundle: ProgramBundle) -> list[SyncIssue]:

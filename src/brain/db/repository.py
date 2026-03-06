@@ -806,7 +806,7 @@ class Repository:
             id=UUID(row["id"]),
             name=row["name"],
             description=row.get("description", ""),
-            program_name=row.get("program_name", "do-content"),
+            program_name=row.get("program_name", "vsm/s1/do-content"),
             content=row.get("content", ""),
             memory_keys=memory_keys,
             tools=tools,

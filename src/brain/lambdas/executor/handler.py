@@ -11,7 +11,7 @@ from uuid import UUID
 
 import boto3
 
-from brain.db.models import Event, Program, Run, RunStatus
+from brain.db.models import Event, Program, ProgramType, Run, RunStatus
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
 from brain.lambdas.shared.events import put_event
@@ -55,8 +55,12 @@ def handler(event: dict, context) -> dict:
 
     start_time = time.time()
     try:
-        run = execute_program(program, event_data, run, config,
-                              task_data=task_data if task_data else None)
+        if program.program_type == ProgramType.PYTHON:
+            run = execute_python_program(program, event_data, run, config,
+                                         task_data=task_data if task_data else None)
+        else:
+            run = execute_program(program, event_data, run, config,
+                                  task_data=task_data if task_data else None)
         run.status = RunStatus.COMPLETED
         run.duration_ms = int((time.time() - start_time) * 1000)
         run.completed_at = datetime.now(timezone.utc)
@@ -246,3 +250,43 @@ def _execute_tool(tool_use: dict, config) -> str:
         return f"Tool {cmd_name} timed out after 300s"
     except Exception as e:
         return f"Tool {cmd_name} failed: {e}"
+
+
+def execute_python_program(
+    program: Program, event_data: dict, run: Run, config,
+    task_data: dict | None = None,
+) -> Run:
+    """Execute a Python program by calling its run(repo, event, config) function.
+
+    The program source is stored in program.content. We compile and exec it,
+    then call the `run` function which returns a list of Event objects to emit.
+    """
+    repo = get_repo()
+
+    # Compile and execute the program source to get the run function
+    code = compile(program.content, f"<program:{program.name}>", "exec")
+    namespace: dict = {}
+    exec(code, namespace)  # noqa: S102
+
+    run_fn = namespace.get("run")
+    if not callable(run_fn):
+        raise RuntimeError(f"Program {program.name} has no callable run() function")
+
+    # Build config dict for the program
+    prog_config = {
+        "cogent_name": config.cogent_name,
+        "cogent_id": config.cogent_id,
+        "event_bus_name": config.event_bus_name,
+    }
+
+    # Call the program's run function
+    result_events = run_fn(repo, event_data, prog_config)
+
+    # Emit any events returned by the program
+    if result_events:
+        for evt in result_events:
+            if isinstance(evt, Event):
+                put_event(evt, config.event_bus_name)
+                run.events_emitted.append(evt.event_type)
+
+    return run

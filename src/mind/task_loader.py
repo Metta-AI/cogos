@@ -26,7 +26,7 @@ class CogentMindTask(BaseModel):
     """Pydantic config embedded in .py task files."""
 
     name: str = ""
-    program_name: str = "do-content"
+    program_name: str = "vsm/s1/do-content"
     description: str = ""
     content: str = ""
     memory_keys: list[str] = Field(default_factory=list)
@@ -63,7 +63,7 @@ def _load_markdown(path: Path, rel: str) -> Task:
 
     name = rel.removesuffix(".md")
     fm.setdefault("name", name)
-    fm.setdefault("program_name", "do-content")
+    fm.setdefault("program_name", "vsm/s1/do-content")
     fm["content"] = body.strip()
 
     return _task_from_dict(fm)

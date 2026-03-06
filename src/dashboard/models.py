@@ -201,7 +201,7 @@ class TaskCreate(BaseModel):
     name: str
     description: str = ""
     content: str = ""
-    program_name: str = "do-content"
+    program_name: str = "vsm/s1/do-content"
     status: str = "runnable"
     priority: float = 0.0
     runner: str | None = None

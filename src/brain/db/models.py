@@ -110,7 +110,7 @@ class Task(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
     description: str = ""
-    program_name: str = "do-content"
+    program_name: str = "vsm/s1/do-content"
     content: str = ""
     memory_keys: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)

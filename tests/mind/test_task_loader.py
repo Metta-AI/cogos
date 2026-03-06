@@ -14,7 +14,7 @@ def test_load_markdown_simple(tmp_path: Path):
     assert len(tasks) == 1
     t = tasks[0]
     assert t.name == "check-stuff"
-    assert t.program_name == "do-content"
+    assert t.program_name == "vsm/s1/do-content"
     assert t.content == "Do the thing."
     assert t.status == TaskStatus.RUNNABLE
 
@@ -51,7 +51,7 @@ def test_load_yaml_single(tmp_path: Path):
     """A YAML file with a single task object."""
     (tmp_path / "task.yaml").write_text(textwrap.dedent("""\
         name: deploy-check
-        program_name: do-content
+        program_name: vsm/s1/do-content
         content: Check deployments
         priority: 3.0
     """))

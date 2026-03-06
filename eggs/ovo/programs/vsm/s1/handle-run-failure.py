@@ -39,8 +39,9 @@ def run(repo: Repository, event: dict, config: dict) -> list[Event]:
     # Count recent consecutive failures
     consecutive = len(failures)
 
-    # Return to runnable
-    repo.update_task_status(task.id, TaskStatus.RUNNABLE)
+    # Return to runnable (update_task persists metadata changes too)
+    task.status = TaskStatus.RUNNABLE
+    repo.update_task(task)
 
     events: list[Event] = []
 

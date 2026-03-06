@@ -107,13 +107,13 @@ def run(repo: Repository, event: dict, config: dict) -> list[Event]:
         remaining_indices.pop(chosen_idx)
         remaining_probs.pop(chosen_idx)
 
-    # 8. Emit task:dispatch events
+    # 8. Emit task:run events (handled directly by the orchestrator)
     events = []
     for task in selected:
         runner = task.runner or "lambda"
         events.append(
             Event(
-                event_type="task:dispatch",
+                event_type="task:run",
                 source="pick-task-to-run",
                 payload={
                     "task_id": str(task.id),

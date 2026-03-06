@@ -284,6 +284,17 @@ def mind_update(ctx: click.Context, egg_dir: str, force: bool) -> None:
                 added += 1
         click.echo(f"Memories: {added} synced")
 
+    # 5. Bootstrap (cron, triggers, bootstrap memory)
+    bootstrap_file = egg / "bootstrap.py"
+    if bootstrap_file.is_file():
+        from mind.bootstrap_loader import sync_bootstrap
+        counts = sync_bootstrap(bootstrap_file, repo)
+        click.echo(
+            f"Bootstrap: {counts['cron']} cron, "
+            f"{counts['triggers']} triggers, "
+            f"{counts['memory']} memory"
+        )
+
 
 @mind.group()
 def program() -> None:
@@ -508,7 +519,7 @@ def task() -> None:
 
 @task.command("create")
 @click.argument("name")
-@click.option("--program", "program_name", default="do-content", help="Program name")
+@click.option("--program", "program_name", default="vsm/s1/do-content", help="Program name")
 @click.option("--content", default="")
 @click.option("--content-file", type=click.Path(exists=True))
 @click.option("--description", "-d", default="")
