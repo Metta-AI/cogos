@@ -216,10 +216,25 @@ def status():
             pass
         return items, secrets_by_cogent
 
+    def _query_event_buses():
+        """EventBridge buses and rules per cogent."""
+        eb = polis_session.client("events")
+        buses = {}
+        try:
+            for bus in eb.list_event_buses(NamePrefix="cogent-")["EventBuses"]:
+                name = bus["Name"]
+                rules = eb.list_rules(EventBusName=name).get("Rules", [])
+                enabled = sum(1 for r in rules if r.get("State") == "ENABLED")
+                buses[name] = {"rules": len(rules), "enabled": enabled}
+        except Exception:
+            pass
+        return buses
+
     all_fns = {
         "ecr": _query_ecr,
         "polis_ecs": _query_polis_ecs,
         "cogents_secrets": _query_cogents_and_secrets,
+        "event_buses": _query_event_buses,
     }
 
     with ThreadPoolExecutor(max_workers=len(all_fns)) as pool:
@@ -254,6 +269,7 @@ def status():
 
     # -- Per-cogent sub-tables (data from watcher via DynamoDB) ----------
     cogent_items, secrets_by_cogent = results.get("cogents_secrets") or ([], {})
+    event_buses = results.get("event_buses") or {}
 
     if not cogent_items:
         console.print("\nNo cogents registered.")
@@ -299,6 +315,16 @@ def status():
         ct.add_row("CPU (1m/10m)", _cell(f"{int(item.get('cpu_1m', 0))}%/{int(item.get('cpu_10m', 0))}%" if item.get("cpu_1m") else None))
         ct.add_row("Memory", _cell(f"{int(item.get('mem_pct', 0))}%" if item.get("mem_pct") else None))
         ct.add_row("Dashboard", _cell(dashboards.get(safe_name)))
+
+        # EventBridge
+        bus_name = f"cogent-{safe_name}"
+        bus_info = event_buses.get(bus_name)
+        if bus_info:
+            eb_str = f"[green]{bus_info['enabled']}/{bus_info['rules']} rules enabled[/green]"
+        else:
+            eb_str = "[dim]-[/dim]"
+        ct.add_row("EventBridge", eb_str)
+
         ct.add_row("Channels", ch_str)
         ct.add_row("Secrets", f"[cyan]{len(secs)}[/cyan]" if secs else "[dim]-[/dim]")
         console.print(ct)

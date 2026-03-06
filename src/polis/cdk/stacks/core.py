@@ -274,6 +274,9 @@ class PolisStack(cdk.Stack):
             iam.PolicyStatement(
                 actions=[
                     "rds:DescribeDBClusters",
+                    "events:ListEventBuses",
+                    "events:ListRules",
+                    "events:DescribeRule",
                 ],
                 resources=["*"],
             )
