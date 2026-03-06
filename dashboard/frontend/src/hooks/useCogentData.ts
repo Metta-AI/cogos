@@ -41,6 +41,7 @@ export function useCogentData(cogentName: string) {
   const { connected, lastMessage } = useWebSocket(cogentName);
 
   const refresh = useCallback(async () => {
+    if (!cogentName) return;
     if (mockMode) {
       setData(MOCK_DATA);
       setError(null);

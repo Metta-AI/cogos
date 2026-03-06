@@ -50,11 +50,12 @@ export function useWebSocket(cogentName: string) {
   }, [cogentName]);
 
   useEffect(() => {
+    if (!cogentName) return;
     connect();
     return () => {
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [connect, cogentName]);
 
   return { connected, lastMessage };
 }

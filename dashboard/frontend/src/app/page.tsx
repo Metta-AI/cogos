@@ -34,7 +34,7 @@ export default function DashboardPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  const [cogentName, setCogentName] = useState("cogent");
+  const [cogentName, setCogentName] = useState("");
   useEffect(() => {
     setCogentName(window.location.hostname.split(".")[0].replace(/-/g, "."));
   }, []);
