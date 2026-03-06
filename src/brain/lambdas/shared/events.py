@@ -12,7 +12,7 @@ from brain.db.models import Event
 def to_eventbridge(event: Event, bus_name: str) -> dict:
     """Convert Event model to EventBridge PutEvents entry."""
     return {
-        "Source": "cogent",
+        "Source": f"cogent.{event.source}",
         "DetailType": event.event_type,
         "Detail": json.dumps(
             {

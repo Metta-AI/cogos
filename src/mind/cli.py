@@ -80,6 +80,7 @@ def _ensure_db_env(cogent_name: str) -> None:
     os.environ["AWS_SECRET_ACCESS_KEY"] = creds.secret_key
     if creds.token:
         os.environ["AWS_SESSION_TOKEN"] = creds.token
+    os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 
 def _repo() -> Repository | LocalRepository:
@@ -136,7 +137,7 @@ def mind(ctx: click.Context, use_json: bool) -> None:
     # Auto-discover DB ARNs from polis account so all subcommands use RDS
     if not (os.environ.get("DB_RESOURCE_ARN") or os.environ.get("DB_CLUSTER_ARN")):
         obj = ctx.find_root().obj
-        name = obj.get("cogent_id") if obj else os.environ.get("COGENT_ID")
+        name = (obj.get("cogent_id") if obj else None) or os.environ.get("COGENT_ID")
         if name:
             _ensure_db_env(name)
 
@@ -1070,7 +1071,13 @@ def event_send(
     payload: str,
     parent_event_id: int | None,
 ) -> None:
-    """Send (create) a new event."""
+    """Send (create) a new event.
+
+    Stores the event in the database AND publishes to EventBridge.
+    Requires COGENT_ID (or cogent context) to derive the EventBridge bus name.
+    """
+    import os
+
     ev = Event(
         event_type=event_type,
         source=source,
@@ -1079,7 +1086,21 @@ def event_send(
     )
     repo = _repo()
     event_id = repo.append_event(ev)
-    _output({"id": event_id, "type": event_type, "status": "sent"}, use_json=ctx.obj["json"])
+
+    # Publish to EventBridge
+    bus_name = os.environ.get("EVENT_BUS_NAME")
+    if not bus_name:
+        obj = ctx.find_root().obj
+        cogent_name = (obj.get("cogent_id") if obj else None) or os.environ.get("COGENT_ID")
+        if cogent_name:
+            safe_name = cogent_name.replace(".", "-")
+            bus_name = f"cogent-{safe_name}"
+
+    if bus_name:
+        from brain.lambdas.shared.events import put_event
+        put_event(ev, bus_name)
+
+    _output({"id": event_id, "type": event_type, "bus": bus_name, "status": "sent"}, use_json=ctx.obj["json"])
 
 
 @event.command("show")
