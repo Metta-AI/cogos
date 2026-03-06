@@ -27,18 +27,53 @@ def dashboard():
     pass
 
 
+def _ensure_db_env(name: str, env: dict) -> dict:
+    """Auto-discover DB ARNs from CloudFormation and add to env dict."""
+    if env.get("DB_RESOURCE_ARN") and env.get("DB_SECRET_ARN"):
+        return env
+
+    import boto3
+
+    safe_name = name.replace(".", "-")
+    stack_name = f"cogent-{safe_name}-brain"
+    try:
+        cf = boto3.client("cloudformation", region_name="us-east-1")
+        resp = cf.describe_stacks(StackName=stack_name)
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+        if "ClusterArn" in outputs:
+            env.setdefault("DB_RESOURCE_ARN", outputs["ClusterArn"])
+            env.setdefault("DB_CLUSTER_ARN", outputs["ClusterArn"])
+        if "SecretArn" in outputs:
+            env.setdefault("DB_SECRET_ARN", outputs["SecretArn"])
+        else:
+            resources = cf.list_stack_resources(StackName=stack_name)
+            for r in resources.get("StackResourceSummaries", []):
+                if "Secret" in r["LogicalResourceId"] and "Attachment" not in r["LogicalResourceId"]:
+                    if r["PhysicalResourceId"].startswith("arn:aws:secretsmanager:"):
+                        env.setdefault("DB_SECRET_ARN", r["PhysicalResourceId"])
+                        break
+        env.setdefault("DB_NAME", "cogent")
+    except Exception as e:
+        click.echo(f"Warning: could not auto-discover DB credentials: {e}")
+    return env
+
+
 @dashboard.command()
-@click.argument("name")
 @click.option("--port", default=8100, help="Backend port")
 @click.option("--frontend-port", default=5174, help="Frontend port")
 @click.option("--no-browser", is_flag=True, help="Don't open browser")
-def serve(name: str, port: int, frontend_port: int, no_browser: bool):
+@click.pass_context
+def serve(ctx: click.Context, port: int, frontend_port: int, no_browser: bool):
     """Start the dashboard dev server."""
+    from cli import get_cogent_name
+
+    name = get_cogent_name(ctx)
     env = {
         **os.environ,
         "DASHBOARD_COGENT_NAME": name,
         "DASHBOARD_PORT": str(port),
     }
+    env = _ensure_db_env(name, env)
 
     # Start FastAPI backend
     backend = subprocess.Popen(
@@ -74,9 +109,12 @@ def serve(name: str, port: int, frontend_port: int, no_browser: bool):
 
 
 @dashboard.command()
-@click.argument("name")
-def login(name: str):
+@click.pass_context
+def login(ctx: click.Context):
     """Generate and store an API key locally."""
+    from cli import get_cogent_name
+
+    name = get_cogent_name(ctx)
     key = secrets.token_urlsafe(32)
     kf = _key_file(name)
     kf.write_text(key)
@@ -85,9 +123,12 @@ def login(name: str):
 
 
 @dashboard.command()
-@click.argument("name")
-def logout(name: str):
+@click.pass_context
+def logout(ctx: click.Context):
     """Remove local API key."""
+    from cli import get_cogent_name
+
+    name = get_cogent_name(ctx)
     kf = _key_file(name)
     if kf.exists():
         kf.unlink()
@@ -97,11 +138,14 @@ def logout(name: str):
 
 
 @dashboard.command()
-@click.argument("name")
-def keys(name: str):
+@click.pass_context
+def keys(ctx: click.Context):
     """Show local API key."""
+    from cli import get_cogent_name
+
+    name = get_cogent_name(ctx)
     kf = _key_file(name)
     if kf.exists():
         click.echo(f"Key: {kf.read_text().strip()}")
     else:
-        click.echo("No key found. Run: cogent dashboard login <name>")
+        click.echo("No key found. Run: cogent <name> dashboard login")
