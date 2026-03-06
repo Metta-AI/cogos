@@ -1,0 +1,148 @@
+{
+  "mcpServers": {
+    "aws-iac": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-iac-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-docs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-documentation-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-cloudcontrol": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.ccapi-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-cfn": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.cfn-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-iam": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.iam-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-cloudwatch": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.cloudwatch-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-eks": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.eks-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-ecs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.ecs-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-serverless": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-serverless-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-support": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-support-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-terraform": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.terraform-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-lambda-tool": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.lambda-tool-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-knowledge": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-knowledge-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-cost-explorer": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.cost-explorer-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-dynamodb": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.dynamodb-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-s3-tables": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.s3-tables-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-cloudtrail": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.cloudtrail-mcp-server@latest"
+      ],
+      "env": {}
+    },
+    "aws-pricing": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "awslabs.aws-pricing-mcp-server@latest"
+      ],
+      "env": {}
+    }
+  }
+}
