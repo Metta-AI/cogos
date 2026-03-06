@@ -18,6 +18,6 @@ Commit all changes, sync with remote, and push to main.
     - List the key things accomplished (commits made, features added, bugs fixed, deployments done)
     - Keep it concise — bullet points, not paragraphs
 11. Rename the conversation to a short descriptive title reflecting what was done (e.g. "Fix polis status + dashboard deploy")
-12. Ask the user: "Done? [Y/n]"
-    - If yes (default): run `/clear`
-    - If no: stop and let the user continue working
+12. Use the AskUserQuestion tool to ask: "Press Enter to clear, or type 'n' to keep working"
+    - If the response is empty or anything other than "n"/"no": run `/clear`
+    - If the response is "n" or "no": stop and let the user continue working
