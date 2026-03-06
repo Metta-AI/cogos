@@ -6,7 +6,7 @@ import click
 from cli.dashboard import dashboard
 
 # Known top-level commands — used to detect cogent name argument
-_COMMANDS = {"dashboard", "brain", "memory", "mind", "status", "--help", "-h"}
+_COMMANDS = {"dashboard", "brain", "memory", "mind", "run", "status", "--help", "-h"}
 
 
 def _preprocess_argv() -> None:
@@ -51,6 +51,11 @@ main.add_command(memory)
 from mind.cli import mind  # noqa: E402
 
 main.add_command(mind)
+
+# Run management CLI
+from run.cli import run  # noqa: E402
+
+main.add_command(run)
 
 
 @main.command("status")
