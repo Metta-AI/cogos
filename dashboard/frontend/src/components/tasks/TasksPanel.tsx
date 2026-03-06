@@ -225,6 +225,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
   const [editingPriorityValue, setEditingPriorityValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmStopId, setConfirmStopId] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"name" | "priority">(() => {
@@ -365,10 +366,11 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     });
   }, []);
 
-  const startEdit = useCallback((e: React.MouseEvent, task: Task) => {
+  const startEdit = useCallback(async (e: React.MouseEvent, task: Task) => {
     e.stopPropagation();
     setEditingId(task.id);
     setExpandedId(task.id);
+    // Start with list data, then fetch detail (which includes content)
     setEditForm({
       name: task.name,
       description: task.description,
@@ -384,7 +386,13 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
       creator: task.creator,
       source_event: task.source_event,
     });
-  }, []);
+    try {
+      const detail = await api.getTaskDetail(cogentName, task.id);
+      if (detail.task.content != null) {
+        setEditForm((prev) => ({ ...prev, content: detail.task.content }));
+      }
+    } catch { /* use list data as fallback */ }
+  }, [cogentName]);
 
   const cancelEdit = useCallback(() => {
     setEditingId(null);
@@ -462,8 +470,14 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     onRefresh();
   }, [cogentName, onRefresh]);
 
-  const handleStopTask = useCallback(async (e: React.MouseEvent, taskId: string) => {
+  const requestStop = useCallback((e: React.MouseEvent, taskId: string) => {
     e.stopPropagation();
+    setConfirmStopId((prev) => (prev === taskId ? null : taskId));
+  }, []);
+
+  const confirmStop = useCallback(async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    setConfirmStopId(null);
     await api.updateTask(cogentName, taskId, { status: "runnable" });
     onRefresh();
   }, [cogentName, onRefresh]);
@@ -666,6 +680,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     const isExpanded = expandedId === task.id;
     const isEditing = editingId === task.id;
     const isConfirming = confirmDeleteId === task.id;
+    const isConfirmingStop = confirmStopId === task.id;
     const shortName = showFullName
       ? (task.name ?? "--")
       : task.name
@@ -794,11 +809,27 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
                 No
               </button>
             </span>
+          ) : isConfirmingStop ? (
+            <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[10px] text-[var(--warning)]">Stop?</span>
+              <button
+                onClick={(e) => confirmStop(e, task.id)}
+                className="border-0 bg-transparent cursor-pointer text-[var(--warning)] font-semibold text-[11px]"
+              >
+                Yes
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmStopId(null); }}
+                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] text-[11px]"
+              >
+                No
+              </button>
+            </span>
           ) : (
             <>
               {task.status === "running" ? (
                 <button
-                  onClick={(e) => handleStopTask(e, task.id)}
+                  onClick={(e) => requestStop(e, task.id)}
                   className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--warning)] text-[11px]"
                   title="Stop"
                 >

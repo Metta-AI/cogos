@@ -406,7 +406,7 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
                             {t.name}
                           </td>
                           <td className="px-3 py-2">
-                            <Badge variant="info">{t.trigger_type ?? "unknown"}</Badge>
+                            <Badge variant="info">{(t.trigger_type && t.trigger_type.toLowerCase() !== "unknown" ? t.trigger_type : null) || (t.cron_expression ? "cron" : t.event_pattern ? "event" : "unknown")}</Badge>
                           </td>
                           <td className="px-3 py-2 font-mono text-[var(--text-muted)] max-w-[200px] truncate">
                             {t.event_pattern ?? t.cron_expression ?? "--"}
