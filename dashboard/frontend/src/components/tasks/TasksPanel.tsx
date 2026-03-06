@@ -227,7 +227,29 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<"name" | "priority">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tasks-sort");
+      if (saved === "name" || saved === "priority") return saved;
+    }
+    return "priority";
+  });
   const undoRef = useRef<UndoToast | null>(null);
+
+  const toggleSort = useCallback(() => {
+    setSortBy((prev) => {
+      const next = prev === "priority" ? "name" : "priority";
+      localStorage.setItem("tasks-sort", next);
+      return next;
+    });
+  }, []);
+
+  const sortTasks = useCallback((list: Task[]): Task[] => {
+    return [...list].sort((a, b) => {
+      if (sortBy === "priority") return (b.priority ?? 0) - (a.priority ?? 0);
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+  }, [sortBy]);
 
   // Filter tasks: only show tasks with runs in the selected time range (or running/stuck/new)
   const activeWindow = TIME_RANGE_TO_WINDOW[timeRange];
@@ -270,35 +292,40 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     return [...set].sort();
   }, [tasks, programs]);
 
-  // Categorized task lists (from filtered)
+  // Categorized task lists (from filtered, sorted)
   const runningTasks = useMemo(
-    () => filteredTasks.filter((t) => t.status === "running" && !isStuck(t)),
-    [filteredTasks],
+    () => sortTasks(filteredTasks.filter((t) => t.status === "running" && !isStuck(t))),
+    [filteredTasks, sortTasks],
   );
   const stuckTasks = useMemo(
-    () => filteredTasks.filter((t) => isStuck(t)),
-    [filteredTasks],
+    () => sortTasks(filteredTasks.filter((t) => isStuck(t))),
+    [filteredTasks, sortTasks],
   );
   const recentlyFinished = useMemo(
-    () => filteredTasks.filter((t) => t.status === "completed" && isRecent(t.completed_at)),
-    [filteredTasks],
+    () => sortTasks(filteredTasks.filter((t) => t.status === "completed" && isRecent(t.completed_at))),
+    [filteredTasks, sortTasks],
   );
   const recentlyFailed = useMemo(
-    () => filteredTasks.filter((t) =>
+    () => sortTasks(filteredTasks.filter((t) =>
       (t.last_run_status === "failed" || t.last_run_status === "timeout") &&
       isRecent(t.last_run_at) &&
       t.status !== "running",
-    ),
-    [filteredTasks],
+    )),
+    [filteredTasks, sortTasks],
+  );
+
+  const runnableTasks = useMemo(
+    () => sortTasks(filteredTasks.filter((t) => t.status === "runnable" && !isStuck(t))),
+    [filteredTasks, sortTasks],
   );
 
   const highlightIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished, ...recentlyFailed]) {
+    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished, ...recentlyFailed, ...runnableTasks]) {
       ids.add(t.id);
     }
     return ids;
-  }, [runningTasks, stuckTasks, recentlyFinished, recentlyFailed]);
+  }, [runningTasks, stuckTasks, recentlyFinished, recentlyFailed, runnableTasks]);
 
   const grouped = useMemo(() => {
     const remaining = filteredTasks.filter((t) => !highlightIds.has(t.id) && !pendingDeletes.has(t.id));
@@ -309,8 +336,10 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
       if (!groups[key]) groups[key] = [];
       groups[key].push(t);
     }
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredTasks, highlightIds, pendingDeletes]);
+    return Object.entries(groups)
+      .map(([key, items]) => [key, sortTasks(items)] as [string, Task[]])
+      .sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredTasks, highlightIds, pendingDeletes, sortTasks]);
 
   useEffect(() => {
     if (!expandedId) { setExpandedRuns([]); return; }
@@ -659,9 +688,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
             if (!isExpanded) e.currentTarget.style.background = "var(--bg-surface)";
           }}
         >
-          <Badge variant={STATUS_VARIANT[task.status ?? ""] ?? "neutral"}>
-            {task.status ?? "?"}{task.recurrent ? " ↻" : ""}
-          </Badge>
+          {task.recurrent && <span className="text-[var(--info)] text-[11px]" title="Recurrent">↻</span>}
           <span className="font-mono text-[12px] text-[var(--text-primary)]" title={task.name ?? ""}>
             {shortName}
           </span>
@@ -998,8 +1025,21 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[var(--text-muted)] text-xs">
-          {filteredTasks.length}/{tasks.length} task{tasks.length !== 1 ? "s" : ""}
+        <div className="flex items-center gap-3">
+          <span className="text-[var(--text-muted)] text-xs">
+            {filteredTasks.length}/{tasks.length} task{tasks.length !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={toggleSort}
+            className="border-0 cursor-pointer rounded px-2 py-0.5 text-[10px] font-mono transition-colors"
+            style={{
+              background: "var(--bg-hover)",
+              color: "var(--text-secondary)",
+            }}
+            title="Toggle sort order"
+          >
+            sort: {sortBy}
+          </button>
         </div>
         <button
           onClick={() => setCreating(!creating)}
@@ -1075,6 +1115,15 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
         "#7f1d1d",
         "rgba(239, 68, 68, 0.06)",
         <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#ef4444" }} />,
+      )}
+
+      {/* Runnable */}
+      {renderSection(
+        "Runnable",
+        runnableTasks,
+        "var(--info)",
+        "var(--border)",
+        "var(--bg-surface)",
       )}
 
       {/* Task groups */}
