@@ -213,11 +213,30 @@ class PolisStack(cdk.Stack):
                     "ecs:DescribeServices",
                     "ecs:ListServices",
                     "ecs:UpdateService",
+                    "ecs:DescribeTaskDefinition",
+                    "ecs:RegisterTaskDefinition",
+                    "ecs:DeregisterTaskDefinition",
                     "ecr:DescribeRepositories",
                     "ecr:DescribeImages",
                     "ecr:ListImages",
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:PutImage",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload",
                 ],
                 resources=["*"],
+            )
+        )
+        # ECS service needs iam:PassRole to update task definitions
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                resources=["*"],
+                conditions={"StringLike": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}},
             )
         )
         # RDS Data API — CLI access to cogent databases

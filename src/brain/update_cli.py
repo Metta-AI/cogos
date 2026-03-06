@@ -237,6 +237,145 @@ def update_mind(ctx: click.Context):
     click.echo(f"  Mind: {time.monotonic() - t0:.1f}s")
 
 
+@update.command("dashboard")
+@click.option("--skip-health", is_flag=True, help="Skip waiting for service stability")
+@click.pass_context
+def update_dashboard(ctx: click.Context, skip_health: bool):
+    """Build, push, and deploy the dashboard container."""
+    import base64
+    import subprocess
+
+    from polis.aws import POLIS_ACCOUNT_ID, get_polis_session
+
+    t0 = time.monotonic()
+    name = get_cogent_name(ctx)
+    safe_name = name.replace(".", "-")
+    image_tag = f"{safe_name}-dashboard"
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+    click.echo(f"Updating dashboard for cogent-{name}...")
+
+    # 1. Build Docker image
+    click.echo("  Building Docker image...")
+    t1 = time.monotonic()
+    result = subprocess.run(
+        [
+            "docker", "build",
+            "-f", "dashboard/Dockerfile",
+            "-t", f"cogent:{image_tag}",
+            "--platform", "linux/amd64",
+            ".",
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        click.echo(result.stderr[-500:] if result.stderr else "")
+        raise click.ClickException("Docker build failed")
+    click.echo(f"  Build: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
+
+    # 2. Get polis session with full admin (ECR push needs perms beyond cogent-polis-admin)
+    from polis.aws import _assume_role
+    org_session = boto3.Session(profile_name="softmax-org", region_name=DEFAULT_REGION)
+    session = _assume_role(org_session, POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole")
+    ecr = session.client("ecr", region_name=DEFAULT_REGION)
+    repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
+
+    # Docker login to ECR
+    click.echo("  Logging into ECR...")
+    token_resp = ecr.get_authorization_token()
+    auth = token_resp["authorizationData"][0]
+    user_pass = base64.b64decode(auth["authorizationToken"]).decode()
+    password = user_pass.split(":", 1)[1]
+    login_result = subprocess.run(
+        ["docker", "login", "--username", "AWS", "--password-stdin", auth["proxyEndpoint"]],
+        input=password,
+        capture_output=True,
+        text=True,
+    )
+    if login_result.returncode != 0:
+        raise click.ClickException(f"ECR login failed: {login_result.stderr}")
+
+    # 3. Tag and push
+    click.echo("  Pushing image...")
+    t1 = time.monotonic()
+    remote_tag = f"{repo_uri}:{image_tag}"
+    subprocess.run(["docker", "tag", f"cogent:{image_tag}", remote_tag], check=True)
+    result = subprocess.run(["docker", "push", remote_tag], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise click.ClickException(f"Docker push failed: {result.stderr[-300:]}")
+    click.echo(f"  Push: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
+
+    # 4. Find the dashboard ECS service on cogent-polis cluster
+    ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
+    services = ecs_client.list_services(cluster="cogent-polis").get("serviceArns", [])
+    dash_services = [s for s in services if safe_name in s]
+    if not dash_services:
+        raise click.ClickException(f"No dashboard service found for {safe_name} on cogent-polis cluster")
+    service_arn = dash_services[0]
+
+    # 5. Get current task definition, update image, register new revision
+    click.echo("  Updating task definition...")
+    svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=[service_arn])["services"][0]
+    task_def_arn = svc_desc["taskDefinition"]
+    task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
+
+    # Update the container image
+    containers = task_def["containerDefinitions"]
+    for c in containers:
+        if c.get("name") == "web":
+            c["image"] = remote_tag
+            break
+    else:
+        # If no "web" container, update the first one
+        containers[0]["image"] = remote_tag
+
+    # Register new task definition revision
+    register_kwargs = {
+        "family": task_def["family"],
+        "containerDefinitions": containers,
+        "taskRoleArn": task_def.get("taskRoleArn", ""),
+        "executionRoleArn": task_def.get("executionRoleArn", ""),
+        "networkMode": task_def.get("networkMode", "awsvpc"),
+        "requiresCompatibilities": task_def.get("requiresCompatibilities", ["FARGATE"]),
+        "cpu": task_def.get("cpu", "256"),
+        "memory": task_def.get("memory", "512"),
+    }
+    # Only include runtimePlatform if present
+    if "runtimePlatform" in task_def:
+        register_kwargs["runtimePlatform"] = task_def["runtimePlatform"]
+
+    new_td = ecs_client.register_task_definition(**register_kwargs)
+    new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
+    click.echo(f"  Task definition: {new_td_arn.split('/')[-1]}")
+
+    # 6. Update service with new task definition
+    click.echo("  Deploying...")
+    ecs_client.update_service(
+        cluster="cogent-polis",
+        service=service_arn,
+        taskDefinition=new_td_arn,
+        forceNewDeployment=True,
+    )
+
+    if not skip_health:
+        click.echo("  Waiting for service to stabilize...")
+        try:
+            waiter = ecs_client.get_waiter("services_stable")
+            waiter.wait(
+                cluster="cogent-polis",
+                services=[service_arn],
+                WaiterConfig={"Delay": 10, "MaxAttempts": 60},
+            )
+            click.echo(f"  Dashboard: {click.style('deployed', fg='green')} ({time.monotonic() - t0:.1f}s)")
+        except Exception as e:
+            click.echo(f"  Service did not stabilize: {e}", err=True)
+            click.echo("  The deployment is still in progress. Check ECS console.")
+    else:
+        click.echo(f"  Dashboard deployment initiated. ({time.monotonic() - t0:.1f}s)")
+
+
 @update.command("stack")
 @click.option("--profile", default="softmax-org", help="AWS profile")
 @click.pass_context
