@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as api from "@/lib/api";
+import { MOCK_DATA } from "@/lib/mock-data";
 import type {
   DashboardData,
   TimeRange,
@@ -14,7 +15,13 @@ import type {
 } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 
+function useMockMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("mock");
+}
+
 export function useCogentData(cogentName: string) {
+  const mockMode = useMockMode();
   const [data, setData] = useState<DashboardData>({
     status: null,
     programs: [],
@@ -34,6 +41,12 @@ export function useCogentData(cogentName: string) {
   const { connected, lastMessage } = useWebSocket(cogentName);
 
   const refresh = useCallback(async () => {
+    if (mockMode) {
+      setData(MOCK_DATA);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const results = await Promise.allSettled([
       api.getStatus(cogentName, timeRange),
@@ -49,26 +62,40 @@ export function useCogentData(cogentName: string) {
     ]);
     const failCount = results.filter((r) => r.status === "rejected").length;
     if (failCount === results.length) {
-      setError("Backend unavailable — all API requests failed");
+      // All requests failed — use mock data for development
+      setError(null);
+      setData(MOCK_DATA);
     } else if (failCount > 0) {
       setError(`${failCount} of ${results.length} API requests failed`);
+      setData({
+        status: results[0].status === "fulfilled" ? results[0].value : null,
+        programs: results[1].status === "fulfilled" ? results[1].value : [],
+        sessions: results[2].status === "fulfilled" ? results[2].value : [],
+        events: results[3].status === "fulfilled" ? results[3].value : [],
+        triggers: results[4].status === "fulfilled" ? results[4].value : [],
+        memory: results[5].status === "fulfilled" ? results[5].value : [],
+        tasks: results[6].status === "fulfilled" ? results[6].value : [],
+        channels: results[7].status === "fulfilled" ? results[7].value : [],
+        alerts: results[8].status === "fulfilled" ? results[8].value : [],
+        crons: results[9].status === "fulfilled" ? results[9].value : [],
+      });
     } else {
       setError(null);
+      setData({
+        status: results[0].status === "fulfilled" ? results[0].value : null,
+        programs: results[1].status === "fulfilled" ? results[1].value : [],
+        sessions: results[2].status === "fulfilled" ? results[2].value : [],
+        events: results[3].status === "fulfilled" ? results[3].value : [],
+        triggers: results[4].status === "fulfilled" ? results[4].value : [],
+        memory: results[5].status === "fulfilled" ? results[5].value : [],
+        tasks: results[6].status === "fulfilled" ? results[6].value : [],
+        channels: results[7].status === "fulfilled" ? results[7].value : [],
+        alerts: results[8].status === "fulfilled" ? results[8].value : [],
+        crons: results[9].status === "fulfilled" ? results[9].value : [],
+      });
     }
-    setData({
-      status: results[0].status === "fulfilled" ? results[0].value : null,
-      programs: results[1].status === "fulfilled" ? results[1].value : [],
-      sessions: results[2].status === "fulfilled" ? results[2].value : [],
-      events: results[3].status === "fulfilled" ? results[3].value : [],
-      triggers: results[4].status === "fulfilled" ? results[4].value : [],
-      memory: results[5].status === "fulfilled" ? results[5].value : [],
-      tasks: results[6].status === "fulfilled" ? results[6].value : [],
-      channels: results[7].status === "fulfilled" ? results[7].value : [],
-      alerts: results[8].status === "fulfilled" ? results[8].value : [],
-      crons: results[9].status === "fulfilled" ? results[9].value : [],
-    });
     setLoading(false);
-  }, [cogentName, timeRange]);
+  }, [cogentName, timeRange, mockMode]);
 
   // Initial fetch
   useEffect(() => {
