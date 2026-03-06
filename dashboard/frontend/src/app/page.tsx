@@ -21,6 +21,14 @@ function getTabFromHash(): TabId {
   return VALID_TABS.has(hash as TabId) ? (hash as TabId) : "overview";
 }
 
+function useCogentName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    setName(window.location.hostname.split(".")[0].replace(/-/g, "."));
+  }, []);
+  return name;
+}
+
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>(getTabFromHash);
 
@@ -34,10 +42,17 @@ export default function DashboardPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  const [cogentName, setCogentName] = useState("");
-  useEffect(() => {
-    setCogentName(window.location.hostname.split(".")[0].replace(/-/g, "."));
-  }, []);
+
+  const cogentName = useCogentName();
+
+  if (!cogentName) {
+    return <div className="h-screen overflow-hidden" />;
+  }
+
+  return <Dashboard cogentName={cogentName} activeTab={activeTab} onTabChange={handleTabChange} />;
+}
+
+function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string; activeTab: TabId; onTabChange: (tab: TabId) => void }) {
   const { data, loading, error, refresh, timeRange, setTimeRange, connected } = useCogentData(cogentName);
 
   const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
@@ -60,7 +75,7 @@ export default function DashboardPage() {
     <div className="h-screen overflow-hidden">
       <Sidebar
         activeTab={activeTab}
-        onTabChange={handleTabChange}
+        onTabChange={onTabChange}
         alertCount={data.status?.unresolved_alerts}
         stuckTaskCount={stuckTaskCount}
       />
@@ -91,7 +106,7 @@ export default function DashboardPage() {
           <ChannelsPanel channels={data.channels} cogentName={cogentName} onRefresh={refresh} />
         )}
         {activeTab === "events" && (
-          <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} onTabChange={handleTabChange as (tab: string) => void} />
+          <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} onTabChange={onTabChange as (tab: string) => void} />
         )}
         {activeTab === "triggers" && (
           <TriggersPanel triggers={data.triggers} cogentName={cogentName} programs={data.programs.map(p => p.name)} onRefresh={refresh} />
