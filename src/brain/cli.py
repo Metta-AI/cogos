@@ -339,6 +339,54 @@ def destroy_cmd(ctx: click.Context, profile: str, yes: bool):
     click.echo(f"Brain infrastructure for cogent-{name} destroyed.")
 
 
+@brain.command("build")
+@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.pass_context
+def build_cmd(ctx: click.Context, profile: str):
+    """Build and push the executor Docker image to polis ECR."""
+    import subprocess
+
+    from polis.aws import get_polis_session
+
+    name = get_cogent_name(ctx)
+    safe_name = name.replace(".", "-")
+    tag = f"executor-{safe_name}"
+
+    # Get polis ECR repo URI
+    polis_session, _ = get_polis_session()
+    ecr_client = polis_session.client("ecr")
+    repos = ecr_client.describe_repositories(repositoryNames=["cogent"])["repositories"]
+    repo_uri = repos[0]["repositoryUri"]
+
+    image = f"{repo_uri}:{tag}"
+    click.echo(f"Building executor image: {image}")
+
+    # Build
+    result = subprocess.run(
+        ["docker", "build", "-f", "src/brain/docker/Dockerfile", "-t", image, "."],
+        capture_output=False,
+    )
+    if result.returncode != 0:
+        raise click.ClickException("Docker build failed")
+
+    # Login to ECR
+    token = ecr_client.get_authorization_token()
+    registry = repo_uri.split("/")[0]
+    subprocess.run(
+        ["docker", "login", "--username", "AWS", "--password-stdin", registry],
+        input=token["authorizationData"][0]["authorizationToken"].encode(),
+        capture_output=False,
+    )
+
+    # Push
+    click.echo(f"Pushing {image}...")
+    result = subprocess.run(["docker", "push", image], capture_output=False)
+    if result.returncode != 0:
+        raise click.ClickException("Docker push failed")
+
+    click.echo(f"Image pushed: {image}")
+
+
 # Wire in update subcommands
 from brain.update_cli import update  # noqa: E402
 
