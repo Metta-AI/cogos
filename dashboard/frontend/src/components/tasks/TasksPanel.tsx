@@ -223,6 +223,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<Partial<Task>>({ name: "", description: "", content: "", priority: 0.0, program_name: "do-content" });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [completedCollapsed, setCompletedCollapsed] = useState(true);
   const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
   const [editingPriorityValue, setEditingPriorityValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -320,14 +321,18 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     () => sortTasks(filteredTasks.filter((t) => t.status === "runnable" && !isStuck(t))),
     [filteredTasks, sortTasks],
   );
+  const completedTasks = useMemo(
+    () => sortTasks(filteredTasks.filter((t) => t.status === "completed" && !isRecent(t.completed_at))),
+    [filteredTasks, sortTasks],
+  );
 
   const highlightIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished, ...recentlyFailed, ...runnableTasks]) {
+    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished, ...recentlyFailed, ...runnableTasks, ...completedTasks]) {
       ids.add(t.id);
     }
     return ids;
-  }, [runningTasks, stuckTasks, recentlyFinished, recentlyFailed, runnableTasks]);
+  }, [runningTasks, stuckTasks, recentlyFinished, recentlyFailed, runnableTasks, completedTasks]);
 
   const grouped = useMemo(() => {
     const remaining = filteredTasks.filter((t) => !highlightIds.has(t.id) && !pendingDeletes.has(t.id));
@@ -479,9 +484,11 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const confirmStop = useCallback(async (e: React.MouseEvent, taskId: string) => {
     e.stopPropagation();
     setConfirmStopId(null);
-    await api.updateTask(cogentName, taskId, { status: "runnable" });
+    const task = tasks.find((t) => t.id === taskId);
+    const newStatus = task?.recurrent ? "runnable" : "completed";
+    await api.updateTask(cogentName, taskId, { status: newStatus });
     onRefresh();
-  }, [cogentName, onRefresh]);
+  }, [cogentName, onRefresh, tasks]);
 
   const handlePrioritySave = useCallback(async (taskId: string) => {
     const val = parseFloat(editingPriorityValue);
@@ -829,13 +836,24 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
           ) : (
             <>
               {task.status === "running" || task.status === "scheduled" ? (
-                <button
-                  onClick={(e) => requestStop(e, task.id)}
-                  className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--warning)] text-[11px]"
-                  title="Stop"
-                >
-                  ■
-                </button>
+                <span className="flex items-center gap-0.5">
+                  {isStuck(task) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); confirmStop(e, task.id); }}
+                      className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--accent)] text-[11px]"
+                      title="Retry"
+                    >
+                      ↻
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => requestStop(e, task.id)}
+                    className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--warning)] text-[11px]"
+                    title="Stop"
+                  >
+                    ■
+                  </button>
+                </span>
               ) : task.status === "completed" ? (
                 <button
                   onClick={(e) => handleRunCopy(e, task)}
@@ -1156,6 +1174,34 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
         "var(--info)",
         "var(--border)",
         "var(--bg-surface)",
+      )}
+
+      {/* Completed (collapsed by default) */}
+      {completedTasks.length > 0 && (
+        <div className="mb-4 rounded-md overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+          <button
+            onClick={() => setCompletedCollapsed((p) => !p)}
+            className="w-full flex items-center gap-2 px-3 py-1.5 border-0 cursor-pointer transition-colors"
+            style={{
+              background: "var(--bg-elevated)",
+              color: "#22c55e",
+              borderBottom: completedCollapsed ? "none" : "1px solid var(--border)",
+              borderRadius: completedCollapsed ? "6px" : undefined,
+            }}
+          >
+            <span
+              className="text-[10px] transition-transform"
+              style={{ transform: completedCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+            >
+              ▼
+            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Completed</span>
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              ({completedTasks.length})
+            </span>
+          </button>
+          {!completedCollapsed && completedTasks.filter((t) => !pendingDeletes.has(t.id)).map((task) => renderTaskRow(task, true))}
+        </div>
       )}
 
       {/* Task groups */}
