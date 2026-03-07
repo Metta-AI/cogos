@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -317,6 +318,44 @@ class LocalRepository:
         trigger.enabled = enabled
         self._save()
         return True
+
+    def throttle_check(self, trigger_id: UUID, max_events: int, window_seconds: int) -> "ThrottleResult":
+        from brain.db.models import ThrottleResult
+
+        trigger = self._triggers.get(trigger_id)
+        if not trigger:
+            return ThrottleResult(allowed=True, state_changed=False, throttle_active=False)
+
+        if max_events <= 0:
+            return ThrottleResult(allowed=True, state_changed=False, throttle_active=False)
+
+        now = time.time()
+        cutoff = now - window_seconds
+        prev_active = trigger.throttle_active
+
+        # Prune expired timestamps
+        trigger.throttle_timestamps = [ts for ts in trigger.throttle_timestamps if ts > cutoff]
+
+        if len(trigger.throttle_timestamps) >= max_events:
+            # Reject
+            trigger.throttle_rejected += 1
+            trigger.throttle_active = True
+            self._save()
+            return ThrottleResult(
+                allowed=False,
+                state_changed=prev_active != trigger.throttle_active,
+                throttle_active=True,
+            )
+
+        # Allow
+        trigger.throttle_timestamps.append(now)
+        trigger.throttle_active = False
+        self._save()
+        return ThrottleResult(
+            allowed=True,
+            state_changed=prev_active != trigger.throttle_active,
+            throttle_active=False,
+        )
 
     # ── Cron ─────────────────────────────────────────────────
 
