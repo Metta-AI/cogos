@@ -53,7 +53,7 @@ def _memory(
 class TestCreate:
     def test_creates_memory_with_version_1(self, store, repo):
         repo.get_memory_by_name.return_value = None
-        repo.insert_memory.return_value = uuid4()
+        repo.insert_memory_v2.return_value = uuid4()
 
         result = store.create("notes", "my content")
 
@@ -68,7 +68,7 @@ class TestCreate:
 
     def test_create_with_read_only(self, store, repo):
         repo.get_memory_by_name.return_value = None
-        repo.insert_memory.return_value = uuid4()
+        repo.insert_memory_v2.return_value = uuid4()
 
         result = store.create("notes", "content", read_only=True)
 
@@ -76,7 +76,7 @@ class TestCreate:
 
     def test_create_with_custom_source(self, store, repo):
         repo.get_memory_by_name.return_value = None
-        repo.insert_memory.return_value = uuid4()
+        repo.insert_memory_v2.return_value = uuid4()
 
         result = store.create("notes", "content", source="polis")
 
@@ -84,12 +84,12 @@ class TestCreate:
 
     def test_create_calls_repo_insert(self, store, repo):
         repo.get_memory_by_name.return_value = None
-        repo.insert_memory.return_value = uuid4()
+        repo.insert_memory_v2.return_value = uuid4()
 
         store.create("notes", "content")
 
-        repo.insert_memory.assert_called_once()
-        mem = repo.insert_memory.call_args[0][0]
+        repo.insert_memory_v2.assert_called_once()
+        mem = repo.insert_memory_v2.call_args[0][0]
         assert isinstance(mem, Memory)
         assert mem.name == "notes"
 
@@ -144,12 +144,12 @@ class TestNewVersion:
 class TestUpsert:
     def test_creates_when_not_exists(self, store, repo):
         repo.get_memory_by_name.return_value = None
-        repo.insert_memory.return_value = uuid4()
+        repo.insert_memory_v2.return_value = uuid4()
 
         result = store.upsert("notes", "content")
 
         assert isinstance(result, Memory)
-        repo.insert_memory.assert_called_once()
+        repo.insert_memory_v2.assert_called_once()
 
     def test_raises_when_active_is_read_only(self, store, repo):
         existing = _memory("notes", "locked", version=1, read_only=True)
@@ -250,7 +250,7 @@ class TestDelete:
 
         store.delete("notes")
 
-        repo.delete_memory.assert_called_once_with(mem.id)
+        repo.delete_memory_v2.assert_called_once_with(mem.id)
 
     def test_raises_when_active_is_read_only(self, store, repo):
         mem = _memory("notes", "locked", version=1, read_only=True)
@@ -336,11 +336,11 @@ class TestGetVersion:
 
 class TestListMemories:
     def test_delegates_to_repo(self, store, repo):
-        repo.list_memories.return_value = [_memory("a"), _memory("b")]
+        repo.list_memories_v2.return_value = [_memory("a"), _memory("b")]
 
         result = store.list_memories(prefix="/", source="cogent", limit=10)
 
-        repo.list_memories.assert_called_once_with(prefix="/", source="cogent", limit=10)
+        repo.list_memories_v2.assert_called_once_with(prefix="/", source="cogent", limit=10)
         assert len(result) == 2
 
 

@@ -536,7 +536,7 @@ class LocalRepository:
             return True
         return False
 
-    # ── Memory ───────────────────────────────────────────────
+    # ── Memory (legacy — will be removed in cleanup task) ───
 
     def insert_memory(self, mem: MemoryRecord) -> UUID:
         now = datetime.utcnow()

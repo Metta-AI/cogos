@@ -38,7 +38,7 @@ class MemoryStore:
             read_only=read_only,
         )
         mem.versions[1] = mv
-        self._repo.insert_memory(mem)
+        self._repo.insert_memory_v2(mem)
         return mem
 
     def new_version(
@@ -122,7 +122,7 @@ class MemoryStore:
         limit: int = 200,
     ) -> list[Memory]:
         """List memories with optional filters."""
-        return self._repo.list_memories(prefix=prefix, source=source, limit=limit)
+        return self._repo.list_memories_v2(prefix=prefix, source=source, limit=limit)
 
     def history(self, name: str) -> list[MemoryVersion]:
         """Return all versions for a memory."""
@@ -184,7 +184,7 @@ class MemoryStore:
                 raise MemoryReadOnlyError(
                     name, mem.active_version, active_mv.source
                 )
-            self._repo.delete_memory(mem.id)
+            self._repo.delete_memory_v2(mem.id)
         else:
             if version == mem.active_version:
                 raise ValueError(
