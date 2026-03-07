@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from brain.db.models import Memory, MemoryVersion
 from dashboard.db import get_repo
 from dashboard.models import MemoryCreate, MemoryItem, MemoryResponse, MemoryUpdate, MemoryVersionItem
+from memory.errors import MemoryReadOnlyError
 from memory.store import MemoryStore
 
 router = APIRouter(tags=["memory"])
@@ -103,11 +105,25 @@ def update_memory(name: str, memory_name: str, body: MemoryUpdate) -> MemoryItem
     return _memory_to_item(updated)
 
 
+class ActivateRequest(BaseModel):
+    version: int
+
+
+@router.post("/memory/{memory_name:path}/activate")
+def activate_version_endpoint(name: str, memory_name: str, body: ActivateRequest) -> dict:
+    store = _get_store()
+    try:
+        store.activate(memory_name, body.version)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"activated": True, "version": body.version}
+
+
 @router.delete("/memory/{memory_name:path}")
 def delete_memory_endpoint(name: str, memory_name: str) -> dict:
     store = _get_store()
     try:
         store.delete(memory_name)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    except (ValueError, MemoryReadOnlyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"deleted": True}

@@ -690,20 +690,21 @@ class LocalRepository:
     ) -> list[Memory]:
         """List memories, optionally filtering by name prefix and active version source.
 
-        Returns Memory objects with active version populated.
+        Returns Memory objects with all versions populated.
         """
         self._maybe_reload()
         results: list[Memory] = []
         for mem in self._memories.values():
             if prefix and not mem.name.startswith(prefix):
                 continue
-            # Populate active version
+            # Check active version source for filtering
             active_mv = self.get_memory_version(mem.id, mem.active_version)
             if source and (active_mv is None or active_mv.source != source):
                 continue
+            # Populate all versions
             mem.versions = {}
-            if active_mv:
-                mem.versions[active_mv.version] = active_mv
+            for mv in self._memory_versions.get(mem.id, []):
+                mem.versions[mv.version] = mv
             results.append(mem)
         results.sort(key=lambda m: m.name)
         return results[:limit]

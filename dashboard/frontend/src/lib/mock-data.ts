@@ -5,6 +5,7 @@ import type {
   DashboardEvent,
   Trigger,
   MemoryItem,
+  MemoryVersionItem,
   Task,
   Channel,
   Alert,
@@ -99,22 +100,42 @@ const triggers: Trigger[] = [
 
 // ── Memory ──────────────────────────────────────────────────────────────────
 
+function mockMem(
+  name: string,
+  group: string,
+  content: string,
+  source: string = "cogent",
+  opts: { read_only?: boolean; extra_versions?: Omit<MemoryVersionItem, "id" | "memory_id">[] } = {},
+): MemoryItem {
+  const id = uuid();
+  const v1: MemoryVersionItem = { id: uuid(), version: 1, content, source, read_only: opts.read_only ?? false, created_at: ago(30 * D) };
+  const versions = [v1, ...(opts.extra_versions ?? []).map((v) => ({ ...v, id: uuid() }))];
+  const active = versions[versions.length - 1];
+  return {
+    id, name, group, active_version: active.version, content: active.content,
+    source: active.source, read_only: active.read_only,
+    created_at: ago(30 * D), modified_at: ago(2 * D), versions,
+  };
+}
+
 const memory: MemoryItem[] = [
-  { id: uuid(), scope: "cogent", type: null, name: "identity", group: "default", content: "You are Ovo, a cogent — an autonomous agent system built on the cogents framework. Your primary purpose is to help your operator by monitoring channels (Discord, GitHub, email), executing tasks, and managing deployments. You respond in a concise, technical style.", provenance: null, created_at: ago(30 * D), updated_at: ago(2 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "personality", group: "default", content: "Professional, concise, technically precise. Uses bullet points. Avoids filler words.", provenance: null, created_at: ago(30 * D), updated_at: ago(5 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "api-conventions", group: "api", content: "REST API naming: plural nouns, snake_case, version prefix /v1/. Always return JSON with top-level data wrapper. Use 201 for creation, 204 for deletion.", provenance: null, created_at: ago(20 * D), updated_at: ago(3 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "discord-channels", group: "discord", content: "Monitored Discord channels:\n- #general — main discussion, respond to direct questions\n- #alerts — system alerts, always acknowledge critical ones\n- #dev — development discussion, help with code questions\n- #deploys — deployment notifications, track status", provenance: null, created_at: ago(25 * D), updated_at: ago(1 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "deployment-checklist", group: "deployment", content: "Pre-deployment verification steps: run tests, check migrations, validate configs, verify health endpoints, confirm rollback plan.", provenance: null, created_at: ago(15 * D), updated_at: ago(4 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "conversation-history", group: "conversation", content: "Summary of recent conversation patterns: most requests relate to PR reviews, deployment status, and test failures. Average response time: 2.3s.", provenance: null, created_at: ago(10 * D), updated_at: ago(6 * H) },
-  { id: uuid(), scope: "cogent", type: null, name: "github-repos", group: "github", content: "Monitored repos:\n- acme/api (primary backend)\n- acme/web (frontend)\n- acme/infra (IaC)\n- acme/docs (documentation)", provenance: null, created_at: ago(28 * D), updated_at: ago(2 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "cost-limits", group: "ops", content: "Daily cost budget: $10. Alert threshold: $5. Escalation at $8. Hard limit at $15.", provenance: null, created_at: ago(20 * D), updated_at: ago(7 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "test-strategy", group: "testing", content: "Run integration tests on every PR. Run full suite nightly. Flaky test threshold: 3 retries. Report failures to #dev channel.", provenance: null, created_at: ago(18 * D), updated_at: ago(5 * D) },
-  { id: uuid(), scope: "polis", type: null, name: "operator-prefs", group: "default", content: "Operator timezone: US/Pacific. Preferred notification channel: Discord #alerts for critical, email for daily summaries. Do not notify between 10pm-7am unless P0.", provenance: null, created_at: ago(30 * D), updated_at: ago(10 * D) },
-  { id: uuid(), scope: "polis", type: null, name: "team-roster", group: "team", content: "Team: Alice (backend lead), Bob (frontend), Carol (infra), Dave (PM). Alice and Carol are deployment approvers.", provenance: null, created_at: ago(25 * D), updated_at: ago(15 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "email-templates", group: "email", content: "Use templates: deploy-notification, weekly-report, alert-escalation. Keep subject lines under 60 chars. Always include action items.", provenance: null, created_at: ago(22 * D), updated_at: ago(8 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "slack-config", group: "slack", content: "Slack workspace: acme-eng. Channels: #engineering, #deploys, #incidents. Use thread replies for ongoing conversations. Emoji reactions: ✅ acknowledged, 🔥 urgent.", provenance: null, created_at: ago(20 * D), updated_at: ago(3 * D) },
-  { id: uuid(), scope: "cogent", type: null, name: "rollback-procedures", group: "deployment", content: "Rollback steps: 1. Revert to previous container image 2. Run health checks 3. Verify DB compatibility 4. Notify in #deploys 5. Create post-mortem task", provenance: null, created_at: ago(12 * D), updated_at: ago(6 * D) },
-  { id: uuid(), scope: "polis", type: null, name: "security-policies", group: "security", content: "Never commit secrets. Use AWS Secrets Manager for all credentials. Rotate API keys quarterly. Review access logs weekly.", provenance: null, created_at: ago(30 * D), updated_at: ago(20 * D) },
+  mockMem("identity", "default", "You are Ovo, a cogent — an autonomous agent system built on the cogents framework. Your primary purpose is to help your operator by monitoring channels (Discord, GitHub, email), executing tasks, and managing deployments. You respond in a concise, technical style.", "cogent", {
+    extra_versions: [{ version: 2, content: "You are Ovo, a cogent. Help your operator by monitoring channels, executing tasks, and managing deployments. Be concise and technical.", source: "cogent", read_only: false, created_at: ago(2 * D) }],
+  }),
+  mockMem("personality", "default", "Professional, concise, technically precise. Uses bullet points. Avoids filler words."),
+  mockMem("api-conventions", "api", "REST API naming: plural nouns, snake_case, version prefix /v1/. Always return JSON with top-level data wrapper. Use 201 for creation, 204 for deletion."),
+  mockMem("discord-channels", "discord", "Monitored Discord channels:\n- #general — main discussion, respond to direct questions\n- #alerts — system alerts, always acknowledge critical ones\n- #dev — development discussion, help with code questions\n- #deploys — deployment notifications, track status"),
+  mockMem("deployment-checklist", "deployment", "Pre-deployment verification steps: run tests, check migrations, validate configs, verify health endpoints, confirm rollback plan."),
+  mockMem("conversation-history", "conversation", "Summary of recent conversation patterns: most requests relate to PR reviews, deployment status, and test failures. Average response time: 2.3s."),
+  mockMem("github-repos", "github", "Monitored repos:\n- acme/api (primary backend)\n- acme/web (frontend)\n- acme/infra (IaC)\n- acme/docs (documentation)"),
+  mockMem("cost-limits", "ops", "Daily cost budget: $10. Alert threshold: $5. Escalation at $8. Hard limit at $15."),
+  mockMem("test-strategy", "testing", "Run integration tests on every PR. Run full suite nightly. Flaky test threshold: 3 retries. Report failures to #dev channel."),
+  mockMem("operator-prefs", "default", "Operator timezone: US/Pacific. Preferred notification channel: Discord #alerts for critical, email for daily summaries. Do not notify between 10pm-7am unless P0.", "polis", { read_only: true }),
+  mockMem("team-roster", "team", "Team: Alice (backend lead), Bob (frontend), Carol (infra), Dave (PM). Alice and Carol are deployment approvers.", "polis", { read_only: true }),
+  mockMem("email-templates", "email", "Use templates: deploy-notification, weekly-report, alert-escalation. Keep subject lines under 60 chars. Always include action items."),
+  mockMem("slack-config", "slack", "Slack workspace: acme-eng. Channels: #engineering, #deploys, #incidents. Use thread replies for ongoing conversations."),
+  mockMem("rollback-procedures", "deployment", "Rollback steps: 1. Revert to previous container image 2. Run health checks 3. Verify DB compatibility 4. Notify in #deploys 5. Create post-mortem task"),
+  mockMem("security-policies", "security", "Never commit secrets. Use AWS Secrets Manager for all credentials. Rotate API keys quarterly. Review access logs weekly.", "polis", { read_only: true }),
 ];
 
 // ── Tasks ───────────────────────────────────────────────────────────────────

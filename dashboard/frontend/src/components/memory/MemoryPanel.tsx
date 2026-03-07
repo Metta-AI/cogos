@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { MemoryItem } from "@/lib/types";
+import type { MemoryItem, MemoryVersionItem } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import { fmtTimestamp } from "@/lib/format";
-import { createMemory, updateMemory, deleteMemory } from "@/lib/api";
+import { createMemory, updateMemory, deleteMemory, activateVersion } from "@/lib/api";
 
 interface MemoryPanelProps {
   memory: MemoryItem[];
@@ -200,6 +200,162 @@ function TreeNodeRow({ node, depth, selectedPath, expandedPaths, onSelect, onTog
   );
 }
 
+/* ── Version detail panel ── */
+
+interface VersionPanelProps {
+  item: MemoryItem;
+  cogentName?: string;
+  canMutate: boolean;
+  onRefresh?: () => void;
+  onClose: () => void;
+}
+
+function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: VersionPanelProps) {
+  const [selectedVersion, setSelectedVersion] = useState<number>(item.active_version);
+  const [activating, setActivating] = useState(false);
+
+  const versions = useMemo(
+    () => [...item.versions].sort((a, b) => b.version - a.version),
+    [item.versions],
+  );
+
+  const currentVersion = useMemo(
+    () => versions.find((v) => v.version === selectedVersion) ?? versions[0],
+    [versions, selectedVersion],
+  );
+
+  const handleActivate = useCallback(async (version: number) => {
+    if (!cogentName || activating) return;
+    setActivating(true);
+    try {
+      await activateVersion(cogentName, item.name, version);
+      onRefresh?.();
+    } finally {
+      setActivating(false);
+    }
+  }, [cogentName, item.name, activating, onRefresh]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div
+        className="sticky top-0 z-10 px-4 py-2 border-b flex items-center gap-2"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+      >
+        <button
+          onClick={onClose}
+          className="text-[11px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer p-0 mr-1"
+          title="Back to list"
+        >
+          &larr;
+        </button>
+        <span className="text-[12px] font-mono font-medium text-[var(--text-primary)] truncate">
+          {item.name}
+        </span>
+        <Badge variant={item.read_only ? "warning" : "success"}>
+          {item.read_only ? "read-only" : "writable"}
+        </Badge>
+        <span className="text-[10px] text-[var(--text-muted)] ml-auto">
+          {versions.length} version{versions.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="flex flex-1 min-h-0">
+        {/* Version list (left sidebar within detail) */}
+        <div
+          className="flex-shrink-0 overflow-y-auto border-r"
+          style={{ width: "180px", background: "var(--bg-surface)", borderColor: "var(--border)" }}
+        >
+          {versions.map((v) => {
+            const isActive = v.version === item.active_version;
+            const isSelected = v.version === selectedVersion;
+            return (
+              <div
+                key={v.version}
+                onClick={() => setSelectedVersion(v.version)}
+                className="px-3 py-2 cursor-pointer transition-colors border-b"
+                style={{
+                  background: isSelected ? "var(--bg-hover)" : "transparent",
+                  borderColor: "var(--border)",
+                  borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+                }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="text-[12px] font-mono font-medium"
+                    style={{ color: isSelected ? "var(--accent)" : "var(--text-primary)" }}
+                  >
+                    v{v.version}
+                  </span>
+                  {isActive && (
+                    <span
+                      className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                      style={{ background: "var(--accent)", color: "var(--bg-deep)" }}
+                    >
+                      active
+                    </span>
+                  )}
+                  {v.read_only && (
+                    <span className="text-[9px] text-[var(--text-muted)]">RO</span>
+                  )}
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                  {v.source}
+                </div>
+                {v.created_at && (
+                  <div className="text-[9px] text-[var(--text-muted)] mt-0.5">
+                    {fmtTimestamp(v.created_at)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Version content (right) */}
+        <div className="flex-1 overflow-y-auto p-4" style={{ background: "var(--bg-base)" }}>
+          {currentVersion && (
+            <div>
+              {/* Version metadata bar */}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <span className="text-[12px] font-mono font-medium text-[var(--text-primary)]">
+                  Version {currentVersion.version}
+                </span>
+                <Badge variant="neutral">{currentVersion.source}</Badge>
+                {currentVersion.read_only && <Badge variant="warning">read-only</Badge>}
+                {currentVersion.version === item.active_version ? (
+                  <Badge variant="success">active</Badge>
+                ) : canMutate ? (
+                  <button
+                    onClick={() => handleActivate(currentVersion.version)}
+                    disabled={activating}
+                    className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors disabled:opacity-40"
+                    style={{
+                      background: "transparent",
+                      borderColor: "var(--accent)",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    {activating ? "..." : "Make Active"}
+                  </button>
+                ) : null}
+                {currentVersion.created_at && (
+                  <span className="text-[10px] text-[var(--text-muted)] ml-auto">
+                    {fmtTimestamp(currentVersion.created_at)}
+                  </span>
+                )}
+              </div>
+
+              {/* Version content */}
+              <MemoryContent content={currentVersion.content} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const inputStyle = {
   background: "var(--bg-base)",
   borderColor: "var(--border)",
@@ -207,28 +363,35 @@ const inputStyle = {
 };
 
 export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps) {
-  const [scopeFilter, setScopeFilter] = useState<"cogent" | "polis">("cogent");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [selectedMemory, setSelectedMemory] = useState<MemoryItem | null>(null);
 
   // Create form state
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newContent, setNewContent] = useState("");
-  const [newScope, setNewScope] = useState(scopeFilter);
+  const [newSource, setNewSource] = useState("cogent");
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
   const [editContent, setEditContent] = useState("");
-  const [editScope, setEditScope] = useState("cogent");
+  const [editSource, setEditSource] = useState("cogent");
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Compute available sources for the filter
+  const sources = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of memory) s.add(m.source);
+    return ["all", ...Array.from(s).sort()];
+  }, [memory]);
+
   const filteredItems = useMemo(
-    () => memory.filter((m) => (m.scope ?? "cogent") === scopeFilter),
-    [memory, scopeFilter],
+    () => sourceFilter === "all" ? memory : memory.filter((m) => m.source === sourceFilter),
+    [memory, sourceFilter],
   );
 
   const tree = useMemo(() => buildTree(filteredItems), [filteredItems]);
@@ -241,6 +404,12 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
       return next;
     });
   }, []);
+
+  // Keep selectedMemory in sync with refreshed data
+  const activeSelectedMemory = useMemo(() => {
+    if (!selectedMemory) return null;
+    return memory.find((m) => m.id === selectedMemory.id) ?? null;
+  }, [memory, selectedMemory]);
 
   // Get items for the selected node (or all if nothing selected)
   const selectedNode = useMemo(() => {
@@ -265,36 +434,36 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
     await createMemory(cogentName, {
       name: newName.trim(),
       content: newContent,
-      scope: newScope,
+      source: newSource,
     });
     setCreating(false);
     setNewName("");
     setNewContent("");
-    setNewScope("cogent");
+    setNewSource("cogent");
     onRefresh?.();
-  }, [cogentName, newName, newContent, newScope, onRefresh]);
+  }, [cogentName, newName, newContent, newSource, onRefresh]);
 
   const startEdit = useCallback((item: MemoryItem) => {
     setEditingId(item.id);
-    setEditName(item.name);
     setEditContent(item.content);
-    setEditScope(item.scope ?? "cogent");
+    setEditSource(item.source ?? "cogent");
   }, []);
 
   const handleUpdate = useCallback(async () => {
     if (!cogentName || !editingId) return;
-    await updateMemory(cogentName, editingId, {
-      name: editName.trim(),
+    const item = memory.find((m) => m.id === editingId);
+    if (!item) return;
+    await updateMemory(cogentName, item.name, {
       content: editContent,
-      scope: editScope,
+      source: editSource,
     });
     setEditingId(null);
     onRefresh?.();
-  }, [cogentName, editingId, editName, editContent, editScope, onRefresh]);
+  }, [cogentName, editingId, memory, editContent, editSource, onRefresh]);
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleDelete = useCallback(async (item: MemoryItem) => {
     if (!cogentName) return;
-    await deleteMemory(cogentName, id);
+    await deleteMemory(cogentName, item.name);
     setDeleteConfirm(null);
     onRefresh?.();
   }, [cogentName, onRefresh]);
@@ -302,21 +471,38 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
   const canMutate = !!cogentName && !!onRefresh;
   const children = sortedChildren(tree);
 
+  // If a memory is selected, show version detail view
+  if (activeSelectedMemory) {
+    return (
+      <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 160px)" }}>
+        <div className="flex-1 min-h-0 border rounded-md overflow-hidden" style={{ borderColor: "var(--border)" }}>
+          <VersionPanel
+            item={activeSelectedMemory}
+            cogentName={cogentName}
+            canMutate={canMutate}
+            onRefresh={onRefresh}
+            onClose={() => setSelectedMemory(null)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 160px)" }}>
-      {/* Header with scope toggle, count, and create button */}
+      {/* Header with source filter, count, and create button */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="flex text-[11px] font-mono rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-            {(["cogent", "polis"] as const).map((s) => (
+            {sources.map((s) => (
               <button
                 key={s}
-                onClick={() => { setScopeFilter(s); setSelectedPath(null); }}
+                onClick={() => { setSourceFilter(s); setSelectedPath(null); }}
                 className="border-0 cursor-pointer px-2.5 py-1 transition-colors"
                 style={{
-                  background: scopeFilter === s ? "var(--accent)" : "transparent",
-                  color: scopeFilter === s ? "var(--bg-deep)" : "var(--text-muted)",
-                  fontWeight: scopeFilter === s ? 700 : 400,
+                  background: sourceFilter === s ? "var(--accent)" : "transparent",
+                  color: sourceFilter === s ? "var(--bg-deep)" : "var(--text-muted)",
+                  fontWeight: sourceFilter === s ? 700 : 400,
                   fontFamily: "var(--font-mono)",
                   fontSize: "11px",
                 }}
@@ -374,11 +560,11 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
             </div>
             <div>
               <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">
-                Scope
+                Source
               </label>
               <select
-                value={newScope}
-                onChange={(e) => setNewScope(e.target.value as "cogent" | "polis")}
+                value={newSource}
+                onChange={(e) => setNewSource(e.target.value)}
                 className="w-full px-2 py-1.5 text-[12px] rounded border"
                 style={inputStyle}
               >
@@ -502,41 +688,19 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
 
           {displayItems.length === 0 ? (
             <div className="text-[var(--text-muted)] text-[13px] py-8 text-center">
-              No {scopeFilter} memory items{selectedPath ? ` in ${selectedPath}` : ""}
+              No memory items{selectedPath ? ` in ${selectedPath}` : ""}
             </div>
           ) : (
             <div>
               {displayItems.map((item) => (
                 <div
                   key={item.id}
-                  className="px-4 py-3 border-b hover:bg-[var(--bg-hover)] transition-colors"
+                  className="px-4 py-3 border-b hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
                   style={{ borderColor: "var(--border)" }}
+                  onClick={() => setSelectedMemory(item)}
                 >
                   {editingId === item.id ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">Name</label>
-                          <input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="w-full px-2 py-1 text-[12px] rounded border font-mono"
-                            style={inputStyle}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">Scope</label>
-                          <select
-                            value={editScope}
-                            onChange={(e) => setEditScope(e.target.value)}
-                            className="w-full px-2 py-1 text-[12px] rounded border"
-                            style={inputStyle}
-                          >
-                            <option value="cogent">cogent</option>
-                            <option value="polis">polis</option>
-                          </select>
-                        </div>
-                      </div>
+                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
                       <div>
                         <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">Content</label>
                         <textarea
@@ -570,22 +734,24 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
                         <span className="text-[12px] font-mono font-medium text-[var(--text-primary)]">
                           {item.name}
                         </span>
-                        {item.type && <Badge variant="neutral">{item.type}</Badge>}
-                        {item.group && item.group !== "default" && (
-                          <span className="text-[10px] text-[var(--text-muted)] font-mono">
-                            {item.group}
+                        <Badge variant="neutral">v{item.active_version}</Badge>
+                        <Badge variant="neutral">{item.source}</Badge>
+                        {item.read_only && <Badge variant="warning">RO</Badge>}
+                        {item.versions.length > 1 && (
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            {item.versions.length} versions
                           </span>
                         )}
                         <span className="text-[10px] text-[var(--text-muted)] ml-auto flex items-center gap-2">
-                          {fmtTimestamp(item.updated_at)}
+                          {fmtTimestamp(item.modified_at)}
                           {canMutate && deleteConfirm === item.id ? (
-                            <span className="text-[11px]">
+                            <span className="text-[11px]" onClick={(e) => e.stopPropagation()}>
                               <span className="text-[var(--text-muted)] mr-1">Delete?</span>
-                              <button onClick={() => handleDelete(item.id)} className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold mr-1">Yes</button>
+                              <button onClick={() => handleDelete(item)} className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold mr-1">Yes</button>
                               <button onClick={() => setDeleteConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
                             </span>
                           ) : canMutate ? (
-                            <span className="flex gap-1">
+                            <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => startEdit(item)} className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors" style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}>Edit</button>
                               <button onClick={() => setDeleteConfirm(item.id)} className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors" style={{ background: "transparent", borderColor: "var(--border)", color: "var(--error)" }}>Delete</button>
                             </span>

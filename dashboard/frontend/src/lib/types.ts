@@ -77,16 +77,26 @@ export interface Trigger {
   fired_24h: number;
 }
 
+export interface MemoryVersionItem {
+  id: string;
+  version: number;
+  content: string;
+  source: string;
+  read_only: boolean;
+  created_at: string | null;
+}
+
 export interface MemoryItem {
   id: string;
-  scope: string | null;
-  type: string | null;
   name: string;
   group: string;
+  active_version: number;
   content: string;
-  provenance: Record<string, unknown> | null;
+  source: string;
+  read_only: boolean;
   created_at: string | null;
-  updated_at: string | null;
+  modified_at: string | null;
+  versions: MemoryVersionItem[];
 }
 
 export interface Task {
