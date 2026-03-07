@@ -604,6 +604,10 @@ class LocalRepository:
         now = datetime.utcnow()
         mem.created_at = mem.created_at or now
         mem.modified_at = now
+        # Extract any inline versions into _memory_versions storage
+        for mv in mem.versions.values():
+            mv.created_at = mv.created_at or now
+            self._memory_versions.setdefault(mem.id, []).append(mv)
         self._memories[mem.id] = mem
         self._save()
         return mem.id
