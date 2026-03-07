@@ -241,8 +241,13 @@ def shell_cmd(ctx: click.Context, run_id: str | None, launch_new: bool):
         click.echo("Running tasks:")
         for i, task in enumerate(tasks):
             task_id = _task_id_from_arn(task["taskArn"])
-            program = _get_program_name(task)
-            click.echo(f"  [{i}] {task_id[:12]}  {program}")
+            program = _get_program_name(task) or "shell"
+            started = task.get("startedAt", "")
+            if started and hasattr(started, "strftime"):
+                started = started.strftime("%H:%M")
+            else:
+                started = ""
+            click.echo(f"  [{i}] {program}  ({task_id[:8]}, {started})" if started else f"  [{i}] {program}  ({task_id[:8]})")
         click.echo(f"  [n] Launch new shell")
 
         choice = click.prompt("Select task", default="0")
