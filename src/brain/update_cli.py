@@ -475,14 +475,21 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     for c in containers:
         if c.get("name") == "web":
             c["image"] = remote_tag
-            # Inject DASHBOARD_DOCKER_VERSION so future deploys can detect version
+            # Inject/update env vars needed for S3-based frontend and version detection
             env_list = c.setdefault("environment", [])
-            for env in env_list:
-                if env["name"] == "DASHBOARD_DOCKER_VERSION":
-                    env["value"] = local_version
-                    break
-            else:
-                env_list.append({"name": "DASHBOARD_DOCKER_VERSION", "value": local_version})
+            bucket = next((e["value"] for e in env_list if e["name"] == "SESSIONS_BUCKET"), None)
+            inject = {
+                "DASHBOARD_DOCKER_VERSION": local_version,
+            }
+            if bucket:
+                inject["DASHBOARD_ASSETS_S3"] = f"s3://{bucket}/dashboard/frontend.tar.gz"
+            for key, val in inject.items():
+                for env in env_list:
+                    if env["name"] == key:
+                        env["value"] = val
+                        break
+                else:
+                    env_list.append({"name": key, "value": val})
             break
     else:
         containers[0]["image"] = remote_tag
