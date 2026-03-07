@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 5174",
+    "dev": "mkdir -p .local && [ -f .local/dashboard_port ] || echo $((5200 + RANDOM % 800)) > .local/dashboard_port && next dev -p $(cat .local/dashboard_port)",
     "clean": "rm -rf .next",
-    "dev:clean": "rm -rf .next && next dev -p 5174",
+    "dev:clean": "rm -rf .next && mkdir -p .local && [ -f .local/dashboard_port ] || echo $((5200 + RANDOM % 800)) > .local/dashboard_port && next dev -p $(cat .local/dashboard_port)",
     "build": "next build",
-    "start": "next start -p 5174",
+    "start": "mkdir -p .local && [ -f .local/dashboard_port ] || echo $((5200 + RANDOM % 800)) > .local/dashboard_port && next start -p $(cat .local/dashboard_port)",
     "type-check": "tsc --noEmit",
     "lint": "next lint"
   },

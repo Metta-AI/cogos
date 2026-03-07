@@ -30,7 +30,6 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 const STATUSES = ["runnable", "scheduled", "running", "completed", "disabled"];
 
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
-const RECENT_THRESHOLD_MS = 60 * 60 * 1000;
 const RUN_COUNT_WINDOWS = ["1m", "5m", "1h", "24h", "7d"] as const;
 
 // Map page-level TimeRange to the closest run_counts window key
@@ -41,16 +40,6 @@ const TIME_RANGE_TO_WINDOW: Record<TimeRange, string> = {
   "24h": "24h",
   "1w": "7d",
 };
-
-function getPrefix(name: string): string {
-  const lastSlash = name.lastIndexOf("/");
-  return lastSlash > 0 ? name.substring(0, lastSlash) : "";
-}
-
-function isRecent(dateStr: string | null): boolean {
-  if (!dateStr) return false;
-  return Date.now() - new Date(dateStr).getTime() < RECENT_THRESHOLD_MS;
-}
 
 function isStuck(task: Task): boolean {
   if (task.status !== "running") return false;
@@ -91,7 +80,7 @@ function fmtTokens(n: number | null): string {
 }
 
 interface UndoToast {
-  taskId: string;
+  taskIds: string[];
   taskName: string;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -222,8 +211,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const [editForm, setEditForm] = useState<Partial<Task>>({});
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<Partial<Task>>({ name: "", description: "", content: "", priority: 0.0, program_name: "do-content" });
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [completedCollapsed, setCompletedCollapsed] = useState(true);
   const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
   const [editingPriorityValue, setEditingPriorityValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -238,6 +225,109 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     return "priority";
   });
   const undoRef = useRef<UndoToast | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback((ids: string[]) => {
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, []);
+
+  const [bulkConfirm, setBulkConfirm] = useState<{ action: string; ids: string[]; taskList?: Task[] } | null>(null);
+
+  const handleBulkRun = useCallback(async (ids: string[]) => {
+    const selected = ids.filter((id) => selectedIds.has(id));
+    if (selected.length === 0) return;
+    try {
+      await Promise.all(selected.map((id) => api.updateTask(cogentName, id, { status: "scheduled" })));
+    } catch (err) {
+      console.error("Bulk run failed:", err);
+    }
+    setSelectedIds((prev) => { const next = new Set(prev); selected.forEach((id) => next.delete(id)); return next; });
+    onRefresh();
+  }, [selectedIds, cogentName, onRefresh]);
+
+  const handleBulkStop = useCallback(async (ids: string[]) => {
+    const selected = ids.filter((id) => selectedIds.has(id));
+    if (selected.length === 0) return;
+    try {
+      await Promise.all(selected.map((id) => api.updateTask(cogentName, id, { status: "runnable" })));
+    } catch (err) {
+      console.error("Bulk stop failed:", err);
+    }
+    setSelectedIds((prev) => { const next = new Set(prev); selected.forEach((id) => next.delete(id)); return next; });
+    onRefresh();
+  }, [selectedIds, cogentName, onRefresh]);
+
+  const handleBulkRerun = useCallback(async (taskList: Task[]) => {
+    const selected = taskList.filter((t) => selectedIds.has(t.id));
+    if (selected.length === 0) return;
+    try {
+      await Promise.all(selected.map((t) => api.createTask(cogentName, {
+        name: t.name ?? "copy",
+        description: t.description || undefined,
+        content: t.content || undefined,
+        program_name: t.program_name || undefined,
+        priority: t.priority ?? undefined,
+        runner: t.runner || undefined,
+        clear_context: t.clear_context ?? undefined,
+        memory_keys: t.memory_keys?.length ? t.memory_keys : undefined,
+        tools: t.tools?.length ? t.tools : undefined,
+        resources: t.resources?.length ? t.resources : undefined,
+        creator: "dashboard",
+        status: "scheduled",
+      })));
+    } catch (err) {
+      console.error("Bulk rerun failed:", err);
+    }
+    setSelectedIds((prev) => { const next = new Set(prev); selected.forEach((t) => next.delete(t.id)); return next; });
+    onRefresh();
+  }, [selectedIds, cogentName, onRefresh]);
+
+  const requestBulkDelete = useCallback((ids: string[]) => {
+    const selected = ids.filter((id) => selectedIds.has(id));
+    if (selected.length === 0) return;
+    setBulkConfirm({ action: "delete", ids: selected });
+  }, [selectedIds]);
+
+  const executeBulkDelete = useCallback((selected: string[]) => {
+    setBulkConfirm(null);
+    setPendingDeletes((prev) => { const next = new Set(prev); selected.forEach((id) => next.add(id)); return next; });
+    if (expandedId && selected.includes(expandedId)) setExpandedId(null);
+    if (undoRef.current) {
+      clearTimeout(undoRef.current.timer);
+      Promise.all(undoRef.current.taskIds.map((id) => api.deleteTask(cogentName, id))).then(onRefresh);
+    }
+    const firstTask = tasks.find((t) => t.id === selected[0]);
+    const timer = setTimeout(() => {
+      Promise.all(selected.map((id) => api.deleteTask(cogentName, id))).then(() => {
+        setPendingDeletes((prev) => { const next = new Set(prev); selected.forEach((id) => next.delete(id)); return next; });
+        onRefresh();
+      });
+      setUndoToast(null);
+      undoRef.current = null;
+    }, 5000);
+    const toast: UndoToast = { taskIds: selected, taskName: selected.length === 1 ? (firstTask?.name ?? selected[0]) : `${selected.length} tasks`, timer };
+    undoRef.current = toast;
+    setUndoToast(toast);
+    setSelectedIds((prev) => { const next = new Set(prev); selected.forEach((id) => next.delete(id)); return next; });
+  }, [tasks, cogentName, onRefresh, expandedId]);
 
   const toggleSort = useCallback(() => {
     setSortBy((prev) => {
@@ -295,70 +385,34 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     return [...set].sort();
   }, [tasks, programs]);
 
-  // Categorized task lists (from filtered, sorted)
-  const runningTasks = useMemo(
-    () => sortTasks(filteredTasks.filter((t) => (t.status === "running" || t.status === "scheduled") && !isStuck(t))),
-    [filteredTasks, sortTasks],
-  );
+  // Categorized task lists by status
   const stuckTasks = useMemo(
     () => sortTasks(filteredTasks.filter((t) => isStuck(t))),
     [filteredTasks, sortTasks],
   );
-  const recentlyFinished = useMemo(
-    () => sortTasks(filteredTasks.filter((t) => t.status === "completed" && isRecent(t.completed_at))),
+  const runningTasks = useMemo(
+    () => sortTasks(filteredTasks.filter((t) => (t.status === "running" || t.status === "scheduled") && !isStuck(t))),
     [filteredTasks, sortTasks],
   );
-  // IDs already claimed by higher-priority sections
-  const claimedIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished]) {
-      ids.add(t.id);
-    }
-    return ids;
-  }, [runningTasks, stuckTasks, recentlyFinished]);
-
-  const recentlyFailed = useMemo(
-    () => sortTasks(filteredTasks.filter((t) =>
-      !claimedIds.has(t.id) &&
-      (t.last_run_status === "failed" || t.last_run_status === "timeout") &&
-      isRecent(t.last_run_at) &&
-      t.status !== "running" && t.status !== "scheduled",
-    )),
-    [filteredTasks, sortTasks, claimedIds],
-  );
-
-  const failedIds = useMemo(() => new Set(recentlyFailed.map((t) => t.id)), [recentlyFailed]);
-
   const runnableTasks = useMemo(
-    () => sortTasks(filteredTasks.filter((t) => t.status === "runnable" && !isStuck(t) && !claimedIds.has(t.id) && !failedIds.has(t.id))),
-    [filteredTasks, sortTasks, claimedIds, failedIds],
+    () => sortTasks(filteredTasks.filter((t) => t.status === "runnable")),
+    [filteredTasks, sortTasks],
   );
   const completedTasks = useMemo(
-    () => sortTasks(filteredTasks.filter((t) => t.status === "completed" && !isRecent(t.completed_at) && !claimedIds.has(t.id) && !failedIds.has(t.id))),
-    [filteredTasks, sortTasks, claimedIds, failedIds],
+    () => sortTasks(filteredTasks.filter((t) => t.status === "completed")),
+    [filteredTasks, sortTasks],
   );
-
-  const highlightIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const t of [...runningTasks, ...stuckTasks, ...recentlyFinished, ...recentlyFailed, ...runnableTasks, ...completedTasks]) {
-      ids.add(t.id);
-    }
-    return ids;
-  }, [runningTasks, stuckTasks, recentlyFinished, recentlyFailed, runnableTasks, completedTasks]);
-
-  const grouped = useMemo(() => {
-    const remaining = filteredTasks.filter((t) => !highlightIds.has(t.id) && !pendingDeletes.has(t.id));
-    const groups: Record<string, Task[]> = {};
-    for (const t of remaining) {
-      const prefix = getPrefix(t.name || "");
-      const key = prefix || "(ungrouped)";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
-    }
-    return Object.entries(groups)
-      .map(([key, items]) => [key, sortTasks(items)] as [string, Task[]])
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredTasks, highlightIds, pendingDeletes, sortTasks]);
+  const disabledTasks = useMemo(
+    () => sortTasks(filteredTasks.filter((t) => t.status === "disabled")),
+    [filteredTasks, sortTasks],
+  );
+  const failedTasks = useMemo(
+    () => sortTasks(filteredTasks.filter((t) =>
+      t.status !== "running" && t.status !== "scheduled" && t.status !== "runnable" &&
+      t.status !== "completed" && t.status !== "disabled" && !isStuck(t),
+    )),
+    [filteredTasks, sortTasks],
+  );
 
   useEffect(() => {
     if (!expandedId) { setExpandedRuns([]); return; }
@@ -373,15 +427,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
-  }, []);
-
-  const toggleGroup = useCallback((key: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   }, []);
 
   const startEdit = useCallback(async (e: React.MouseEvent, task: Task) => {
@@ -453,7 +498,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     if (expandedId === taskId) setExpandedId(null);
     if (undoRef.current) {
       clearTimeout(undoRef.current.timer);
-      api.deleteTask(cogentName, undoRef.current.taskId).then(onRefresh);
+      Promise.all(undoRef.current.taskIds.map((id) => api.deleteTask(cogentName, id))).then(onRefresh);
     }
     const timer = setTimeout(() => {
       api.deleteTask(cogentName, taskId).then(() => {
@@ -463,7 +508,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
       setUndoToast(null);
       undoRef.current = null;
     }, 5000);
-    const toast: UndoToast = { taskId, taskName, timer };
+    const toast: UndoToast = { taskIds: [taskId], taskName, timer };
     undoRef.current = toast;
     setUndoToast(toast);
   }, [tasks, cogentName, onRefresh, expandedId]);
@@ -471,8 +516,8 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const handleUndo = useCallback(() => {
     if (!undoRef.current) return;
     clearTimeout(undoRef.current.timer);
-    const taskId = undoRef.current.taskId;
-    setPendingDeletes((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
+    const ids = undoRef.current.taskIds;
+    setPendingDeletes((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
     setUndoToast(null);
     undoRef.current = null;
   }, []);
@@ -694,35 +739,40 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     );
   }
 
-  function renderTaskRow(task: Task, showFullName: boolean) {
+  function renderTaskRow(task: Task, _showFullName: boolean = true, showActions: boolean = true) {
     if (pendingDeletes.has(task.id)) return null;
 
     const isExpanded = expandedId === task.id;
     const isEditing = editingId === task.id;
     const isConfirming = confirmDeleteId === task.id;
     const isConfirmingStop = confirmStopId === task.id;
-    const shortName = showFullName
-      ? (task.name ?? "--")
-      : task.name
-        ? task.name.substring(getPrefix(task.name).length).replace(/^\//, "")
-        : "--";
+    const isSelected = selectedIds.has(task.id);
+    const shortName = task.name ?? "--";
 
     return (
       <div key={task.id}>
         <div
           className="flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors"
           style={{
-            background: isExpanded ? "var(--bg-hover)" : "var(--bg-surface)",
+            background: isSelected ? "var(--accent-glow)" : isExpanded ? "var(--bg-hover)" : "var(--bg-surface)",
             borderBottom: "1px solid var(--border)",
           }}
           onClick={() => toggleExpand(task.id)}
           onMouseEnter={(e) => {
-            if (!isExpanded) e.currentTarget.style.background = "var(--bg-hover)";
+            if (!isExpanded && !isSelected) e.currentTarget.style.background = "var(--bg-hover)";
           }}
           onMouseLeave={(e) => {
-            if (!isExpanded) e.currentTarget.style.background = "var(--bg-surface)";
+            if (!isExpanded && !isSelected) e.currentTarget.style.background = "var(--bg-surface)";
+            if (isSelected) e.currentTarget.style.background = "var(--accent-glow)";
           }}
         >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleSelect(task.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-pointer shrink-0 opacity-50 hover:opacity-80 accent-[var(--accent)]"
+          />
           {task.recurrent && <span className="text-[var(--info)] text-[11px]" title="Recurrent">↻</span>}
           <span className="font-mono text-[12px] text-[var(--text-primary)]" title={task.name ?? ""}>
             {shortName}
@@ -813,7 +863,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
             <span className="text-[10px] text-[var(--text-muted)]">{fmtTimestamp(task.updated_at)}</span>
           )}
 
-          {isConfirming ? (
+          {showActions && (isConfirming ? (
             <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <span className="text-[10px] text-[var(--error)]">Delete?</span>
               <button
@@ -866,7 +916,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
                     ■
                   </button>
                 </span>
-              ) : task.status === "completed" ? (
+              ) : task.status === "completed" && !task.recurrent ? (
                 <button
                   onClick={(e) => handleRunCopy(e, task)}
                   className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--success)] text-[11px]"
@@ -898,7 +948,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
                 ✕
               </button>
             </>
-          )}
+          ))}
         </div>
 
         {/* Expanded detail */}
@@ -1058,9 +1108,14 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     color: string,
     borderColor: string,
     bgColor: string,
+    actions: Array<{ label: string; icon: string; onClick: () => void; hoverColor: string }>,
     icon?: React.ReactNode,
   ) {
     if (items.length === 0) return null;
+    const ids = items.filter((t) => !pendingDeletes.has(t.id)).map((t) => t.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+    const someSelected = ids.some((id) => selectedIds.has(id));
+    const selCount = ids.filter((id) => selectedIds.has(id)).length;
     return (
       <div
         className="mb-4 rounded-md overflow-hidden"
@@ -1070,6 +1125,13 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
           className="flex items-center gap-2 px-3 py-1.5"
           style={{ background: bgColor, borderBottom: `1px solid ${borderColor}` }}
         >
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+            onChange={() => toggleSelectAll(ids)}
+            className="cursor-pointer shrink-0 opacity-50 hover:opacity-80 accent-[var(--accent)]"
+          />
           {icon}
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
             {title}
@@ -1077,6 +1139,26 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
           <span className="text-[10px]" style={{ color: borderColor }}>
             ({items.length})
           </span>
+          <div className="flex-1" />
+          {someSelected && (
+            <span className="text-[10px] text-[var(--text-muted)] mr-1">{selCount} selected</span>
+          )}
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              disabled={!someSelected}
+              className="border-0 bg-transparent cursor-pointer text-[11px] font-medium px-2 py-0.5 rounded transition-colors"
+              style={{
+                color: someSelected ? action.hoverColor : "var(--text-muted)",
+                opacity: someSelected ? 1 : 0.4,
+                background: someSelected ? "rgba(255,255,255,0.05)" : "transparent",
+              }}
+              title={`${action.label} selected`}
+            >
+              {action.icon} {action.label}
+            </button>
+          ))}
         </div>
         {items.filter((t) => !pendingDeletes.has(t.id)).map((task) => renderTaskRow(task, true))}
       </div>
@@ -1144,6 +1226,10 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
         "#f59e0b",
         "#78350f",
         "rgba(245, 158, 11, 0.08)",
+        [
+          { label: "Stop", icon: "■", onClick: () => handleBulkStop(stuckTasks.map((t) => t.id)), hoverColor: "var(--warning)" },
+          { label: "Re-run", icon: "⧉▶", onClick: () => handleBulkRerun(stuckTasks), hoverColor: "var(--success)" },
+        ],
         <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#f59e0b" }} />,
       )}
 
@@ -1154,29 +1240,13 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
         "var(--accent)",
         "var(--accent-dim)",
         "var(--accent-glow)",
+        [
+          { label: "Stop", icon: "■", onClick: () => handleBulkStop(runningTasks.map((t) => t.id)), hoverColor: "var(--warning)" },
+        ],
         <span
           className="inline-block w-[6px] h-[6px] rounded-full"
           style={{ background: "var(--accent)", animation: "pulse-dot 1.5s ease-in-out infinite" }}
         />,
-      )}
-
-      {/* Recently Finished */}
-      {renderSection(
-        "Recently Finished",
-        recentlyFinished,
-        "#22c55e",
-        "#14532d",
-        "rgba(34, 197, 94, 0.06)",
-      )}
-
-      {/* Recently Failed */}
-      {renderSection(
-        "Recently Failed",
-        recentlyFailed,
-        "#ef4444",
-        "#7f1d1d",
-        "rgba(239, 68, 68, 0.06)",
-        <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#ef4444" }} />,
       )}
 
       {/* Runnable */}
@@ -1186,92 +1256,90 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
         "var(--info)",
         "var(--border)",
         "var(--bg-surface)",
+        [
+          { label: "Run", icon: "▶", onClick: () => handleBulkRun(runnableTasks.map((t) => t.id)), hoverColor: "var(--success)" },
+          { label: "Delete", icon: "✕", onClick: () => requestBulkDelete(runnableTasks.map((t) => t.id)), hoverColor: "var(--error)" },
+        ],
       )}
 
-      {/* Completed (collapsed by default) */}
-      {completedTasks.length > 0 && (
-        <div className="mb-4 rounded-md overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-          <button
-            onClick={() => setCompletedCollapsed((p) => !p)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 border-0 cursor-pointer transition-colors"
-            style={{
-              background: "var(--bg-elevated)",
-              color: "#22c55e",
-              borderBottom: completedCollapsed ? "none" : "1px solid var(--border)",
-              borderRadius: completedCollapsed ? "6px" : undefined,
-            }}
-          >
-            <span
-              className="text-[10px] transition-transform"
-              style={{ transform: completedCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
-            >
-              ▼
-            </span>
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Completed</span>
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-              ({completedTasks.length})
-            </span>
-          </button>
-          {!completedCollapsed && completedTasks.filter((t) => !pendingDeletes.has(t.id)).map((task) => renderTaskRow(task, true))}
-        </div>
+      {/* Completed */}
+      {renderSection(
+        "Completed",
+        completedTasks,
+        "#22c55e",
+        "#14532d",
+        "rgba(34, 197, 94, 0.06)",
+        [
+          { label: "Re-run", icon: "⧉▶", onClick: () => handleBulkRerun(completedTasks), hoverColor: "var(--success)" },
+          { label: "Delete", icon: "✕", onClick: () => requestBulkDelete(completedTasks.map((t) => t.id)), hoverColor: "var(--error)" },
+        ],
       )}
 
-      {/* Task groups */}
+      {/* Failed */}
+      {renderSection(
+        "Failed",
+        failedTasks,
+        "#ef4444",
+        "#7f1d1d",
+        "rgba(239, 68, 68, 0.06)",
+        [
+          { label: "Re-run", icon: "⧉▶", onClick: () => handleBulkRerun(failedTasks), hoverColor: "var(--success)" },
+          { label: "Delete", icon: "✕", onClick: () => requestBulkDelete(failedTasks.map((t) => t.id)), hoverColor: "var(--error)" },
+        ],
+        <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "#ef4444" }} />,
+      )}
+
+      {/* Disabled */}
+      {renderSection(
+        "Disabled",
+        disabledTasks,
+        "var(--text-muted)",
+        "var(--border)",
+        "var(--bg-surface)",
+        [
+          { label: "Run", icon: "▶", onClick: () => handleBulkRun(disabledTasks.map((t) => t.id)), hoverColor: "var(--success)" },
+          { label: "Delete", icon: "✕", onClick: () => requestBulkDelete(disabledTasks.map((t) => t.id)), hoverColor: "var(--error)" },
+        ],
+      )}
+
       {tasks.length === 0 && !creating && (
         <div className="text-[var(--text-muted)] text-xs py-8 text-center">No tasks</div>
       )}
 
-      {grouped.map(([group, groupTasks]) => {
-        const isCollapsed = collapsedGroups.has(group);
-        const statusCounts = {
-          runnable: groupTasks.filter((t) => t.status === "runnable").length,
-          scheduled: groupTasks.filter((t) => t.status === "scheduled").length,
-          running: groupTasks.filter((t) => t.status === "running").length,
-          completed: groupTasks.filter((t) => t.status === "completed").length,
-          disabled: groupTasks.filter((t) => t.status === "disabled").length,
-        };
-
-        return (
-          <div key={group} className="mb-2">
-            <button
-              onClick={() => toggleGroup(group)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-t-md border-0 cursor-pointer transition-colors"
-              style={{
-                background: "var(--bg-elevated)",
-                color: "var(--text-secondary)",
-                borderBottom: isCollapsed ? "none" : "1px solid var(--border)",
-                borderRadius: isCollapsed ? "6px" : undefined,
-              }}
-            >
-              <span
-                className="text-[10px] transition-transform"
-                style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+      {/* Bulk delete confirmation */}
+      {bulkConfirm && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={() => setBulkConfirm(null)}
+        >
+          <div
+            className="rounded-lg p-4 shadow-xl max-w-sm"
+            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[13px] text-[var(--text-primary)] mb-3">
+              Delete <span className="font-semibold">{bulkConfirm.ids.length}</span> task{bulkConfirm.ids.length !== 1 ? "s" : ""}?
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setBulkConfirm(null)}
+                className="px-3 py-1.5 rounded text-[11px] font-semibold border-0 cursor-pointer"
+                style={{ background: "var(--bg-surface)", color: "var(--text-secondary)" }}
               >
-                ▼
-              </span>
-              <span className="font-mono text-[12px] font-medium text-[var(--accent-dim)]">{group}</span>
-              <span className="text-[10px] text-[var(--text-muted)]">({groupTasks.length})</span>
-              <div className="flex-1" />
-              <div className="flex gap-1">
-                {statusCounts.scheduled > 0 && <Badge variant="warning">{statusCounts.scheduled} scheduled</Badge>}
-                {statusCounts.running > 0 && <Badge variant="accent">{statusCounts.running} running</Badge>}
-                {statusCounts.runnable > 0 && <Badge variant="info">{statusCounts.runnable} runnable</Badge>}
-                {statusCounts.disabled > 0 && <Badge variant="neutral">{statusCounts.disabled} disabled</Badge>}
-                {statusCounts.completed > 0 && <Badge variant="success">{statusCounts.completed} done</Badge>}
-              </div>
-            </button>
-
-            {!isCollapsed && (
-              <div
-                className="rounded-b-md overflow-hidden"
-                style={{ border: "1px solid var(--border)", borderTop: "none" }}
+                Cancel
+              </button>
+              <button
+                onClick={() => executeBulkDelete(bulkConfirm.ids)}
+                className="px-3 py-1.5 rounded text-[11px] font-semibold border-0 cursor-pointer"
+                style={{ background: "var(--error)", color: "white" }}
               >
-                {groupTasks.map((task) => renderTaskRow(task, false))}
-              </div>
-            )}
+                Delete
+              </button>
+            </div>
           </div>
-        );
-      })}
+        </div>
+      )}
 
       {/* Undo toast */}
       {undoToast && (
