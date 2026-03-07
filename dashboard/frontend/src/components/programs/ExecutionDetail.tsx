@@ -51,7 +51,7 @@ export function ExecutionDetail({
         if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
         const data = await resp.json();
         if (!cancelled) {
-          setExecutions(data.executions ?? []);
+          setExecutions((data.executions ?? []).slice(0, 10));
         }
       } catch (err) {
         if (!cancelled) {
