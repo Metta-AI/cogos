@@ -355,7 +355,7 @@ export async function toggleCrons(
 
 export async function createTrigger(
   name: string,
-  trigger: { program_name: string; event_pattern: string; priority?: number; enabled?: boolean; metadata?: Record<string, unknown> },
+  trigger: { program_name: string; event_pattern: string; priority?: number; enabled?: boolean; metadata?: Record<string, unknown>; max_events?: number; throttle_window_seconds?: number },
 ): Promise<Trigger> {
   const resp = await fetch(`/api/cogents/${name}/triggers`, {
     method: "POST",
@@ -369,7 +369,7 @@ export async function createTrigger(
 export async function updateTrigger(
   name: string,
   triggerId: string,
-  updates: { program_name?: string; event_pattern?: string; priority?: number },
+  updates: { program_name?: string; event_pattern?: string; priority?: number; max_events?: number; throttle_window_seconds?: number },
 ): Promise<Trigger> {
   const resp = await fetch(`/api/cogents/${name}/triggers/${triggerId}`, {
     method: "PUT",

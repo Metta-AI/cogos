@@ -18,12 +18,16 @@ interface CreateFormState {
   event_pattern: string;
   priority: number;
   enabled: boolean;
+  max_events: number;
+  throttle_window_seconds: number;
 }
 
 interface EditFormState {
   program_name: string;
   event_pattern: string;
   priority: number;
+  max_events: number;
+  throttle_window_seconds: number;
 }
 
 const EMPTY_CREATE: CreateFormState = {
@@ -31,6 +35,8 @@ const EMPTY_CREATE: CreateFormState = {
   event_pattern: "",
   priority: 10,
   enabled: true,
+  max_events: 0,
+  throttle_window_seconds: 60,
 };
 
 function groupByPrefix(triggers: Trigger[]): Record<string, Trigger[]> {
@@ -52,7 +58,7 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
   const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditFormState>({ program_name: "", event_pattern: "", priority: 10 });
+  const [editForm, setEditForm] = useState<EditFormState>({ program_name: "", event_pattern: "", priority: 10, max_events: 0, throttle_window_seconds: 60 });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -109,6 +115,8 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
         event_pattern: createForm.event_pattern,
         priority: createForm.priority,
         enabled: createForm.enabled,
+        max_events: createForm.max_events,
+        throttle_window_seconds: createForm.throttle_window_seconds,
       });
       setCreateForm(EMPTY_CREATE);
       setShowCreate(false);
@@ -124,6 +132,8 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
       program_name: t.program_name ?? "",
       event_pattern: t.event_pattern ?? "",
       priority: t.priority ?? 10,
+      max_events: t.max_events ?? 0,
+      throttle_window_seconds: t.throttle_window_seconds ?? 60,
     });
   }, []);
 
@@ -135,6 +145,8 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
         program_name: editForm.program_name,
         event_pattern: editForm.event_pattern,
         priority: editForm.priority,
+        max_events: editForm.max_events,
+        throttle_window_seconds: editForm.throttle_window_seconds,
       });
       setEditingId(null);
       onRefresh?.();
@@ -212,6 +224,24 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
                 className={`${inputClass} w-[70px]`}
                 value={createForm.priority}
                 onChange={(e) => setCreateForm((f) => ({ ...f, priority: parseInt(e.target.value) || 10 }))}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Max Events</span>
+              <input
+                type="number"
+                className={`${inputClass} w-[80px]`}
+                value={createForm.max_events}
+                onChange={(e) => setCreateForm((f) => ({ ...f, max_events: parseInt(e.target.value) || 0 }))}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Window (s)</span>
+              <input
+                type="number"
+                className={`${inputClass} w-[80px]`}
+                value={createForm.throttle_window_seconds}
+                onChange={(e) => setCreateForm((f) => ({ ...f, throttle_window_seconds: parseInt(e.target.value) || 60 }))}
               />
             </label>
             <label className="flex items-center gap-2 pb-1">
@@ -328,6 +358,9 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
                       <th className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium text-right">
                         24h
                       </th>
+                      <th className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium text-center">
+                        Throttle
+                      </th>
                       <th className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium text-right">
                         Actions
                       </th>
@@ -377,7 +410,29 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
                                 onChange={() => handleSingleToggle(t)}
                               />
                             </td>
-                            <td colSpan={4} />
+                            <td className="px-3 py-2" colSpan={2}>
+                              <div className="flex gap-2 items-center">
+                                <label className="flex flex-col gap-0.5">
+                                  <span className="text-[9px] text-[var(--text-muted)]">Max Events</span>
+                                  <input
+                                    type="number"
+                                    className={`${inputClass} w-[60px]`}
+                                    value={editForm.max_events}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, max_events: parseInt(e.target.value) || 0 }))}
+                                  />
+                                </label>
+                                <label className="flex flex-col gap-0.5">
+                                  <span className="text-[9px] text-[var(--text-muted)]">Window (s)</span>
+                                  <input
+                                    type="number"
+                                    className={`${inputClass} w-[60px]`}
+                                    value={editForm.throttle_window_seconds}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, throttle_window_seconds: parseInt(e.target.value) || 60 }))}
+                                  />
+                                </label>
+                              </div>
+                            </td>
+                            <td colSpan={2} />
                             <td className="px-3 py-2 text-right whitespace-nowrap">
                               <button
                                 className={btnPrimary}
@@ -432,6 +487,27 @@ export function TriggersPanel({ triggers, cogentName, programs = [], onRefresh }
                           </td>
                           <td className="px-3 py-2 font-mono text-[var(--text-muted)] text-right text-[11px]">
                             {fmtNum(t.fired_24h)}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {t.max_events > 0 ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                {t.throttle_active ? (
+                                  <Badge variant="error">THROTTLED</Badge>
+                                ) : (
+                                  <Badge variant="success">OK</Badge>
+                                )}
+                                <span className="text-[10px] text-[var(--text-muted)]">
+                                  {t.max_events}/{t.throttle_window_seconds}s
+                                </span>
+                                {t.throttle_rejected > 0 && (
+                                  <span className="text-[10px] text-red-400">
+                                    ({fmtNum(t.throttle_rejected)} rejected)
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-[var(--text-muted)]">--</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
                             {isConfirmingDelete ? (

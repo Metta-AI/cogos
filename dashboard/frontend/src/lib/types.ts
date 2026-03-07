@@ -75,6 +75,10 @@ export interface Trigger {
   fired_5m: number;
   fired_1h: number;
   fired_24h: number;
+  max_events: number;
+  throttle_window_seconds: number;
+  throttle_rejected: number;
+  throttle_active: boolean;
 }
 
 export interface MemoryVersionItem {
