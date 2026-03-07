@@ -139,28 +139,39 @@ class ToggleResponse(BaseModel):
     enabled: bool
 
 
+class MemoryVersionItem(BaseModel):
+    id: str
+    version: int
+    content: str = ""
+    source: str = "cogent"
+    read_only: bool = False
+    created_at: str | None = None
+
+
 class MemoryItem(BaseModel):
     id: str
-    scope: str | None = None
     name: str = ""
     group: str = ""
+    active_version: int = 1
     content: str = ""
-    provenance: dict[str, Any] | None = None
+    source: str = "cogent"
+    read_only: bool = False
     created_at: str | None = None
-    updated_at: str | None = None
+    modified_at: str | None = None
+    versions: list[MemoryVersionItem] = []
 
 
 class MemoryCreate(BaseModel):
     name: str
     content: str = ""
-    scope: str = "cogent"
-    provenance: dict[str, Any] = {}
+    source: str = "cogent"
+    read_only: bool = False
 
 
 class MemoryUpdate(BaseModel):
-    name: str | None = None
     content: str | None = None
-    scope: str | None = None
+    source: str | None = None
+    read_only: bool | None = None
 
 
 class MemoryResponse(BaseModel):

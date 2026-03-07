@@ -1,26 +1,13 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime
-from typing import Any
-from uuid import UUID
-
 from fastapi import APIRouter, HTTPException, Query
 
-from brain.db.models import MemoryRecord, MemoryScope
+from brain.db.models import Memory, MemoryVersion
 from dashboard.db import get_repo
-from dashboard.models import MemoryCreate, MemoryItem, MemoryResponse, MemoryUpdate
+from dashboard.models import MemoryCreate, MemoryItem, MemoryResponse, MemoryUpdate, MemoryVersionItem
+from memory.store import MemoryStore
 
 router = APIRouter(tags=["memory"])
-
-
-def _try_parse_json(val: Any) -> Any:
-    if isinstance(val, str):
-        try:
-            return json.loads(val)
-        except (json.JSONDecodeError, ValueError):
-            return val
-    return val
 
 
 def _derive_group(name: str) -> str:
@@ -31,84 +18,96 @@ def _derive_group(name: str) -> str:
     return ""
 
 
+def _version_to_item(mv: MemoryVersion) -> MemoryVersionItem:
+    return MemoryVersionItem(
+        id=str(mv.id),
+        version=mv.version,
+        content=mv.content,
+        source=mv.source,
+        read_only=mv.read_only,
+        created_at=str(mv.created_at) if mv.created_at else None,
+    )
+
+
+def _memory_to_item(m: Memory) -> MemoryItem:
+    active_mv = m.versions.get(m.active_version)
+    return MemoryItem(
+        id=str(m.id),
+        name=m.name,
+        group=_derive_group(m.name),
+        active_version=m.active_version,
+        content=active_mv.content if active_mv else "",
+        source=active_mv.source if active_mv else "cogent",
+        read_only=active_mv.read_only if active_mv else False,
+        created_at=str(m.created_at) if m.created_at else None,
+        modified_at=str(m.modified_at) if m.modified_at else None,
+        versions=[
+            _version_to_item(mv)
+            for mv in sorted(m.versions.values(), key=lambda v: v.version)
+        ],
+    )
+
+
+def _get_store() -> MemoryStore:
+    return MemoryStore(get_repo())
+
+
 @router.get("/memory", response_model=MemoryResponse)
 def list_memory(
     name: str,
-    scope: str | None = Query(None),
+    prefix: str | None = Query(None),
+    source: str | None = Query(None),
     limit: int = Query(200, le=1000),
 ) -> MemoryResponse:
-    repo = get_repo()
-    mem_scope = MemoryScope(scope) if scope else None
-    records = repo.query_memory(scope=mem_scope, limit=limit)
-    items = [
-        MemoryItem(
-            id=str(m.id),
-            scope=m.scope.value if m.scope else None,
-            name=m.name or "",
-            group=_derive_group(m.name or ""),
-            content=m.content,
-            provenance=_try_parse_json(m.provenance) if isinstance(m.provenance, str) else m.provenance,
-            created_at=str(m.created_at) if m.created_at else None,
-            updated_at=str(m.updated_at) if m.updated_at else None,
-        )
-        for m in records
-    ]
+    store = _get_store()
+    memories = store.list_memories(prefix=prefix, source=source, limit=limit)
+    items = [_memory_to_item(m) for m in memories]
     return MemoryResponse(cogent_name=name, count=len(items), memory=items)
-
-
-def _record_to_item(m: MemoryRecord) -> MemoryItem:
-    return MemoryItem(
-        id=str(m.id),
-        scope=m.scope.value if m.scope else None,
-        name=m.name or "",
-        group=_derive_group(m.name or ""),
-        content=m.content,
-        provenance=_try_parse_json(m.provenance) if isinstance(m.provenance, str) else m.provenance,
-        created_at=str(m.created_at) if m.created_at else None,
-        updated_at=str(m.updated_at) if m.updated_at else None,
-    )
 
 
 @router.post("/memory", response_model=MemoryItem)
 def create_memory(name: str, body: MemoryCreate) -> MemoryItem:
-    repo = get_repo()
-    record = MemoryRecord(
-        scope=MemoryScope(body.scope),
-        name=body.name,
-        content=body.content,
-        provenance=body.provenance or {},
+    store = _get_store()
+    mem = store.create(
+        body.name,
+        body.content,
+        source=body.source,
+        read_only=body.read_only,
     )
-    repo.insert_memory(record)
-    return _record_to_item(record)
+    return _memory_to_item(mem)
 
 
-@router.put("/memory/{memory_id}", response_model=MemoryItem)
-def update_memory(name: str, memory_id: str, body: MemoryUpdate) -> MemoryItem:
-    repo = get_repo()
-    uid = UUID(memory_id)
-    existing = repo.get_memory(uid)
+@router.put("/memory/{memory_name:path}", response_model=MemoryItem)
+def update_memory(name: str, memory_name: str, body: MemoryUpdate) -> MemoryItem:
+    store = _get_store()
+    existing = store.get(memory_name)
     if not existing:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    # Apply updates then delete+re-insert (no update_memory on repo)
-    original_created = existing.created_at
-    if body.name is not None:
-        existing.name = body.name
-    if body.content is not None:
-        existing.content = body.content
-    if body.scope is not None:
-        existing.scope = MemoryScope(body.scope)
+    content = body.content
+    if content is None:
+        active_mv = existing.versions.get(existing.active_version)
+        content = active_mv.content if active_mv else ""
 
-    repo.delete_memory(uid)
-    repo.insert_memory(existing)
-    # insert_memory overwrites timestamps; restore original created_at
-    existing.created_at = original_created
-    existing.updated_at = datetime.utcnow()
-    return _record_to_item(existing)
+    result = store.upsert(
+        memory_name,
+        content,
+        source=body.source or "cogent",
+        read_only=body.read_only if body.read_only is not None else False,
+    )
+
+    # Re-fetch the full memory to return
+    updated = store.get(memory_name)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Memory not found after update")
+    return _memory_to_item(updated)
 
 
-@router.delete("/memory/{memory_id}")
-def delete_memory_endpoint(name: str, memory_id: str) -> dict:
-    repo = get_repo()
-    deleted = repo.delete_memory(UUID(memory_id))
-    return {"deleted": deleted}
+@router.delete("/memory/{memory_name:path}")
+def delete_memory_endpoint(name: str, memory_name: str) -> dict:
+    store = _get_store()
+    try:
+        store.delete(memory_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"deleted": True}
