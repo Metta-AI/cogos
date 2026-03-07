@@ -213,8 +213,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
   const [newTask, setNewTask] = useState<Partial<Task>>({ name: "", description: "", content: "", priority: 0.0, program_name: "do-content" });
   const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
   const [editingPriorityValue, setEditingPriorityValue] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [confirmStopId, setConfirmStopId] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"name" | "priority">(() => {
@@ -484,35 +482,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     onRefresh();
   }, [editingId, editForm, cogentName, onRefresh]);
 
-  const requestDelete = useCallback((e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    setConfirmDeleteId((prev) => (prev === taskId ? null : taskId));
-  }, []);
-
-  const confirmDelete = useCallback((e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    setConfirmDeleteId(null);
-    const task = tasks.find((t) => t.id === taskId);
-    const taskName = task?.name ?? taskId;
-    setPendingDeletes((prev) => new Set(prev).add(taskId));
-    if (expandedId === taskId) setExpandedId(null);
-    if (undoRef.current) {
-      clearTimeout(undoRef.current.timer);
-      Promise.all(undoRef.current.taskIds.map((id) => api.deleteTask(cogentName, id))).then(onRefresh);
-    }
-    const timer = setTimeout(() => {
-      api.deleteTask(cogentName, taskId).then(() => {
-        setPendingDeletes((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
-        onRefresh();
-      });
-      setUndoToast(null);
-      undoRef.current = null;
-    }, 5000);
-    const toast: UndoToast = { taskIds: [taskId], taskName, timer };
-    undoRef.current = toast;
-    setUndoToast(toast);
-  }, [tasks, cogentName, onRefresh, expandedId]);
-
   const handleUndo = useCallback(() => {
     if (!undoRef.current) return;
     clearTimeout(undoRef.current.timer);
@@ -522,31 +491,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     undoRef.current = null;
   }, []);
 
-  const cancelConfirm = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDeleteId(null);
-  }, []);
-
-  const handleRunTask = useCallback(async (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    await api.updateTask(cogentName, taskId, { status: "scheduled" });
-    onRefresh();
-  }, [cogentName, onRefresh]);
-
-  const requestStop = useCallback((e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    setConfirmStopId((prev) => (prev === taskId ? null : taskId));
-  }, []);
-
-  const confirmStop = useCallback(async (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    setConfirmStopId(null);
-    const task = tasks.find((t) => t.id === taskId);
-    const newStatus = task?.recurrent ? "runnable" : "completed";
-    await api.updateTask(cogentName, taskId, { status: newStatus });
-    onRefresh();
-  }, [cogentName, onRefresh, tasks]);
-
   const handlePrioritySave = useCallback(async (taskId: string) => {
     const val = parseFloat(editingPriorityValue);
     if (!isNaN(val)) {
@@ -555,25 +499,6 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     }
     setEditingPriorityId(null);
   }, [cogentName, onRefresh, editingPriorityValue]);
-
-  const handleRunCopy = useCallback(async (e: React.MouseEvent, task: Task) => {
-    e.stopPropagation();
-    await api.createTask(cogentName, {
-      name: task.name ?? "copy",
-      description: task.description || undefined,
-      content: task.content || undefined,
-      program_name: task.program_name || undefined,
-      priority: task.priority ?? undefined,
-      runner: task.runner || undefined,
-      clear_context: task.clear_context ?? undefined,
-      memory_keys: task.memory_keys?.length ? task.memory_keys : undefined,
-      tools: task.tools?.length ? task.tools : undefined,
-      resources: task.resources?.length ? task.resources : undefined,
-      creator: "dashboard",
-      status: "scheduled",
-    });
-    onRefresh();
-  }, [cogentName, onRefresh]);
 
   const handleCreate = useCallback(async () => {
     if (!newTask.name?.trim()) return;
@@ -739,13 +664,11 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     );
   }
 
-  function renderTaskRow(task: Task, _showFullName: boolean = true, showActions: boolean = true) {
+  function renderTaskRow(task: Task) {
     if (pendingDeletes.has(task.id)) return null;
 
     const isExpanded = expandedId === task.id;
     const isEditing = editingId === task.id;
-    const isConfirming = confirmDeleteId === task.id;
-    const isConfirmingStop = confirmStopId === task.id;
     const isSelected = selectedIds.has(task.id);
     const shortName = task.name ?? "--";
 
@@ -757,7 +680,8 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
             background: isSelected ? "var(--accent-glow)" : isExpanded ? "var(--bg-hover)" : "var(--bg-surface)",
             borderBottom: "1px solid var(--border)",
           }}
-          onClick={() => toggleExpand(task.id)}
+          onClick={() => toggleSelect(task.id)}
+          onDoubleClick={() => toggleExpand(task.id)}
           onMouseEnter={(e) => {
             if (!isExpanded && !isSelected) e.currentTarget.style.background = "var(--bg-hover)";
           }}
@@ -773,16 +697,53 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
             onClick={(e) => e.stopPropagation()}
             className="cursor-pointer shrink-0 opacity-50 hover:opacity-80 accent-[var(--accent)]"
           />
-          {task.recurrent && <span className="text-[var(--info)] text-[11px]" title="Recurrent">↻</span>}
-          <span className="font-mono text-[12px] text-[var(--text-primary)]" title={task.name ?? ""}>
-            {shortName}
-          </span>
-          {task.description && (
-            <span className="text-[11px] text-[var(--text-muted)] truncate max-w-[300px]">
-              {task.description}
+          {editingPriorityId === task.id ? (
+            <input
+              type="text"
+              inputMode="decimal"
+              autoFocus
+              value={editingPriorityValue}
+              onChange={(e) => setEditingPriorityValue(e.target.value)}
+              onBlur={() => handlePrioritySave(task.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handlePrioritySave(task.id);
+                if (e.key === "Escape") setEditingPriorityId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-[11px] text-left"
+              style={{
+                width: "52px",
+                padding: "1px 4px",
+                background: "var(--bg-base)",
+                border: "1px solid var(--accent)",
+                borderRadius: "4px",
+                color: "var(--text-primary)",
+                outline: "none",
+              }}
+            />
+          ) : (
+            <span
+              className="font-mono text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] shrink-0 inline-block text-left"
+              style={{
+                width: "52px",
+                padding: "1px 4px",
+                border: "1px solid var(--border)",
+                borderRadius: "4px",
+              }}
+              title="Click to edit priority"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingPriorityId(task.id);
+                setEditingPriorityValue((task.priority ?? 0).toFixed(2));
+              }}
+            >
+              {(task.priority ?? 0).toFixed(2)}
             </span>
           )}
-          <div className="flex-1" />
+          {task.recurrent && <span className="text-[var(--info)] text-[11px]" title="Recurrent">↻</span>}
+          <span className="font-mono text-[12px] text-[var(--text-primary)] truncate min-w-0 flex-1" title={task.name ?? ""}>
+            {shortName}
+          </span>
           {/* Run counts as separated blocks — only windows with runs */}
           {task.run_counts && (() => {
             const entries = RUN_COUNT_WINDOWS
@@ -790,7 +751,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
               .filter(({ c }) => c && c.runs > 0);
             if (entries.length === 0) return null;
             return (
-              <span className="flex gap-1 text-[10px] font-mono">
+              <span className="flex gap-1 text-[10px] font-mono shrink-0">
                 {entries.map(({ w, c }) => (
                   <span
                     key={w}
@@ -808,147 +769,26 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
               </span>
             );
           })()}
-          {editingPriorityId === task.id ? (
-            <input
-              type="text"
-              inputMode="decimal"
-              autoFocus
-              value={editingPriorityValue}
-              onChange={(e) => setEditingPriorityValue(e.target.value)}
-              onBlur={() => handlePrioritySave(task.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handlePrioritySave(task.id);
-                if (e.key === "Escape") setEditingPriorityId(null);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="font-mono text-[11px] text-center"
-              style={{
-                width: "48px",
-                padding: "1px 4px",
-                background: "var(--bg-base)",
-                border: "1px solid var(--accent)",
-                borderRadius: "4px",
-                color: "var(--text-primary)",
-                outline: "none",
-              }}
-            />
-          ) : (
-            <span
-              className="font-mono text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)]"
-              style={{
-                padding: "1px 4px",
-                border: "1px solid var(--border)",
-                borderRadius: "4px",
-              }}
-              title="Click to edit priority"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingPriorityId(task.id);
-                setEditingPriorityValue((task.priority ?? 0).toFixed(2));
-              }}
-            >
-              {(task.priority ?? 0).toFixed(2)}
-            </span>
-          )}
           {/* Last ran / time stuck */}
           {isStuck(task) ? (
-            <span className="text-[10px] text-[var(--warning)]" title="Time stuck">
+            <span className="text-[10px] text-[var(--warning)] shrink-0 whitespace-nowrap" title="Time stuck">
               stuck {fmtTimestamp(task.updated_at)}
             </span>
           ) : task.last_run_at ? (
-            <span className="text-[10px] text-[var(--text-muted)]" title="Last ran">
+            <span className="text-[10px] text-[var(--text-muted)] shrink-0 whitespace-nowrap" title="Last ran">
               ran {fmtTimestamp(task.last_run_at)}
             </span>
           ) : (
-            <span className="text-[10px] text-[var(--text-muted)]">{fmtTimestamp(task.updated_at)}</span>
+            <span className="text-[10px] text-[var(--text-muted)] shrink-0 whitespace-nowrap">{fmtTimestamp(task.updated_at)}</span>
           )}
 
-          {showActions && (isConfirming ? (
-            <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <span className="text-[10px] text-[var(--error)]">Delete?</span>
-              <button
-                onClick={(e) => confirmDelete(e, task.id)}
-                className="border-0 bg-transparent cursor-pointer text-[var(--error)] font-semibold text-[11px]"
-              >
-                Yes
-              </button>
-              <button
-                onClick={cancelConfirm}
-                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] text-[11px]"
-              >
-                No
-              </button>
-            </span>
-          ) : isConfirmingStop ? (
-            <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <span className="text-[10px] text-[var(--warning)]">Stop?</span>
-              <button
-                onClick={(e) => confirmStop(e, task.id)}
-                className="border-0 bg-transparent cursor-pointer text-[var(--warning)] font-semibold text-[11px]"
-              >
-                Yes
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmStopId(null); }}
-                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] text-[11px]"
-              >
-                No
-              </button>
-            </span>
-          ) : (
-            <>
-              {task.status === "running" || task.status === "scheduled" ? (
-                <span className="flex items-center gap-0.5">
-                  {isStuck(task) && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); confirmStop(e, task.id); }}
-                      className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--accent)] text-[11px]"
-                      title="Retry"
-                    >
-                      ↻
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => requestStop(e, task.id)}
-                    className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--warning)] text-[11px]"
-                    title="Stop"
-                  >
-                    ■
-                  </button>
-                </span>
-              ) : task.status === "completed" && !task.recurrent ? (
-                <button
-                  onClick={(e) => handleRunCopy(e, task)}
-                  className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--success)] text-[11px]"
-                  title="Run Copy"
-                >
-                  ⧉▶
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => handleRunTask(e, task.id)}
-                  className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--success)] text-[11px]"
-                  title="Run"
-                >
-                  ▶
-                </button>
-              )}
-              <button
-                onClick={(e) => startEdit(e, task)}
-                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--accent)] text-[11px]"
-                title="Edit"
-              >
-                ✎
-              </button>
-              <button
-                onClick={(e) => requestDelete(e, task.id)}
-                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--error)] text-[11px]"
-                title="Delete"
-              >
-                ✕
-              </button>
-            </>
-          ))}
+          <button
+            onClick={(e) => startEdit(e, task)}
+            className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--accent)] text-[11px]"
+            title="Edit"
+          >
+            ✎
+          </button>
         </div>
 
         {/* Expanded detail */}
@@ -1160,7 +1000,7 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
             </button>
           ))}
         </div>
-        {items.filter((t) => !pendingDeletes.has(t.id)).map((task) => renderTaskRow(task, true))}
+        {items.filter((t) => !pendingDeletes.has(t.id)).map((task) => renderTaskRow(task))}
       </div>
     );
   }
