@@ -216,6 +216,8 @@ class TriggerConfig(BaseModel):
     retry_backoff: Literal["none", "linear", "exponential"] = "none"
     retry_backoff_base_seconds: float = 5.0
     on_failure: str | None = None
+    max_events: int = 0  # 0 = no throttle
+    throttle_window_seconds: int = 60
 
 
 class Trigger(BaseModel):
@@ -225,7 +227,16 @@ class Trigger(BaseModel):
     priority: int = 10
     config: TriggerConfig = Field(default_factory=TriggerConfig)
     enabled: bool = True
+    throttle_timestamps: list[float] = Field(default_factory=list)
+    throttle_rejected: int = 0
+    throttle_active: bool = False
     created_at: datetime | None = None
+
+
+class ThrottleResult(BaseModel):
+    allowed: bool
+    state_changed: bool
+    throttle_active: bool
 
 
 class Cron(BaseModel):

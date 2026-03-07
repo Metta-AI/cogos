@@ -21,6 +21,7 @@ from brain.db.models import (
     Task,
     TaskStatus,
     Trace,
+    ThrottleResult,
     Trigger,
     TriggerConfig,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "RunStatus",
     "Task",
     "TaskStatus",
+    "ThrottleResult",
     "Trace",
     "Trigger",
     "TriggerConfig",
