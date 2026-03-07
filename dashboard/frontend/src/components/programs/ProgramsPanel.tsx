@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
 import type { Program } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
+import { HierarchyPanel, type TreeNode, findNode, getAllItems, buildTree } from "@/components/shared/HierarchyPanel";
 import { fmtCost, fmtTimestamp } from "@/lib/format";
 import { ExecutionDetail } from "./ExecutionDetail";
 
@@ -11,59 +12,7 @@ interface ProgramsPanelProps {
   cogentName?: string;
 }
 
-interface TreeNode {
-  name: string;
-  path: string;
-  programs: Program[];
-  children: Map<string, TreeNode>;
-}
-
-function buildTree(programs: Program[]): TreeNode {
-  const root: TreeNode = { name: "", path: "", programs: [], children: new Map() };
-
-  for (const prog of programs) {
-    const group = prog.group || "default";
-    const parts = group.split("/").filter(Boolean);
-
-    let node = root;
-    let pathSoFar = "";
-    for (const part of parts) {
-      pathSoFar = pathSoFar ? `${pathSoFar}/${part}` : part;
-      if (!node.children.has(part)) {
-        node.children.set(part, {
-          name: part,
-          path: pathSoFar,
-          programs: [],
-          children: new Map(),
-        });
-      }
-      node = node.children.get(part)!;
-    }
-    node.programs.push(prog);
-  }
-
-  return root;
-}
-
-function countAll(node: TreeNode): number {
-  let count = node.programs.length;
-  for (const child of node.children.values()) {
-    count += countAll(child);
-  }
-  return count;
-}
-
-function getAllPrograms(node: TreeNode): Program[] {
-  const result = [...node.programs];
-  for (const child of node.children.values()) {
-    result.push(...getAllPrograms(child));
-  }
-  return result;
-}
-
-function sortedChildren(node: TreeNode): TreeNode[] {
-  return [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
+const getProgramGroup = (prog: Program) => prog.group || "default";
 
 function typeVariant(type: string) {
   switch (type) {
@@ -78,194 +27,48 @@ function typeVariant(type: string) {
   }
 }
 
-interface TreeNodeRowProps {
-  node: TreeNode;
-  depth: number;
-  selectedPath: string | null;
-  expandedPaths: Set<string>;
-  onSelect: (path: string) => void;
-  onToggle: (path: string) => void;
-}
-
-function TreeNodeRow({ node, depth, selectedPath, expandedPaths, onSelect, onToggle }: TreeNodeRowProps) {
-  const hasChildren = node.children.size > 0 || node.programs.length > 0;
-  const isExpanded = expandedPaths.has(node.path);
-  const isSelected = selectedPath === node.path;
-  const total = countAll(node);
-
-  return (
-    <div
-      className="flex items-center gap-1 py-1 px-2 cursor-pointer transition-colors rounded-sm"
-      style={{
-        paddingLeft: `${depth * 16 + 8}px`,
-        background: isSelected ? "var(--bg-hover)" : "transparent",
-        borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-      }}
-      onClick={() => {
-        onSelect(node.path);
-        if (hasChildren && !isExpanded) onToggle(node.path);
-      }}
-    >
-      {hasChildren ? (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggle(node.path); }}
-          className="text-[9px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer p-0 w-3 flex-shrink-0"
-        >
-          {isExpanded ? "\u25BC" : "\u25B6"}
-        </button>
-      ) : (
-        <span className="w-3 flex-shrink-0" />
-      )}
-      <span
-        className="text-[12px] font-mono truncate"
-        style={{ color: isSelected ? "var(--accent)" : "var(--text-primary)" }}
-      >
-        {node.name}
-      </span>
-      <span className="text-[10px] text-[var(--text-muted)] ml-auto flex-shrink-0">
-        {total}
-      </span>
-    </div>
-  );
-}
-
-function ProgramListItem({
-  prog,
-  depth = 0,
-  isSelected,
-  onSelect,
-}: {
-  prog: Program;
-  depth?: number;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  const pct = prog.runs > 0 ? ((prog.ok / prog.runs) * 100).toFixed(0) : "0";
-
-  return (
-    <div
-      className="flex items-center gap-2 px-2 py-1 cursor-pointer transition-colors rounded-sm"
-      style={{
-        paddingLeft: `${(depth + 1) * 16 + 8}px`,
-        background: isSelected ? "var(--bg-hover)" : "transparent",
-        borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-      }}
-      onClick={onSelect}
-    >
-      <span
-        className="text-[11px] font-mono truncate"
-        style={{ color: isSelected ? "var(--accent)" : "var(--text-secondary)" }}
-      >
-        {prog.name}
-      </span>
-      <span className="text-[9px] text-[var(--text-muted)] ml-auto flex-shrink-0">
-        {prog.runs > 0 ? `${pct}%` : "---"}
-      </span>
-    </div>
-  );
-}
-
-function TreeGroupNode({
-  node,
-  depth,
-  selectedGroupPath,
-  expandedPaths,
-  selectedProgram,
-  onSelectGroup,
-  onToggle,
-  onSelectProgram,
-}: {
-  node: TreeNode;
-  depth: number;
-  selectedGroupPath: string | null;
-  expandedPaths: Set<string>;
-  selectedProgram: Program | null;
-  onSelectGroup: (path: string) => void;
-  onToggle: (path: string) => void;
-  onSelectProgram: (prog: Program, groupPath: string) => void;
-}) {
-  const isExpanded = expandedPaths.has(node.path);
-  const children = sortedChildren(node);
-
-  return (
-    <>
-      <TreeNodeRow
-        node={node}
-        depth={depth}
-        selectedPath={selectedGroupPath}
-        expandedPaths={expandedPaths}
-        onSelect={onSelectGroup}
-        onToggle={onToggle}
-      />
-      {isExpanded && (
-        <>
-          {/* Direct programs in this group */}
-          {node.programs.map((p) => (
-            <ProgramListItem
-              key={p.name}
-              prog={p}
-              depth={depth + 1}
-              isSelected={selectedProgram?.name === p.name}
-              onSelect={() => onSelectProgram(p, node.path)}
-            />
-          ))}
-          {/* Child groups */}
-          {children.map((child) => (
-            <TreeGroupNode
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              selectedGroupPath={selectedGroupPath}
-              expandedPaths={expandedPaths}
-              selectedProgram={selectedProgram}
-              onSelectGroup={onSelectGroup}
-              onToggle={onToggle}
-              onSelectProgram={onSelectProgram}
-            />
-          ))}
-        </>
-      )}
-    </>
-  );
-}
-
 export function ProgramsPanel({
   programs,
   cogentName = "cogent",
 }: ProgramsPanelProps) {
   const [selectedGroupPath, setSelectedGroupPath] = useState<string | null>(null);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
 
-  const tree = useMemo(() => buildTree(programs), [programs]);
-
-  const toggleExpanded = useCallback((path: string) => {
-    setExpandedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
-
-  const selectedNode = useMemo(() => {
-    if (!selectedGroupPath) return null;
-    const parts = selectedGroupPath.split("/");
-    let node = tree;
-    for (const part of parts) {
-      const child = node.children.get(part);
-      if (!child) return null;
-      node = child;
-    }
-    return node;
-  }, [tree, selectedGroupPath]);
-
   const displayPrograms = useMemo(() => {
-    if (!selectedNode) return programs;
-    return getAllPrograms(selectedNode);
-  }, [selectedNode, programs]);
+    if (!selectedGroupPath) return programs;
+    const tree = buildTree(programs, getProgramGroup);
+    const node = findNode(tree, selectedGroupPath);
+    return node ? getAllItems(node) : programs;
+  }, [programs, selectedGroupPath]);
 
-  const children = sortedChildren(tree);
+  const renderProgramLeaves = useCallback((node: TreeNode<Program>, depth: number): ReactNode => {
+    return node.items.map((p) => {
+      const isSelected = selectedProgram?.name === p.name;
+      const pct = p.runs > 0 ? ((p.ok / p.runs) * 100).toFixed(0) : "0";
+      return (
+        <div
+          key={p.name}
+          className="flex items-center gap-2 px-2 py-1 cursor-pointer transition-colors rounded-sm"
+          style={{
+            paddingLeft: `${(depth + 2) * 16 + 8}px`,
+            background: isSelected ? "var(--bg-hover)" : "transparent",
+            borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+          }}
+          onClick={() => { setSelectedProgram(p); setSelectedGroupPath(node.path); }}
+        >
+          <span
+            className="text-[11px] font-mono truncate"
+            style={{ color: isSelected ? "var(--accent)" : "var(--text-secondary)" }}
+          >
+            {p.name}
+          </span>
+          <span className="text-[9px] text-[var(--text-muted)] ml-auto flex-shrink-0">
+            {p.runs > 0 ? `${pct}%` : "---"}
+          </span>
+        </div>
+      );
+    });
+  }, [selectedProgram]);
 
   const prog = selectedProgram;
 
@@ -280,57 +83,14 @@ export function ProgramsPanel({
 
       {/* Split pane: tree left, detail right */}
       <div className="flex gap-0 flex-1 min-h-0 border rounded-md overflow-hidden" style={{ borderColor: "var(--border)" }}>
-        {/* Left: hierarchy tree + program list */}
-        <div
-          className="flex-shrink-0 overflow-y-auto border-r py-2"
-          style={{
-            width: "220px",
-            background: "var(--bg-surface)",
-            borderColor: "var(--border)",
-          }}
-        >
-          {/* "All" root entry */}
-          <div
-            className="flex items-center gap-1 py-1 px-2 cursor-pointer transition-colors rounded-sm"
-            style={{
-              paddingLeft: "8px",
-              background: selectedGroupPath === null && !selectedProgram ? "var(--bg-hover)" : "transparent",
-              borderLeft: selectedGroupPath === null && !selectedProgram ? "2px solid var(--accent)" : "2px solid transparent",
-            }}
-            onClick={() => { setSelectedGroupPath(null); setSelectedProgram(null); }}
-          >
-            <span className="w-3 flex-shrink-0" />
-            <span
-              className="text-[12px] font-mono"
-              style={{ color: selectedGroupPath === null && !selectedProgram ? "var(--accent)" : "var(--text-primary)" }}
-            >
-              All
-            </span>
-            <span className="text-[10px] text-[var(--text-muted)] ml-auto flex-shrink-0">
-              {programs.length}
-            </span>
-          </div>
-
-          {children.map((child) => (
-            <TreeGroupNode
-              key={child.path}
-              node={child}
-              depth={0}
-              selectedGroupPath={selectedGroupPath}
-              expandedPaths={expandedPaths}
-              selectedProgram={selectedProgram}
-              onSelectGroup={(path) => { setSelectedGroupPath(path); setSelectedProgram(null); }}
-              onToggle={toggleExpanded}
-              onSelectProgram={(p, path) => { setSelectedProgram(p); setSelectedGroupPath(path); }}
-            />
-          ))}
-
-          {children.length === 0 && (
-            <div className="text-[11px] text-[var(--text-muted)] text-center py-4">
-              No groups
-            </div>
-          )}
-        </div>
+        <HierarchyPanel
+          items={programs}
+          getGroup={getProgramGroup}
+          selectedPath={selectedGroupPath}
+          onSelectPath={(path) => { setSelectedGroupPath(path); setSelectedProgram(null); }}
+          renderExtra={renderProgramLeaves}
+          isAllSelected={selectedGroupPath === null && !selectedProgram}
+        />
 
         {/* Right: detail view */}
         <div

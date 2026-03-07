@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { MemoryItem, MemoryVersionItem } from "@/lib/types";
+import type { MemoryItem } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
+import { HierarchyPanel, findNode, getAllItems, buildTree } from "@/components/shared/HierarchyPanel";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import { fmtTimestamp } from "@/lib/format";
 import { createMemory, updateMemory, deleteMemory, activateVersion } from "@/lib/api";
@@ -13,12 +14,7 @@ interface MemoryPanelProps {
   onRefresh?: () => void;
 }
 
-interface TreeNode {
-  name: string;
-  path: string;
-  items: MemoryItem[];
-  children: Map<string, TreeNode>;
-}
+const getMemoryGroup = (item: MemoryItem) => item.group || "default";
 
 function tryParseJSON(str: string): unknown | null {
   try {
@@ -88,118 +84,6 @@ function MemoryContent({ content }: { content: string }) {
   );
 }
 
-function buildTree(items: MemoryItem[]): TreeNode {
-  const root: TreeNode = { name: "", path: "", items: [], children: new Map() };
-
-  for (const item of items) {
-    const group = item.group || "default";
-    const parts = group.split("/").filter(Boolean);
-
-    let node = root;
-    let pathSoFar = "";
-    for (const part of parts) {
-      pathSoFar = pathSoFar ? `${pathSoFar}/${part}` : part;
-      if (!node.children.has(part)) {
-        node.children.set(part, {
-          name: part,
-          path: pathSoFar,
-          items: [],
-          children: new Map(),
-        });
-      }
-      node = node.children.get(part)!;
-    }
-    node.items.push(item);
-  }
-
-  return root;
-}
-
-function countAllItems(node: TreeNode): number {
-  let count = node.items.length;
-  for (const child of node.children.values()) {
-    count += countAllItems(child);
-  }
-  return count;
-}
-
-function getAllItems(node: TreeNode): MemoryItem[] {
-  const result = [...node.items];
-  for (const child of node.children.values()) {
-    result.push(...getAllItems(child));
-  }
-  return result;
-}
-
-function sortedChildren(node: TreeNode): TreeNode[] {
-  return [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-interface TreeNodeRowProps {
-  node: TreeNode;
-  depth: number;
-  selectedPath: string | null;
-  expandedPaths: Set<string>;
-  onSelect: (path: string) => void;
-  onToggle: (path: string) => void;
-}
-
-function TreeNodeRow({ node, depth, selectedPath, expandedPaths, onSelect, onToggle }: TreeNodeRowProps) {
-  const hasChildren = node.children.size > 0;
-  const isExpanded = expandedPaths.has(node.path);
-  const isSelected = selectedPath === node.path;
-  const totalItems = countAllItems(node);
-  const children = sortedChildren(node);
-
-  return (
-    <>
-      <div
-        className="flex items-center gap-1 py-1 px-2 cursor-pointer transition-colors rounded-sm"
-        style={{
-          paddingLeft: `${depth * 16 + 8}px`,
-          background: isSelected ? "var(--bg-hover)" : "transparent",
-          borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-        }}
-        onClick={() => {
-          onSelect(node.path);
-          if (hasChildren && !isExpanded) onToggle(node.path);
-        }}
-      >
-        {hasChildren ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggle(node.path); }}
-            className="text-[9px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer p-0 w-3 flex-shrink-0"
-          >
-            {isExpanded ? "\u25BC" : "\u25B6"}
-          </button>
-        ) : (
-          <span className="w-3 flex-shrink-0" />
-        )}
-        <span
-          className="text-[12px] font-mono truncate"
-          style={{ color: isSelected ? "var(--accent)" : "var(--text-primary)" }}
-        >
-          {node.name}
-        </span>
-        <span className="text-[10px] text-[var(--text-muted)] ml-auto flex-shrink-0">
-          {totalItems}
-        </span>
-      </div>
-      {hasChildren && isExpanded && children.map((child) => (
-        <TreeNodeRow
-          key={child.path}
-          node={child}
-          depth={depth + 1}
-          selectedPath={selectedPath}
-          expandedPaths={expandedPaths}
-          onSelect={onSelect}
-          onToggle={onToggle}
-        />
-      ))}
-    </>
-  );
-}
-
 /* ── Version detail panel ── */
 
 interface VersionPanelProps {
@@ -215,7 +99,7 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
   const [activating, setActivating] = useState(false);
 
   const versions = useMemo(
-    () => [...item.versions].sort((a, b) => b.version - a.version),
+    () => [...(item.versions ?? [])].sort((a, b) => b.version - a.version),
     [item.versions],
   );
 
@@ -365,7 +249,6 @@ const inputStyle = {
 export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps) {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [selectedMemory, setSelectedMemory] = useState<MemoryItem | null>(null);
 
   // Create form state
@@ -394,40 +277,18 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
     [memory, sourceFilter],
   );
 
-  const tree = useMemo(() => buildTree(filteredItems), [filteredItems]);
-
-  const toggleExpanded = useCallback((path: string) => {
-    setExpandedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
-
   // Keep selectedMemory in sync with refreshed data
   const activeSelectedMemory = useMemo(() => {
     if (!selectedMemory) return null;
     return memory.find((m) => m.id === selectedMemory.id) ?? null;
   }, [memory, selectedMemory]);
 
-  // Get items for the selected node (or all if nothing selected)
-  const selectedNode = useMemo(() => {
-    if (!selectedPath) return null;
-    const parts = selectedPath.split("/");
-    let node = tree;
-    for (const part of parts) {
-      const child = node.children.get(part);
-      if (!child) return null;
-      node = child;
-    }
-    return node;
-  }, [tree, selectedPath]);
-
   const displayItems = useMemo(() => {
-    if (!selectedNode) return filteredItems;
-    return getAllItems(selectedNode);
-  }, [selectedNode, filteredItems]);
+    if (!selectedPath) return filteredItems;
+    const tree = buildTree(filteredItems, getMemoryGroup);
+    const node = findNode(tree, selectedPath);
+    return node ? getAllItems(node) : filteredItems;
+  }, [filteredItems, selectedPath]);
 
   const handleCreate = useCallback(async () => {
     if (!cogentName || !newName.trim()) return;
@@ -469,7 +330,6 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
   }, [cogentName, onRefresh]);
 
   const canMutate = !!cogentName && !!onRefresh;
-  const children = sortedChildren(tree);
 
   // If a memory is selected, show version detail view
   if (activeSelectedMemory) {
@@ -615,55 +475,12 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
 
       {/* Split pane: tree left, detail right */}
       <div className="flex gap-0 flex-1 min-h-0 border rounded-md overflow-hidden" style={{ borderColor: "var(--border)" }}>
-        {/* Left: hierarchy tree */}
-        <div
-          className="flex-shrink-0 overflow-y-auto border-r py-2"
-          style={{
-            width: "220px",
-            background: "var(--bg-surface)",
-            borderColor: "var(--border)",
-          }}
-        >
-          {/* "All" root entry */}
-          <div
-            className="flex items-center gap-1 py-1 px-2 cursor-pointer transition-colors rounded-sm"
-            style={{
-              paddingLeft: "8px",
-              background: selectedPath === null ? "var(--bg-hover)" : "transparent",
-              borderLeft: selectedPath === null ? "2px solid var(--accent)" : "2px solid transparent",
-            }}
-            onClick={() => setSelectedPath(null)}
-          >
-            <span className="w-3 flex-shrink-0" />
-            <span
-              className="text-[12px] font-mono"
-              style={{ color: selectedPath === null ? "var(--accent)" : "var(--text-primary)" }}
-            >
-              All
-            </span>
-            <span className="text-[10px] text-[var(--text-muted)] ml-auto flex-shrink-0">
-              {filteredItems.length}
-            </span>
-          </div>
-
-          {children.map((child) => (
-            <TreeNodeRow
-              key={child.path}
-              node={child}
-              depth={0}
-              selectedPath={selectedPath}
-              expandedPaths={expandedPaths}
-              onSelect={setSelectedPath}
-              onToggle={toggleExpanded}
-            />
-          ))}
-
-          {children.length === 0 && (
-            <div className="text-[11px] text-[var(--text-muted)] text-center py-4">
-              No groups
-            </div>
-          )}
-        </div>
+        <HierarchyPanel
+          items={filteredItems}
+          getGroup={getMemoryGroup}
+          selectedPath={selectedPath}
+          onSelectPath={setSelectedPath}
+        />
 
         {/* Right: detail view */}
         <div
@@ -737,9 +554,9 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
                         <Badge variant="neutral">v{item.active_version}</Badge>
                         <Badge variant="neutral">{item.source}</Badge>
                         {item.read_only && <Badge variant="warning">RO</Badge>}
-                        {item.versions.length > 1 && (
+                        {(item.versions ?? []).length > 1 && (
                           <span className="text-[10px] text-[var(--text-muted)]">
-                            {item.versions.length} versions
+                            {(item.versions ?? []).length} versions
                           </span>
                         )}
                         <span className="text-[10px] text-[var(--text-muted)] ml-auto flex items-center gap-2">
