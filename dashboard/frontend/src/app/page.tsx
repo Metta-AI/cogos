@@ -122,7 +122,7 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
           <ResourcesPanel resources={data.resources} />
         )}
         {activeTab === "tasks" && (
-          <TasksPanel tasks={data.tasks} cogentName={cogentName} onRefresh={refresh} memory={data.memory} programs={data.programs} timeRange={timeRange} />
+          <TasksPanel tasks={data.tasks} cogentName={cogentName} onRefresh={refresh} memory={data.memory} programs={data.programs} tools={data.tools} timeRange={timeRange} />
         )}
         {activeTab === "cron" && (
           <CronPanel crons={data.crons} cogentName={cogentName} onRefresh={refresh} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import type { Task, MemoryItem, Program, TimeRange } from "@/lib/types";
+import type { Task, MemoryItem, Program, Tool, TimeRange } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import * as api from "@/lib/api";
 import { fmtTimestamp } from "@/lib/format";
@@ -12,6 +12,7 @@ interface TasksPanelProps {
   onRefresh: () => void;
   memory: MemoryItem[];
   programs: Program[];
+  tools: Tool[];
   timeRange: TimeRange;
 }
 
@@ -204,7 +205,7 @@ function TagListEditor({
 
 /* ── Main component ── */
 
-export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, timeRange }: TasksPanelProps) {
+export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tools: toolsList, timeRange }: TasksPanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedRuns, setExpandedRuns] = useState<TaskRun[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -371,17 +372,11 @@ export function TasksPanel({ tasks, cogentName, onRefresh, memory, programs, tim
     }
     return [...set].sort();
   }, [tasks]);
-  // Collect all tool names from existing tasks + programs
-  const toolSuggestions = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of tasks) {
-      if (t.tools) t.tools.forEach((tool) => set.add(tool));
-    }
-    for (const p of programs) {
-      // programs don't have tools exposed in dashboard model yet, but just in case
-    }
-    return [...set].sort();
-  }, [tasks, programs]);
+  // Tool names from the tools table for typeahead suggestions
+  const toolSuggestions = useMemo(
+    () => toolsList.filter((t) => t.enabled).map((t) => t.name).sort(),
+    [toolsList],
+  );
 
   // Categorized task lists by status
   const stuckTasks = useMemo(
