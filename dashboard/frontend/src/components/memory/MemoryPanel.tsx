@@ -366,13 +366,6 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
   const [newContent, setNewContent] = useState("");
   const [newSource, setNewSource] = useState("cogent");
 
-  // Edit state
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState("");
-  const [editSource, setEditSource] = useState("cogent");
-
-  // Delete confirmation
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   // Compute available sources for the filter
   const sources = useMemo(() => {
@@ -413,30 +406,6 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
     onRefresh?.();
   }, [cogentName, newName, newContent, newSource, onRefresh]);
 
-  const startEdit = useCallback((item: MemoryItem) => {
-    setEditingId(item.id);
-    setEditContent(item.content);
-    setEditSource(item.source ?? "cogent");
-  }, []);
-
-  const handleUpdate = useCallback(async () => {
-    if (!cogentName || !editingId) return;
-    const item = memory.find((m) => m.id === editingId);
-    if (!item) return;
-    await updateMemory(cogentName, item.name, {
-      content: editContent,
-      source: editSource,
-    });
-    setEditingId(null);
-    onRefresh?.();
-  }, [cogentName, editingId, memory, editContent, editSource, onRefresh]);
-
-  const handleDelete = useCallback(async (item: MemoryItem) => {
-    if (!cogentName) return;
-    await deleteMemory(cogentName, item.name);
-    setDeleteConfirm(null);
-    onRefresh?.();
-  }, [cogentName, onRefresh]);
 
   const canMutate = !!cogentName && !!onRefresh;
 
@@ -625,68 +594,23 @@ export function MemoryPanel({ memory, cogentName, onRefresh }: MemoryPanelProps)
                   style={{ borderColor: "var(--border)" }}
                   onClick={() => setSelectedMemory(item)}
                 >
-                  {editingId === item.id ? (
-                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <div>
-                        <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">Content</label>
-                        <textarea
-                          value={editContent}
-                          onChange={(e) => setEditContent(e.target.value)}
-                          rows={4}
-                          className="w-full px-2 py-1 text-[12px] rounded border font-mono resize-y"
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={handleUpdate}
-                          className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer"
-                          style={{ background: "var(--accent)", color: "white" }}
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="text-[10px] px-2 py-0.5 rounded border cursor-pointer"
-                          style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[12px] font-mono font-medium text-[var(--text-primary)]">
-                          {item.name}
-                        </span>
-                        <Badge variant="neutral">v{item.active_version}</Badge>
-                        <Badge variant="neutral">{item.source}</Badge>
-                        {item.read_only && <Badge variant="warning">RO</Badge>}
-                        {(item.versions ?? []).length > 1 && (
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            {(item.versions ?? []).length} versions
-                          </span>
-                        )}
-                        <span className="text-[10px] text-[var(--text-muted)] ml-auto flex items-center gap-2">
-                          {fmtTimestamp(item.modified_at)}
-                          {canMutate && deleteConfirm === item.id ? (
-                            <span className="text-[11px]" onClick={(e) => e.stopPropagation()}>
-                              <span className="text-[var(--text-muted)] mr-1">Delete?</span>
-                              <button onClick={() => handleDelete(item)} className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold mr-1">Yes</button>
-                              <button onClick={() => setDeleteConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
-                            </span>
-                          ) : canMutate ? (
-                            <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button onClick={() => startEdit(item)} className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors" style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}>Edit</button>
-                              <button onClick={() => setDeleteConfirm(item.id)} className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors" style={{ background: "transparent", borderColor: "var(--border)", color: "var(--error)" }}>Delete</button>
-                            </span>
-                          ) : null}
-                        </span>
-                      </div>
-                      <MemoryContent content={item.content} />
-                    </>
-                  )}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[12px] font-mono font-medium text-[var(--text-primary)]">
+                      {item.name}
+                    </span>
+                    <Badge variant="neutral">v{item.active_version}</Badge>
+                    <Badge variant="neutral">{item.source}</Badge>
+                    {item.read_only && <Badge variant="warning">RO</Badge>}
+                    {(item.versions ?? []).length > 1 && (
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        {(item.versions ?? []).length} versions
+                      </span>
+                    )}
+                    <span className="text-[10px] text-[var(--text-muted)] ml-auto">
+                      {fmtTimestamp(item.modified_at)}
+                    </span>
+                  </div>
+                  <MemoryContent content={item.content} />
                 </div>
               ))}
             </div>
