@@ -97,6 +97,11 @@ interface VersionPanelProps {
 function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: VersionPanelProps) {
   const [selectedVersion, setSelectedVersion] = useState<number>(item.active_version);
   const [activating, setActivating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const versions = useMemo(
     () => [...(item.versions ?? [])].sort((a, b) => b.version - a.version),
@@ -119,6 +124,36 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
     }
   }, [cogentName, item.name, activating, onRefresh]);
 
+  const handleStartEdit = useCallback(() => {
+    const v = versions.find((v) => v.version === selectedVersion) ?? versions[0];
+    setEditContent(v?.content ?? "");
+    setEditing(true);
+  }, [versions, selectedVersion]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!cogentName || saving) return;
+    setSaving(true);
+    try {
+      await updateMemory(cogentName, item.name, { content: editContent, source: "dashboard" });
+      setEditing(false);
+      onRefresh?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [cogentName, item.name, editContent, saving, onRefresh]);
+
+  const handleDelete = useCallback(async () => {
+    if (!cogentName || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteMemory(cogentName, item.name);
+      onRefresh?.();
+      onClose();
+    } finally {
+      setDeleting(false);
+    }
+  }, [cogentName, item.name, deleting, onRefresh, onClose]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -139,6 +174,34 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
         <Badge variant={item.read_only ? "warning" : "success"}>
           {item.read_only ? "read-only" : "writable"}
         </Badge>
+        {canMutate && !item.read_only && (
+          <span className="ml-auto flex gap-1">
+            {!editing && (
+              <button
+                onClick={handleStartEdit}
+                className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors"
+                style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                Edit
+              </button>
+            )}
+            {deleteConfirm ? (
+              <span className="flex items-center gap-1 text-[11px]">
+                <span className="text-[var(--text-muted)]">Delete?</span>
+                <button onClick={handleDelete} disabled={deleting} className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold">{deleting ? "..." : "Yes"}</button>
+                <button onClick={() => setDeleteConfirm(false)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setDeleteConfirm(true)}
+                className="text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors"
+                style={{ background: "transparent", borderColor: "var(--border)", color: "var(--error)" }}
+              >
+                Delete
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       {/* Version selector bar */}
@@ -207,7 +270,36 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
             </div>
 
             {/* Version content */}
-            <MemoryContent content={currentVersion.content} />
+            {editing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={12}
+                  className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
+                  style={inputStyle}
+                />
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={saving}
+                    className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer disabled:opacity-40"
+                    style={{ background: "var(--accent)", color: "white" }}
+                  >
+                    {saving ? "Saving..." : "Save (new version)"}
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="text-[10px] px-2 py-0.5 rounded border cursor-pointer"
+                    style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <MemoryContent content={currentVersion.content} />
+            )}
           </div>
         )}
       </div>
