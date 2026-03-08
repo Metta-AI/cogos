@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as api from "@/lib/api";
-import { MOCK_DATA } from "@/lib/mock-data";
 import type {
   DashboardData,
   TimeRange,
@@ -15,13 +14,7 @@ import type {
 } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 
-function useMockMode(): boolean {
-  if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("mock");
-}
-
 export function useCogentData(cogentName: string) {
-  const mockMode = useMockMode();
   const [data, setData] = useState<DashboardData>({
     status: null,
     programs: [],
@@ -44,12 +37,6 @@ export function useCogentData(cogentName: string) {
 
   const refresh = useCallback(async () => {
     if (!cogentName) return;
-    if (mockMode) {
-      setData(MOCK_DATA);
-      setError(null);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const results = await Promise.allSettled([
       api.getStatus(cogentName, timeRange),
@@ -67,9 +54,7 @@ export function useCogentData(cogentName: string) {
     ]);
     const failCount = results.filter((r) => r.status === "rejected").length;
     if (failCount === results.length) {
-      // All requests failed — use mock data for development
-      setError(null);
-      setData(MOCK_DATA);
+      setError("All API requests failed — is the backend running?");
     } else if (failCount > 0) {
       setError(`${failCount} of ${results.length} API requests failed`);
       setData({
@@ -104,7 +89,7 @@ export function useCogentData(cogentName: string) {
       });
     }
     setLoading(false);
-  }, [cogentName, timeRange, mockMode]);
+  }, [cogentName, timeRange]);
 
   // Initial fetch
   useEffect(() => {
