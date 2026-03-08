@@ -30,6 +30,7 @@ from brain.db.local_repository import LocalRepository
 from brain.db.repository import Repository
 from mind.loader import load_resources, sync_resources
 from mind.program import load_program, load_programs_dir, sync_program, validate_bundle
+from mind.tool_loader import load_tools_dir, sync_tools
 
 
 def _ensure_db_env(cogent_name: str) -> None:
@@ -298,6 +299,12 @@ def mind_update(ctx: click.Context, egg_dir: str, force: bool) -> None:
             f"{counts['triggers']} triggers, "
             f"{counts['memory']} memory"
         )
+
+    # 6. Tools
+    tools_dir = egg / "tools"
+    if tools_dir.is_dir():
+        synced, errors = sync_tools(tools_dir, repo)
+        click.echo(f"Tools: {synced} synced, {errors} errors")
 
 
 @mind.group()
@@ -1328,3 +1335,102 @@ def memory_load(ctx: click.Context, memories_dir: str, force: bool) -> None:
         {"created": created, "updated": updated, "skipped": skipped, "unchanged": unchanged, "total": len(loaded)},
         use_json=ctx.obj["json"],
     )
+
+
+# ═══════════════════════════════════════════════════════════
+# TOOL
+# ═══════════════════════════════════════════════════════════
+
+
+_DEFAULT_TOOLS_DIR = "eggs/ovo/tools"
+
+
+@mind.group()
+def tool() -> None:
+    """Manage tool definitions."""
+
+
+@tool.command("list")
+@click.option("--prefix", default=None, help="Filter by name prefix")
+@click.option("--all", "show_all", is_flag=True, help="Include disabled tools")
+@click.pass_context
+def tool_list(ctx: click.Context, prefix: str | None, show_all: bool) -> None:
+    """List all tools."""
+    repo = _repo()
+    tools = repo.list_tools(prefix=prefix, enabled_only=not show_all)
+    data = [
+        {
+            "name": t.name,
+            "description": t.description,
+            "handler": t.handler,
+            "enabled": t.enabled,
+        }
+        for t in tools
+    ]
+    _output(data, use_json=ctx.obj["json"])
+
+
+@tool.command("show")
+@click.argument("name")
+@click.pass_context
+def tool_show(ctx: click.Context, name: str) -> None:
+    """Show full tool details."""
+    repo = _repo()
+    t = repo.get_tool(name)
+    if not t:
+        click.echo(f"Tool '{name}' not found.", err=True)
+        sys.exit(1)
+    _output_single({
+        "name": t.name,
+        "description": t.description,
+        "instructions": t.instructions,
+        "handler": t.handler,
+        "enabled": t.enabled,
+        "input_schema": t.input_schema,
+        "metadata": t.metadata,
+        "created_at": str(t.created_at) if t.created_at else None,
+        "updated_at": str(t.updated_at) if t.updated_at else None,
+    })
+
+
+@tool.command("update")
+@click.option("--path", "tools_path", default=_DEFAULT_TOOLS_DIR, type=click.Path(exists=True),
+              help="Path to tools directory")
+@click.pass_context
+def tool_update(ctx: click.Context, tools_path: str) -> None:
+    """Sync tool files from disk to the database.
+
+    Default path: eggs/ovo/tools
+    """
+    repo = _repo()
+    synced, errors = sync_tools(Path(tools_path), repo)
+    _output(
+        {"synced": synced, "errors": errors},
+        use_json=ctx.obj["json"],
+    )
+
+
+@tool.command("enable")
+@click.argument("name")
+@click.pass_context
+def tool_enable(ctx: click.Context, name: str) -> None:
+    """Enable a tool."""
+    repo = _repo()
+    if repo.update_tool_enabled(name, True):
+        _output({"name": name, "enabled": True}, use_json=ctx.obj["json"])
+    else:
+        click.echo(f"Tool '{name}' not found.", err=True)
+        sys.exit(1)
+
+
+@tool.command("disable")
+@click.argument("name")
+@click.pass_context
+def tool_disable(ctx: click.Context, name: str) -> None:
+    """Disable a tool."""
+    repo = _repo()
+    if repo.update_tool_enabled(name, False):
+        _output({"name": name, "enabled": False}, use_json=ctx.obj["json"])
+    else:
+        click.echo(f"Tool '{name}' not found.", err=True)
+        sys.exit(1)

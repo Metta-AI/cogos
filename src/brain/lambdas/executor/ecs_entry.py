@@ -131,6 +131,21 @@ def main() -> None:
         # Merge tools from program and task
         all_tools = list(set((program.tools or []) + task_tools))
 
+        # Write MCP config for mind-sandbox tools
+        if all_tools:
+            mcp_config = {
+                "mcpServers": {
+                    "mind-sandbox": {
+                        "command": "python",
+                        "args": ["-m", "brain.tools.mcp_server"],
+                        "env": {"COGENT_TOOL_NAMES": ",".join(all_tools)},
+                    }
+                }
+            }
+            mcp_config_path = "/tmp/mcp-config.json"
+            with open(mcp_config_path, "w") as f:
+                json.dump(mcp_config, f)
+
         # Build Claude Code CLI command
         cmd = ["claude"]
 
@@ -138,7 +153,7 @@ def main() -> None:
         cmd.extend(["--model", model])
 
         if all_tools:
-            cmd.extend(["--allowedTools", ",".join(all_tools)])
+            cmd.extend(["--mcp-config", mcp_config_path])
 
         # Resume existing session if we have data from S3
         if restored_session and os.path.isdir(CLAUDE_DIR) and os.listdir(CLAUDE_DIR):

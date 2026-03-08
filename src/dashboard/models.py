@@ -353,3 +353,31 @@ class ResourcesResponse(BaseModel):
     cogent_name: str
     count: int = 0
     resources: list[ResourceItem] = []
+
+
+class ToolItem(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    instructions: str = ""
+    input_schema: dict[str, Any] = {}
+    handler: str = ""
+    iam_role_arn: str | None = None
+    enabled: bool = True
+    metadata: dict[str, Any] = {}
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ToolsResponse(BaseModel):
+    cogent_name: str
+    count: int
+    tools: list[ToolItem]
+
+
+class ToolUpdate(BaseModel):
+    description: str | None = None
+    instructions: str | None = None
+    input_schema: dict[str, Any] | None = None
+    enabled: bool | None = None
+    metadata: dict[str, Any] | None = None

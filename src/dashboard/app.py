@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
         sessions,
         status,
         tasks,
+        tools,
         triggers,
     )
 
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(resources.router, prefix="/api/cogents/{name}")
     app.include_router(events.router, prefix="/api/cogents/{name}")
     app.include_router(triggers.router, prefix="/api/cogents/{name}")
+    app.include_router(tools.router, prefix="/api/cogents/{name}")
     app.include_router(memory.router, prefix="/api/cogents/{name}")
     app.include_router(cron.router, prefix="/api/cogents/{name}")
 
