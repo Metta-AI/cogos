@@ -32,6 +32,7 @@ from brain.db.models import (
     RunStatus,
     Task,
     TaskStatus,
+    Tool,
     Trace,
     Trigger,
     TriggerConfig,
@@ -44,41 +45,119 @@ def _ago(**kw: int) -> datetime:
     return NOW - timedelta(**kw)
 
 
-# ── Programs ──────────────────────────────────────────────
+# ── Tools (load from disk) ───────────────────────────────
 
-PROGRAM_DEFS = [
-    ("triage-issue", ProgramType.PROMPT, "Triage incoming GitHub issues, label and assign.",
-     ["github-tools", "label-tools"], ["issue-triage-rules"]),
-    ("do-content", ProgramType.PROMPT, "Execute content creation tasks from the task queue.",
-     ["web-search", "write-tools"], ["brand-voice", "content-calendar"]),
-    ("monitor-alerts", ProgramType.PROMPT, "Monitor system health and escalate alerts.",
-     ["metrics-tools", "slack-notify"], ["alert-thresholds"]),
-    ("code-review", ProgramType.PYTHON, "Automated code review for pull requests.",
-     ["github-tools", "lint-tools"], ["code-standards"]),
-    ("email-responder", ProgramType.PROMPT, "Draft email responses for common inquiries.",
-     ["email-tools", "knowledge-base"], ["email-templates", "faq"]),
-    ("data-sync", ProgramType.PYTHON, "Synchronize data between external services.",
-     ["api-tools", "db-tools"], []),
+def make_tools() -> list[Tool]:
+    """Load real tool definitions from eggs/ovo/tools/."""
+    # Find the project root (navigate up from this file)
+    project_root = Path(__file__).resolve().parents[3]
+    tools_dir = project_root / "eggs" / "ovo" / "tools"
+
+    if tools_dir.is_dir():
+        from mind.tool_loader import load_tools_dir
+        return load_tools_dir(tools_dir)
+
+    # Fallback: hardcoded tool defs if eggs/ not found
+    return [
+        Tool(name="mind/memory/get", description="Retrieve a memory value by key name.",
+             handler="brain.tools.handlers:memory_get",
+             input_schema={"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]}),
+        Tool(name="mind/memory/put", description="Store a value in memory under a key name.",
+             handler="brain.tools.handlers:memory_put",
+             input_schema={"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}}, "required": ["key", "value"]}),
+        Tool(name="mind/event/send", description="Send an event to the event bus.",
+             handler="brain.tools.handlers:event_send",
+             input_schema={"type": "object", "properties": {"event_type": {"type": "string"}}, "required": ["event_type"]}),
+        Tool(name="channels/gmail/check", description="Check Gmail inbox for messages.",
+             handler="brain.tools.handlers:gmail_check",
+             input_schema={"type": "object", "properties": {"query": {"type": "string"}}}),
+        Tool(name="channels/gmail/send", description="Send an email via Gmail.",
+             handler="brain.tools.handlers:gmail_send",
+             input_schema={"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to", "subject", "body"]}),
+    ]
+
+
+# ── Memory ───────────────────────────────────────────────
+
+MEMORY_DEFS = [
+    ("cogent", "brand-voice", "Maintain a professional but approachable tone. Use active voice. Avoid jargon unless writing for a technical audience."),
+    ("cogent", "code-standards", "All Python code must pass ruff and mypy --strict. Max line length 120. Prefer explicit imports."),
+    ("cogent", "alert-thresholds", "CPU: warn at 80%, critical at 95%. Memory: warn at 75%, critical at 90%. Disk: warn at 80%."),
+    ("cogent", "email-templates", "Use the standard greeting format: 'Hi {name},' followed by a blank line. Sign off with 'Best regards, Cogent Team'."),
+    ("cogent", "issue-triage-rules", "P0: service down or data loss. P1: degraded functionality. P2: cosmetic or minor. P3: feature request."),
+    ("polis", "project-context", "Cogent is an AI agent orchestration platform. Key repos: cogents/main, cogents/dashboard. Deploy target: AWS ECS Fargate."),
+    ("polis", "team-contacts", "Engineering lead: Alice (alice@example.com). Product: Bob (bob@example.com). DevOps: Charlie (charlie@example.com)."),
+    ("cogent", "content-calendar", "Blog posts every Tuesday. Newsletter every other Friday. Social media daily at 10am EST."),
+    ("cogent", "faq", "Q: How do I reset my API key? A: Go to Settings > API Keys > Regenerate. Q: What models are supported? A: Claude Sonnet, Haiku, and Opus."),
+    ("polis", "deployment-notes", "Last deploy: v1.4.2 on 2025-02-28. Known issue: WebSocket reconnection can take up to 30s after deploy."),
 ]
 
 
-def make_programs() -> list[Program]:
+def make_memory() -> tuple[list[Memory], list[MemoryVersion]]:
+    memories = []
+    versions = []
+    for source, name, content in MEMORY_DEFS:
+        created = _ago(days=random.randint(2, 30))
+        mem = Memory(
+            id=uuid4(),
+            name=name,
+            active_version=1,
+            created_at=created,
+            modified_at=created + timedelta(days=random.randint(0, 5)),
+        )
+        mv = MemoryVersion(
+            id=uuid4(),
+            memory_id=mem.id,
+            version=1,
+            content=content,
+            source=source,
+            created_at=created,
+        )
+        memories.append(mem)
+        versions.append(mv)
+    return memories, versions
+
+
+# ── Programs ─────────────────────────────────────────────
+
+def make_programs(tool_names: list[str], memory_names: list[str]) -> list[Program]:
+    """Create programs referencing real tool and memory names."""
+    mind_tools = [t for t in tool_names if t.startswith("mind/")]
+    gmail_tools = [t for t in tool_names if t.startswith("channels/gmail")]
+
+    defs = [
+        ("triage-issue", ProgramType.PROMPT, "Triage incoming GitHub issues, label and assign.",
+         mind_tools, ["issue-triage-rules", "project-context"]),
+        ("do-content", ProgramType.PROMPT, "Execute content creation tasks from the task queue.",
+         mind_tools, ["brand-voice", "content-calendar"]),
+        ("monitor-alerts", ProgramType.PROMPT, "Monitor system health and escalate alerts.",
+         mind_tools + gmail_tools, ["alert-thresholds"]),
+        ("code-review", ProgramType.PYTHON, "Automated code review for pull requests.",
+         mind_tools, ["code-standards"]),
+        ("email-responder", ProgramType.PROMPT, "Draft email responses for common inquiries.",
+         gmail_tools + mind_tools, ["email-templates", "faq"]),
+        ("data-sync", ProgramType.PYTHON, "Synchronize data between external services.",
+         mind_tools, []),
+    ]
+
     programs = []
-    for name, ptype, content, tools, mem_keys in PROGRAM_DEFS:
+    for name, ptype, content, tools, mem_keys in defs:
+        # Only keep memory keys that actually exist
+        valid_mem = [k for k in mem_keys if k in memory_names]
         programs.append(Program(
             id=uuid4(),
             name=name,
             program_type=ptype,
             content=content,
             tools=tools,
-            memory_keys=mem_keys,
+            memory_keys=valid_mem,
             created_at=_ago(days=30),
             updated_at=_ago(days=random.randint(0, 10)),
         ))
     return programs
 
 
-# ── Channels ──────────────────────────────────────────────
+# ── Channels ─────────────────────────────────────────────
 
 CHANNEL_DEFS = [
     ("general-discord", ChannelType.DISCORD, "1098765432100"),
@@ -105,30 +184,52 @@ def make_channels() -> list[Channel]:
     return channels
 
 
-# ── Tasks ─────────────────────────────────────────────────
+# ── Tasks ────────────────────────────────────────────────
 
-TASK_DEFS = [
-    ("Review Q1 metrics report", "do-content", TaskStatus.COMPLETED, 10.0, "Compile and review Q1 metrics."),
-    ("Write blog post: AI agents", "do-content", TaskStatus.RUNNING, 8.0, "Draft a blog post about AI agent architecture."),
-    ("Triage issue #142", "triage-issue", TaskStatus.COMPLETED, 5.0, "Investigate and label the reported bug."),
-    ("Update API documentation", "do-content", TaskStatus.RUNNABLE, 6.0, "Refresh API docs for v2 endpoints."),
-    ("Deploy staging environment", "data-sync", TaskStatus.COMPLETED, 9.0, "Deploy latest build to staging."),
-    ("Monitor weekend alerts", "monitor-alerts", TaskStatus.RUNNING, 7.0, "Watch for critical alerts over the weekend."),
-    ("Review PR #87: auth refactor", "code-review", TaskStatus.COMPLETED, 4.0, "Review authentication refactor PR."),
-    ("Respond to partner inquiry", "email-responder", TaskStatus.RUNNABLE, 3.0, "Draft response to partnership email."),
-    ("Sync CRM contacts", "data-sync", TaskStatus.DISABLED, 2.0, "Synchronize contacts from CRM to local DB."),
-    ("Triage issue #155", "triage-issue", TaskStatus.RUNNING, 5.0, "New feature request needs labeling."),
-    ("Weekly digest email", "email-responder", TaskStatus.COMPLETED, 1.0, "Send weekly project digest."),
-    ("Code review PR #92", "code-review", TaskStatus.RUNNABLE, 6.0, "Review dashboard component changes."),
-]
+def make_tasks(
+    programs: list[Program],
+    tool_names: list[str],
+    memory_names: list[str],
+) -> list[Task]:
+    """Create tasks referencing valid program names, tool names, and memory keys."""
+    prog_map = {p.name: p for p in programs}
+    mind_tools = [t for t in tool_names if t.startswith("mind/")]
+    gmail_tools = [t for t in tool_names if t.startswith("channels/gmail")]
 
+    defs = [
+        ("Review Q1 metrics report", "do-content", TaskStatus.COMPLETED, 10.0,
+         "Compile and review Q1 metrics.", mind_tools, ["brand-voice", "content-calendar"]),
+        ("Write blog post: AI agents", "do-content", TaskStatus.RUNNING, 8.0,
+         "Draft a blog post about AI agent architecture.", mind_tools, ["brand-voice"]),
+        ("Triage issue #142", "triage-issue", TaskStatus.COMPLETED, 5.0,
+         "Investigate and label the reported bug.", mind_tools, ["issue-triage-rules"]),
+        ("Update API documentation", "do-content", TaskStatus.RUNNABLE, 6.0,
+         "Refresh API docs for v2 endpoints.", mind_tools, ["project-context"]),
+        ("Deploy staging environment", "data-sync", TaskStatus.COMPLETED, 9.0,
+         "Deploy latest build to staging.", mind_tools, ["deployment-notes"]),
+        ("Monitor weekend alerts", "monitor-alerts", TaskStatus.RUNNING, 7.0,
+         "Watch for critical alerts over the weekend.", mind_tools + gmail_tools, ["alert-thresholds"]),
+        ("Review PR #87: auth refactor", "code-review", TaskStatus.COMPLETED, 4.0,
+         "Review authentication refactor PR.", mind_tools, ["code-standards"]),
+        ("Respond to partner inquiry", "email-responder", TaskStatus.RUNNABLE, 3.0,
+         "Draft response to partnership email.", gmail_tools + mind_tools, ["email-templates"]),
+        ("Sync CRM contacts", "data-sync", TaskStatus.DISABLED, 2.0,
+         "Synchronize contacts from CRM to local DB.", mind_tools, []),
+        ("Triage issue #155", "triage-issue", TaskStatus.RUNNING, 5.0,
+         "New feature request needs labeling.", mind_tools, ["issue-triage-rules"]),
+        ("Weekly digest email", "email-responder", TaskStatus.COMPLETED, 1.0,
+         "Send weekly project digest.", gmail_tools, ["faq"]),
+        ("Code review PR #92", "code-review", TaskStatus.RUNNABLE, 6.0,
+         "Review dashboard component changes.", mind_tools, ["code-standards"]),
+    ]
 
-def make_tasks() -> list[Task]:
     tasks = []
-    for i, (name, prog, status, priority, desc) in enumerate(TASK_DEFS):
+    for i, (name, prog, status, priority, desc, tools, mem_keys) in enumerate(defs):
         created = _ago(days=random.randint(1, 14), hours=random.randint(0, 23))
         updated = created + timedelta(hours=random.randint(1, 48))
         completed = updated + timedelta(hours=random.randint(1, 6)) if status == TaskStatus.COMPLETED else None
+        # Only keep memory keys that exist
+        valid_mem = [k for k in mem_keys if k in memory_names]
         tasks.append(Task(
             id=uuid4(),
             name=name,
@@ -137,8 +238,8 @@ def make_tasks() -> list[Task]:
             status=status,
             priority=priority,
             content=f"Task content for: {name}",
-            memory_keys=["project-context"] if i % 3 == 0 else [],
-            tools=["web-search"] if i % 4 == 0 else [],
+            memory_keys=valid_mem,
+            tools=tools,
             recurrent=i % 5 == 0,
             creator="system" if i % 2 == 0 else "user",
             created_at=created,
@@ -148,11 +249,10 @@ def make_tasks() -> list[Task]:
     return tasks
 
 
-# ── Runs ──────────────────────────────────────────────────
+# ── Runs ─────────────────────────────────────────────────
 
 def make_runs(tasks: list[Task], programs: list[Program], triggers: list[Trigger]) -> list[Run]:
     runs = []
-    prog_names = [p.name for p in programs]
     for task in tasks:
         n_runs = random.randint(1, 4)
         for j in range(n_runs):
@@ -184,7 +284,7 @@ def make_runs(tasks: list[Task], programs: list[Program], triggers: list[Trigger
     return runs
 
 
-# ── Triggers ──────────────────────────────────────────────
+# ── Triggers ─────────────────────────────────────────────
 
 TRIGGER_DEFS = [
     ("triage-issue", "github.issue.opened", 5),
@@ -211,7 +311,7 @@ def make_triggers() -> list[Trigger]:
     return triggers
 
 
-# ── Crons ─────────────────────────────────────────────────
+# ── Crons ────────────────────────────────────────────────
 
 CRON_DEFS = [
     ("0 9 * * *", "schedule.daily", True, {"description": "Daily morning sync"}),
@@ -236,7 +336,7 @@ def make_crons() -> list[Cron]:
     return crons
 
 
-# ── Events ────────────────────────────────────────────────
+# ── Events ───────────────────────────────────────────────
 
 EVENT_TYPES = [
     "github.issue.opened", "github.issue.closed", "github.pull_request.opened",
@@ -286,7 +386,7 @@ def _event_payload(etype: str) -> dict:
     return {"detail": etype}
 
 
-# ── Conversations ─────────────────────────────────────────
+# ── Conversations ────────────────────────────────────────
 
 def make_conversations(channels: list[Channel]) -> list[Conversation]:
     convs = []
@@ -305,7 +405,7 @@ def make_conversations(channels: list[Channel]) -> list[Conversation]:
     return convs
 
 
-# ── Alerts ────────────────────────────────────────────────
+# ── Alerts ───────────────────────────────────────────────
 
 ALERT_DEFS = [
     (AlertSeverity.CRITICAL, "high_cpu", "system-monitor", "CPU usage exceeded 95% on worker-3"),
@@ -337,60 +437,20 @@ def make_alerts() -> list[Alert]:
     return alerts
 
 
-# ── Memory ────────────────────────────────────────────────
+# ── Traces ───────────────────────────────────────────────
 
-MEMORY_DEFS = [
-    ("cogent", "/brand-voice", "Maintain a professional but approachable tone. Use active voice. Avoid jargon unless writing for a technical audience."),
-    ("cogent", "/code-standards", "All Python code must pass ruff and mypy --strict. Max line length 120. Prefer explicit imports."),
-    ("cogent", "/alert-thresholds", "CPU: warn at 80%, critical at 95%. Memory: warn at 75%, critical at 90%. Disk: warn at 80%."),
-    ("cogent", "/email-templates", "Use the standard greeting format: 'Hi {name},' followed by a blank line. Sign off with 'Best regards, Cogent Team'."),
-    ("cogent", "/issue-triage-rules", "P0: service down or data loss. P1: degraded functionality. P2: cosmetic or minor. P3: feature request."),
-    ("polis", "/project-context", "Cogent is an AI agent orchestration platform. Key repos: cogents/main, cogents/dashboard. Deploy target: AWS ECS Fargate."),
-    ("polis", "/team-contacts", "Engineering lead: Alice (alice@example.com). Product: Bob (bob@example.com). DevOps: Charlie (charlie@example.com)."),
-    ("cogent", "/content-calendar", "Blog posts every Tuesday. Newsletter every other Friday. Social media daily at 10am EST."),
-    ("cogent", "/faq", "Q: How do I reset my API key? A: Go to Settings > API Keys > Regenerate. Q: What models are supported? A: Claude Sonnet, Haiku, and Opus."),
-    ("polis", "/deployment-notes", "Last deploy: v1.4.2 on 2025-02-28. Known issue: WebSocket reconnection can take up to 30s after deploy."),
-]
-
-
-def make_memory() -> tuple[list[Memory], list[MemoryVersion]]:
-    memories = []
-    versions = []
-    for source, name, content in MEMORY_DEFS:
-        created = _ago(days=random.randint(2, 30))
-        mem = Memory(
-            id=uuid4(),
-            name=name,
-            active_version=1,
-            created_at=created,
-            modified_at=created + timedelta(days=random.randint(0, 5)),
-        )
-        mv = MemoryVersion(
-            id=uuid4(),
-            memory_id=mem.id,
-            version=1,
-            content=content,
-            source=source,
-            created_at=created,
-        )
-        memories.append(mem)
-        versions.append(mv)
-    return memories, versions
-
-
-# ── Traces ────────────────────────────────────────────────
-
-def make_traces(runs: list[Run]) -> list[Trace]:
+def make_traces(runs: list[Run], tool_names: list[str]) -> list[Trace]:
     traces = []
     for run in runs:
         if run.status == RunStatus.RUNNING:
             continue
+        used_tools = random.sample(tool_names, min(2, len(tool_names))) if tool_names else []
         traces.append(Trace(
             id=uuid4(),
             run_id=run.id,
             tool_calls=[
-                {"tool": "web-search", "args": {"query": "latest AI news"}, "result": "ok"},
-                {"tool": "write-file", "args": {"path": "/tmp/draft.md"}, "result": "ok"},
+                {"tool": t, "args": {"key": "example"}, "result": "ok"}
+                for t in used_tools
             ] if random.random() > 0.3 else [],
             memory_ops=[
                 {"op": "read", "key": "brand-voice"},
@@ -401,7 +461,7 @@ def make_traces(runs: list[Run]) -> list[Trace]:
     return traces
 
 
-# ── Assemble & Write ──────────────────────────────────────
+# ── Assemble & Write ─────────────────────────────────────
 
 def generate(data_dir: str | None = None) -> Path:
     """Generate mock data and write to data.json. Returns the file path."""
@@ -415,17 +475,22 @@ def generate(data_dir: str | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / "data.json"
 
-    programs = make_programs()
+    # Build tools and memory first — others reference them by name
+    tools = make_tools()
+    tool_names = [t.name for t in tools]
+    memories, memory_versions = make_memory()
+    memory_names = [m.name for m in memories]
+
+    programs = make_programs(tool_names, memory_names)
     channels = make_channels()
     triggers = make_triggers()
     crons = make_crons()
-    tasks = make_tasks()
+    tasks = make_tasks(programs, tool_names, memory_names)
     runs = make_runs(tasks, programs, triggers)
     events, event_seq = make_events(60)
     conversations = make_conversations(channels)
     alerts = make_alerts()
-    memories, memory_versions = make_memory()
-    traces = make_traces(runs)
+    traces = make_traces(runs, tool_names)
 
     data = {
         "programs": [p.model_dump(mode="json") for p in programs],
@@ -439,13 +504,14 @@ def generate(data_dir: str | None = None) -> Path:
         "channels": [ch.model_dump(mode="json") for ch in channels],
         "alerts": [a.model_dump(mode="json") for a in alerts],
         "traces": [t.model_dump(mode="json") for t in traces],
+        "tools": [t.model_dump(mode="json") for t in tools],
         "memories_v2": [m.model_dump(mode="json", exclude={"versions"}) for m in memories],
         "memory_versions": [mv.model_dump(mode="json") for mv in memory_versions],
     }
 
     out_file.write_text(json.dumps(data, indent=2, default=_json_serial))
     print(f"Wrote mock data to {out_file}")
-    print(f"  {len(programs)} programs, {len(tasks)} tasks, {len(runs)} runs")
+    print(f"  {len(tools)} tools, {len(programs)} programs, {len(tasks)} tasks, {len(runs)} runs")
     print(f"  {len(triggers)} triggers, {len(crons)} crons, {len(events)} events")
     print(f"  {len(channels)} channels, {len(conversations)} conversations")
     print(f"  {len(alerts)} alerts, {len(memories)} memories, {len(traces)} traces")
