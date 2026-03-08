@@ -85,7 +85,7 @@ export interface MemoryVersionItem {
   id: string;
   version: number;
   content: string;
-  source: string;
+  source: string | null;
   read_only: boolean;
   created_at: string | null;
 }
@@ -95,8 +95,9 @@ export interface MemoryItem {
   name: string;
   group: string;
   active_version: number;
+  includes: string[];
   content: string;
-  source: string;
+  source: string | null;
   read_only: boolean;
   created_at: string | null;
   modified_at: string | null;

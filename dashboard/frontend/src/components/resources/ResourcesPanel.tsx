@@ -43,7 +43,7 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
-export function ResourcesPanel({ resources }: ResourcesPanelProps) {
+export function ResourcesPanel({ resources = [] }: ResourcesPanelProps) {
   const pools = resources.filter((r) => r.resource_type === "pool");
   const consumables = resources.filter((r) => r.resource_type === "consumable");
   const totalCapacity = pools.reduce((s, r) => s + r.capacity, 0);

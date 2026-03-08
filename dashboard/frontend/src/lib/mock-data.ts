@@ -5,7 +5,6 @@ import type {
   DashboardEvent,
   Trigger,
   MemoryItem,
-  MemoryVersionItem,
   Task,
   Channel,
   Alert,
@@ -105,23 +104,17 @@ function mockMem(
   group: string,
   content: string,
   source: string = "cogent",
-  opts: { read_only?: boolean; extra_versions?: Omit<MemoryVersionItem, "id" | "memory_id">[] } = {},
 ): MemoryItem {
-  const id = uuid();
-  const v1: MemoryVersionItem = { id: uuid(), version: 1, content, source, read_only: opts.read_only ?? false, created_at: ago(30 * D) };
-  const versions = [v1, ...(opts.extra_versions ?? []).map((v) => ({ ...v, id: uuid() }))];
-  const active = versions[versions.length - 1];
   return {
-    id, name, group, active_version: active.version, content: active.content,
-    source: active.source, read_only: active.read_only,
-    created_at: ago(30 * D), modified_at: ago(2 * D), versions,
+    id: uuid(), name, group, active_version: 1, includes: [], content,
+    source, read_only: false,
+    created_at: ago(30 * D), modified_at: ago(2 * D),
+    versions: [{ id: uuid(), version: 1, content, source, read_only: false, created_at: ago(30 * D) }],
   };
 }
 
 const memory: MemoryItem[] = [
-  mockMem("identity", "default", "You are Ovo, a cogent — an autonomous agent system built on the cogents framework. Your primary purpose is to help your operator by monitoring channels (Discord, GitHub, email), executing tasks, and managing deployments. You respond in a concise, technical style.", "cogent", {
-    extra_versions: [{ version: 2, content: "You are Ovo, a cogent. Help your operator by monitoring channels, executing tasks, and managing deployments. Be concise and technical.", source: "cogent", read_only: false, created_at: ago(2 * D) }],
-  }),
+  mockMem("identity", "default", "You are Ovo, a cogent — an autonomous agent system built on the cogents framework. Your primary purpose is to help your operator by monitoring channels (Discord, GitHub, email), executing tasks, and managing deployments. You respond in a concise, technical style."),
   mockMem("personality", "default", "Professional, concise, technically precise. Uses bullet points. Avoids filler words."),
   mockMem("api-conventions", "api", "REST API naming: plural nouns, snake_case, version prefix /v1/. Always return JSON with top-level data wrapper. Use 201 for creation, 204 for deletion."),
   mockMem("discord-channels", "discord", "Monitored Discord channels:\n- #general — main discussion, respond to direct questions\n- #alerts — system alerts, always acknowledge critical ones\n- #dev — development discussion, help with code questions\n- #deploys — deployment notifications, track status"),
@@ -130,12 +123,12 @@ const memory: MemoryItem[] = [
   mockMem("github-repos", "github", "Monitored repos:\n- acme/api (primary backend)\n- acme/web (frontend)\n- acme/infra (IaC)\n- acme/docs (documentation)"),
   mockMem("cost-limits", "ops", "Daily cost budget: $10. Alert threshold: $5. Escalation at $8. Hard limit at $15."),
   mockMem("test-strategy", "testing", "Run integration tests on every PR. Run full suite nightly. Flaky test threshold: 3 retries. Report failures to #dev channel."),
-  mockMem("operator-prefs", "default", "Operator timezone: US/Pacific. Preferred notification channel: Discord #alerts for critical, email for daily summaries. Do not notify between 10pm-7am unless P0.", "polis", { read_only: true }),
-  mockMem("team-roster", "team", "Team: Alice (backend lead), Bob (frontend), Carol (infra), Dave (PM). Alice and Carol are deployment approvers.", "polis", { read_only: true }),
+  mockMem("operator-prefs", "default", "Operator timezone: US/Pacific. Preferred notification channel: Discord #alerts for critical, email for daily summaries. Do not notify between 10pm-7am unless P0.", "polis"),
+  mockMem("team-roster", "team", "Team: Alice (backend lead), Bob (frontend), Carol (infra), Dave (PM). Alice and Carol are deployment approvers.", "polis"),
   mockMem("email-templates", "email", "Use templates: deploy-notification, weekly-report, alert-escalation. Keep subject lines under 60 chars. Always include action items."),
   mockMem("slack-config", "slack", "Slack workspace: acme-eng. Channels: #engineering, #deploys, #incidents. Use thread replies for ongoing conversations."),
   mockMem("rollback-procedures", "deployment", "Rollback steps: 1. Revert to previous container image 2. Run health checks 3. Verify DB compatibility 4. Notify in #deploys 5. Create post-mortem task"),
-  mockMem("security-policies", "security", "Never commit secrets. Use AWS Secrets Manager for all credentials. Rotate API keys quarterly. Review access logs weekly.", "polis", { read_only: true }),
+  mockMem("security-policies", "security", "Never commit secrets. Use AWS Secrets Manager for all credentials. Rotate API keys quarterly. Review access logs weekly.", "polis"),
 ];
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
