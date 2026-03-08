@@ -10,6 +10,7 @@ import type {
   Alert,
   CronItem,
   Resource,
+  Tool,
   TimeRange,
 } from "./types";
 
@@ -399,4 +400,47 @@ export async function toggleTriggers(
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify({ ids, enabled }),
   });
+}
+
+// ── Tools ──────────────────────────────────────────────────────────────────
+
+export async function getTools(name: string): Promise<Tool[]> {
+  const r = await fetchJSON<{ tools: Tool[] }>(
+    `/api/cogents/${name}/tools`,
+  );
+  return r.tools;
+}
+
+export async function updateTool(
+  name: string,
+  toolName: string,
+  updates: { description?: string; instructions?: string; enabled?: boolean; metadata?: Record<string, unknown> },
+): Promise<Tool> {
+  const resp = await fetch(`/api/cogents/${name}/tools/${toolName}`, {
+    method: "PUT",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function toggleTools(
+  name: string,
+  ids: string[],
+  enabled: boolean,
+): Promise<void> {
+  await fetch(`/api/cogents/${name}/tools/toggle`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, enabled }),
+  });
+}
+
+export async function deleteTool(name: string, toolName: string): Promise<void> {
+  const resp = await fetch(`/api/cogents/${name}/tools/${toolName}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }

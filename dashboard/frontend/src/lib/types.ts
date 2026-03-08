@@ -167,6 +167,20 @@ export interface Resource {
   created_at: string | null;
 }
 
+export interface Tool {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  input_schema: Record<string, unknown>;
+  handler: string;
+  iam_role_arn: string | null;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export type TimeRange = "1m" | "10m" | "1h" | "24h" | "1w";
 export type Timezone = "local" | "utc" | "pst";
 
@@ -182,4 +196,5 @@ export interface DashboardData {
   alerts: Alert[];
   crons: CronItem[];
   resources: Resource[];
+  tools: Tool[];
 }

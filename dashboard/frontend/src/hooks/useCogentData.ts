@@ -34,6 +34,7 @@ export function useCogentData(cogentName: string) {
     alerts: [],
     crons: [],
     resources: [],
+    tools: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export function useCogentData(cogentName: string) {
       api.getAlerts(cogentName),
       api.getCrons(cogentName),
       api.getResources(cogentName),
+      api.getTools(cogentName),
     ]);
     const failCount = results.filter((r) => r.status === "rejected").length;
     if (failCount === results.length) {
@@ -82,6 +84,7 @@ export function useCogentData(cogentName: string) {
         alerts: results[8].status === "fulfilled" ? results[8].value : [],
         crons: results[9].status === "fulfilled" ? results[9].value : [],
         resources: results[10].status === "fulfilled" ? results[10].value : [],
+        tools: results[11].status === "fulfilled" ? results[11].value : [],
       });
     } else {
       setError(null);
@@ -97,6 +100,7 @@ export function useCogentData(cogentName: string) {
         alerts: results[8].status === "fulfilled" ? results[8].value : [],
         crons: results[9].status === "fulfilled" ? results[9].value : [],
         resources: results[10].status === "fulfilled" ? results[10].value : [],
+        tools: results[11].status === "fulfilled" ? results[11].value : [],
       });
     }
     setLoading(false);

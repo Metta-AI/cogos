@@ -14,6 +14,7 @@ import { ResourcesPanel } from "@/components/resources/ResourcesPanel";
 import { TasksPanel } from "@/components/tasks/TasksPanel";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { CronPanel } from "@/components/cron/CronPanel";
+import { ToolsPanel } from "@/components/tools/ToolsPanel";
 
 function getTabFromHash(): TabId {
   if (typeof window === "undefined") return "overview";
@@ -104,6 +105,9 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
         )}
         {activeTab === "channels" && (
           <ChannelsPanel channels={data.channels} cogentName={cogentName} onRefresh={refresh} />
+        )}
+        {activeTab === "tools" && (
+          <ToolsPanel tools={data.tools} cogentName={cogentName} onRefresh={refresh} />
         )}
         {activeTab === "events" && (
           <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} onTabChange={onTabChange as (tab: string) => void} />

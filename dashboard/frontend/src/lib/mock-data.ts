@@ -11,6 +11,7 @@ import type {
   Alert,
   CronItem,
   Resource,
+  Tool,
   DashboardData,
 } from "./types";
 
@@ -199,6 +200,16 @@ const resources: Resource[] = [
   { name: "weekly-token-budget", resource_type: "consumable", capacity: 500000, used: 317000, metadata: { description: "Weekly token allocation" }, created_at: ago(30 * D) },
 ];
 
+// ── Tools ────────────────────────────────────────────────────────────────────
+
+const tools: Tool[] = [
+  { id: uuid(), name: "mind/memory/get", description: "Retrieve a memory value by key name.", instructions: "Use this to read stored memory values. Pass the exact key name.", handler: "brain.tools.handlers:memory_get", input_schema: { type: "object", properties: { key: { type: "string" } }, required: ["key"] }, iam_role_arn: null, enabled: true, metadata: {}, created_at: ago(30 * D), updated_at: ago(2 * D) },
+  { id: uuid(), name: "mind/memory/put", description: "Store a value in memory under a key name.", instructions: "Use this to store values. Provide both key and value.", handler: "brain.tools.handlers:memory_put", input_schema: { type: "object", properties: { key: { type: "string" }, value: { type: "string" } }, required: ["key", "value"] }, iam_role_arn: null, enabled: true, metadata: {}, created_at: ago(30 * D), updated_at: ago(2 * D) },
+  { id: uuid(), name: "mind/event/send", description: "Send an event to the event bus.", instructions: "Use this to emit events that can trigger other programs.", handler: "brain.tools.handlers:event_send", input_schema: { type: "object", properties: { event_type: { type: "string" }, payload: { type: "object" } }, required: ["event_type"] }, iam_role_arn: null, enabled: true, metadata: {}, created_at: ago(30 * D), updated_at: ago(5 * D) },
+  { id: uuid(), name: "channels/gmail/check", description: "Check Gmail inbox for messages.", instructions: "Search Gmail for messages. Returns recent messages matching the query.", handler: "brain.tools.handlers:gmail_check", input_schema: { type: "object", properties: { query: { type: "string" }, max_results: { type: "integer" } } }, iam_role_arn: "arn:aws:iam::123456789:role/cogent-ovo-tool-gmail", enabled: true, metadata: {}, created_at: ago(20 * D), updated_at: ago(1 * D) },
+  { id: uuid(), name: "channels/gmail/send", description: "Send an email via Gmail.", instructions: "Send an email. Requires to, subject, and body.", handler: "brain.tools.handlers:gmail_send", input_schema: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } }, required: ["to", "subject", "body"] }, iam_role_arn: "arn:aws:iam::123456789:role/cogent-ovo-tool-gmail", enabled: false, metadata: {}, created_at: ago(20 * D), updated_at: ago(1 * D) },
+];
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const MOCK_DATA: DashboardData = {
@@ -213,4 +224,5 @@ export const MOCK_DATA: DashboardData = {
   alerts,
   crons,
   resources,
+  tools,
 };
