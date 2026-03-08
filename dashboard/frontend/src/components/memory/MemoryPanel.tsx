@@ -100,7 +100,7 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saveConfirm, setSaveConfirm] = useState<"update" | "new-version" | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<"update" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -315,21 +315,14 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
                       Update v{selectedVersion}
                     </button>
                   )}
-                  {saveConfirm === "new-version" ? (
-                    <span className="flex items-center gap-1 text-[11px]">
-                      <span className="text-[var(--text-muted)]">Save &amp; activate new version?</span>
-                      <button onClick={handleSaveNewVersion} disabled={saving} className="text-[var(--accent)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold disabled:opacity-40">{saving ? "..." : "Yes"}</button>
-                      <button onClick={() => setSaveConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => setSaveConfirm("new-version")}
-                      className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer"
-                      style={{ background: "var(--accent)", color: "white" }}
-                    >
-                      Save as New Version
-                    </button>
-                  )}
+                  <button
+                    onClick={handleSaveNewVersion}
+                    disabled={saving}
+                    className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer disabled:opacity-40"
+                    style={{ background: "var(--accent)", color: "white" }}
+                  >
+                    {saving ? "Saving..." : "Save as New Version"}
+                  </button>
                   <button
                     onClick={() => { setEditing(false); setSaveConfirm(null); }}
                     className="text-[10px] px-2 py-0.5 rounded border cursor-pointer"
