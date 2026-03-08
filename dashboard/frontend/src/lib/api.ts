@@ -111,6 +111,24 @@ export async function deleteMemory(name: string, memoryName: string): Promise<vo
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }
 
+export async function updateVersionContent(
+  name: string,
+  memoryName: string,
+  version: number,
+  content: string,
+): Promise<MemoryItem> {
+  const resp = await fetch(
+    `/api/cogents/${name}/memory/${encodeURIComponent(memoryName)}/versions/${version}`,
+    {
+      method: "PATCH",
+      headers: { ...headers(), "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
 export async function activateVersion(
   name: string,
   memoryName: string,

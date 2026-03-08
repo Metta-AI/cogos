@@ -119,6 +119,30 @@ def activate_version_endpoint(name: str, memory_name: str, body: ActivateRequest
     return {"activated": True, "version": body.version}
 
 
+class UpdateVersionRequest(BaseModel):
+    content: str
+
+
+@router.patch("/memory/{memory_name:path}/versions/{version}")
+def update_version_content(name: str, memory_name: str, version: int, body: UpdateVersionRequest) -> MemoryItem:
+    """Update the content of an existing version in place."""
+    repo = get_repo()
+    mem = repo.get_memory_by_name(memory_name)
+    if not mem:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    mv = mem.versions.get(version)
+    if not mv:
+        raise HTTPException(status_code=404, detail=f"Version {version} not found")
+    if mv.read_only:
+        raise HTTPException(status_code=400, detail="Version is read-only")
+    mv.content = body.content
+    repo._save()
+    updated = repo.get_memory_by_name(memory_name)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Memory not found after update")
+    return _memory_to_item(updated)
+
+
 @router.delete("/memory/{memory_name:path}")
 def delete_memory_endpoint(name: str, memory_name: str) -> dict:
     store = _get_store()

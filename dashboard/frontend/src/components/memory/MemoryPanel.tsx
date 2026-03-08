@@ -6,7 +6,7 @@ import { Badge } from "@/components/shared/Badge";
 import { HierarchyPanel, findNode, getAllItems, buildTree } from "@/components/shared/HierarchyPanel";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import { fmtTimestamp } from "@/lib/format";
-import { createMemory, updateMemory, deleteMemory, activateVersion } from "@/lib/api";
+import { createMemory, updateMemory, deleteMemory, activateVersion, updateVersionContent } from "@/lib/api";
 
 interface MemoryPanelProps {
   memory: MemoryItem[];
@@ -100,6 +100,7 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState<"update" | "new-version" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -128,14 +129,33 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
     const v = versions.find((v) => v.version === selectedVersion) ?? versions[0];
     setEditContent(v?.content ?? "");
     setEditing(true);
+    setSaveConfirm(null);
   }, [versions, selectedVersion]);
 
-  const handleSaveEdit = useCallback(async () => {
+  const handleUpdate = useCallback(async () => {
     if (!cogentName || saving) return;
     setSaving(true);
     try {
-      await updateMemory(cogentName, item.name, { content: editContent, source: "dashboard" });
+      await updateVersionContent(cogentName, item.name, selectedVersion, editContent);
       setEditing(false);
+      setSaveConfirm(null);
+      onRefresh?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [cogentName, item.name, selectedVersion, editContent, saving, onRefresh]);
+
+  const handleSaveNewVersion = useCallback(async () => {
+    if (!cogentName || saving) return;
+    setSaving(true);
+    try {
+      const updated = await updateMemory(cogentName, item.name, { content: editContent, source: "dashboard" });
+      // Activate the new version (latest = highest version number)
+      const newVersion = Math.max(...(updated.versions ?? []).map((v) => v.version));
+      await activateVersion(cogentName, item.name, newVersion);
+      setSelectedVersion(newVersion);
+      setEditing(false);
+      setSaveConfirm(null);
       onRefresh?.();
     } finally {
       setSaving(false);
@@ -274,22 +294,44 @@ function VersionPanel({ item, cogentName, canMutate, onRefresh, onClose }: Versi
               <div className="space-y-2">
                 <textarea
                   value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
+                  onChange={(e) => { setEditContent(e.target.value); setSaveConfirm(null); }}
                   rows={12}
                   className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
                   style={inputStyle}
                 />
-                <div className="flex gap-1">
+                <div className="flex gap-1.5 items-center flex-wrap">
+                  {saveConfirm === "update" ? (
+                    <span className="flex items-center gap-1 text-[11px]">
+                      <span className="text-[var(--text-muted)]">Overwrite v{selectedVersion}?</span>
+                      <button onClick={handleUpdate} disabled={saving} className="text-[var(--accent)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold disabled:opacity-40">{saving ? "..." : "Yes"}</button>
+                      <button onClick={() => setSaveConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setSaveConfirm("update")}
+                      className="text-[10px] px-2 py-0.5 rounded border cursor-pointer"
+                      style={{ background: "transparent", borderColor: "var(--accent)", color: "var(--accent)" }}
+                    >
+                      Update v{selectedVersion}
+                    </button>
+                  )}
+                  {saveConfirm === "new-version" ? (
+                    <span className="flex items-center gap-1 text-[11px]">
+                      <span className="text-[var(--text-muted)]">Save &amp; activate new version?</span>
+                      <button onClick={handleSaveNewVersion} disabled={saving} className="text-[var(--accent)] border-0 bg-transparent cursor-pointer text-[11px] font-semibold disabled:opacity-40">{saving ? "..." : "Yes"}</button>
+                      <button onClick={() => setSaveConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[11px]">No</button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setSaveConfirm("new-version")}
+                      className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer"
+                      style={{ background: "var(--accent)", color: "white" }}
+                    >
+                      Save as New Version
+                    </button>
+                  )}
                   <button
-                    onClick={handleSaveEdit}
-                    disabled={saving}
-                    className="text-[10px] px-2 py-0.5 rounded border-0 cursor-pointer disabled:opacity-40"
-                    style={{ background: "var(--accent)", color: "white" }}
-                  >
-                    {saving ? "Saving..." : "Save (new version)"}
-                  </button>
-                  <button
-                    onClick={() => setEditing(false)}
+                    onClick={() => { setEditing(false); setSaveConfirm(null); }}
                     className="text-[10px] px-2 py-0.5 rounded border cursor-pointer"
                     style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
                   >
