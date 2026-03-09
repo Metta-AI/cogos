@@ -25,7 +25,7 @@ class CogosStatusResponse(BaseModel):
     processes: ProcessCounts
     files: int
     capabilities: int
-    recent_events: list[dict]
+    recent_events: int
     recent_runs: list[dict]
 
 
@@ -51,27 +51,19 @@ def cogos_status(name: str) -> CogosStatusResponse:
     caps = repo.list_capabilities()
     cap_count = len(caps)
 
-    # Recent events (last 10)
-    events = repo.get_events(limit=10)
-    recent_events = [
-        {
-            "id": str(e.id),
-            "event_type": e.event_type,
-            "source": e.source,
-            "created_at": str(e.created_at) if e.created_at else None,
-        }
-        for e in events
-    ]
+    # Recent events count
+    events = repo.get_events(limit=100)
+    recent_event_count = len(events)
 
-    # Recent runs (last 10)
+    # Recent runs (last 10) with process name
+    proc_map = {p.id: p.name for p in all_procs}
     runs = repo.list_runs(limit=10)
     recent_runs = [
         {
             "id": str(r.id),
-            "process": str(r.process),
+            "process_name": proc_map.get(r.process, str(r.process)),
             "status": r.status.value,
             "duration_ms": r.duration_ms,
-            "cost_usd": float(r.cost_usd),
             "created_at": str(r.created_at) if r.created_at else None,
         }
         for r in runs
@@ -81,6 +73,6 @@ def cogos_status(name: str) -> CogosStatusResponse:
         processes=ProcessCounts(total=len(all_procs), by_status=counts),
         files=file_count,
         capabilities=cap_count,
-        recent_events=recent_events,
+        recent_events=recent_event_count,
         recent_runs=recent_runs,
     )

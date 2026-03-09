@@ -21,7 +21,12 @@ _cogos_repo: CogosRepository | None = None
 def get_cogos_repo() -> CogosRepository:
     global _cogos_repo
     if _cogos_repo is None:
-        _cogos_repo = CogosRepository.create()
+        if os.environ.get("USE_LOCAL_DB") == "1":
+            from cogos.db.local_repository import LocalRepository as CogosLocalRepository
+            logger.info("USE_LOCAL_DB=1, using local cogos repository")
+            _cogos_repo = CogosLocalRepository()
+        else:
+            _cogos_repo = CogosRepository.create()
     return _cogos_repo
 
 
