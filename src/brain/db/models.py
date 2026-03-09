@@ -34,14 +34,6 @@ class ConversationStatus(str, enum.Enum):
     CLOSED = "closed"
 
 
-class ChannelType(str, enum.Enum):
-    DISCORD = "discord"
-    GITHUB = "github"
-    EMAIL = "email"
-    ASANA = "asana"
-    CLI = "cli"
-
-
 class AlertSeverity(str, enum.Enum):
     WARNING = "warning"
     CRITICAL = "critical"
@@ -107,17 +99,6 @@ class Program(BaseModel):
     updated_at: datetime | None = None
 
 
-class Channel(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
-    type: ChannelType
-    name: str
-    external_id: str | None = None
-    secret_arn: str | None = None
-    config: dict[str, Any] = Field(default_factory=dict)
-    enabled: bool = True
-    created_at: datetime | None = None
-
-
 # --- Work Models ---
 
 
@@ -148,7 +129,6 @@ class Task(BaseModel):
 class Conversation(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     context_key: str = ""
-    channel_id: UUID | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
     cli_session_id: str | None = None
     started_at: datetime | None = None

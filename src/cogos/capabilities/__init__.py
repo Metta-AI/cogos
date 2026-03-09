@@ -240,6 +240,27 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    # ── Secrets ──────────────────────────────────────────────
+    {
+        "name": "secrets/get",
+        "description": "Retrieve a secret from the key manager by key.",
+        "handler": "cogos.capabilities.secrets.get",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Secret key (e.g. SSM path or Secrets Manager ARN)."},
+            },
+            "required": ["key"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": {},
+                "error": {"type": "string"},
+            },
+        },
+    },
     # ── Scheduler ────────────────────────────────────────────
     {
         "name": "scheduler/match_events",

@@ -15,8 +15,6 @@ from uuid import UUID, uuid4
 from brain.db.models import (
     Alert,
     AlertSeverity,
-    Channel,
-    ChannelType,
     Conversation,
     ConversationStatus,
     Cron,
@@ -71,7 +69,6 @@ class LocalRepository:
         self._event_seq: int = 0
         self._runs: dict[UUID, Run] = {}
         self._conversations: dict[UUID, Conversation] = {}
-        self._channels: dict[UUID, Channel] = {}
         self._alerts: dict[UUID, Alert] = {}
         self._traces: dict[UUID, Trace] = {}
         self._resources: dict[str, Resource] = {}
@@ -116,7 +113,6 @@ class LocalRepository:
         self._events.clear()
         self._runs.clear()
         self._conversations.clear()
-        self._channels.clear()
         self._alerts.clear()
         self._traces.clear()
         self._resources.clear()
@@ -147,9 +143,6 @@ class LocalRepository:
         for c in data.get("conversations", []):
             conv = Conversation(**c)
             self._conversations[conv.id] = conv
-        for ch in data.get("channels", []):
-            chan = Channel(**ch)
-            self._channels[chan.id] = chan
         for a in data.get("alerts", []):
             alert = Alert(**a)
             self._alerts[alert.id] = alert
@@ -186,7 +179,6 @@ class LocalRepository:
             "event_seq": self._event_seq,
             "runs": [r.model_dump(mode="json") for r in self._runs.values()],
             "conversations": [c.model_dump(mode="json") for c in self._conversations.values()],
-            "channels": [ch.model_dump(mode="json") for ch in self._channels.values()],
             "alerts": [a.model_dump(mode="json") for a in self._alerts.values()],
             "traces": [t.model_dump(mode="json") for t in self._traces.values()],
             "resources": [r.model_dump(mode="json") for r in self._resources.values()],
@@ -504,31 +496,6 @@ class LocalRepository:
             convs = [c for c in convs if c.status == status]
         convs.sort(key=lambda c: c.last_active or datetime.min, reverse=True)
         return convs[:limit]
-
-    # ── Channels ─────────────────────────────────────────────
-
-    def upsert_channel(self, channel: Channel) -> UUID:
-        channel.created_at = channel.created_at or datetime.utcnow()
-        self._channels[channel.id] = channel
-        self._save()
-        return channel.id
-
-    def list_channels(self) -> list[Channel]:
-        self._maybe_reload()
-        return sorted(self._channels.values(), key=lambda c: c.name)
-
-    def delete_channel(self, name: str) -> bool:
-        """Delete a channel by name. Returns True if found and deleted."""
-        target_id = None
-        for cid, ch in self._channels.items():
-            if ch.name == name:
-                target_id = cid
-                break
-        if target_id is None:
-            return False
-        del self._channels[target_id]
-        self._save()
-        return True
 
     # ── Alerts ───────────────────────────────────────────────
 

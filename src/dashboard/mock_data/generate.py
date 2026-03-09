@@ -18,8 +18,6 @@ from uuid import uuid4
 from brain.db.models import (
     Alert,
     AlertSeverity,
-    Channel,
-    ChannelType,
     Conversation,
     ConversationStatus,
     Cron,
@@ -153,33 +151,6 @@ def make_programs(tool_names: list[str], memory_names: list[str]) -> list[Progra
             updated_at=_ago(days=random.randint(0, 10)),
         ))
     return programs
-
-
-# ── Channels ─────────────────────────────────────────────
-
-CHANNEL_DEFS = [
-    ("general-discord", ChannelType.DISCORD, "1098765432100"),
-    ("eng-alerts", ChannelType.DISCORD, "1098765432101"),
-    ("github-events", ChannelType.GITHUB, "repo:cogents/main"),
-    ("support-inbox", ChannelType.EMAIL, "support@example.com"),
-    ("project-board", ChannelType.ASANA, "project-12345"),
-    ("local-cli", ChannelType.CLI, None),
-]
-
-
-def make_channels() -> list[Channel]:
-    channels = []
-    for name, ctype, ext_id in CHANNEL_DEFS:
-        channels.append(Channel(
-            id=uuid4(),
-            type=ctype,
-            name=name,
-            external_id=ext_id,
-            enabled=True,
-            config={"webhook_url": f"https://hooks.example.com/{name}"} if ctype == ChannelType.DISCORD else {},
-            created_at=_ago(days=25),
-        ))
-    return channels
 
 
 # ── Tasks ────────────────────────────────────────────────
@@ -386,7 +357,7 @@ def _event_payload(etype: str) -> dict:
 
 # ── Conversations ────────────────────────────────────────
 
-def make_conversations(channels: list[Channel]) -> list[Conversation]:
+def make_conversations() -> list[Conversation]:
     convs = []
     statuses = [ConversationStatus.ACTIVE, ConversationStatus.ACTIVE,
                 ConversationStatus.IDLE, ConversationStatus.CLOSED]
@@ -395,7 +366,6 @@ def make_conversations(channels: list[Channel]) -> list[Conversation]:
         convs.append(Conversation(
             id=uuid4(),
             context_key=f"conv-{i:03d}",
-            channel_id=random.choice(channels).id if channels else None,
             status=random.choice(statuses),
             started_at=started,
             last_active=started + timedelta(minutes=random.randint(5, 300)),
@@ -480,13 +450,12 @@ def generate(data_dir: str | None = None) -> Path:
     memory_names = [m.name for m in memories]
 
     programs = make_programs(tool_names, memory_names)
-    channels = make_channels()
     triggers = make_triggers()
     crons = make_crons()
     tasks = make_tasks(programs, tool_names, memory_names)
     runs = make_runs(tasks, programs, triggers)
     events, event_seq = make_events(60)
-    conversations = make_conversations(channels)
+    conversations = make_conversations()
     alerts = make_alerts()
     traces = make_traces(runs, tool_names)
 
@@ -499,7 +468,6 @@ def generate(data_dir: str | None = None) -> Path:
         "event_seq": event_seq,
         "runs": [r.model_dump(mode="json") for r in runs],
         "conversations": [c.model_dump(mode="json") for c in conversations],
-        "channels": [ch.model_dump(mode="json") for ch in channels],
         "alerts": [a.model_dump(mode="json") for a in alerts],
         "traces": [t.model_dump(mode="json") for t in traces],
         "tools": [t.model_dump(mode="json") for t in tools],
@@ -511,7 +479,7 @@ def generate(data_dir: str | None = None) -> Path:
     print(f"Wrote mock data to {out_file}")
     print(f"  {len(tools)} tools, {len(programs)} programs, {len(tasks)} tasks, {len(runs)} runs")
     print(f"  {len(triggers)} triggers, {len(crons)} crons, {len(events)} events")
-    print(f"  {len(channels)} channels, {len(conversations)} conversations")
+    print(f"  {len(conversations)} conversations")
     print(f"  {len(alerts)} alerts, {len(memories)} memories, {len(traces)} traces")
     return out_file
 

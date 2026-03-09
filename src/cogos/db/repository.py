@@ -18,8 +18,6 @@ from cogos.db.models import (
     Budget,
     BudgetPeriod,
     Capability,
-    Channel,
-    ChannelType,
     Conversation,
     ConversationStatus,
     Cron,

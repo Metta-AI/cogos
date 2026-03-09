@@ -17,8 +17,6 @@ from brain.db.models import (
     AlertSeverity,
     Budget,
     BudgetPeriod,
-    Channel,
-    ChannelType,
     Conversation,
     ConversationStatus,
     Cron,
@@ -778,55 +776,6 @@ class Repository:
         )
 
     # ═══════════════════════════════════════════════════════════
-    # CHANNELS
-    # ═══════════════════════════════════════════════════════════
-
-    def upsert_channel(self, channel: Channel) -> UUID:
-        response = self._execute(
-            """INSERT INTO channels (id, type, name, external_id, secret_arn, config, enabled)
-               VALUES (:id, :type, :name, :external_id, :secret_arn, :config::jsonb, :enabled)
-               ON CONFLICT (type, name)
-               DO UPDATE SET external_id = EXCLUDED.external_id, secret_arn = EXCLUDED.secret_arn,
-                            config = EXCLUDED.config, enabled = EXCLUDED.enabled
-               RETURNING id, created_at""",
-            [
-                self._param("id", channel.id),
-                self._param("type", channel.type.value),
-                self._param("name", channel.name),
-                self._param("external_id", channel.external_id),
-                self._param("secret_arn", channel.secret_arn),
-                self._param("config", channel.config),
-                self._param("enabled", channel.enabled),
-            ],
-        )
-        row = self._first_row(response)
-        if row:
-            channel.created_at = datetime.fromisoformat(row["created_at"])
-            return UUID(row["id"])
-        raise RuntimeError("Failed to upsert channel")
-
-    def list_channels(self) -> list[Channel]:
-        response = self._execute(
-            "SELECT * FROM channels ORDER BY type, name",
-        )
-        return [self._channel_from_row(r) for r in self._rows_to_dicts(response)]
-
-    def _channel_from_row(self, row: dict) -> Channel:
-        config = row.get("config", {})
-        if isinstance(config, str):
-            config = json.loads(config)
-        return Channel(
-            id=UUID(row["id"]),
-            type=ChannelType(row["type"]),
-            name=row["name"],
-            external_id=row.get("external_id"),
-            secret_arn=row.get("secret_arn"),
-            config=config,
-            enabled=row["enabled"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
-
-    # ═══════════════════════════════════════════════════════════
     # TASKS
     # ═══════════════════════════════════════════════════════════
 
@@ -1068,9 +1017,9 @@ class Repository:
 
     def upsert_conversation(self, conv: Conversation) -> UUID:
         response = self._execute(
-            """INSERT INTO conversations (id, context_key, channel_id, status,
+            """INSERT INTO conversations (id, context_key, status,
                                           cli_session_id, metadata)
-               VALUES (:id, :context_key, :channel_id, :status, :cli_session_id, :metadata::jsonb)
+               VALUES (:id, :context_key, :status, :cli_session_id, :metadata::jsonb)
                ON CONFLICT (id)
                DO UPDATE SET status = EXCLUDED.status, cli_session_id = EXCLUDED.cli_session_id,
                             metadata = EXCLUDED.metadata, last_active = now()
@@ -1078,7 +1027,6 @@ class Repository:
             [
                 self._param("id", conv.id),
                 self._param("context_key", conv.context_key),
-                self._param("channel_id", conv.channel_id),
                 self._param("status", conv.status.value),
                 self._param("cli_session_id", conv.cli_session_id),
                 self._param("metadata", conv.metadata),
@@ -1136,7 +1084,6 @@ class Repository:
         return Conversation(
             id=UUID(row["id"]),
             context_key=row.get("context_key", ""),
-            channel_id=UUID(row["channel_id"]) if row.get("channel_id") else None,
             status=ConversationStatus(row["status"]),
             cli_session_id=row.get("cli_session_id"),
             started_at=datetime.fromisoformat(row["started_at"]),

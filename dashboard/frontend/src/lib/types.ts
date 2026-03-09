@@ -193,13 +193,6 @@ export interface Task {
   run_counts: Record<string, { runs: number; failed: number }> | null;
 }
 
-export interface Channel {
-  name: string;
-  type: string | null;
-  enabled: boolean;
-  created_at: string | null;
-}
-
 export interface Alert {
   id: string;
   severity: string | null;
@@ -255,7 +248,6 @@ export interface DashboardData {
   triggers: Trigger[];
   memory: MemoryItem[];
   tasks: Task[];
-  channels: Channel[];
   alerts: Alert[];
   crons: CronItem[];
   resources: Resource[];

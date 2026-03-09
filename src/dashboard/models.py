@@ -260,32 +260,6 @@ class TasksResponse(BaseModel):
     tasks: list[Task]
 
 
-class Channel(BaseModel):
-    name: str
-    type: str | None = None
-    enabled: bool = True
-    created_at: str | None = None
-
-
-class ChannelCreate(BaseModel):
-    name: str
-    type: str = "cli"
-    enabled: bool = True
-    config: dict[str, Any] = {}
-
-
-class ChannelUpdate(BaseModel):
-    type: str | None = None
-    enabled: bool | None = None
-    config: dict[str, Any] | None = None
-
-
-class ChannelsResponse(BaseModel):
-    cogent_name: str
-    count: int
-    channels: list[Channel]
-
-
 class Alert(BaseModel):
     id: str
     severity: str | None = None

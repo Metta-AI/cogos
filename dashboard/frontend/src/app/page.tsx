@@ -10,7 +10,6 @@ import { FilesPanel } from "@/components/files/FilesPanel";
 import { CapabilitiesPanel } from "@/components/capabilities/CapabilitiesPanel";
 import { HandlersPanel } from "@/components/handlers/HandlersPanel";
 import { RunsPanel } from "@/components/runs/RunsPanel";
-import { ChannelsPanel } from "@/components/channels/ChannelsPanel";
 import { EventsPanel } from "@/components/events/EventsPanel";
 import { ResourcesPanel } from "@/components/resources/ResourcesPanel";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
@@ -120,9 +119,6 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
         )}
         {activeTab === "events" && (
           <EventsPanel events={data.events} cogentName={cogentName} triggers={data.triggers} timeRange={timeRange} onTabChange={onTabChange as (tab: string) => void} />
-        )}
-        {activeTab === "channels" && (
-          <ChannelsPanel channels={data.channels} cogentName={cogentName} onRefresh={refresh} />
         )}
         {activeTab === "cron" && (
           <CronPanel crons={data.crons} cogentName={cogentName} onRefresh={refresh} />

@@ -6,7 +6,6 @@ import type {
   Trigger,
   MemoryItem,
   Task,
-  Channel,
   Alert,
   CronItem,
   Resource,
@@ -220,47 +219,6 @@ export async function deleteTask(name: string, taskId: string): Promise<void> {
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }
 
-export async function getChannels(name: string): Promise<Channel[]> {
-  const r = await fetchJSON<{ channels: Channel[] }>(
-    `/api/cogents/${name}/channels`,
-  );
-  return r.channels;
-}
-
-export async function createChannel(
-  name: string,
-  channel: { name: string; type?: string; enabled?: boolean; config?: Record<string, unknown> },
-): Promise<Channel> {
-  const resp = await fetch(`/api/cogents/${name}/channels`, {
-    method: "POST",
-    headers: { ...headers(), "Content-Type": "application/json" },
-    body: JSON.stringify(channel),
-  });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-  return resp.json();
-}
-
-export async function updateChannel(
-  name: string,
-  channelName: string,
-  updates: { type?: string; enabled?: boolean; config?: Record<string, unknown> },
-): Promise<Channel> {
-  const resp = await fetch(`/api/cogents/${name}/channels/${encodeURIComponent(channelName)}`, {
-    method: "PUT",
-    headers: { ...headers(), "Content-Type": "application/json" },
-    body: JSON.stringify(updates),
-  });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-  return resp.json();
-}
-
-export async function deleteChannel(name: string, channelName: string): Promise<void> {
-  const resp = await fetch(`/api/cogents/${name}/channels/${encodeURIComponent(channelName)}`, {
-    method: "DELETE",
-    headers: headers(),
-  });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-}
 
 export async function getAlerts(name: string): Promise<Alert[]> {
   const r = await fetchJSON<{ alerts: Alert[] }>(

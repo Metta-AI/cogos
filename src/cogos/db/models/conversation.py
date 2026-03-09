@@ -19,7 +19,6 @@ class ConversationStatus(str, enum.Enum):
 class Conversation(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     context_key: str = ""
-    channel_id: UUID | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
     cli_session_id: str | None = None
     started_at: datetime | None = None

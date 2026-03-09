@@ -34,7 +34,6 @@ def create_app() -> FastAPI:
 
     from dashboard.routers import (
         alerts,
-        channels,
         cron,
         events,
         memory,
@@ -59,7 +58,6 @@ def create_app() -> FastAPI:
     app.include_router(programs.router, prefix="/api/cogents/{name}")
     app.include_router(sessions.router, prefix="/api/cogents/{name}")
     app.include_router(tasks.router, prefix="/api/cogents/{name}")
-    app.include_router(channels.router, prefix="/api/cogents/{name}")
     app.include_router(alerts.router, prefix="/api/cogents/{name}")
     app.include_router(resources.router, prefix="/api/cogents/{name}")
     app.include_router(events.router, prefix="/api/cogents/{name}")

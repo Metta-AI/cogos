@@ -284,7 +284,6 @@ def reset_schema(
         DROP TABLE IF EXISTS runs CASCADE;
         DROP TABLE IF EXISTS conversations CASCADE;
         DROP TABLE IF EXISTS tasks CASCADE;
-        DROP TABLE IF EXISTS channels CASCADE;
         DROP TABLE IF EXISTS triggers CASCADE;
         DROP TABLE IF EXISTS programs CASCADE;
         DROP TABLE IF EXISTS memory CASCADE;

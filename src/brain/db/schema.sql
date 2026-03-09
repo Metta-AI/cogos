@@ -101,20 +101,6 @@ CREATE INDEX IF NOT EXISTS idx_tools_enabled ON tools (enabled) WHERE enabled = 
 -- WORK
 -- ═══════════════════════════════════════════════════════════
 
--- Channel registry
-CREATE TABLE IF NOT EXISTS channels (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    type        TEXT NOT NULL CHECK (type IN ('discord', 'github', 'email', 'asana', 'cli')),
-    name        TEXT NOT NULL,
-    external_id TEXT,
-    secret_arn  TEXT,
-    config      JSONB NOT NULL DEFAULT '{}',
-    enabled     BOOLEAN NOT NULL DEFAULT true,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (type, name)
-);
-CREATE INDEX IF NOT EXISTS idx_channels_type ON channels (type);
-
 -- Work queue
 CREATE TABLE IF NOT EXISTS tasks (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -148,7 +134,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_unique_name ON tasks (name);
 CREATE TABLE IF NOT EXISTS conversations (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     context_key TEXT NOT NULL,
-    channel_id  UUID REFERENCES channels(id),
     status      TEXT NOT NULL DEFAULT 'active'
                 CHECK (status IN ('active', 'idle', 'closed')),
     cli_session_id TEXT,
@@ -157,7 +142,6 @@ CREATE TABLE IF NOT EXISTS conversations (
     metadata    JSONB NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_conversations_context ON conversations (context_key) WHERE status != 'closed';
-CREATE INDEX IF NOT EXISTS idx_conversations_channel ON conversations (channel_id) WHERE channel_id IS NOT NULL;
 
 -- Per-invocation summary
 CREATE TABLE IF NOT EXISTS runs (

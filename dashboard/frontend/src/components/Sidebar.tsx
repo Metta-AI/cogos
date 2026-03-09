@@ -73,15 +73,6 @@ const TABS = [
     ),
   },
   {
-    id: "channels",
-    label: "Channels",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="2 12 6 8 10 16 14 4 18 14 22 12" />
-      </svg>
-    ),
-  },
-  {
     id: "cron",
     label: "Cron",
     icon: (
