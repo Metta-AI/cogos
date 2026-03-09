@@ -39,6 +39,27 @@ EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'pgvector not available, skipping embedding column';
 END $$;
 
+-- Versioned memory store
+CREATE TABLE IF NOT EXISTS memory_v2 (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT UNIQUE NOT NULL,
+    active_version  INT NOT NULL DEFAULT 1,
+    includes        JSONB NOT NULL DEFAULT '[]',
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    modified_at     TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS memory_version (
+    id          UUID DEFAULT gen_random_uuid(),
+    memory_id   UUID NOT NULL REFERENCES memory_v2(id) ON DELETE CASCADE,
+    version     INT NOT NULL,
+    read_only   BOOLEAN DEFAULT FALSE,
+    content     TEXT DEFAULT '',
+    source      TEXT DEFAULT 'cogent',
+    created_at  TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (memory_id, version)
+);
+
 -- Program definitions
 CREATE TABLE IF NOT EXISTS programs (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -274,4 +295,4 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- Insert initial schema version
-INSERT INTO schema_version (version) VALUES (8) ON CONFLICT DO NOTHING;
+INSERT INTO schema_version (version) VALUES (9) ON CONFLICT DO NOTHING;

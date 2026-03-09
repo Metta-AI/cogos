@@ -16,10 +16,15 @@ router = APIRouter(tags=["cogos-status"])
 # ── Response models ─────────────────────────────────────────────────
 
 
+class ProcessCounts(BaseModel):
+    total: int
+    by_status: dict[str, int]
+
+
 class CogosStatusResponse(BaseModel):
-    process_counts: dict[str, int]
-    file_count: int
-    capability_count: int
+    processes: ProcessCounts
+    files: int
+    capabilities: int
     recent_events: list[dict]
     recent_runs: list[dict]
 
@@ -73,9 +78,9 @@ def cogos_status(name: str) -> CogosStatusResponse:
     ]
 
     return CogosStatusResponse(
-        process_counts=counts,
-        file_count=file_count,
-        capability_count=cap_count,
+        processes=ProcessCounts(total=len(all_procs), by_status=counts),
+        files=file_count,
+        capabilities=cap_count,
         recent_events=recent_events,
         recent_runs=recent_runs,
     )

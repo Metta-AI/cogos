@@ -443,7 +443,7 @@ export async function deleteTool(name: string, toolName: string): Promise<void> 
 // ── CogOS API ───────────────────────────────────────────────────────────────
 
 export async function getCogosStatus(name: string): Promise<CogosStatus> {
-  return fetchJSON(`/api/cogents/${name}/cogos/status`);
+  return fetchJSON(`/api/cogents/${name}/cogos-status`);
 }
 
 export async function getProcesses(name: string): Promise<CogosProcess[]> {
