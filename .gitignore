@@ -172,3 +172,4 @@ __marimo__/
 cdk.out/
 cdk.context.json
 dogfood-output*/
+cdk.out.destroy/

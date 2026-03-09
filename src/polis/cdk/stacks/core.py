@@ -341,6 +341,14 @@ class PolisStack(cdk.Stack):
             )
         )
 
+        # SES — send email on behalf of cogents
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ses:SendEmail", "ses:SendRawEmail"],
+                resources=[f"arn:aws:ses:*:*:identity/{config.domain}"],
+            )
+        )
+
         # --- Email Ingest Lambda (receives from Cloudflare Email Worker) ---
         email_ingest_secret = secretsmanager.Secret.from_secret_name_v2(
             self, "EmailIngestSecret", "polis/email/ingest_secret",
