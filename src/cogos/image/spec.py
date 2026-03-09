@@ -52,6 +52,7 @@ def load_image(image_dir: Path) -> ImageSpec:
         })
 
     builtins = {
+        "__builtins__": __builtins__,
         "add_capability": add_capability,
         "add_resource": add_resource,
         "add_process": add_process,
@@ -61,6 +62,8 @@ def load_image(image_dir: Path) -> ImageSpec:
     init_dir = image_dir / "init"
     if init_dir.is_dir():
         for py in sorted(init_dir.glob("*.py")):
+            if py.name.startswith("_"):
+                continue
             exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
 
     files_dir = image_dir / "files"
