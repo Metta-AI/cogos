@@ -34,13 +34,13 @@ logger = logging.getLogger(__name__)
 
 
 def _build_capability_proxies(repo: Repository, process_id: UUID) -> dict[str, object]:
-    """Load capabilities bound to a process and build simple proxy callables.
+    """Load capabilities bound to a process and build proxy objects.
 
-    For the MCP server we don't need full proxy generation -- the LLM writes
-    code that calls these objects, and the sandbox executor handles the rest.
-    We import the handler functions lazily from their dotted paths.
+    Each capability class is instantiated with (repo, process_id) and
+    injected into the sandbox namespace under its name (e.g. 'files', 'email').
     """
     import importlib
+    import inspect
 
     pcs = repo.list_process_capabilities(process_id)
     proxies: dict[str, object] = {}
@@ -48,24 +48,28 @@ def _build_capability_proxies(repo: Repository, process_id: UUID) -> dict[str, o
         cap = repo.get_capability(pc.capability)
         if cap is None or not cap.enabled:
             continue
-        # Resolve handler dotted path -> callable
-        # e.g. "cogos.capabilities.files:read" -> module.read
+        # Resolve handler dotted path -> callable or class
         if ":" in cap.handler:
-            mod_path, func_name = cap.handler.rsplit(":", 1)
+            mod_path, attr_name = cap.handler.rsplit(":", 1)
         elif "." in cap.handler:
-            mod_path, func_name = cap.handler.rsplit(".", 1)
+            mod_path, attr_name = cap.handler.rsplit(".", 1)
         else:
             continue
         try:
             mod = importlib.import_module(mod_path)
-            handler_fn = getattr(mod, func_name)
+            handler = getattr(mod, attr_name)
         except (ImportError, AttributeError) as exc:
             logger.warning("Could not load handler %s: %s", cap.handler, exc)
             continue
 
         # Use the top-level namespace from the capability name (e.g. "files" from "files/read")
         ns = cap.name.split("/")[0] if "/" in cap.name else cap.name
-        proxies[ns] = handler_fn
+
+        # Class capabilities get instantiated with repo and process_id
+        if inspect.isclass(handler):
+            proxies[ns] = handler(repo, process_id)
+        else:
+            proxies[ns] = handler
     return proxies
 
 

@@ -475,17 +475,17 @@ def secret():
 @click.option("--manager", type=click.Choice(["ssm", "secretsmanager"]), default="ssm")
 def secret_get(key: str, manager: str):
     """Retrieve a secret from the key manager."""
-    import asyncio
-    from cogos.capabilities.secrets import get as get_secret
-    result = asyncio.run(get_secret(key=key, repo=None, cap_config={"key_manager": manager}))
-    if "error" in result:
-        click.echo(f"Error: {result['error']}", err=True)
+    from cogos.capabilities.secrets import SecretsCapability, SecretError
+    from uuid import uuid4
+    cap = SecretsCapability(repo=None, process_id=uuid4())
+    result = cap.get(key=key)
+    if isinstance(result, SecretError):
+        click.echo(f"Error: {result.error}", err=True)
         raise SystemExit(1)
-    value = result.get("value")
-    if isinstance(value, (dict, list)):
-        click.echo(json.dumps(value, indent=2))
+    if isinstance(result.value, (dict, list)):
+        click.echo(json.dumps(result.value, indent=2))
     else:
-        click.echo(value)
+        click.echo(result.value)
 
 
 # ═══════════════════════════════════════════════════════════

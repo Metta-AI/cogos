@@ -1,4 +1,4 @@
-"""Tests for cogos email capability — sender, capability handlers, ingest."""
+"""Tests for cogos email capability — sender, EmailCapability, ingest Lambda."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from uuid import uuid4
 import pytest
 
 from cogos.io.email.sender import SesSender
-from cogos.io.email.capability import send, check, search, _email_from_event
-from cogos.sandbox.executor import CapabilityResult
+from cogos.io.email.capability import (
+    EmailCapability, EmailError, EmailMessage, SendResult, _email_from_event,
+)
 
 
 # ── SesSender ─────────────────────────────────────────────────
@@ -48,7 +49,7 @@ class TestSesSender:
         assert call_kwargs["ReplyToAddresses"] == ["c@d.com"]
 
 
-# ── Capability Handlers ──────────────────────────────────────
+# ── EmailCapability ──────────────────────────────────────────
 
 
 class FakeEvent:
@@ -65,16 +66,19 @@ class TestEmailFromEvent:
     def test_extracts_fields(self):
         e = FakeEvent({"from": "a@b.com", "to": "ovo@x.com", "subject": "Hi", "body": "Hello", "date": "Mon", "message_id": "123"})
         result = _email_from_event(e)
-        assert result == {"from": "a@b.com", "to": "ovo@x.com", "subject": "Hi", "body": "Hello", "date": "Mon", "message_id": "123"}
+        assert isinstance(result, EmailMessage)
+        assert result.sender == "a@b.com"
+        assert result.to == "ovo@x.com"
+        assert result.subject == "Hi"
 
     def test_missing_fields(self):
         e = FakeEvent({})
         result = _email_from_event(e)
-        assert result["from"] is None
-        assert result["subject"] is None
+        assert result.sender is None
+        assert result.subject is None
 
 
-class TestSendCapability:
+class TestEmailCapabilitySend:
     @patch("cogos.io.email.capability._get_sender")
     def test_send_success(self, mock_get_sender):
         mock_sender = MagicMock()
@@ -82,50 +86,43 @@ class TestSendCapability:
         mock_get_sender.return_value = mock_sender
 
         repo = MagicMock()
-        result = send(repo, uuid4(), {"to": "a@b.com", "subject": "Test", "body": "Hi"})
+        email = EmailCapability(repo, uuid4())
+        result = email.send(to="a@b.com", subject="Test", body="Hi")
 
-        assert isinstance(result, CapabilityResult)
-        assert result.content["message_id"] == "msg-1"
-        assert result.content["to"] == "a@b.com"
+        assert isinstance(result, SendResult)
+        assert result.message_id == "msg-1"
+        assert result.to == "a@b.com"
 
     def test_send_missing_fields(self):
         repo = MagicMock()
-        result = send(repo, uuid4(), {"to": "", "subject": "", "body": ""})
-        assert "error" in result.content
+        email = EmailCapability(repo, uuid4())
+        result = email.send(to="", subject="", body="")
+        assert isinstance(result, EmailError)
+        assert "required" in result.error
 
 
-class TestCheckCapability:
-    def test_check_returns_emails(self):
+class TestEmailCapabilityReceive:
+    def test_receive_returns_emails(self):
         repo = MagicMock()
         repo.get_events.return_value = [
             FakeEvent({"from": "a@b.com", "subject": "Hi", "body": "Hello", "to": "ovo@x.com", "date": "Mon", "message_id": "1"}),
             FakeEvent({"from": "c@d.com", "subject": "Hey", "body": "World", "to": "ovo@x.com", "date": "Tue", "message_id": "2"}),
         ]
 
-        result = check(repo, uuid4(), {"limit": 10})
-        assert len(result.content) == 2
-        assert result.content[0]["from"] == "a@b.com"
+        email = EmailCapability(repo, uuid4())
+        result = email.receive(limit=10)
+        assert len(result) == 2
+        assert isinstance(result[0], EmailMessage)
+        assert result[0].sender == "a@b.com"
         repo.get_events.assert_called_once_with(event_type="email:received", limit=10)
 
-
-class TestSearchCapability:
-    def test_search_filters_by_query(self):
-        repo = MagicMock()
-        repo.get_events.return_value = [
-            FakeEvent({"from": "alice@b.com", "subject": "Review PR", "body": "Please review", "to": "ovo@x.com", "date": "Mon", "message_id": "1"}),
-            FakeEvent({"from": "bob@b.com", "subject": "Lunch?", "body": "Let's eat", "to": "ovo@x.com", "date": "Tue", "message_id": "2"}),
-        ]
-
-        result = search(repo, uuid4(), {"query": "review"})
-        assert len(result.content) == 1
-        assert result.content[0]["from"] == "alice@b.com"
-
-    def test_search_empty_results(self):
+    def test_receive_default_limit(self):
         repo = MagicMock()
         repo.get_events.return_value = []
 
-        result = search(repo, uuid4(), {"query": "nonexistent"})
-        assert result.content == []
+        email = EmailCapability(repo, uuid4())
+        email.receive()
+        repo.get_events.assert_called_once_with(event_type="email:received", limit=10)
 
 
 # ── Ingest Lambda ────────────────────────────────────────────

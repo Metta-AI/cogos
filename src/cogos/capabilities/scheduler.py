@@ -5,251 +5,258 @@ from __future__ import annotations
 import logging
 import math
 import random
+import time
 from uuid import UUID
 
-from cogos.db.models import EventDelivery, ProcessStatus, RunStatus
-from cogos.db.repository import Repository
-from cogos.sandbox.executor import CapabilityResult
+from pydantic import BaseModel
+
+from cogos.capabilities.base import Capability
+from cogos.db.models import EventDelivery, ProcessStatus, Run, RunStatus
 
 logger = logging.getLogger(__name__)
 
 
-# ─── match_events ────────────────────────────────────────────────────
+# ── IO Models ────────────────────────────────────────────────
 
-def match_events(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Find undelivered events, match to handlers, create EventDelivery rows.
 
-    For each event that has no delivery record yet, find enabled handlers whose
-    pattern matches the event_type and create a pending EventDelivery.  Mark
-    the handler's process as RUNNABLE if it is currently WAITING.
+class DeliveryInfo(BaseModel):
+    delivery_id: str
+    event_id: str
+    event_type: str
+    handler_id: str
+    process_id: str
+
+
+class MatchResult(BaseModel):
+    deliveries_created: int = 0
+    deliveries: list[DeliveryInfo] = []
+
+
+class SelectedProcess(BaseModel):
+    id: str
+    name: str
+    priority: float
+    effective_priority: float
+
+
+class SelectResult(BaseModel):
+    selected: list[SelectedProcess] = []
+
+
+class DispatchResult(BaseModel):
+    run_id: str
+    process_id: str
+    process_name: str
+    runner: str
+    event_id: str | None = None
+
+
+class UnblockInfo(BaseModel):
+    id: str
+    name: str
+
+
+class UnblockResult(BaseModel):
+    unblocked_count: int = 0
+    unblocked: list[UnblockInfo] = []
+
+
+class KillResult(BaseModel):
+    process_id: str
+    name: str
+    previous_status: str
+    new_status: str
+
+
+class SchedulerError(BaseModel):
+    error: str
+
+
+# ── Capability ───────────────────────────────────────────────
+
+
+class SchedulerCapability(Capability):
+    """Process scheduling and event dispatch.
+
+    Usage:
+        scheduler.match_events()
+        scheduler.select_processes(slots=2)
+        scheduler.dispatch_process(process_id="...")
+        scheduler.unblock_processes()
+        scheduler.kill_process(process_id="...")
     """
-    limit = args.get("limit", 200)
 
-    # Get recent events that might still need delivery.
-    events = repo.get_events(limit=limit)
+    def match_events(self, limit: int = 200) -> MatchResult:
+        events = self.repo.get_events(limit=limit)
 
-    created = []
-    for event in events:
-        # Check if this event already has deliveries.
-        existing = repo.query(
-            "SELECT id FROM cogos_event_delivery WHERE event = :event_id",
-            {"event_id": event.id},
-        )
-        if existing:
-            continue
-
-        # Find matching handlers.
-        handlers = repo.match_handlers(event.event_type)
-        for handler in handlers:
-            delivery = EventDelivery(
-                event=event.id,
-                handler=handler.id,
+        created = []
+        for event in events:
+            existing = self.repo.query(
+                "SELECT id FROM cogos_event_delivery WHERE event = :event_id",
+                {"event_id": event.id},
             )
-            delivery_id = repo.create_event_delivery(delivery)
+            if existing:
+                continue
 
-            # Wake the handler's process if it is WAITING.
-            proc = repo.get_process(handler.process)
-            if proc and proc.status == ProcessStatus.WAITING:
-                repo.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+            handlers = self.repo.match_handlers(event.event_type)
+            for handler in handlers:
+                delivery = EventDelivery(event=event.id, handler=handler.id)
+                delivery_id = self.repo.create_event_delivery(delivery)
 
-            created.append({
-                "delivery_id": str(delivery_id),
-                "event_id": str(event.id),
-                "event_type": event.event_type,
-                "handler_id": str(handler.id),
-                "process_id": str(handler.process),
-            })
+                proc = self.repo.get_process(handler.process)
+                if proc and proc.status == ProcessStatus.WAITING:
+                    self.repo.update_process_status(handler.process, ProcessStatus.RUNNABLE)
 
-    return CapabilityResult(
-        content={"deliveries_created": len(created), "deliveries": created},
-    )
+                created.append(DeliveryInfo(
+                    delivery_id=str(delivery_id),
+                    event_id=str(event.id),
+                    event_type=event.event_type,
+                    handler_id=str(handler.id),
+                    process_id=str(handler.process),
+                ))
 
+        return MatchResult(deliveries_created=len(created), deliveries=created)
 
-# ─── select_processes ────────────────────────────────────────────────
+    def select_processes(self, slots: int = 1) -> SelectResult:
+        now_ts = time.time()
 
-def _effective_priority(proc, now_ts: float) -> float:
-    """Compute effective priority with starvation aging."""
-    base = proc.priority
-    if proc.runnable_since:
-        wait_seconds = now_ts - proc.runnable_since.timestamp()
-        # Add 0.1 priority per minute of waiting.
-        base += 0.1 * (wait_seconds / 60.0)
-    return base
+        runnable = self.repo.get_runnable_processes(limit=200)
+        if not runnable:
+            return SelectResult()
 
+        priorities = [self._effective_priority(p, now_ts) for p in runnable]
 
-def select_processes(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Softmax sample from RUNNABLE processes by effective priority.
+        max_p = max(priorities) if priorities else 0
+        exps = [math.exp(p - max_p) for p in priorities]
+        total = sum(exps)
+        weights = [e / total for e in exps]
 
-    Returns a list of process IDs selected for dispatch, up to the requested
-    slot count.
-    """
-    import time
+        n_select = min(slots, len(runnable))
+        selected_indices: list[int] = []
+        remaining_indices = list(range(len(runnable)))
+        remaining_weights = list(weights)
 
-    slots = args.get("slots", 1)
-    now_ts = time.time()
-
-    runnable = repo.get_runnable_processes(limit=200)
-    if not runnable:
-        return CapabilityResult(content={"selected": []})
-
-    # Compute effective priorities.
-    priorities = [_effective_priority(p, now_ts) for p in runnable]
-
-    # Softmax sampling.
-    max_p = max(priorities) if priorities else 0
-    exps = [math.exp(p - max_p) for p in priorities]
-    total = sum(exps)
-    weights = [e / total for e in exps]
-
-    # Sample without replacement up to min(slots, len(runnable)).
-    n_select = min(slots, len(runnable))
-    selected_indices: list[int] = []
-    remaining_indices = list(range(len(runnable)))
-    remaining_weights = list(weights)
-
-    for _ in range(n_select):
-        if not remaining_indices:
-            break
-        total_w = sum(remaining_weights)
-        if total_w <= 0:
-            break
-        normalised = [w / total_w for w in remaining_weights]
-        chosen = random.choices(remaining_indices, weights=normalised, k=1)[0]
-        selected_indices.append(chosen)
-        idx_pos = remaining_indices.index(chosen)
-        remaining_indices.pop(idx_pos)
-        remaining_weights.pop(idx_pos)
-
-    selected = []
-    for idx in selected_indices:
-        p = runnable[idx]
-        selected.append({
-            "id": str(p.id),
-            "name": p.name,
-            "priority": p.priority,
-            "effective_priority": priorities[idx],
-        })
-
-    return CapabilityResult(content={"selected": selected})
-
-
-# ─── dispatch_process ────────────────────────────────────────────────
-
-def dispatch_process(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Invoke the executor for a process: transition to RUNNING and create a Run."""
-    from cogos.db.models import Run
-
-    proc_id_str = args.get("process_id", "")
-    if not proc_id_str:
-        return CapabilityResult(content={"error": "process_id is required"})
-
-    target_id = UUID(proc_id_str)
-    proc = repo.get_process(target_id)
-    if proc is None:
-        return CapabilityResult(content={"error": "process not found"})
-
-    if proc.status != ProcessStatus.RUNNABLE:
-        return CapabilityResult(
-            content={"error": f"process is {proc.status.value}, expected runnable"},
-        )
-
-    # Transition to RUNNING.
-    repo.update_process_status(target_id, ProcessStatus.RUNNING)
-
-    # Find the triggering event from pending deliveries.
-    deliveries = repo.get_pending_deliveries(target_id)
-    event_id = deliveries[0].event if deliveries else None
-
-    # Create a Run record.
-    run = Run(process=target_id, event=event_id)
-    run_id = repo.create_run(run)
-
-    # Mark the first pending delivery as delivered.
-    if deliveries:
-        repo.mark_delivered(deliveries[0].id, run_id)
-
-    return CapabilityResult(
-        content={
-            "run_id": str(run_id),
-            "process_id": str(target_id),
-            "process_name": proc.name,
-            "runner": proc.runner,
-            "event_id": str(event_id) if event_id else None,
-        },
-    )
-
-
-# ─── unblock_processes ───────────────────────────────────────────────
-
-def unblock_processes(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Check BLOCKED processes and move them to RUNNABLE if resources are available."""
-    blocked = repo.list_processes(status=ProcessStatus.BLOCKED)
-    unblocked = []
-
-    for proc in blocked:
-        if not proc.resources:
-            # No resource constraints — unblock immediately.
-            repo.update_process_status(proc.id, ProcessStatus.RUNNABLE)
-            unblocked.append({"id": str(proc.id), "name": proc.name})
-            continue
-
-        # Check each required resource.
-        all_available = True
-        for resource_id in proc.resources:
-            rows = repo.query(
-                """SELECT COALESCE(SUM(amount), 0) AS used
-                   FROM cogos_resource_usage ru
-                   JOIN cogos_run r ON r.id = ru.run
-                   WHERE ru.resource = :resource_id AND r.status = 'running'""",
-                {"resource_id": resource_id},
-            )
-            used = float(rows[0]["used"]) if rows else 0.0
-
-            res_rows = repo.query(
-                "SELECT capacity FROM cogos_resource WHERE id = :id",
-                {"id": resource_id},
-            )
-            capacity = float(res_rows[0]["capacity"]) if res_rows else 0.0
-
-            if used >= capacity:
-                all_available = False
+        for _ in range(n_select):
+            if not remaining_indices:
                 break
+            total_w = sum(remaining_weights)
+            if total_w <= 0:
+                break
+            normalised = [w / total_w for w in remaining_weights]
+            chosen = random.choices(remaining_indices, weights=normalised, k=1)[0]
+            selected_indices.append(chosen)
+            idx_pos = remaining_indices.index(chosen)
+            remaining_indices.pop(idx_pos)
+            remaining_weights.pop(idx_pos)
 
-        if all_available:
-            repo.update_process_status(proc.id, ProcessStatus.RUNNABLE)
-            unblocked.append({"id": str(proc.id), "name": proc.name})
+        return SelectResult(selected=[
+            SelectedProcess(
+                id=str(runnable[idx].id),
+                name=runnable[idx].name,
+                priority=runnable[idx].priority,
+                effective_priority=priorities[idx],
+            )
+            for idx in selected_indices
+        ])
 
-    return CapabilityResult(
-        content={"unblocked_count": len(unblocked), "unblocked": unblocked},
-    )
+    def dispatch_process(self, process_id: str) -> DispatchResult | SchedulerError:
+        if not process_id:
+            return SchedulerError(error="process_id is required")
 
+        target_id = UUID(process_id)
+        proc = self.repo.get_process(target_id)
+        if proc is None:
+            return SchedulerError(error="process not found")
 
-# ─── kill_process ────────────────────────────────────────────────────
+        if proc.status != ProcessStatus.RUNNABLE:
+            return SchedulerError(error=f"process is {proc.status.value}, expected runnable")
 
-def kill_process(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Force-terminate a process by setting its status to DISABLED."""
-    proc_id_str = args.get("process_id", "")
-    if not proc_id_str:
-        return CapabilityResult(content={"error": "process_id is required"})
+        self.repo.update_process_status(target_id, ProcessStatus.RUNNING)
 
-    target_id = UUID(proc_id_str)
-    proc = repo.get_process(target_id)
-    if proc is None:
-        return CapabilityResult(content={"error": "process not found"})
+        deliveries = self.repo.get_pending_deliveries(target_id)
+        event_id = deliveries[0].event if deliveries else None
 
-    previous_status = proc.status.value
-    repo.update_process_status(target_id, ProcessStatus.DISABLED)
+        run = Run(process=target_id, event=event_id)
+        run_id = self.repo.create_run(run)
 
-    # If the process had a running run, mark it failed.
-    runs = repo.list_runs(process_id=target_id, limit=1)
-    if runs and runs[0].status == RunStatus.RUNNING:
-        repo.complete_run(runs[0].id, status=RunStatus.FAILED, error="killed by scheduler")
+        if deliveries:
+            self.repo.mark_delivered(deliveries[0].id, run_id)
 
-    return CapabilityResult(
-        content={
-            "process_id": str(target_id),
-            "name": proc.name,
-            "previous_status": previous_status,
-            "new_status": ProcessStatus.DISABLED.value,
-        },
-    )
+        return DispatchResult(
+            run_id=str(run_id),
+            process_id=str(target_id),
+            process_name=proc.name,
+            runner=proc.runner,
+            event_id=str(event_id) if event_id else None,
+        )
+
+    def unblock_processes(self) -> UnblockResult:
+        blocked = self.repo.list_processes(status=ProcessStatus.BLOCKED)
+        unblocked = []
+
+        for proc in blocked:
+            if not proc.resources:
+                self.repo.update_process_status(proc.id, ProcessStatus.RUNNABLE)
+                unblocked.append(UnblockInfo(id=str(proc.id), name=proc.name))
+                continue
+
+            all_available = True
+            for resource_id in proc.resources:
+                rows = self.repo.query(
+                    """SELECT COALESCE(SUM(amount), 0) AS used
+                       FROM cogos_resource_usage ru
+                       JOIN cogos_run r ON r.id = ru.run
+                       WHERE ru.resource = :resource_id AND r.status = 'running'""",
+                    {"resource_id": resource_id},
+                )
+                used = float(rows[0]["used"]) if rows else 0.0
+
+                res_rows = self.repo.query(
+                    "SELECT capacity FROM cogos_resource WHERE id = :id",
+                    {"id": resource_id},
+                )
+                capacity = float(res_rows[0]["capacity"]) if res_rows else 0.0
+
+                if used >= capacity:
+                    all_available = False
+                    break
+
+            if all_available:
+                self.repo.update_process_status(proc.id, ProcessStatus.RUNNABLE)
+                unblocked.append(UnblockInfo(id=str(proc.id), name=proc.name))
+
+        return UnblockResult(unblocked_count=len(unblocked), unblocked=unblocked)
+
+    def kill_process(self, process_id: str) -> KillResult | SchedulerError:
+        if not process_id:
+            return SchedulerError(error="process_id is required")
+
+        target_id = UUID(process_id)
+        proc = self.repo.get_process(target_id)
+        if proc is None:
+            return SchedulerError(error="process not found")
+
+        previous_status = proc.status.value
+        self.repo.update_process_status(target_id, ProcessStatus.DISABLED)
+
+        runs = self.repo.list_runs(process_id=target_id, limit=1)
+        if runs and runs[0].status == RunStatus.RUNNING:
+            self.repo.complete_run(runs[0].id, status=RunStatus.FAILED, error="killed by scheduler")
+
+        return KillResult(
+            process_id=str(target_id),
+            name=proc.name,
+            previous_status=previous_status,
+            new_status=ProcessStatus.DISABLED.value,
+        )
+
+    @staticmethod
+    def _effective_priority(proc, now_ts: float) -> float:
+        base = proc.priority
+        if proc.runnable_since:
+            wait_seconds = now_ts - proc.runnable_since.timestamp()
+            base += 0.1 * (wait_seconds / 60.0)
+        return base
+
+    def __repr__(self) -> str:
+        return "<SchedulerCapability match_events() select_processes() dispatch_process() unblock_processes() kill_process()>"

@@ -1,16 +1,41 @@
-"""Email capability handlers — send, check, search."""
+"""Email capability — send and receive emails."""
 
 from __future__ import annotations
 
 import logging
 import os
-from uuid import UUID
 
-from cogos.db.repository import Repository
+from pydantic import BaseModel
+
+from cogos.capabilities.base import Capability
 from cogos.io.email.sender import SesSender
-from cogos.sandbox.executor import CapabilityResult
 
 logger = logging.getLogger(__name__)
+
+
+# ── IO Models ────────────────────────────────────────────────
+
+
+class SendResult(BaseModel):
+    message_id: str
+    to: str
+    subject: str
+
+
+class EmailMessage(BaseModel):
+    sender: str | None = None  # 'from' is reserved in python
+    to: str | None = None
+    subject: str | None = None
+    body: str | None = None
+    date: str | None = None
+    message_id: str | None = None
+
+
+class EmailError(BaseModel):
+    error: str
+
+
+# ── Helpers ──────────────────────────────────────────────────
 
 
 def _get_sender() -> SesSender:
@@ -21,66 +46,46 @@ def _get_sender() -> SesSender:
     return SesSender(from_address=from_address, region=region)
 
 
-def _email_from_event(e) -> dict:
+def _email_from_event(e) -> EmailMessage:
     p = e.payload or {}
-    return {
-        "from": p.get("from"),
-        "to": p.get("to"),
-        "subject": p.get("subject"),
-        "body": p.get("body"),
-        "date": p.get("date"),
-        "message_id": p.get("message_id"),
-    }
+    return EmailMessage(
+        sender=p.get("from"),
+        to=p.get("to"),
+        subject=p.get("subject"),
+        body=p.get("body"),
+        date=p.get("date"),
+        message_id=p.get("message_id"),
+    )
 
 
-def send(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Send an email via SES."""
-    to = args.get("to", "").strip()
-    subject = args.get("subject", "").strip()
-    body = args.get("body", "")
-    reply_to = args.get("reply_to")
-
-    if not to or not subject:
-        return CapabilityResult(content={"error": "'to' and 'subject' are required"})
-
-    sender = _get_sender()
-    response = sender.send(to=to, subject=subject, body=body, reply_to=reply_to)
-
-    return CapabilityResult(content={
-        "message_id": response.get("MessageId", ""),
-        "to": to,
-        "subject": subject,
-    })
+# ── Capability ───────────────────────────────────────────────
 
 
-def check(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Check recent inbound emails (from events table)."""
-    limit = args.get("limit", 10)
-    events = repo.get_events(event_type="email:received", limit=limit)
-    return CapabilityResult(content=[_email_from_event(e) for e in events])
+class EmailCapability(Capability):
+    """Send and receive emails.
 
-
-def search(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Search inbound emails by query (from events table).
-
-    Filters email:received events by matching query terms against
-    sender, subject, and body fields.
+    Usage:
+        email.send(to="user@example.com", subject="Hi", body="Hello")
+        emails = email.receive(limit=5)
     """
-    query = args.get("query", "").lower()
-    limit = args.get("limit", 50)
 
-    events = repo.get_events(event_type="email:received", limit=200)
-    results = []
-    for e in events:
-        p = e.payload or {}
-        searchable = " ".join([
-            p.get("from", ""),
-            p.get("subject", ""),
-            p.get("body", ""),
-        ]).lower()
-        if query in searchable:
-            results.append(_email_from_event(e))
-            if len(results) >= limit:
-                break
+    def send(self, to: str, subject: str, body: str, reply_to: str | None = None) -> SendResult | EmailError:
+        to = to.strip()
+        subject = subject.strip()
+        if not to or not subject:
+            return EmailError(error="'to' and 'subject' are required")
 
-    return CapabilityResult(content=results)
+        sender = _get_sender()
+        response = sender.send(to=to, subject=subject, body=body, reply_to=reply_to)
+        return SendResult(
+            message_id=response.get("MessageId", ""),
+            to=to,
+            subject=subject,
+        )
+
+    def receive(self, limit: int = 10) -> list[EmailMessage]:
+        events = self.repo.get_events(event_type="email:received", limit=limit)
+        return [_email_from_event(e) for e in events]
+
+    def __repr__(self) -> str:
+        return "<EmailCapability send() receive()>"

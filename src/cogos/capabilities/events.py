@@ -3,59 +3,87 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
+from pydantic import BaseModel
+
+from cogos.capabilities.base import Capability
 from cogos.db.models import Event
-from cogos.db.repository import Repository
-from cogos.sandbox.executor import CapabilityResult
 
 logger = logging.getLogger(__name__)
 
 
-def emit(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Emit a new event into the append-only log."""
-    event_type = args.get("event_type", "")
-    if not event_type:
-        return CapabilityResult(content={"error": "event_type is required"})
-
-    payload = args.get("payload", {})
-    parent_event = args.get("parent_event")
-
-    event = Event(
-        event_type=event_type,
-        source=f"process:{process_id}",
-        payload=payload,
-        parent_event=UUID(parent_event) if parent_event else None,
-    )
-
-    event_id = repo.append_event(event)
-
-    return CapabilityResult(
-        content={
-            "id": str(event_id),
-            "event_type": event_type,
-            "created_at": event.created_at.isoformat() if event.created_at else None,
-        },
-    )
+# ── IO Models ────────────────────────────────────────────────
 
 
-def query(repo: Repository, process_id: UUID, args: dict) -> CapabilityResult:
-    """Query events, optionally filtering by type."""
-    event_type = args.get("event_type")
-    limit = args.get("limit", 100)
+class EmitResult(BaseModel):
+    id: str
+    event_type: str
+    created_at: str | None = None
 
-    events = repo.get_events(event_type=event_type, limit=limit)
 
-    return CapabilityResult(
-        content=[
-            {
-                "id": str(e.id),
-                "event_type": e.event_type,
-                "source": e.source,
-                "payload": e.payload,
-                "parent_event": str(e.parent_event) if e.parent_event else None,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
+class EventRecord(BaseModel):
+    id: str
+    event_type: str
+    source: str | None = None
+    payload: dict[str, Any] = {}
+    parent_event: str | None = None
+    created_at: str | None = None
+
+
+class EventError(BaseModel):
+    error: str
+
+
+# ── Capability ───────────────────────────────────────────────
+
+
+class EventsCapability(Capability):
+    """Append-only event log.
+
+    Usage:
+        events.emit("task:completed", {"task_id": "123"})
+        events.query("email:received", limit=10)
+    """
+
+    def emit(
+        self,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        parent_event: str | None = None,
+    ) -> EmitResult | EventError:
+        if not event_type:
+            return EventError(error="event_type is required")
+
+        event = Event(
+            event_type=event_type,
+            source=f"process:{self.process_id}",
+            payload=payload or {},
+            parent_event=UUID(parent_event) if parent_event else None,
+        )
+
+        event_id = self.repo.append_event(event)
+
+        return EmitResult(
+            id=str(event_id),
+            event_type=event_type,
+            created_at=event.created_at.isoformat() if event.created_at else None,
+        )
+
+    def query(self, event_type: str | None = None, limit: int = 100) -> list[EventRecord]:
+        events = self.repo.get_events(event_type=event_type, limit=limit)
+        return [
+            EventRecord(
+                id=str(e.id),
+                event_type=e.event_type,
+                source=e.source,
+                payload=e.payload,
+                parent_event=str(e.parent_event) if e.parent_event else None,
+                created_at=e.created_at.isoformat() if e.created_at else None,
+            )
             for e in events
-        ],
-    )
+        ]
+
+    def __repr__(self) -> str:
+        return "<EventsCapability emit() query()>"
