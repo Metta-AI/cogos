@@ -1,38 +1,57 @@
 "use client";
 
 import type { CogosHandler } from "@/lib/types";
-import { Badge } from "@/components/shared/Badge";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 
 interface Props {
   handlers: CogosHandler[];
 }
 
+function FiredCell({ count }: { count: number }) {
+  if (count === 0) return <span className="text-[var(--text-muted)]">0</span>;
+  return <span className="text-[var(--text-primary)]">{count}</span>;
+}
+
 const columns: Column<CogosHandler & Record<string, unknown>>[] = [
+  {
+    key: "event_pattern",
+    label: "Event Pattern",
+    render: (row) => (
+      <span
+        className={`font-mono text-xs ${row.enabled ? "text-[var(--text-secondary)]" : "text-red-400"}`}
+      >
+        {row.event_pattern}{!row.enabled && " (disabled)"}
+      </span>
+    ),
+  },
   {
     key: "process_name",
     label: "Process",
     render: (row) => (
-      <span className="text-[var(--text-primary)] font-medium">
+      <span className="text-[var(--text-secondary)] text-xs">
         {row.process_name || row.process}
       </span>
     ),
   },
   {
-    key: "event_pattern",
-    label: "Event Pattern",
-    render: (row) => (
-      <span className="font-mono text-xs text-[var(--text-secondary)]">{row.event_pattern}</span>
-    ),
+    key: "fired_1m",
+    label: "1m",
+    render: (row) => <FiredCell count={row.fired_1m} />,
   },
   {
-    key: "enabled",
-    label: "Enabled",
-    render: (row) => (
-      <Badge variant={row.enabled ? "success" : "neutral"}>
-        {row.enabled ? "enabled" : "disabled"}
-      </Badge>
-    ),
+    key: "fired_5m",
+    label: "5m",
+    render: (row) => <FiredCell count={row.fired_5m} />,
+  },
+  {
+    key: "fired_1h",
+    label: "1h",
+    render: (row) => <FiredCell count={row.fired_1h} />,
+  },
+  {
+    key: "fired_24h",
+    label: "24h",
+    render: (row) => <FiredCell count={row.fired_24h} />,
   },
 ];
 

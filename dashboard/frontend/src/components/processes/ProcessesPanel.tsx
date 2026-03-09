@@ -93,6 +93,15 @@ const RUN_STATUS_VARIANT: Record<string, BadgeVariant> = {
   timeout: "warning",
 };
 
+const RUN_STATUS_ABBREV: Record<string, string> = {
+  running: "R",
+  completed: "C",
+  failed: "F",
+  error: "E",
+  timeout: "T",
+  pending: "P",
+};
+
 function fmtDuration(ms: number | null): string {
   if (ms == null) return "--";
   if (ms < 1000) return `${ms}ms`;
@@ -353,7 +362,11 @@ function ProcessDetail({ process, cogentName, onClose, onRefresh }: ProcessDetai
               {runs.map((r) => (
                 <tr key={r.id} className="border-b" style={{ borderColor: "var(--border)" }}>
                   <td className="px-2 py-1">
-                    <Badge variant={RUN_STATUS_VARIANT[r.status] || "neutral"}>{r.status}</Badge>
+                    <span title={r.status}>
+                      <Badge variant={RUN_STATUS_VARIANT[r.status] || "neutral"}>
+                        {RUN_STATUS_ABBREV[r.status] || r.status.charAt(0).toUpperCase()}
+                      </Badge>
+                    </span>
                   </td>
                   <td className="px-2 py-1 text-[var(--text-muted)] text-[11px]">{fmtTimestamp(r.created_at)}</td>
                   <td className="px-2 py-1 text-[var(--text-muted)] text-[11px]">{fmtTimestamp(r.completed_at)}</td>

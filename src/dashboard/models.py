@@ -78,7 +78,7 @@ class Event(BaseModel):
     event_type: str | None = None
     source: str | None = None
     payload: Any = None
-    parent_event_id: int | None = None
+    parent_event_id: int | str | None = None
     created_at: str | None = None
 
 

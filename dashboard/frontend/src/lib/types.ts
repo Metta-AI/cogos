@@ -71,6 +71,10 @@ export interface CogosHandler {
   process_name?: string;
   event_pattern: string;
   enabled: boolean;
+  fired_1m: number;
+  fired_5m: number;
+  fired_1h: number;
+  fired_24h: number;
 }
 
 export interface CogosRun {
@@ -145,7 +149,7 @@ export interface DashboardEvent {
   event_type: string | null;
   source: string | null;
   payload: unknown;
-  parent_event_id: number | null;
+  parent_event_id: number | string | null;
   created_at: string | null;
 }
 

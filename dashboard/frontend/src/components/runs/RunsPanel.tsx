@@ -20,21 +20,30 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   pending: "info",
 };
 
+const STATUS_ABBREV: Record<string, string> = {
+  running: "R",
+  completed: "C",
+  failed: "F",
+  error: "E",
+  timeout: "T",
+  pending: "P",
+};
+
 const columns: Column<CogosRun & Record<string, unknown>>[] = [
   {
     key: "process_name",
     label: "Process",
     render: (row) => (
-      <span className="text-[var(--text-primary)] font-medium">
-        {row.process_name || row.process}
+      <span className="inline-flex items-center gap-1.5">
+        <span title={row.status}>
+          <Badge variant={STATUS_VARIANT[row.status] || "neutral"}>
+            {STATUS_ABBREV[row.status] || row.status.charAt(0).toUpperCase()}
+          </Badge>
+        </span>
+        <span className="text-[var(--text-primary)] font-medium">
+          {row.process_name || row.process}
+        </span>
       </span>
-    ),
-  },
-  {
-    key: "status",
-    label: "Status",
-    render: (row) => (
-      <Badge variant={STATUS_VARIANT[row.status] || "neutral"}>{row.status}</Badge>
     ),
   },
   {
@@ -68,16 +77,6 @@ const columns: Column<CogosRun & Record<string, unknown>>[] = [
     render: (row) => (
       <span className="text-[var(--text-secondary)]">{fmtCost(row.cost_usd)}</span>
     ),
-  },
-  {
-    key: "model_version",
-    label: "Model",
-    render: (row) =>
-      row.model_version ? (
-        <span className="text-[var(--text-secondary)] text-xs">{row.model_version}</span>
-      ) : (
-        <span className="text-[var(--text-muted)]">--</span>
-      ),
   },
   {
     key: "error",
