@@ -4,6 +4,7 @@ Deployed once in polis. Resolves the target cogent's DB from CloudFormation
 stack outputs, then inserts the event via RDS Data API.
 """
 
+import base64
 import hmac
 import json
 import logging
@@ -26,11 +27,16 @@ _db_cache: dict[str, tuple[str, str, str]] = {}
 
 
 def _resolve_db(cogent_name: str) -> tuple[str, str, str]:
-    """Resolve a cogent's DB connection from its CloudFormation stack outputs."""
+    """Resolve a cogent's DB connection from its CloudFormation stack outputs.
+
+    The cogent_name from email local part uses hyphens (e.g. 'dr-alpha').
+    Stack names follow: cogent-{hyphenated-name}-brain.
+    """
     if cogent_name in _db_cache:
         return _db_cache[cogent_name]
 
-    stack_name = f"cogent-{cogent_name}"
+    safe_name = cogent_name.replace(".", "-")
+    stack_name = f"cogent-{safe_name}-brain"
     resp = _cfn.describe_stacks(StackName=stack_name)
     outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
 
@@ -53,8 +59,8 @@ def _insert_event(cogent_name: str, event_type: str, source: str, payload: dict)
         secretArn=secret_arn,
         database=db_name,
         sql="""
-            INSERT INTO cogos_event (id, event_type, source, payload, status, created_at)
-            VALUES (:id, :event_type, :source, :payload::jsonb, 'proposed', :created_at)
+            INSERT INTO cogos_event (id, event_type, source, payload, created_at)
+            VALUES (:id::uuid, :event_type, :source, :payload::jsonb, :created_at::timestamptz)
         """,
         parameters=[
             {"name": "id", "value": {"stringValue": event_id}},
@@ -78,8 +84,12 @@ def handler(event, context):
         return {"statusCode": 401, "body": json.dumps({"detail": "Invalid ingest token"})}
 
     try:
-        body = json.loads(event.get("body", "{}"))
-    except json.JSONDecodeError:
+        raw_body = event.get("body", "{}")
+        if event.get("isBase64Encoded"):
+            raw_body = base64.b64decode(raw_body).decode()
+        body = json.loads(raw_body)
+    except (json.JSONDecodeError, Exception) as exc:
+        logger.error("Failed to parse body: %s, raw=%s", exc, event.get("body", "")[:200])
         return {"statusCode": 400, "body": json.dumps({"detail": "Invalid JSON"})}
 
     payload = body.get("payload", {})
