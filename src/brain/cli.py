@@ -248,9 +248,14 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     except Exception as e:
         click.echo(f"Warning: could not read stack outputs: {e}")
 
-    # Apply memory schema
-    click.echo("Applying memory schema...")
-    ctx.invoke(_memory_create)
+    # Apply database schema
+    click.echo("Applying database schema...")
+    from brain.db.migrations import apply_schema
+    try:
+        apply_schema()
+        click.echo("Database schema applied.")
+    except Exception as e:
+        click.echo(f"Warning: schema apply failed: {e}")
 
     # Update Cloudflare DNS to point at the dashboard ALB
     if cert_arn:
