@@ -6,11 +6,14 @@ import logging
 
 from cogos.db.models import (
     Capability,
+    Cron,
     Handler,
     Process,
     ProcessCapability,
     ProcessMode,
     ProcessStatus,
+    Resource,
+    ResourceType,
 )
 from cogos.files.store import FileStore
 from cogos.image.spec import ImageSpec
@@ -37,13 +40,35 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
         repo.upsert_capability(cap)
         counts["capabilities"] += 1
 
-    # 2. Files
+    # 2. Resources
+    for res_dict in spec.resources:
+        r = Resource(
+            name=res_dict["name"],
+            resource_type=ResourceType(res_dict.get("type", "pool")),
+            capacity=float(res_dict.get("capacity", 1.0)),
+            metadata=res_dict.get("metadata") or {},
+        )
+        repo.upsert_resource(r)
+        counts["resources"] += 1
+
+    # 3. Cron rules
+    for cron_dict in spec.cron_rules:
+        c = Cron(
+            expression=cron_dict["expression"],
+            event_type=cron_dict["event_type"],
+            payload=cron_dict.get("payload") or {},
+            enabled=cron_dict.get("enabled", True),
+        )
+        repo.upsert_cron(c)
+        counts["cron"] += 1
+
+    # 4. Files
     fs = FileStore(repo)
     for key, content in spec.files.items():
         fs.upsert(key, content, source="image")
         counts["files"] += 1
 
-    # 3. Processes (with capability bindings and handlers)
+    # 5. Processes (with capability bindings and handlers)
     for proc_dict in spec.processes:
         code_id = None
         if proc_dict.get("code_key"):

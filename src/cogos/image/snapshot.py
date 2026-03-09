@@ -60,7 +60,16 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     (init_dir / "capabilities.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Resources --
-    (init_dir / "resources.py").write_text("")
+    resources = repo.list_resources()
+    lines = []
+    for r in resources:
+        parts = [f'add_resource({_repr_val(r.name)}']
+        parts.append(f'    type={_repr_val(r.resource_type.value)}')
+        parts.append(f'    capacity={_repr_val(r.capacity)}')
+        if r.metadata:
+            parts.append(f'    metadata={_repr_val(r.metadata)}')
+        lines.append(",\n".join(parts) + ",\n)")
+    (init_dir / "resources.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Processes --
     procs = repo.list_processes()
@@ -115,7 +124,17 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     (init_dir / "processes.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Cron --
-    (init_dir / "cron.py").write_text("")
+    cron_rules = repo.list_cron_rules()
+    lines = []
+    for c in cron_rules:
+        parts = [f'add_cron({_repr_val(c.expression)}']
+        parts.append(f'    event_type={_repr_val(c.event_type)}')
+        if c.payload:
+            parts.append(f'    payload={_repr_val(c.payload)}')
+        if not c.enabled:
+            parts.append(f'    enabled=False')
+        lines.append(",\n".join(parts) + ",\n)")
+    (init_dir / "cron.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Files --
     file_list = repo.list_files()
@@ -133,7 +152,9 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         f"# Snapshot{source}\n\n"
         f"Generated: {now}Z\n\n"
         f"- {len(caps)} capabilities\n"
+        f"- {len(resources)} resources\n"
         f"- {len(procs)} processes\n"
+        f"- {len(cron_rules)} cron rules\n"
         f"- {len(file_list)} files\n"
     )
     (output_dir / "README.md").write_text(readme)

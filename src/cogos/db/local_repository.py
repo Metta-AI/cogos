@@ -13,6 +13,7 @@ from uuid import UUID
 
 from cogos.db.models import (
     Capability,
+    Cron,
     Event,
     File,
     FileVersion,
@@ -20,6 +21,8 @@ from cogos.db.models import (
     Process,
     ProcessCapability,
     ProcessStatus,
+    Resource,
+    ResourceType,
     Run,
 )
 
@@ -55,6 +58,8 @@ class LocalRepository:
         self._files: dict[UUID, File] = {}
         self._file_versions: dict[UUID, list[FileVersion]] = {}  # keyed by file_id
         self._process_capabilities: dict[UUID, ProcessCapability] = {}
+        self._resources: dict[str, Resource] = {}  # keyed by name
+        self._cron_rules: dict[UUID, Cron] = {}
         self._events: list[Event] = []
         self._runs: dict[UUID, Run] = {}
 
@@ -86,6 +91,8 @@ class LocalRepository:
         self._capabilities.clear()
         self._handlers.clear()
         self._process_capabilities.clear()
+        self._resources.clear()
+        self._cron_rules.clear()
         self._files.clear()
         self._file_versions.clear()
         self._events.clear()
@@ -103,6 +110,12 @@ class LocalRepository:
         for pc in data.get("process_capabilities", []):
             pcap = ProcessCapability(**pc)
             self._process_capabilities[pcap.id] = pcap
+        for res in data.get("resources", []):
+            r = Resource(**res)
+            self._resources[r.name] = r
+        for cr in data.get("cron_rules", []):
+            c = Cron(**cr)
+            self._cron_rules[c.id] = c
         for f in data.get("files", []):
             fi = File(**f)
             self._files[fi.id] = fi
@@ -133,6 +146,8 @@ class LocalRepository:
                 for versions in self._file_versions.values()
                 for fv in versions
             ],
+            "resources": [r.model_dump(mode="json") for r in self._resources.values()],
+            "cron_rules": [c.model_dump(mode="json") for c in self._cron_rules.values()],
             "events": [e.model_dump(mode="json") for e in self._events],
             "runs": [r.model_dump(mode="json") for r in self._runs.values()],
         }
@@ -356,6 +371,51 @@ class LocalRepository:
                 self._save()
                 return True
         return False
+
+    # ── Resources ─────────────────────────────────────────────
+
+    def upsert_resource(self, r: Resource) -> str:
+        now = datetime.utcnow()
+        existing = self._resources.get(r.name)
+        if existing:
+            r.id = existing.id
+            r.created_at = existing.created_at
+        else:
+            r.created_at = now
+        self._resources[r.name] = r
+        self._save()
+        return r.name
+
+    def list_resources(self) -> list[Resource]:
+        self._maybe_reload()
+        resources = list(self._resources.values())
+        resources.sort(key=lambda r: r.name)
+        return resources
+
+    # ── Cron Rules ────────────────────────────────────────────
+
+    def upsert_cron(self, c: Cron) -> UUID:
+        now = datetime.utcnow()
+        # Match by (expression, event_type)
+        existing = None
+        for ec in self._cron_rules.values():
+            if ec.expression == c.expression and ec.event_type == c.event_type:
+                existing = ec
+                break
+        if existing:
+            c.id = existing.id
+            c.created_at = existing.created_at
+        else:
+            c.created_at = now
+        self._cron_rules[c.id] = c
+        self._save()
+        return c.id
+
+    def list_cron_rules(self) -> list[Cron]:
+        self._maybe_reload()
+        rules = list(self._cron_rules.values())
+        rules.sort(key=lambda c: c.expression)
+        return rules
 
     # ── Events ───────────────────────────────────────────────
 
