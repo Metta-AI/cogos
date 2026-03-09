@@ -147,73 +147,13 @@ class BrainStack(Stack):
             ),
         )
 
-        # HTTPS listener — default action is fixed-response 403 (rules handle routing)
-        https_listener = lb.add_listener(
+        # HTTPS listener — auth handled by Cloudflare Access upstream
+        lb.add_listener(
             "HttpsListener",
             port=443,
             certificates=[elbv2.ListenerCertificate.from_arn(certificate_arn)],
-            default_action=elbv2.ListenerAction.fixed_response(
-                status_code=403,
-                content_type="text/plain",
-                message_body="Forbidden",
-            ),
+            default_action=elbv2.ListenerAction.forward([target_group]),
         )
-
-        # Rule 1 (highest priority): API key bypass — skip OAuth for PAT-authenticated requests
-        if config.dashboard_api_key:
-            https_listener.add_action(
-                "ApiKeyBypass",
-                priority=1,
-                conditions=[
-                    elbv2.ListenerCondition.http_header("X-Api-Key", [config.dashboard_api_key]),
-                ],
-                action=elbv2.ListenerAction.forward([target_group]),
-            )
-
-        # Rule 2: Health check bypass — /healthz doesn't need auth
-        https_listener.add_action(
-            "HealthBypass",
-            priority=5,
-            conditions=[
-                elbv2.ListenerCondition.path_patterns(["/healthz"]),
-            ],
-            action=elbv2.ListenerAction.forward([target_group]),
-        )
-
-        # Rule 3: Google OIDC auth for all other traffic
-        if config.google_oauth_secret_arn:
-            from aws_cdk import aws_secretsmanager as secretsmanager
-            oauth_secret = secretsmanager.Secret.from_secret_complete_arn(
-                self, "OAuthSecret", secret_complete_arn=config.google_oauth_secret_arn,
-            )
-            https_listener.add_action(
-                "GoogleOidc",
-                priority=10,
-                conditions=[
-                    elbv2.ListenerCondition.path_patterns(["/*"]),
-                ],
-                action=elbv2.ListenerAction.authenticate_oidc(
-                    issuer="https://accounts.google.com",
-                    authorization_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
-                    token_endpoint="https://oauth2.googleapis.com/token",
-                    user_info_endpoint="https://openidconnect.googleapis.com/v1/userinfo",
-                    client_id=oauth_secret.secret_value_from_json("client_id").unsafe_unwrap(),
-                    client_secret=oauth_secret.secret_value_from_json("client_secret"),
-                    scope="openid email",
-                    authentication_request_extra_params={"hd": "softmax.com"},
-                    next=elbv2.ListenerAction.forward([target_group]),
-                ),
-            )
-        else:
-            # No OAuth configured — forward all traffic directly
-            https_listener.add_action(
-                "NoAuthForward",
-                priority=10,
-                conditions=[
-                    elbv2.ListenerCondition.path_patterns(["/*"]),
-                ],
-                action=elbv2.ListenerAction.forward([target_group]),
-            )
 
         lb.add_redirect(
             source_port=80,

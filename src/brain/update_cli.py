@@ -607,28 +607,6 @@ def update_stack(ctx: click.Context, profile: str):
     except Exception:
         click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
 
-    # Look up Google OAuth secret ARN
-    google_oauth_secret_arn = ""
-    try:
-        sm = session.client("secretsmanager", region_name=DEFAULT_REGION)
-        google_oauth_secret_arn = sm.describe_secret(SecretId="cogent/polis/google-oauth")["ARN"]
-    except Exception:
-        click.echo("Warning: Google OAuth secret not found. Dashboard will have no auth.")
-
-    # Look up or generate dashboard API key
-    dashboard_api_key = ""
-    try:
-        from polis.secrets.store import SecretStore
-        store = SecretStore(session=session)
-        api_key_path = f"cogent/{name}/dashboard-api-key"
-        try:
-            secret = store.get(api_key_path, use_cache=False)
-            dashboard_api_key = secret.get("api_key", "")
-        except Exception:
-            pass
-    except Exception:
-        pass
-
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [
         "cdk",
@@ -637,8 +615,6 @@ def update_stack(ctx: click.Context, profile: str):
         "-c", f"cogent_name={name}",
         "-c", f"certificate_arn={cert_arn}",
         "-c", f"ecr_repo_uri={ecr_repo_uri}",
-        "-c", f"google_oauth_secret_arn={google_oauth_secret_arn}",
-        "-c", f"dashboard_api_key={dashboard_api_key}",
         "--app", "python -m brain.cdk.app",
         "--require-approval", "never",
     ]

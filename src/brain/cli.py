@@ -252,65 +252,28 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     click.echo("Applying memory schema...")
     ctx.invoke(_memory_create)
 
-    # Update Route53 DNS to point at the dashboard ALB
-    # Use OrganizationAccountAccessRole which has full admin (cogent-polis-admin lacks ELB perms)
+    # Update Cloudflare DNS to point at the dashboard ALB
     if cert_arn:
         click.echo("Updating DNS...")
         try:
+            from polis.cloudflare import ensure_dns_record
+            from polis.secrets.store import SecretStore
+
             dns_session = _assume_role(
                 get_org_session(), POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole",
             )
-            _update_dashboard_dns(dns_session, safe_name, "softmax-cogents.com")
+            store = SecretStore(session=dns_session)
+            cfn = dns_session.client("cloudformation", region_name="us-east-1")
+            resp = cfn.describe_stacks(StackName=f"cogent-{safe_name}-brain")
+            outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+            alb_dns = outputs.get("AlbDns", "")
+            if alb_dns:
+                ensure_dns_record(store, safe_name, alb_dns)
+                click.echo(f"  DNS updated: {safe_name}.softmax-cogents.com -> {alb_dns}")
+            else:
+                click.echo("  No AlbDns output found, skipping DNS update")
         except Exception as e:
             click.echo(f"Warning: DNS update failed: {e}")
-
-
-HOSTED_ZONE_ID = "Z059653727QDSCT3DI6DS"
-
-
-def _update_dashboard_dns(session, safe_name: str, domain: str):
-    """Update Route53 A-record to alias the dashboard ALB."""
-    cfn = session.client("cloudformation", region_name="us-east-1")
-    resp = cfn.describe_stacks(StackName=f"cogent-{safe_name}-brain")
-    outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
-    alb_dns = outputs.get("AlbDns", "")
-    if not alb_dns:
-        click.echo("  No AlbDns output found, skipping DNS update")
-        return
-
-    elbv2_client = session.client("elbv2", region_name="us-east-1")
-    lbs = elbv2_client.describe_load_balancers()["LoadBalancers"]
-    alb_zone_id = ""
-    for lb in lbs:
-        if lb["DNSName"] == alb_dns:
-            alb_zone_id = lb["CanonicalHostedZoneId"]
-            break
-    if not alb_zone_id:
-        click.echo(f"  Could not find ALB zone ID for {alb_dns}")
-        return
-
-    r53 = session.client("route53")
-    r53.change_resource_record_sets(
-        HostedZoneId=HOSTED_ZONE_ID,
-        ChangeBatch={
-            "Comment": f"Dashboard ALB for {safe_name}",
-            "Changes": [
-                {
-                    "Action": "UPSERT",
-                    "ResourceRecordSet": {
-                        "Name": f"{safe_name}.{domain}",
-                        "Type": "A",
-                        "AliasTarget": {
-                            "HostedZoneId": alb_zone_id,
-                            "DNSName": f"dualstack.{alb_dns}",
-                            "EvaluateTargetHealth": True,
-                        },
-                    },
-                }
-            ],
-        },
-    )
-    click.echo(f"  DNS updated: {safe_name}.{domain} -> {alb_dns}")
 
 
 def _find_certificate(session, domain: str) -> str:

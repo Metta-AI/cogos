@@ -8,6 +8,8 @@ import subprocess
 import sys
 import time
 
+import requests
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -71,6 +73,11 @@ def create(ctx: click.Context):
     # Deploy CDK
     console.print("  Deploying CDK stacks...")
     _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
+
+    # Cloudflare Access
+    polis_session, _ = get_polis_session()
+    _ensure_cloudflare_access(polis_session, config.domain)
+
     console.print("[green]Polis created successfully.[/green]")
 
 
@@ -86,6 +93,12 @@ def update(ctx: click.Context):
     org_id = get_org_id()
     console.print("Updating CDK stacks...")
     _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
+
+    # Cloudflare Access
+    config: PolisConfig = ctx.obj["config"]
+    polis_session, _ = get_polis_session()
+    _ensure_cloudflare_access(polis_session, config.domain)
+
     console.print("[green]Polis updated.[/green]")
 
 
@@ -95,6 +108,20 @@ def update(ctx: click.Context):
 def destroy(ctx: click.Context):
     """Tear down the polis CDK stacks (requires org admin)."""
     profile = ctx.obj["profile"]
+
+    # Remove Cloudflare Access Application
+    try:
+        from polis.cloudflare import delete_access
+
+        polis_session, _ = get_polis_session()
+        store = SecretStore(session=polis_session)
+        if delete_access(store):
+            console.print("  [green]Cloudflare Access Application deleted[/green]")
+        else:
+            console.print("  Cloudflare Access: not found (skip)")
+    except Exception as e:
+        console.print(f"  [yellow]Cloudflare Access cleanup: {e}[/yellow]")
+
     console.print("Destroying CDK stacks...")
     _cdk_cmd(["destroy", "--all", "--force"], profile=profile or CDK_PROFILE)
     console.print("[green]Polis stacks destroyed.[/green]")
@@ -443,9 +470,6 @@ def cogents():
     """Manage cogents in the polis."""
 
 
-HOSTED_ZONE_ID = "Z059653727QDSCT3DI6DS"
-
-
 def _cogent_subdomain(name: str, domain: str) -> str:
     """Convert cogent name to subdomain (dots become dashes)."""
     return f"{name.replace('.', '-')}.{domain}"
@@ -456,33 +480,20 @@ def _cogent_subdomain(name: str, domain: str) -> str:
 @click.pass_context
 def cogents_create(ctx: click.Context, name: str):
     """Register a cogent's identity in the polis (domain, certificate, secrets)."""
+    from polis.cloudflare import ensure_dns_record
+
     config: PolisConfig = ctx.obj["config"]
     session, _ = get_polis_session()
+    store = SecretStore(session=session)
 
     subdomain = _cogent_subdomain(name, config.domain)
+    safe_name = name.replace(".", "-")
     console.print(f"Creating cogent identity: [bold]{name}[/bold]")
 
-    # 1. Route53 — placeholder A record for the subdomain
+    # 1. Cloudflare DNS — placeholder CNAME (will be updated to ALB after stack deploy)
     console.print(f"  Registering domain: [cyan]{subdomain}[/cyan]")
-    r53 = session.client("route53")
-    r53.change_resource_record_sets(
-        HostedZoneId=HOSTED_ZONE_ID,
-        ChangeBatch={
-            "Comment": f"Register cogent {name}",
-            "Changes": [
-                {
-                    "Action": "UPSERT",
-                    "ResourceRecordSet": {
-                        "Name": subdomain,
-                        "Type": "A",
-                        "TTL": 300,
-                        "ResourceRecords": [{"Value": "127.0.0.1"}],
-                    },
-                }
-            ],
-        },
-    )
-    console.print("  [green]Domain registered[/green]")
+    ensure_dns_record(store, safe_name, "placeholder.invalid", domain=config.domain)
+    console.print("  [green]Domain registered (Cloudflare)[/green]")
 
     # 2. ACM — request certificate with DNS validation
     console.print(f"  Requesting ACM certificate for [cyan]{subdomain}[/cyan]")
@@ -523,30 +534,14 @@ def cogents_create(ctx: click.Context, name: str):
         else:
             console.print("[yellow]  Timed out waiting for validation records[/yellow]")
 
-        # Create DNS validation record in Route53
+        # Create DNS validation record in Cloudflare
         desc = acm.describe_certificate(CertificateArn=cert_arn)
         for opt in desc["Certificate"].get("DomainValidationOptions", []):
             rr = opt.get("ResourceRecord")
             if rr:
                 console.print(f"  Creating validation record: {rr['Name']}")
-                r53.change_resource_record_sets(
-                    HostedZoneId=HOSTED_ZONE_ID,
-                    ChangeBatch={
-                        "Comment": f"ACM validation for {subdomain}",
-                        "Changes": [
-                            {
-                                "Action": "UPSERT",
-                                "ResourceRecordSet": {
-                                    "Name": rr["Name"],
-                                    "Type": rr["Type"],
-                                    "TTL": 300,
-                                    "ResourceRecords": [{"Value": rr["Value"]}],
-                                },
-                            }
-                        ],
-                    },
-                )
-                console.print("  [green]Validation record created[/green]")
+                _create_cf_validation_record(store, rr, config.domain)
+                console.print("  [green]Validation record created (Cloudflare)[/green]")
 
     # 3. DynamoDB — register in cogent-status table
     console.print("  Registering in status table...")
@@ -607,35 +602,20 @@ def cogents_create(ctx: click.Context, name: str):
 @click.pass_context
 def cogents_destroy(ctx: click.Context, name: str):
     """Remove a cogent's identity from the polis (domain, certificate, secrets)."""
+    from polis.cloudflare import delete_dns_record
+
     config: PolisConfig = ctx.obj["config"]
     session, _ = get_polis_session()
+    store = SecretStore(session=session)
 
     subdomain = _cogent_subdomain(name, config.domain)
+    safe_name = name.replace(".", "-")
     console.print(f"Destroying cogent identity: [bold]{name}[/bold]")
 
-    # 1. Delete Route53 records
-    r53 = session.client("route53")
+    # 1. Delete Cloudflare DNS records
     try:
-        resp = r53.list_resource_record_sets(
-            HostedZoneId=HOSTED_ZONE_ID,
-            StartRecordName=subdomain,
-            MaxItems="10",
-        )
-        changes = []
-        for rrs in resp["ResourceRecordSets"]:
-            if rrs["Name"].rstrip(".") == subdomain or rrs["Name"].rstrip(".").startswith(
-                f"_"
-            ):
-                # Only delete A records for the subdomain and CNAME validation records
-                if rrs["Type"] in ("A", "CNAME") and subdomain in rrs["Name"]:
-                    changes.append({"Action": "DELETE", "ResourceRecordSet": rrs})
-
-        if changes:
-            r53.change_resource_record_sets(
-                HostedZoneId=HOSTED_ZONE_ID,
-                ChangeBatch={"Comment": f"Remove cogent {name}", "Changes": changes},
-            )
-            console.print(f"  [green]Deleted {len(changes)} DNS record(s)[/green]")
+        if delete_dns_record(store, safe_name, domain=config.domain):
+            console.print("  [green]Deleted DNS record (Cloudflare)[/green]")
         else:
             console.print("  No DNS records found")
     except Exception as e:
@@ -747,6 +727,49 @@ def cogents_status(name: str):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _create_cf_validation_record(store: SecretStore, rr: dict, domain: str) -> None:
+    """Create a DNS-only CNAME record in Cloudflare for ACM validation."""
+    from polis.cloudflare import _load_cf_config, _headers
+
+    cf = _load_cf_config(store)
+    zone_id = cf["zone_id"]
+    api_token = cf["api_token"]
+
+    # Check if already exists
+    resp = requests.get(
+        f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+        headers=_headers(api_token),
+        params={"name": rr["Name"].rstrip("."), "type": "CNAME"},
+    )
+    resp.raise_for_status()
+    if resp.json().get("result"):
+        return  # already exists
+
+    resp = requests.post(
+        f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+        headers=_headers(api_token),
+        json={
+            "type": "CNAME",
+            "name": rr["Name"].rstrip("."),
+            "content": rr["Value"],
+            "proxied": False,  # validation records must not be proxied
+        },
+    )
+    resp.raise_for_status()
+
+
+def _ensure_cloudflare_access(session, domain: str = "softmax-cogents.com") -> None:
+    """Ensure Cloudflare Access Application exists for cogent dashboards."""
+    from polis.cloudflare import ensure_access
+
+    store = SecretStore(session=session)
+    try:
+        app = ensure_access(store, domain=domain)
+        console.print(f"  Cloudflare Access: [green]ok[/green] ({app['id']})")
+    except Exception as e:
+        console.print(f"  [yellow]Cloudflare Access: {e}[/yellow]")
 
 
 def _cdk_deploy(org_id: str, profile: str | None = None):

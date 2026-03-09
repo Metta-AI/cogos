@@ -13,14 +13,10 @@ def main() -> None:
     cogent_name = app.node.try_get_context("cogent_name") or "default"
     certificate_arn = app.node.try_get_context("certificate_arn") or ""
     ecr_repo_uri = app.node.try_get_context("ecr_repo_uri") or ""
-    google_oauth_secret_arn = app.node.try_get_context("google_oauth_secret_arn") or ""
-    dashboard_api_key = app.node.try_get_context("dashboard_api_key") or ""
 
     config = BrainConfig(
         cogent_name=cogent_name,
         ecr_repo_uri=ecr_repo_uri,
-        google_oauth_secret_arn=google_oauth_secret_arn,
-        dashboard_api_key=dashboard_api_key,
     )
 
     BrainStack(

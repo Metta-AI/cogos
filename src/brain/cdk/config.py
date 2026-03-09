@@ -29,6 +29,4 @@ class BrainConfig:
     ecs_memory: int = 4096
     ecs_timeout_s: int = 3600
     ecr_repo_uri: str = ""
-    google_oauth_secret_arn: str = ""
-    dashboard_api_key: str = ""
     session_expiry_days: Duration = Duration.days(30)
