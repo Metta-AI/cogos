@@ -18,6 +18,7 @@ from cogos.db.models import (
     FileVersion,
     Handler,
     Process,
+    ProcessCapability,
     ProcessStatus,
     Run,
 )
@@ -53,6 +54,7 @@ class LocalRepository:
         self._handlers: dict[UUID, Handler] = {}
         self._files: dict[UUID, File] = {}
         self._file_versions: dict[UUID, list[FileVersion]] = {}  # keyed by file_id
+        self._process_capabilities: dict[UUID, ProcessCapability] = {}
         self._events: list[Event] = []
         self._runs: dict[UUID, Run] = {}
 
@@ -83,6 +85,7 @@ class LocalRepository:
         self._processes.clear()
         self._capabilities.clear()
         self._handlers.clear()
+        self._process_capabilities.clear()
         self._files.clear()
         self._file_versions.clear()
         self._events.clear()
@@ -97,6 +100,9 @@ class LocalRepository:
         for h in data.get("handlers", []):
             handler = Handler(**h)
             self._handlers[handler.id] = handler
+        for pc in data.get("process_capabilities", []):
+            pcap = ProcessCapability(**pc)
+            self._process_capabilities[pcap.id] = pcap
         for f in data.get("files", []):
             fi = File(**f)
             self._files[fi.id] = fi
@@ -120,6 +126,7 @@ class LocalRepository:
             "processes": [p.model_dump(mode="json") for p in self._processes.values()],
             "capabilities": [c.model_dump(mode="json") for c in self._capabilities.values()],
             "handlers": [h.model_dump(mode="json") for h in self._handlers.values()],
+            "process_capabilities": [pc.model_dump(mode="json") for pc in self._process_capabilities.values()],
             "files": [f.model_dump(mode="json") for f in self._files.values()],
             "file_versions": [
                 fv.model_dump(mode="json")
@@ -244,6 +251,25 @@ class LocalRepository:
             self._save()
             return True
         return False
+
+    # ── Process Capabilities ────────────────────────────────
+
+    def create_process_capability(self, pc: ProcessCapability) -> UUID:
+        """Upsert a process-capability binding by (process, capability) pair."""
+        for existing in self._process_capabilities.values():
+            if existing.process == pc.process and existing.capability == pc.capability:
+                return existing.id
+        self._process_capabilities[pc.id] = pc
+        self._save()
+        return pc.id
+
+    def list_process_capabilities(self, process_id: UUID) -> list[ProcessCapability]:
+        self._maybe_reload()
+        return [pc for pc in self._process_capabilities.values() if pc.process == process_id]
+
+    def get_capability(self, cap_id: UUID) -> Capability | None:
+        self._maybe_reload()
+        return self._capabilities.get(cap_id)
 
     # ── Files ────────────────────────────────────────────────
 
