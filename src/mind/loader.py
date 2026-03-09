@@ -127,6 +127,40 @@ def scan_dir(root: Path, suffixes: set[str] | None = None) -> list[Path]:
     )
 
 
+_PROGRAM_FM_KEYS = {"tools", "triggers", "memory_keys", "runner"}
+
+
+def is_program_file(path: Path) -> bool:
+    """Check if a file is a program (vs a plain memory).
+
+    .py files with CogentMindProgram or def run() are programs.
+    .md files with program frontmatter keys (tools, triggers, etc.) are programs.
+    """
+    if path.suffix == ".py":
+        try:
+            source = path.read_text()
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == "run":
+                    return True
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                    func = node.value.func
+                    if (isinstance(func, ast.Name) and func.id == "CogentMindProgram") or \
+                       (isinstance(func, ast.Attribute) and func.attr == "CogentMindProgram"):
+                        return True
+        except (SyntaxError, OSError):
+            pass
+        return False
+    if path.suffix == ".md":
+        try:
+            text = path.read_text()
+            fm, _ = parse_frontmatter_optional(text)
+            return bool(fm.keys() & _PROGRAM_FM_KEYS)
+        except OSError:
+            pass
+    return False
+
+
 # ─── Normalisation helpers ──────────────────────────────────
 
 
@@ -160,7 +194,7 @@ def validate_memory_keys(name: str, keys: list[str], repo: Repository) -> list[S
     issues: list[SyncIssue] = []
     if not keys:
         return issues
-    found = repo.query_memory_by_prefixes(keys)
+    found = repo.resolve_memory_keys(keys)
     found_names = {m.name for m in found if m.name}
     for key in keys:
         if not any(n.startswith(key) for n in found_names):

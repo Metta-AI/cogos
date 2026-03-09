@@ -12,7 +12,7 @@ from brain.db.models import (
     Cron,
     Event,
     Program,
-    ProgramType,
+
     Resource,
     ResourceType,
     ResourceUsage,
@@ -40,7 +40,7 @@ __all__ = [
     "Cron",
     "Event",
     "Program",
-    "ProgramType",
+
     "Resource",
     "ResourceType",
     "ResourceUsage",

@@ -30,7 +30,6 @@ class Execution(BaseModel):
 
 class Program(BaseModel):
     name: str
-    type: str = "prompt"
     description: str = ""
     trigger_count: int = 0
     runs: int = 0
@@ -161,6 +160,7 @@ class MemoryItem(BaseModel):
     name: str = ""
     group: str = ""
     active_version: int = 1
+    includes: list[str] = []
     content: str = ""
     source: str = "cogent"
     read_only: bool = False

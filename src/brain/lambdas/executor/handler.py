@@ -10,7 +10,7 @@ from uuid import UUID
 
 import boto3
 
-from brain.db.models import Event, Program, ProgramType, Run, RunStatus
+from brain.db.models import Event, Program, ProgramType, Run, RunStatus, infer_program_type
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.db import get_repo
 from brain.lambdas.shared.events import emit_run_result, put_event
@@ -98,7 +98,8 @@ def handler(event: dict, context) -> dict:
 
     start_time = time.time()
     try:
-        if program.program_type == ProgramType.PYTHON:
+        source = _resolve_program_source(program, repo)
+        if infer_program_type(source) == ProgramType.PYTHON:
             run = execute_python_program(program, event_data, run, config,
                                          task_data=task_data if task_data else None)
         else:
@@ -207,16 +208,12 @@ def execute_program(program: Program, event_data: dict, run: Run, config,
     bedrock = boto3.client("bedrock-runtime", region_name=config.region)
     repo = get_repo()
 
-    # Merge task overrides into a program copy
+    # Merge task tool overrides into a program copy
     if task_data:
-        merged_memory_keys = list(set(
-            (program.memory_keys or []) + (task_data.get("memory_keys") or [])
-        ))
         merged_tools = list(set(
             (program.tools or []) + (task_data.get("tools") or [])
         ))
         program = program.model_copy(update={
-            "memory_keys": merged_memory_keys,
             "tools": merged_tools,
         })
 
@@ -306,6 +303,23 @@ def execute_program(program: Program, event_data: dict, run: Run, config,
     return run
 
 
+def _resolve_program_source(program: Program, repo) -> str:
+    """Resolve program content from its linked memory."""
+    from memory.store import MemoryStore
+
+    if not program.memory_id:
+        raise RuntimeError(f"Program {program.name} has no linked memory")
+    store = MemoryStore(repo)
+    mem = store.get_by_id(program.memory_id)
+    if not mem:
+        raise RuntimeError(f"Program {program.name}: memory {program.memory_id} not found")
+    version = program.memory_version or mem.active_version
+    mv = mem.versions.get(version)
+    if not mv:
+        raise RuntimeError(f"Program {program.name}: memory version {version} not found")
+    return mv.content
+
+
 def execute_python_program(
     program: Program, event_data: dict, run: Run, config,
     task_data: dict | None = None,
@@ -313,7 +327,9 @@ def execute_python_program(
     """Execute a Python program by calling its run(repo, event, config) function."""
     repo = get_repo()
 
-    code = compile(program.content, f"<program:{program.name}>", "exec")
+    # Resolve program source from memory
+    source = _resolve_program_source(program, repo)
+    code = compile(source, f"<program:{program.name}>", "exec")
     namespace: dict = {}
     exec(code, namespace)  # noqa: S102
 

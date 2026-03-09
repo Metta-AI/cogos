@@ -8,11 +8,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from brain.db.models import Program, ProgramType, Trigger, TriggerConfig
+from brain.db.models import Program, Trigger, TriggerConfig
 from brain.db.repository import Repository
+from memory.store import MemoryStore
 from mind.loader import (
     SyncIssue,
     extract_pydantic_config,
+    is_program_file,
     parse_frontmatter,
     scan_dir,
     validate_memory_keys,
@@ -32,19 +34,20 @@ class CogentMindProgram(BaseModel):
     """Pydantic config embedded in .py program files."""
 
     name: str = ""
-    program_type: str = "python"
     includes: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
-    memory_keys: list[str] = Field(default_factory=list)
+    memory_keys: list[str] = Field(default_factory=list)  # legacy alias for includes
     triggers: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @dataclass
 class ProgramBundle:
-    """A parsed program plus its declared triggers."""
+    """A parsed program plus its declared triggers, content, and includes."""
 
     program: Program
+    content: str = ""
+    includes: list[str] = field(default_factory=list)
     triggers: list[TriggerSpec] = field(default_factory=list)
 
 
@@ -61,25 +64,23 @@ def _parse_md(path: Path, rel: str | None = None) -> ProgramBundle:
 
     default_name = rel.removesuffix(".md") if rel else path.stem
     name = fm.pop("name", default_name)
-    program_type = fm.pop("program_type", "prompt")
-    includes = fm.pop("includes", [])
+    fm.pop("program_type", None)  # no longer stored; inferred from content
+    includes = fm.pop("includes", [])  # includes for the memory
     tools = fm.pop("tools", [])
-    memory_keys = fm.pop("memory_keys", [])
+    memory_keys = fm.pop("memory_keys", [])  # legacy alias for includes
     triggers_raw = fm.pop("triggers", [])
     metadata = fm.pop("metadata", {})
     # Any remaining frontmatter keys go into metadata
     metadata.update(fm)
+    # Merge includes and memory_keys (memory_keys is a legacy alias)
+    all_includes = list(dict.fromkeys((includes or []) + (memory_keys or [])))
     prog = Program(
         name=name,
-        program_type=ProgramType(program_type),
-        content=body.strip(),
-        includes=includes or [],
         tools=tools or [],
-        memory_keys=memory_keys or [],
         metadata=metadata,
     )
     triggers = [TriggerSpec(**t) for t in (triggers_raw or [])]
-    return ProgramBundle(program=prog, triggers=triggers)
+    return ProgramBundle(program=prog, content=body.strip(), includes=all_includes, triggers=triggers)
 
 
 def _parse_py(path: Path, rel: str | None = None) -> ProgramBundle:
@@ -94,26 +95,19 @@ def _parse_py(path: Path, rel: str | None = None) -> ProgramBundle:
         kwargs = extract_pydantic_config(source, "CogentMindProgram")
     except (ValueError, SyntaxError):
         # No config block — infer from filename
-        prog = Program(
-            name=default_name,
-            program_type=ProgramType.PYTHON,
-            content=source,
-        )
-        return ProgramBundle(program=prog, triggers=[])
+        prog = Program(name=default_name)
+        return ProgramBundle(program=prog, content=source, triggers=[])
 
     cfg = CogentMindProgram(**kwargs)
     name = cfg.name or default_name
+    all_includes = list(dict.fromkeys(cfg.includes + cfg.memory_keys))
     prog = Program(
         name=name,
-        program_type=ProgramType(cfg.program_type),
-        content=source,
-        includes=cfg.includes,
         tools=cfg.tools,
-        memory_keys=cfg.memory_keys,
         metadata=cfg.metadata,
     )
     triggers = [TriggerSpec(**t) for t in cfg.triggers]
-    return ProgramBundle(program=prog, triggers=triggers)
+    return ProgramBundle(program=prog, content=source, includes=all_includes, triggers=triggers)
 
 
 # ─── Public API ─────────────────────────────────────────────
@@ -129,12 +123,15 @@ def load_program(path: Path, rel: str | None = None) -> ProgramBundle:
 
 
 def load_programs_dir(root: Path) -> list[ProgramBundle]:
-    """Recursively load all .py and .md programs under a directory.
+    """Recursively load program files (.py and .md with program frontmatter).
 
     Program names are derived from relative paths (e.g. vsm/s1/do-content).
+    Skips plain memory files that lack program configuration.
     """
     bundles = []
     for p in scan_dir(root, {".py", ".md"}):
+        if not is_program_file(p):
+            continue
         rel = str(p.relative_to(root))
         bundles.append(load_program(p, rel=rel))
     return bundles
@@ -184,12 +181,34 @@ def sync_program(bundle: ProgramBundle, repo: Repository) -> tuple[str, list[Syn
     if any(i.level == "error" for i in issues):
         return "", issues
 
-    # Upsert program first (triggers FK requires program to exist)
+    # Store program content as a memory under programs/{name}
+    memory_store = MemoryStore(repo)
+    memory_name = f"programs/{bundle.program.name}"
+    mem = memory_store.get(memory_name)
+    if mem is None:
+        mem = memory_store.create(
+            memory_name, bundle.content,
+            source="polis", read_only=True,
+        )
+    else:
+        # new_version bypasses read_only check on current version
+        memory_store.new_version(
+            memory_name, bundle.content,
+            source="polis", read_only=True,
+        )
+
+    # Set includes on the memory
+    if bundle.includes != (mem.includes or []):
+        memory_store.update_includes(memory_name, bundle.includes)
+
+    bundle.program.memory_id = mem.id
+
+    # Upsert program (triggers FK requires program to exist)
     prog_id = repo.upsert_program(bundle.program)
 
-    # Validate memory (warn only)
+    # Validate includes (warn only)
     issues.extend(validate_memory_keys(
-        bundle.program.name, bundle.program.includes, repo,
+        bundle.program.name, bundle.includes, repo,
     ))
 
     # Sync triggers

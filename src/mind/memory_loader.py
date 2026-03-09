@@ -1,11 +1,11 @@
 """Load memory definitions from a directory of Markdown and YAML files."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mind.loader import load_yaml, parse_frontmatter_optional, scan_dir
+from mind.loader import is_program_file, load_yaml, parse_frontmatter_optional, scan_dir
 
 
 @dataclass
@@ -14,6 +14,7 @@ class LoadedMemory:
     name: str
     content: str
     source: str = "polis"
+    includes: list[str] = field(default_factory=list)
 
 
 def _mem_from_dict(d: dict[str, Any]) -> LoadedMemory:
@@ -23,10 +24,12 @@ def _mem_from_dict(d: dict[str, Any]) -> LoadedMemory:
         pass  # already valid
     elif not source.startswith("user:"):
         source = "polis"
+    includes = d.pop("includes", []) or []
     return LoadedMemory(
         name=d.get("name", ""),
         content=d.get("content", ""),
         source=source,
+        includes=includes,
     )
 
 
@@ -55,6 +58,8 @@ def _load_yaml(path: Path) -> list[LoadedMemory]:
 def load_memories_from_dir(memories_dir: Path) -> list[LoadedMemory]:
     memories: list[LoadedMemory] = []
     for path in scan_dir(memories_dir, suffixes={".md", ".yaml", ".yml"}):
+        if is_program_file(path):
+            continue
         rel = str(path.relative_to(memories_dir))
         suffix = path.suffix.lower()
         if suffix == ".md":

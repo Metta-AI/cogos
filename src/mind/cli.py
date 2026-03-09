@@ -17,7 +17,6 @@ from brain.db.models import (
     Cron,
     Event,
     Program,
-    ProgramType,
     Resource,
     ResourceType,
     RunStatus,
@@ -147,7 +146,7 @@ def mind(ctx: click.Context, use_json: bool) -> None:
 
 
 _DEFAULT_EGG_DIR = "eggs/ovo"
-_DEFAULT_PROGRAMS_DIR = "eggs/ovo/programs"
+_DEFAULT_PROGRAMS_DIR = "eggs/ovo/memories"
 _DEFAULT_TASKS_DIR = "eggs/ovo/tasks"
 _DEFAULT_MEMORIES_DIR = "eggs/ovo/memories"
 _DEFAULT_RESOURCES_FILE = "eggs/ovo/resources.py"
@@ -233,8 +232,8 @@ def mind_update(ctx: click.Context, egg_dir: str, force: bool) -> None:
         synced_res = sync_resources(res_file, repo)
         click.echo(f"Resources: {len(synced_res)} synced")
 
-    # 2. Programs
-    programs_dir = egg / "programs"
+    # 2. Programs (scanned from memories dir — program files detected by frontmatter)
+    programs_dir = egg / "memories"
     if programs_dir.is_dir():
         bundles = load_programs_dir(programs_dir)
         count = 0
@@ -276,16 +275,23 @@ def mind_update(ctx: click.Context, egg_dir: str, force: bool) -> None:
         for lm in loaded:
             existing = mem_store.get(lm.name)
             if not existing:
-                mem_store.create(lm.name, lm.content, source="polis", read_only=True)
+                mem = mem_store.create(lm.name, lm.content, source="polis", read_only=True)
+                if lm.includes:
+                    mem_store.update_includes(lm.name, lm.includes)
                 created += 1
             else:
                 active = existing.versions.get(existing.active_version)
                 if active and active.source.startswith("user:"):
                     skipped += 1
                 elif active and active.content == lm.content:
+                    # Still update includes if changed
+                    if lm.includes != (existing.includes or []):
+                        mem_store.update_includes(lm.name, lm.includes)
                     unchanged += 1
                 else:
                     mem_store.new_version(lm.name, lm.content, source="polis", read_only=True)
+                    if lm.includes != (existing.includes or []):
+                        mem_store.update_includes(lm.name, lm.includes)
                     updated += 1
         click.echo(f"Memories: {created} created, {updated} updated, {skipped} skipped (user override), {unchanged} unchanged")
 
@@ -331,9 +337,7 @@ def program_list(ctx: click.Context, limit: int, show_all: bool, disabled: bool)
     data = [
         {
             "name": p.name,
-            "type": p.program_type.value,
             "enabled": p.metadata.get("enabled", True),
-            "includes": p.includes,
             "tools": p.tools,
         }
         for p in programs
@@ -360,7 +364,7 @@ def program_info(ctx: click.Context, name: str) -> None:
 def program_add(ctx: click.Context, path: str) -> None:
     """Add a program from a .py or .md file.
 
-    Validates tools, checks memory includes, and registers triggers.
+    Validates tools, checks memory keys, and registers triggers.
     """
     bundle = load_program(Path(path))
     repo = _repo()
@@ -442,11 +446,11 @@ def program_runs(ctx: click.Context, name: str, limit: int) -> None:
 def program_update(
     ctx: click.Context, path: str, resources_file: str, no_resources: bool, dry_run: bool,
 ) -> None:
-    """Sync programs from a directory (recursive .py/.md files).
+    """Sync programs from a directory (recursive .py/.md files with program config).
 
     Loads resources first (from eggs/ovo/resources.py), then programs.
-    Validates tools, checks memory includes, and registers triggers.
-    Default path: eggs/ovo/programs/
+    Validates tools, checks memory keys, and registers triggers.
+    Default path: eggs/ovo/memories/
     """
     root = Path(path)
     if not root.is_dir():
@@ -479,7 +483,7 @@ def program_update(
             tool_issues = validate_bundle(b)
             all_issues.extend(tool_issues)
             trigs = f" +{len(b.triggers)} triggers" if b.triggers else ""
-            click.echo(f"  {b.program.name} ({b.program.program_type.value}){trigs}")
+            click.echo(f"  {b.program.name}{trigs}")
         for issue in all_issues:
             prefix = "ERROR" if issue.level == "error" else "WARN"
             click.echo(f"  [{prefix}] {issue.program}: {issue.message}", err=True)
@@ -509,7 +513,7 @@ def program_update(
             continue
         trigs = f" +{len(b.triggers)} triggers" if b.triggers else ""
         click.echo(f"  synced: {b.program.name}{trigs}")
-        results.append({"name": b.program.name, "id": prog_id, "type": b.program.program_type.value})
+        results.append({"name": b.program.name, "id": prog_id})
 
     click.echo(f"\n{len(results)} program(s) synced.")
     if ctx.obj["json"]:

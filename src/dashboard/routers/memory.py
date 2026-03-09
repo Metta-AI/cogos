@@ -38,6 +38,7 @@ def _memory_to_item(m: Memory) -> MemoryItem:
         name=m.name,
         group=_derive_group(m.name),
         active_version=m.active_version,
+        includes=m.includes or [],
         content=active_mv.content if active_mv else "",
         source=active_mv.source if active_mv else "cogent",
         read_only=active_mv.read_only if active_mv else False,

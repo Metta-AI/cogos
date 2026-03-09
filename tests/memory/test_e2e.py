@@ -299,18 +299,19 @@ class TestResolveKeys:
 
 class TestContextEngineIntegration:
     def test_build_system_prompt_with_versioned_memories(self, store):
-        from brain.db.models import Program, ProgramType
+        from brain.db.models import Program
         from memory.context_engine import ContextEngine
 
+        # Create program content as a memory with includes
+        prog_mem = store.create("programs/test", "System prompt.")
+        store.update_includes("programs/test", ["/mind/tools"])
         store.create("/mind/init", "You are a helpful assistant.")
         store.create("/mind/tools/init", "Use these tools: hammer, wrench")
 
         engine = ContextEngine(store, total_budget=50_000)
         program = Program(
             name="test",
-            program_type=ProgramType.PROMPT,
-            content="System prompt.",
-            memory_keys=["/mind/tools"],
+            memory_id=prog_mem.id,
         )
 
         blocks = engine.build_system_prompt(program)

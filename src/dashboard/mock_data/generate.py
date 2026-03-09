@@ -147,8 +147,6 @@ def make_programs(tool_names: list[str], memory_names: list[str]) -> list[Progra
         programs.append(Program(
             id=uuid4(),
             name=name,
-            program_type=ptype,
-            content=content,
             tools=tools,
             memory_keys=valid_mem,
             created_at=_ago(days=30),

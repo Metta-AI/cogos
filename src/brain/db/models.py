@@ -59,6 +59,19 @@ class ProgramType(str, enum.Enum):
     PYTHON = "python"
 
 
+def infer_program_type(content: str) -> ProgramType:
+    """Infer program type from content. Python if it has a def run() function."""
+    import ast
+    try:
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "run":
+                return ProgramType.PYTHON
+    except SyntaxError:
+        pass
+    return ProgramType.PROMPT
+
+
 # --- Core Models ---
 
 
@@ -76,6 +89,7 @@ class Memory(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
     active_version: int = 1
+    includes: list[str] = Field(default_factory=list)
     versions: dict[int, MemoryVersion] = Field(default_factory=dict)
     created_at: datetime | None = None
     modified_at: datetime | None = None
@@ -84,11 +98,9 @@ class Memory(BaseModel):
 class Program(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
-    program_type: ProgramType = ProgramType.PROMPT
-    content: str = ""
-    includes: list[str] = Field(default_factory=list)
+    memory_id: UUID | None = None
+    memory_version: int | None = None
     tools: list[str] = Field(default_factory=list)
-    memory_keys: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     runner: str | None = None
     created_at: datetime | None = None

@@ -24,7 +24,6 @@ from brain.db.models import (
     Memory,
     MemoryVersion,
     Program,
-    ProgramType,
     Resource,
     ResourceType,
     ResourceUsage,
@@ -720,6 +719,17 @@ class LocalRepository:
                 return mem
         return None
 
+    def get_memory_by_id(self, memory_id: UUID) -> Memory | None:
+        """Returns Memory by ID with ALL versions populated."""
+        self._maybe_reload()
+        mem = self._memories.get(memory_id)
+        if mem is None:
+            return None
+        mem.versions = {}
+        for mv in self._memory_versions.get(mem.id, []):
+            mem.versions[mv.version] = mv
+        return mem
+
     def insert_memory_version(self, mv: MemoryVersion) -> None:
         mv.created_at = mv.created_at or datetime.utcnow()
         self._memory_versions.setdefault(mv.memory_id, []).append(mv)
@@ -758,6 +768,13 @@ class LocalRepository:
                 mv.read_only = read_only
                 self._save()
                 return
+
+    def update_memory_includes(self, memory_id: UUID, includes: list[str]) -> None:
+        mem = self._memories.get(memory_id)
+        if mem:
+            mem.includes = includes
+            mem.modified_at = datetime.utcnow()
+            self._save()
 
     def update_memory_name(self, memory_id: UUID, new_name: str) -> None:
         mem = self._memories.get(memory_id)

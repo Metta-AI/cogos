@@ -26,7 +26,6 @@ from brain.db.models import (
     Memory,
     MemoryVersion,
     Program,
-    ProgramType,
     Resource,
     ResourceType,
     ResourceUsage,
@@ -323,10 +322,14 @@ class Repository:
         if not rows:
             return None
         first = rows[0]
+        includes_raw = first.get("includes", [])
+        if isinstance(includes_raw, str):
+            includes_raw = json.loads(includes_raw)
         mem = Memory(
             id=UUID(first["id"]),
             name=first["name"],
             active_version=first["active_version"],
+            includes=includes_raw or [],
             created_at=datetime.fromisoformat(first["created_at"]) if first.get("created_at") else None,
             modified_at=datetime.fromisoformat(first["modified_at"]) if first.get("modified_at") else None,
         )
@@ -347,16 +350,18 @@ class Repository:
     def insert_memory(self, mem: Memory) -> UUID:
         """Insert a new versioned memory record."""
         response = self._execute(
-            """INSERT INTO memory_v2 (id, name, active_version)
-               VALUES (:id, :name, :active_version)
+            """INSERT INTO memory_v2 (id, name, active_version, includes)
+               VALUES (:id, :name, :active_version, :includes::jsonb)
                ON CONFLICT (name)
                DO UPDATE SET active_version = EXCLUDED.active_version,
+                            includes = EXCLUDED.includes,
                             modified_at = now()
                RETURNING id, created_at, modified_at""",
             [
                 self._param("id", mem.id),
                 self._param("name", mem.name),
                 self._param("active_version", mem.active_version),
+                self._param("includes", mem.includes),
             ],
         )
         row = self._first_row(response)
@@ -369,13 +374,27 @@ class Repository:
     def get_memory_by_name(self, name: str) -> Memory | None:
         """Get a versioned memory by name, with all versions populated."""
         response = self._execute(
-            """SELECT m.id, m.name, m.active_version, m.created_at, m.modified_at,
+            """SELECT m.id, m.name, m.active_version, m.includes, m.created_at, m.modified_at,
                       mv.id as mv_id, mv.version, mv.read_only, mv.content,
                       mv.source, mv.created_at as mv_created_at
                FROM memory_v2 m
                LEFT JOIN memory_version mv ON mv.memory_id = m.id
                WHERE m.name = :name""",
             [self._param("name", name)],
+        )
+        rows = self._rows_to_dicts(response)
+        return self._memory_v2_from_rows(rows)
+
+    def get_memory_by_id(self, memory_id: UUID) -> Memory | None:
+        """Get a versioned memory by ID, with all versions populated."""
+        response = self._execute(
+            """SELECT m.id, m.name, m.active_version, m.includes, m.created_at, m.modified_at,
+                      mv.id as mv_id, mv.version, mv.read_only, mv.content,
+                      mv.source, mv.created_at as mv_created_at
+               FROM memory_v2 m
+               LEFT JOIN memory_version mv ON mv.memory_id = m.id
+               WHERE m.id = :id""",
+            [self._param("id", memory_id)],
         )
         rows = self._rows_to_dicts(response)
         return self._memory_v2_from_rows(rows)
@@ -473,6 +492,16 @@ class Repository:
             ],
         )
 
+    def update_memory_includes(self, memory_id: UUID, includes: list[str]) -> None:
+        """Update the includes list on a memory."""
+        self._execute(
+            "UPDATE memory_v2 SET includes = :includes::jsonb, modified_at = now() WHERE id = :id",
+            [
+                self._param("id", memory_id),
+                self._param("includes", includes),
+            ],
+        )
+
     def update_memory_name(self, memory_id: UUID, new_name: str) -> None:
         """Rename a memory."""
         self._execute(
@@ -525,7 +554,7 @@ class Repository:
         params.append(self._param("limit", limit))
 
         response = self._execute(
-            f"""SELECT m.id, m.name, m.active_version, m.created_at, m.modified_at,
+            f"""SELECT m.id, m.name, m.active_version, m.includes, m.created_at, m.modified_at,
                        mv.id as mv_id, mv.version, mv.read_only, mv.content,
                        mv.source, mv.created_at as mv_created_at
                 FROM memory_v2 m
@@ -605,7 +634,7 @@ class Repository:
 
             in_clause = ", ".join(placeholders)
             response = self._execute(
-                f"""SELECT m.id, m.name, m.active_version, m.created_at, m.modified_at,
+                f"""SELECT m.id, m.name, m.active_version, m.includes, m.created_at, m.modified_at,
                            mv.id as mv_id, mv.version, mv.read_only, mv.content,
                            mv.source, mv.created_at as mv_created_at
                     FROM memory_v2 m
@@ -634,7 +663,7 @@ class Repository:
 
             or_clause = " OR ".join(prefix_conditions)
             response = self._execute(
-                f"""SELECT m.id, m.name, m.active_version, m.created_at, m.modified_at,
+                f"""SELECT m.id, m.name, m.active_version, m.includes, m.created_at, m.modified_at,
                            mv.id as mv_id, mv.version, mv.read_only, mv.content,
                            mv.source, mv.created_at as mv_created_at
                     FROM memory_v2 m
@@ -681,24 +710,22 @@ class Repository:
         """Insert or update a program by name."""
         response = self._execute(
             """INSERT INTO programs
-                   (id, name, program_type, content, includes, tools, memory_keys, metadata, runner)
-               VALUES (:id, :name, :program_type, :content, :includes::jsonb,
-                       :tools::jsonb, :memory_keys::jsonb, :metadata::jsonb, :runner)
+                   (id, name, memory_id, memory_version,
+                    tools, metadata, runner)
+               VALUES (:id, :name, :memory_id, :memory_version,
+                       :tools::jsonb, :metadata::jsonb, :runner)
                ON CONFLICT (name)
-               DO UPDATE SET program_type = EXCLUDED.program_type, content = EXCLUDED.content,
-                            includes = EXCLUDED.includes, tools = EXCLUDED.tools,
-                            memory_keys = EXCLUDED.memory_keys, metadata = EXCLUDED.metadata,
+               DO UPDATE SET memory_id = EXCLUDED.memory_id, memory_version = EXCLUDED.memory_version,
+                            tools = EXCLUDED.tools, metadata = EXCLUDED.metadata,
                             runner = EXCLUDED.runner,
                             updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
                 self._param("id", program.id),
                 self._param("name", program.name),
-                self._param("program_type", program.program_type.value),
-                self._param("content", program.content),
-                self._param("includes", program.includes),
+                self._param("memory_id", program.memory_id),
+                self._param("memory_version", program.memory_version),
                 self._param("tools", program.tools),
-                self._param("memory_keys", program.memory_keys),
                 self._param("metadata", program.metadata),
                 self._param("runner", program.runner),
             ],
@@ -731,9 +758,6 @@ class Repository:
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def _program_from_row(self, row: dict) -> Program:
-        includes = row.get("includes", [])
-        if isinstance(includes, str):
-            includes = json.loads(includes)
         tools = row.get("tools", [])
         if isinstance(tools, str):
             tools = json.loads(tools)
@@ -744,15 +768,9 @@ class Repository:
         return Program(
             id=UUID(row["id"]),
             name=row["name"],
-            program_type=ProgramType(row.get("program_type", "prompt")),
-            content=row.get("content", ""),
-            includes=includes,
+            memory_id=UUID(row["memory_id"]) if row.get("memory_id") else None,
+            memory_version=row.get("memory_version"),
             tools=tools,
-            memory_keys=(
-                json.loads(row["memory_keys"])
-                if isinstance(row.get("memory_keys"), str)
-                else row.get("memory_keys", [])
-            ),
             metadata=metadata,
             runner=row.get("runner"),
             created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,

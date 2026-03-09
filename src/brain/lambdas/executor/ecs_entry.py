@@ -159,8 +159,9 @@ def main() -> None:
         if restored_session and os.path.isdir(CLAUDE_DIR) and os.listdir(CLAUDE_DIR):
             cmd.extend(["--resume", session_id])
 
-        # Build prompt: program content + task content + event context
-        prompt = program.content
+        # Build prompt: resolve program content from memory
+        from brain.lambdas.executor.handler import _resolve_program_source
+        prompt = _resolve_program_source(program, repo)
         if task_content:
             prompt += f"\n\n{task_content}"
         if event_data.get("payload"):

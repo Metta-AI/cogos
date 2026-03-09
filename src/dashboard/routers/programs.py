@@ -55,7 +55,6 @@ def get_programs(name: str):
         programs.append(
             Program(
                 name=p.name,
-                type=p.program_type.value if p.program_type else "prompt",
                 description=metadata.get("description", ""),
                 trigger_count=0,
                 runs=len(prog_runs),

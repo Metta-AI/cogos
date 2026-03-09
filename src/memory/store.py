@@ -107,6 +107,10 @@ class MemoryStore:
         """Get a memory by name."""
         return self._repo.get_memory_by_name(name)
 
+    def get_by_id(self, memory_id) -> Memory | None:
+        """Get a memory by ID."""
+        return self._repo.get_memory_by_id(memory_id)
+
     def get_version(self, name: str, version: int) -> MemoryVersion | None:
         """Get a specific version of a memory."""
         mem = self._repo.get_memory_by_name(name)
@@ -193,9 +197,41 @@ class MemoryStore:
             self._repo.delete_memory_version(mem.id, version)
 
     # ───────────────────────────────────────────────────────────
-    # Key Resolution
+    # Includes Resolution
     # ───────────────────────────────────────────────────────────
+
+    def resolve_includes(self, name: str) -> list[Memory]:
+        """Recursively resolve a memory's includes, with cycle detection.
+
+        Returns all included memories (not the root memory itself).
+        """
+        mem = self._repo.get_memory_by_name(name)
+        if not mem or not mem.includes:
+            return []
+        visited: set[str] = {name}
+        result: list[Memory] = []
+        self._resolve_includes_rec(mem.includes, visited, result)
+        return result
+
+    def _resolve_includes_rec(
+        self, keys: list[str], visited: set[str], result: list[Memory],
+    ) -> None:
+        resolved = self._repo.resolve_memory_keys(keys)
+        for mem in resolved:
+            if mem.name in visited:
+                continue
+            visited.add(mem.name)
+            result.append(mem)
+            if mem.includes:
+                self._resolve_includes_rec(mem.includes, visited, result)
 
     def resolve_keys(self, keys: list[str]) -> list[Memory]:
         """Resolve memory keys — delegates to repo."""
         return self._repo.resolve_memory_keys(keys)
+
+    def update_includes(self, name: str, includes: list[str]) -> None:
+        """Update the includes list on a memory."""
+        mem = self._repo.get_memory_by_name(name)
+        if mem is None:
+            raise ValueError(f"memory '{name}' not found")
+        self._repo.update_memory_includes(mem.id, includes)

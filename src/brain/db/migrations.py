@@ -151,6 +151,14 @@ $$ LANGUAGE plpgsql""",
     EXECUTE FUNCTION task_scheduled_trigger()""",
         "INSERT INTO schema_version (version) VALUES (5) ON CONFLICT DO NOTHING",
     ],
+    7: [
+        "ALTER TABLE programs ADD COLUMN IF NOT EXISTS memory_id UUID REFERENCES memory_v2(id)",
+        "ALTER TABLE programs ADD COLUMN IF NOT EXISTS memory_version INT",
+        "ALTER TABLE programs DROP COLUMN IF EXISTS content",
+        "ALTER TABLE programs DROP COLUMN IF EXISTS program_type",
+        "ALTER TABLE programs DROP COLUMN IF EXISTS includes",
+        "INSERT INTO schema_version (version) VALUES (7) ON CONFLICT DO NOTHING",
+    ],
     6: [
         # --- Create versioned memory tables ---
         """CREATE TABLE IF NOT EXISTS memory_v2 (
@@ -216,6 +224,11 @@ $$ LANGUAGE plpgsql""",
         "CREATE INDEX IF NOT EXISTS idx_tools_name ON tools (name)",
         "CREATE INDEX IF NOT EXISTS idx_tools_enabled ON tools (enabled) WHERE enabled = true",
         "INSERT INTO schema_version (version) VALUES (8) ON CONFLICT DO NOTHING",
+    ],
+    9: [
+        "ALTER TABLE memory_v2 ADD COLUMN IF NOT EXISTS includes JSONB NOT NULL DEFAULT '[]'",
+        "ALTER TABLE programs DROP COLUMN IF EXISTS memory_keys",
+        "INSERT INTO schema_version (version) VALUES (9) ON CONFLICT DO NOTHING",
     ],
 }
 

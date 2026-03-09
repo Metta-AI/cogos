@@ -43,11 +43,9 @@ END $$;
 CREATE TABLE IF NOT EXISTS programs (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name          TEXT NOT NULL UNIQUE,
-    program_type  TEXT NOT NULL DEFAULT 'prompt' CHECK (program_type IN ('prompt', 'python')),
-    content       TEXT NOT NULL DEFAULT '',
-    includes      JSONB NOT NULL DEFAULT '[]',
+    memory_id     UUID REFERENCES memory_v2(id),
+    memory_version INT,
     tools         JSONB NOT NULL DEFAULT '[]',
-    memory_keys   JSONB NOT NULL DEFAULT '[]',
     metadata      JSONB NOT NULL DEFAULT '{}',
     runner          TEXT CHECK (runner IN ('lambda', 'ecs')) DEFAULT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

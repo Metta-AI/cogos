@@ -33,9 +33,9 @@ class ContextLayer:
 class ContextEngine:
     """Assembles layered system prompts for Bedrock converse API calls.
 
-    Programs declare memory_keys listing which memory paths to load.
-    The engine resolves those keys (with ancestor/child init expansion),
-    builds priority-ordered layers, and returns Bedrock-compatible system blocks.
+    Programs link to a memory whose includes declare which other memories to load.
+    The engine resolves includes recursively, builds priority-ordered layers,
+    and returns Bedrock-compatible system blocks.
     """
 
     def __init__(self, memory_store: MemoryStore, *, total_budget: int = 50_000) -> None:
@@ -56,18 +56,19 @@ class ContextEngine:
         """
         layers: list[ContextLayer] = []
 
-        # Layer 90: Program content
-        if program.content:
+        # Layer 90: Program content — resolve from linked memory if available
+        program_content, program_memory_name = self._resolve_program_content(program)
+        if program_content:
             layers.append(ContextLayer(
                 name="program",
-                content=program.content,
+                content=program_content,
                 priority=90,
                 truncatable=False,
             ))
 
-        # Layer 80: Declared memories
-        if program.memory_keys:
-            memories = self._memory.resolve_keys(program.memory_keys)
+        # Layer 80: Included memories (from the program's linked memory)
+        if program_memory_name:
+            memories = self._memory.resolve_includes(program_memory_name)
             if memories:
                 sections = []
                 for mem in memories:
@@ -99,6 +100,31 @@ class ContextEngine:
         # Sort by priority descending, apply budget
         layers.sort(key=lambda layer: layer.priority, reverse=True)
         return self._apply_budget(layers)
+
+    def _resolve_program_content(self, program: Program) -> tuple[str, str]:
+        """Resolve program content from linked memory.
+
+        Returns (content, memory_name). memory_name is used for includes resolution.
+        """
+        if not program.memory_id:
+            logger.warning("Program %s has no linked memory", program.name)
+            return "", ""
+        mem = self._memory.get_by_id(program.memory_id)
+        if not mem:
+            logger.warning(
+                "Program %s: memory_id %s not found", program.name, program.memory_id,
+            )
+            return "", ""
+        version = program.memory_version or mem.active_version
+        mv = mem.versions.get(version)
+        if mv:
+            return mv.content, mem.name
+        logger.warning(
+            "Program %s: memory version %d not found, using active",
+            program.name, version,
+        )
+        active = mem.versions.get(mem.active_version)
+        return (active.content if active else ""), mem.name
 
     def _apply_budget(self, layers: list[ContextLayer]) -> list[dict]:
         """Convert layers to Bedrock system blocks, truncating if over budget."""
