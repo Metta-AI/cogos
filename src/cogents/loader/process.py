@@ -50,7 +50,7 @@ from pathlib import Path
 from cogos.db.models.handler import Handler
 from cogos.db.models.process import Process
 from cogos.db.models.process_capability import ProcessCapability
-from cogos.db.repository import CogosRepository
+from cogos.db.repository import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def load_processes_from_dir(root: Path) -> list[Process]:
     return processes
 
 
-def _sync_inline_handlers(proc: Process, repo: CogosRepository) -> int:
+def _sync_inline_handlers(proc: Process, repo: Repository) -> int:
     """Create handlers from ``metadata["handlers"]`` patterns."""
     patterns = proc.metadata.get("handlers", [])
     if not patterns:
@@ -105,7 +105,7 @@ def _sync_inline_handlers(proc: Process, repo: CogosRepository) -> int:
     return count
 
 
-def _sync_inline_capabilities(proc: Process, repo: CogosRepository) -> int:
+def _sync_inline_capabilities(proc: Process, repo: Repository) -> int:
     """Bind capabilities from ``metadata["capabilities"]`` names."""
     cap_names = proc.metadata.get("capabilities", [])
     if not cap_names:
@@ -130,7 +130,7 @@ def _sync_inline_capabilities(proc: Process, repo: CogosRepository) -> int:
     return count
 
 
-def sync_processes(root: Path, repo: CogosRepository) -> tuple[int, int]:
+def sync_processes(root: Path, repo: Repository) -> tuple[int, int]:
     """Load all processes from *root* and upsert into the datastore.
 
     Also syncs inline handlers and capability bindings declared in

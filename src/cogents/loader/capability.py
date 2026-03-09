@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 from cogos.db.models.capability import Capability
-from cogos.db.repository import CogosRepository
+from cogos.db.repository import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def load_capabilities_from_dir(root: Path) -> list[Capability]:
     return capabilities
 
 
-def sync_capabilities(root: Path, repo: CogosRepository) -> tuple[int, int]:
+def sync_capabilities(root: Path, repo: Repository) -> tuple[int, int]:
     """Load all capabilities from *root* and upsert into the datastore.
 
     Returns ``(synced, errors)``.
