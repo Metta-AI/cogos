@@ -4,144 +4,158 @@ An operating system for autonomous AI agents.
 
 ## Core Concepts
 
-**Task** — A process. The only active entity in the system. Has a lifecycle,
-priority, resource requirements, and capabilities. Executes by running a
-prompt through an LLM that writes Python against tool proxy objects.
+**Process** — The only active entity. Has a lifecycle, priority, resource
+requirements, and capabilities. Executes by running a prompt through an LLM
+that writes Python against capability proxy objects.
 
-**Memory** — A versioned filesystem. Stores both code (prompt templates) and
-data. Tasks reference memory entries for their executable. Tasks interact with
-memory at runtime through tools.
+**File** — A versioned entry in a hierarchical store. Stores both code (prompt
+templates) and data. Processes reference files for their executable. Processes
+interact with files at runtime through capabilities.
 
-**Tool** — A capability. Defines what a task can do. Tools are Python
-functions with typed input/output schemas. At runtime, tools are presented as
-proxy objects with methods. A task can only invoke tools explicitly bound
-to it.
+**Capability** — Defines what a process can do. Capabilities are Python
+functions with typed input/output schemas. At runtime, capabilities are
+presented as proxy objects with methods. A process can only invoke capabilities
+explicitly bound to it.
 
-**Event** — A signal. Append-only log in the database. Tasks subscribe to
-event patterns. The scheduler matches events to subscriptions and wakes
-sleeping tasks.
+**Signal** — An append-only log entry. Processes register handlers for signal
+patterns. The scheduler matches signals to handlers and wakes sleeping
+processes.
 
-**Subscription** — A signal handler. Binds a task to an event pattern. When a
-matching event arrives, the task becomes eligible to run.
+**Handler** — Binds a process to a signal pattern. When a matching signal
+arrives, the process becomes eligible to run.
 
-## Task Lifecycle
+## Process Lifecycle
 
 ```
-            event match
+            signal match
   WAITING ─────────────────> RUNNABLE
-     ^                          │
-     │                          ├── resources available ──> RUNNING
-     │                          │                             │
-     │                          └── resources exhausted ─> BLOCKED
-     │                                                       │
-     │                          resources freed              │
-     │                          BLOCKED ──────> RUNNABLE     │
-     │                                                       │
-     │  done + daemon ───────────────────────────────────────┘
-     │                                                       │
-     └───────────────────────────────────────────────────────┘
-                                                             │
-                              done + one_shot ──> COMPLETED  │
-                              failed + retries ──> RUNNABLE  │
-                              failed + exhausted -> DISABLED │
+     ^                          |
+     |                          |-- resources available --> RUNNING
+     |                          |                             |
+     |                          '-- resources exhausted --> BLOCKED
+     |                                                       |
+     |                          resources freed              |
+     |                          BLOCKED ------> RUNNABLE     |
+     |                                                       |
+     |                       preempted                       |
+     |                       RUNNING --------> SUSPENDED     |
+     |                       SUSPENDED ------> RUNNABLE      |
+     |                                                       |
+     |  done + daemon -----------------------------------------------+
+     |                                                       |
+     '-------------------------------------------------------+
+                                                             |
+                              done + one_shot --> COMPLETED  |
+                              failed + retries --> RUNNABLE  |
+                              failed + exhausted -> DISABLED |
 ```
 
 **Modes:**
 
 - `daemon` — Runs indefinitely. Completes a run, returns to WAITING for the
-  next matching event. Must have at least one subscription.
-- `one_shot` — Runs once and completes. Cannot have subscriptions.
+  next matching signal. Must have at least one handler.
+- `one_shot` — Runs once and completes. Cannot have handlers.
 
 **Rules:**
 
-- A task processes one event per run, strictly sequential.
-- For parallelism, a task spawns child `one_shot` tasks.
-- A task that stays RUNNABLE too long gets its effective priority aged upward
-  to prevent starvation.
+- A process handles one signal per run, strictly sequential.
+- For parallelism, a process spawns child `one_shot` processes.
+- A process that stays RUNNABLE too long gets its effective priority aged
+  upward to prevent starvation.
+- Preemptible processes can be suspended mid-execution when a higher-priority
+  process needs resources. The executor snapshots conversation state, variable
+  table, and scope, then resumes later from the snapshot.
 
 ## Execution Model
 
-### Two Meta-Tools
+### Two Meta-Capabilities
 
-Every task interacts with the system through two meta-tools:
+Every process interacts with the system through two meta-capabilities:
 
 ```
-search_tools(query: str) -> list[ToolSpec]
+search(query: str) -> list[CapabilitySpec]
 ```
 
-Discover available tools by keyword. Returns names, descriptions, and
-schemas. Keeps LLM context lean — tool definitions are loaded on demand.
+Discover available capabilities by keyword. Returns names, descriptions,
+and schemas. Keeps LLM context lean — definitions are loaded on demand.
 
 ```
 run_code(code: str) -> Any
 ```
 
 Execute Python in a sandboxed environment with proxy objects pre-injected
-for all tools bound to the task.
+for all capabilities bound to the process.
 
 ### Proxy Objects
 
-Inside `run_code`, tools appear as Python objects with methods. The LLM
-writes natural Python.
+Inside `run_code`, capabilities appear as Python objects with methods. The
+LLM writes natural Python.
 
 ```python
-# Static tools are top-level objects in the sandbox
-memory      # .read(key) .search(query) .write(key, content)
-tasks       # .list() .get(name) .create(...)
-events      # .emit(type, payload) .query(...)
+# Static capabilities are top-level objects in the sandbox
+files       # .read(key) .search(query) .write(key, content)
+procs       # .list() .get(name) .create(...) .spawn(...)
+signals     # .emit(type, payload) .query(...)
 resources   # .check(name)
 
-# Tool calls return proxy objects with methods
-config = memory.read("priorities")
+# Capability calls return proxy objects with methods
+config = files.read("priorities")
 print(config.content)
 config.update("new priorities")
 config.versions()
 
 # Proxy objects can expose nested proxies
-task = tasks.get("data-sync")
-task.kill()
-task.subscriptions.add("github:pr-opened")
+p = procs.get("data-sync")
+p.kill()
+p.handlers.add("github:pr-opened")
 
-# Spawn a child task with delegated capabilities
-child = tasks.create(
+# Spawn a child process with delegated capabilities
+child = procs.spawn(
     name="reindex",
     mode="one_shot",
-    code=memory.read("prompts/reindex").id,
+    code=files.read("prompts/reindex").id,
     content="Reindex after data-sync failure",
 )
+
+# Human-in-the-loop via signals
+signals.emit("approval:requested", {
+    "action": "delete staging data",
+    "process": "cleanup",
+})
+# Process goes WAITING, handler on approval:granted wakes it
 ```
 
 ### Scope
 
 The executor maintains a variable table during each run. Scope starts with
-static tool objects and grows as the agent interacts.
+static capability objects and grows as the agent interacts.
 
 ```python
 @dataclass
 class ScopeEntry:
-    type: str                           # "Memory", "Task", etc.
+    type: str                           # "File", "Process", etc.
     context: dict                       # instance state (IDs, refs)
-    methods: list[ToolSpec]             # callable methods
+    methods: list[CapabilitySpec]       # callable methods
     children: dict[str, ScopeEntry]     # nested attributes
 ```
 
-Tools control scope through their return value:
+Capabilities control scope through their return value:
 
 ```python
 @dataclass
-class ToolResult:
+class CapabilityResult:
     content: Any                # value shown to the agent
     scope: dict | null          # variables to add to scope
     release: list[str] | null   # variables to remove from scope
 ```
 
-- Scope entries are created when a tool returns `scope` additions.
+- Scope entries are created when a capability returns `scope` additions.
 - Released explicitly via `release`, or auto-cleaned at end of run.
 - Nested scopes cascade-release with their parent.
 
 ### Proxy Generation
 
-A tool's `output_schema` drives proxy generation:
+A capability's `output_schema` drives proxy generation:
 
 ```json
 {
@@ -152,11 +166,11 @@ A tool's `output_schema` drives proxy generation:
   },
   "methods": {
     "update": {
-      "handler": "cogos.tools.memory.update",
+      "handler": "cogos.capabilities.files.update",
       "args": {"content": "string"}
     },
     "versions": {
-      "handler": "cogos.tools.memory.versions",
+      "handler": "cogos.capabilities.files.versions",
       "args": {}
     }
   }
@@ -169,37 +183,44 @@ under the name the agent assigned it.
 
 ## Scheduler
 
-The scheduler is a daemon task. It subscribes to `scheduler:tick` events
-emitted by a cron job. Its prompt orchestrates scheduling by calling tools.
+The scheduler is a daemon process. It registers a handler for
+`scheduler:tick` signals emitted by a cron job. Its prompt orchestrates
+scheduling by invoking capabilities.
 
 ### Per-Tick Flow
 
-1. **Match events.** Find unmatched events. For each, find enabled
-   subscriptions with matching patterns. Create EventDelivery rows. Mark
-   WAITING tasks with pending deliveries as RUNNABLE.
+1. **Match signals.** Find undelivered signals. For each, find enabled
+   handlers with matching patterns. Create SignalDelivery rows. Mark WAITING
+   processes with pending deliveries as RUNNABLE.
 
 2. **Age priorities.** Compute effective priority:
-   `effective = task.priority + f(now - task.runnable_since)`.
+   `effective = process.priority + f(now - process.runnable_since)`.
 
-3. **Check resources.** For each RUNNABLE task, verify required resources have
-   capacity. Insufficient -> BLOCKED.
+3. **Check resources.** For each RUNNABLE process, verify required resources
+   have capacity. Insufficient -> BLOCKED.
 
-4. **Unblock.** Check BLOCKED tasks. Resources now available -> RUNNABLE.
+4. **Unblock.** Check BLOCKED processes. Resources now available -> RUNNABLE.
 
-5. **Select.** Softmax sample from RUNNABLE tasks by effective priority, up to
-   available execution slots.
+5. **Preempt.** If a RUNNABLE process has higher effective priority than a
+   running preemptible process, suspend the running process (snapshot state)
+   and free its resources.
 
-6. **Dispatch.** Invoke the appropriate runner for each selected task.
+6. **Select.** Softmax sample from RUNNABLE processes by effective priority,
+   up to available execution slots.
 
-### Scheduler Tools
+7. **Dispatch.** Invoke the appropriate runner for each selected process.
+
+### Scheduler Capabilities
 
 ```
-match_events()           match pending events to subscriptions
-select_tasks()           softmax sample from runnable tasks
-dispatch_task(task_id)   send to executor
-check_resources()        query resource availability
-unblock_tasks()          move BLOCKED -> RUNNABLE where possible
-kill_task(task_id)       force-terminate a running task
+match_signals()              match pending signals to handlers
+select_processes()           softmax sample from runnable processes
+dispatch_process(proc_id)    send to executor
+check_resources()            query resource availability
+unblock_processes()          move BLOCKED -> RUNNABLE where possible
+suspend_process(proc_id)     snapshot and suspend a running process
+resume_process(proc_id)      resume from snapshot
+kill_process(proc_id)        force-terminate a running process
 ```
 
 ## Runners
@@ -211,12 +232,13 @@ environment and what additional capabilities are available.
 
 Our executor controls the conversation loop directly.
 
-1. Load task, prompt from memory (resolve includes), tool instructions.
-2. Build system prompt and user message (task content + event payload).
-3. Conversation loop: LLM calls `search_tools` / `run_code`, executor
-   handles them, returns results, loops until done.
+1. Load process, prompt from file store (resolve includes), capability
+   instructions.
+2. Build system prompt and user message (process content + signal payload).
+3. Conversation loop: LLM calls `search` / `run_code`, executor handles
+   them, returns results, loops until done.
 4. Record run. Validate result against return schema.
-5. Transition task state (daemon -> WAITING, one_shot -> COMPLETED).
+5. Transition process state (daemon -> WAITING, one_shot -> COMPLETED).
 
 Good for: reasoning, data operations, API calls, short-lived work.
 
@@ -224,12 +246,13 @@ Good for: reasoning, data operations, API calls, short-lived work.
 
 Claude Code CLI runs in a container. The sandbox is exposed as an MCP server.
 
-1. Launch container. MCP server starts, exposing `search_tools` and
-   `run_code` based on the task's tool bindings.
-2. Claude Code CLI starts with the task's prompt as system instructions and
-   content as the initial message.
-3. Claude Code uses `run_code` for system interaction (memory, tasks,
-   events) and its native tools (bash, files, git) for everything else.
+1. Launch container. MCP server starts, exposing `search` and `run_code`
+   based on the process's capability bindings.
+2. Claude Code CLI starts with the process's prompt as system instructions
+   and content as the initial message.
+3. Claude Code uses `run_code` for system interaction (files, processes,
+   signals) and its native capabilities (bash, file editing, git) for
+   everything else.
 4. On completion, record run. Optionally persist session to S3.
 
 Good for: software engineering, filesystem work, git, long-running sessions.
@@ -241,95 +264,164 @@ Shared by both runners:
 ```
 sandbox/
     executor.py     variable table, scope management, code execution
-    proxy.py        proxy object generation from output schemas
-    server.py       MCP server wrapping search_tools + run_code
+    proxy.py        proxy generation from output schemas
+    server.py       MCP server wrapping search + run_code
 ```
+
+## Preemption
+
+Preemptible processes can be suspended mid-execution to free resources for
+higher-priority work.
+
+### Snapshot
+
+When the scheduler suspends a process, the executor captures:
+
+- Conversation messages (system prompt + all turns so far)
+- Variable table (all scope entries with context)
+- Current turn index
+- Pending capability results
+
+This is stored on the Run record:
+
+```
+Run.snapshot    dict?       serialized execution state
+```
+
+### Resume
+
+When the scheduler resumes a suspended process:
+
+1. Executor loads the snapshot from the Run.
+2. Rebuilds conversation state and variable table.
+3. Continues the conversation loop from where it left off.
+
+### Rules
+
+- `preemptible: bool` on Process controls whether suspension is allowed.
+- Long-running ECS processes are generally not preemptible (stateful
+  filesystem, git operations).
+- Lambda processes are good candidates for preemption.
+- A process can only be suspended between capability calls, not mid-LLM-
+  generation.
+
+## Human-in-the-Loop
+
+No special mechanism needed. It falls out naturally from signals:
+
+1. Process emits `approval:requested` signal with details of the action.
+2. Process registers a handler for `approval:granted:{process_id}`.
+3. Process returns, goes to WAITING.
+4. Human reviews in dashboard or channel, approves or rejects.
+5. Approval signal emitted, process wakes and proceeds (or handles
+   rejection).
+
+This pattern works for any human interaction: approvals, reviews, input
+requests, escalations.
+
+## Model Routing
+
+Processes can specify model preferences. The scheduler routes to available
+models based on requirements and cost.
+
+```
+Process:
+  model             str?        preferred model (null = scheduler decides)
+  model_constraints  dict?      e.g. {"min_context": 128000, "max_cost_per_1k": 0.01}
+```
+
+The scheduler considers model availability, cost, and task complexity when
+dispatching. Cheap tasks go to smaller models. Complex tasks go to larger
+ones. Explicit `model` overrides scheduler choice.
 
 ## Data Model
 
-### Task
+### Process
 
 ```
-Task
+Process
+  id                UUID            PK
+  name              str             unique
+  mode              enum            daemon | one_shot
+  content           str             process-specific payload (argv)
+  code              UUID            FK -> File (prompt template)
+  priority          float           softmax scheduling weight
+  resources         list[UUID]      FK -> Resource
+  runner            enum            lambda | ecs
+  status            enum            WAITING | RUNNABLE | RUNNING | BLOCKED
+                                    | SUSPENDED | COMPLETED | DISABLED
+  preemptible       bool            can be suspended for higher-priority work
+  runnable_since    datetime?       starvation tracking
+  parent_process    UUID?           FK -> Process
+  return_schema     dict?           JSON Schema for typed output
+  model             str?            preferred LLM model
+  model_constraints dict?           model requirements
+  max_duration_ms   int?            execution timeout
+  max_retries       int             default 0
+  retry_count       int             resets on success
+  retry_backoff_ms  int?            delay before retry
+  clear_context     bool            ECS: resume session or fresh
+  created_at        datetime
+  updated_at        datetime
+```
+
+### ProcessCapability
+
+```
+ProcessCapability
   id              UUID            PK
-  name            str             unique
-  mode            enum            daemon | one_shot
-  content         str             task-specific payload (argv)
-  code            UUID            FK -> Memory (prompt template)
-  priority        float           softmax scheduling weight
-  resources       list[UUID]      FK -> Resource
-  runner          enum            lambda | ecs
-  status          enum            WAITING | RUNNABLE | RUNNING
-                                  | BLOCKED | COMPLETED | DISABLED
-  runnable_since  datetime?       starvation tracking
-  parent_task     UUID?           FK -> Task
-  return_schema   dict?           JSON Schema for typed output
-  max_duration_ms int?            execution timeout
-  max_retries     int             default 0
-  retry_count     int             resets on success
-  retry_backoff_ms int?           delay before retry
-  clear_context   bool            ECS: resume session or fresh
-  created_at      datetime
-  updated_at      datetime
-```
-
-### TaskTool
-
-```
-TaskTool
-  id              UUID            PK
-  task            UUID            FK -> Task
-  tool            UUID            FK -> Tool
-  config          dict?           per-task scoping
+  process         UUID            FK -> Process
+  capability      UUID            FK -> Capability
+  config          dict?           per-process scoping
   delegatable     bool            passable to spawned children
 ```
 
-### Subscription
+### Handler
 
 ```
-Subscription
+Handler
   id              UUID            PK
-  task            UUID            FK -> Task
-  event_pattern   str             matched against Event.event_type
+  process         UUID            FK -> Process
+  signal_pattern  str             matched against Signal.signal_type
   enabled         bool
 ```
 
-### Event
+### Signal
 
 ```
-Event
+Signal
   id              UUID            PK
-  event_type      str             hierarchical, e.g. "task:completed:sync"
+  signal_type     str             hierarchical, e.g. "process:completed:sync"
   source          str             originating component
   payload         dict
-  parent_event    UUID?           FK -> Event (causal chain)
+  parent_signal   UUID?           FK -> Signal (causal chain)
   created_at      datetime
 ```
 
-### EventDelivery
+### SignalDelivery
 
 ```
-EventDelivery
+SignalDelivery
   id              UUID            PK
-  event           UUID            FK -> Event
-  subscription    UUID            FK -> Subscription
+  signal          UUID            FK -> Signal
+  handler         UUID            FK -> Handler
   status          enum            pending | delivered | skipped
   run             UUID?           FK -> Run
   created_at      datetime
 ```
 
-### Memory
+### File
 
 ```
-Memory
+File
   id              UUID            PK
   key             str             hierarchical path
   created_at      datetime
   updated_at      datetime
 
-MemoryVersion
+FileVersion
   id              UUID            PK
-  memory          UUID            FK -> Memory
+  file            UUID            FK -> File
   content         str
   read_only       bool
   source          str             "agent" | "human" | "system"
@@ -337,12 +429,12 @@ MemoryVersion
   created_at      datetime
 ```
 
-### Tool
+### Capability
 
 ```
-Tool
+Capability
   id              UUID            PK
-  name            str             hierarchical, e.g. "memory/read"
+  name            str             hierarchical, e.g. "files/read"
   handler         str             python dotted path
   input_schema    dict            JSON Schema for arguments
   output_schema   dict?           JSON Schema for return value + methods
@@ -356,10 +448,12 @@ Tool
 ```
 Run
   id              UUID            PK
-  task            UUID            FK -> Task
-  event           UUID?           FK -> Event (triggering event)
+  process         UUID            FK -> Process
+  signal          UUID?           FK -> Signal (triggering signal)
   conversation    UUID?           FK -> Conversation
-  status          enum            running | completed | failed | timeout
+  status          enum            running | completed | failed
+                                  | timeout | suspended
+  snapshot        dict?           serialized state for preemption resume
   tokens_in       int
   tokens_out      int
   cost_usd        float
@@ -395,7 +489,7 @@ ResourceUsage
 Cron
   id              UUID            PK
   expression      str             cron expression
-  event_type      str             event to emit
+  signal_type     str             signal to emit
   payload         dict
   enabled         bool
 ```
@@ -457,8 +551,8 @@ Budget
 Trace
   id              UUID            PK
   run             UUID            FK -> Run
-  tool_calls      list[dict]
-  memory_ops      list[dict]
+  capability_calls list[dict]
+  file_ops        list[dict]
   created_at      datetime
 ```
 
@@ -469,13 +563,13 @@ cogos/
   db/
     models/
       __init__.py
-      task.py
-      task_tool.py
-      subscription.py
-      memory.py
-      tool.py
-      event.py
-      event_delivery.py
+      process.py
+      process_capability.py
+      handler.py
+      file.py
+      capability.py
+      signal.py
+      signal_delivery.py
       run.py
       resource.py
       cron.py
@@ -491,26 +585,26 @@ cogos/
     executor.py             variable table, scope management
     proxy.py                proxy generation from output schemas
     server.py               MCP server for ECS runner
-  memory/
+  files/
     store.py
     context_engine.py
   cli/
     __main__.py
-    task.py                 task commands
-    subscription.py         subscription commands
-    memory.py               memory commands
-    tool.py                 tool commands
-    event.py                event commands
+    process.py              process commands
+    handler.py              handler commands
+    file.py                 file commands
+    capability.py           capability commands
+    signal.py               signal commands
     resource.py             resource commands
     cron.py                 cron commands
   dashboard/
     app.py
     routers/
-      tasks.py
-      subscriptions.py
-      memory.py
-      tools.py
-      events.py
+      processes.py
+      handlers.py
+      files.py
+      capabilities.py
+      signals.py
       resources.py
       runs.py
       cron.py
@@ -528,15 +622,17 @@ cogos/
     gmail.py
     asana.py
     cli.py
+```
 
 ## Open Questions
 
-1. **Subscription pattern syntax.** Simple glob (`task:completed:*`) or regex
+1. **Signal pattern syntax.** Simple glob (`process:completed:*`) or regex
    or JSONPath filters on payload?
 2. **Scope persistence.** Should the variable table survive ECS session
    resume, or start fresh each wake?
-3. **Tool versioning.** Should TaskTool pin a tool version or always use
-   latest?
-4. **Resource quantities.** Should `resources` on Task become a join table
+3. **Capability versioning.** Should ProcessCapability pin a capability
+   version or always use latest?
+4. **Resource quantities.** Should `resources` on Process become a join table
    with `amount` per resource?
-```
+5. **Preemption granularity.** Can we snapshot mid-LLM-generation (requires
+   beam search tree serialization) or only between capability calls?
