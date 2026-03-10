@@ -164,6 +164,8 @@ def status():
     """Show polis resource status and per-cogent component health."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    config = PolisConfig()
+
     try:
         polis_session, _ = get_polis_session()
     except ValueError as e:
@@ -307,6 +309,7 @@ def status():
     for item in items:
         name = item.get("cogent_name", "?")
         safe_name = name.replace(".", "-")
+        dashboard_url = f"https://{_cogent_subdomain(name, config.domain)}"
 
         def _cell(val):
             s, d = _status_style(str(val) if val else "-")
@@ -342,6 +345,7 @@ def status():
         ct.add_row("CPU (1m/10m)", _cell(f"{int(item.get('cpu_1m', 0))}%/{int(item.get('cpu_10m', 0))}%" if item.get("cpu_1m") else None))
         ct.add_row("Memory", _cell(f"{int(item.get('mem_pct', 0))}%" if item.get("mem_pct") else None))
         ct.add_row("Dashboard", _cell(dashboards.get(safe_name)))
+        ct.add_row("Dashboard URL", f"[link={dashboard_url}][underline cyan]{dashboard_url}[/underline cyan][/link]")
 
         # EventBridge
         bus_name = f"cogent-{safe_name}"
