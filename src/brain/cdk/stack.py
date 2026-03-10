@@ -133,10 +133,10 @@ class BrainStack(Stack):
             retention_period=Duration.days(1),
         )
 
-        # Bot token from Secrets Manager
+        # Bot token from Secrets Manager (existing secret stores {"access_token": "..."})
         bot_token_secret = secretsmanager.Secret.from_secret_name_v2(
             self, "DiscordBotToken",
-            secret_name=f"cogent/{config.cogent_name}/discord/token",
+            secret_name=f"cogent/{config.cogent_name}/discord",
         )
 
         # Task definition
@@ -156,14 +156,14 @@ class BrainStack(Stack):
             ),
             environment={
                 "COGENT_NAME": config.cogent_name,
-                "DB_CLUSTER_ARN": self.database.cluster_arn,
+                "DB_RESOURCE_ARN": self.database.cluster_arn,
                 "DB_SECRET_ARN": self.database.secret.secret_arn if self.database.secret else "",
                 "DB_NAME": "cogent",
                 "DISCORD_REPLY_QUEUE_URL": self.discord_reply_queue.queue_url,
                 "AWS_REGION": config.region,
             },
             secrets={
-                "DISCORD_BOT_TOKEN": ecs.Secret.from_secrets_manager(bot_token_secret),
+                "DISCORD_BOT_TOKEN": ecs.Secret.from_secrets_manager(bot_token_secret, field="access_token"),
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="discord-bridge"),
         )

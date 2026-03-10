@@ -147,6 +147,7 @@ class DiscordBridge:
 
         @self.client.event
         async def on_message(message: discord.Message):
+            logger.info("on_message from %s in %s: %s", message.author, message.channel, message.content[:80] if message.content else "(empty)")
             if message.author == self.client.user:
                 return
             await self._relay_to_db(message)
@@ -173,7 +174,7 @@ class DiscordBridge:
                 source="discord",
                 payload=payload,
             ))
-            logger.debug("Wrote %s from %s to DB", event_type, message.author)
+            logger.info("Wrote %s from %s to DB", event_type, message.author)
 
             # Start typing indicator for DMs and mentions
             if event_type in ("discord:dm", "discord:mention"):
