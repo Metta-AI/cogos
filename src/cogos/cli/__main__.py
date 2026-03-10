@@ -898,8 +898,7 @@ def _discord_service_name(cogent_name: str) -> str:
 
 
 def _discord_cluster_name(cogent_name: str) -> str:
-    safe = cogent_name.replace(".", "-")
-    return f"cogent-{safe}"
+    return "cogent-polis"
 
 
 def _get_service_status(cogent_name: str) -> dict | None:
