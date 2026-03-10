@@ -459,7 +459,7 @@ export async function getProcesses(name: string): Promise<CogosProcess[]> {
 export async function getProcessDetail(
   name: string,
   processId: string,
-): Promise<{ process: CogosProcess; runs: CogosProcessRun[]; resolved_prompt: string; code_key: string | null; capabilities: string[] }> {
+): Promise<{ process: CogosProcess; runs: CogosProcessRun[]; resolved_prompt: string; file_keys: string[]; capabilities: string[]; capability_configs: Record<string, Record<string, unknown>> }> {
   return fetchJSON(`/api/cogents/${name}/processes/${processId}`);
 }
 
@@ -623,6 +623,19 @@ export async function getCapabilityProcesses(
   capName: string,
 ): Promise<CapabilityProcess[]> {
   return fetchJSON(`/api/cogents/${name}/capabilities/${encodeURIComponent(capName)}/processes`);
+}
+
+export interface CapabilityMethod {
+  name: string;
+  params: { name: string; type: string; default: string | null }[];
+  return_type: string;
+}
+
+export async function getCapabilityMethods(
+  name: string,
+  capName: string,
+): Promise<CapabilityMethod[]> {
+  return fetchJSON(`/api/cogents/${name}/capabilities/${encodeURIComponent(capName)}/methods`);
 }
 
 export async function getHandlers(name: string): Promise<CogosHandler[]> {

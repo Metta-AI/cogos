@@ -127,3 +127,80 @@ def list_capability_processes(name: str, cap_name: str) -> list[dict]:
     if not c:
         raise HTTPException(status_code=404, detail="Capability not found")
     return repo.list_processes_for_capability(c.id)
+
+
+# ── Method introspection ───────────────────────────────────────────
+
+
+class MethodParam(BaseModel):
+    name: str
+    type: str
+    default: str | None = None
+
+
+class MethodInfo(BaseModel):
+    name: str
+    params: list[MethodParam]
+    return_type: str
+
+
+@router.get("/capabilities/{cap_name}/methods", response_model=list[MethodInfo])
+def get_capability_methods(name: str, cap_name: str) -> list[MethodInfo]:
+    """Introspect the handler class to return its public methods."""
+    repo = get_cogos_repo()
+    c = repo.get_capability_by_name(cap_name)
+    if not c:
+        raise HTTPException(status_code=404, detail="Capability not found")
+
+    if not c.handler:
+        return []
+
+    return _introspect_handler(c.handler)
+
+
+def _introspect_handler(handler_path: str) -> list[MethodInfo]:
+    """Import a handler class and extract public method signatures."""
+    import importlib
+    import inspect
+
+    try:
+        module_path, class_name = handler_path.rsplit(".", 1)
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+    except Exception:
+        logger.warning("Could not import handler %s", handler_path)
+        return []
+
+    methods: list[MethodInfo] = []
+    for method_name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+        if method_name.startswith("_"):
+            continue
+
+        sig = inspect.signature(method)
+        hints = getattr(method, "__annotations__", {})
+
+        params: list[MethodParam] = []
+        for pname, param in sig.parameters.items():
+            if pname == "self":
+                continue
+            ptype = hints.get(pname, "")
+            if hasattr(ptype, "__name__"):
+                ptype = ptype.__name__
+            elif ptype:
+                ptype = str(ptype)
+            default = None
+            if param.default is not inspect.Parameter.empty:
+                default = repr(param.default)
+            params.append(MethodParam(name=pname, type=ptype, default=default))
+
+        ret = hints.get("return", "")
+        if hasattr(ret, "__name__"):
+            ret = ret.__name__
+        elif ret:
+            ret = str(ret)
+        else:
+            ret = ""
+
+        methods.append(MethodInfo(name=method_name, params=params, return_type=str(ret)))
+
+    return methods

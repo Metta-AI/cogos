@@ -40,6 +40,7 @@ class ProcessDetail(BaseModel):
     mode: str
     content: str
     code: str | None = None
+    files: list[str]
     priority: float
     resources: list[str]
     runner: str
@@ -64,7 +65,7 @@ class ProcessCreate(BaseModel):
     name: str
     mode: str = "one_shot"
     content: str = ""
-    code: str | None = None  # file key for prompt template
+    files: list[str] | None = None  # file keys for prompt templates
     priority: float = 0.0
     runner: str = "lambda"
     status: str = "waiting"
@@ -77,13 +78,14 @@ class ProcessCreate(BaseModel):
     clear_context: bool = False
     metadata: dict | None = None
     capabilities: list[str] | None = None  # capability names to grant
+    capability_configs: dict[str, dict] | None = None  # per-capability config keyed by name
 
 
 class ProcessUpdate(BaseModel):
     name: str | None = None
     mode: str | None = None
     content: str | None = None
-    code: str | None = None  # file key for prompt template
+    files: list[str] | None = None  # file keys for prompt templates
     priority: float | None = None
     runner: str | None = None
     status: str | None = None
@@ -96,6 +98,7 @@ class ProcessUpdate(BaseModel):
     clear_context: bool | None = None
     metadata: dict | None = None
     capabilities: list[str] | None = None  # capability names to grant
+    capability_configs: dict[str, dict] | None = None  # per-capability config keyed by name
 
 
 class ProcessesResponse(BaseModel):
@@ -131,6 +134,7 @@ def _detail(p: Process) -> ProcessDetail:
         mode=p.mode.value,
         content=p.content,
         code=str(p.code) if p.code else None,
+        files=[str(f) for f in p.files],
         priority=p.priority,
         resources=[str(r) for r in p.resources],
         runner=p.runner,
@@ -152,7 +156,7 @@ def _detail(p: Process) -> ProcessDetail:
     )
 
 
-def _resolve_code_key(key: str | None, repo, *, create: bool = False) -> UUID | None:  # noqa: ANN001
+def _resolve_file_key(key: str, repo, *, create: bool = False) -> UUID | None:  # noqa: ANN001
     """Resolve a file key to a UUID, or None. Optionally create if missing."""
     if not key:
         return None
@@ -168,25 +172,61 @@ def _resolve_code_key(key: str | None, repo, *, create: bool = False) -> UUID | 
     return None
 
 
-def _sync_capabilities(process_id: UUID, cap_names: list[str], repo) -> None:  # noqa: ANN001
-    """Sync granted capabilities: add missing, remove stale."""
-    existing = repo.list_process_capabilities(process_id)
-    existing_cap_ids = {pc.capability: pc.id for pc in existing}
+def _resolve_file_keys(keys: list[str], repo, *, create: bool = False) -> list[UUID]:  # noqa: ANN001
+    """Resolve a list of file keys to UUIDs, optionally creating missing files."""
+    result: list[UUID] = []
+    for key in keys:
+        uid = _resolve_file_key(key, repo, create=create)
+        if uid:
+            result.append(uid)
+    return result
 
-    desired_cap_ids: set[UUID] = set()
+
+def _sync_capabilities(
+    process_id: UUID,
+    cap_names: list[str],
+    repo,  # noqa: ANN001
+    configs: dict[str, dict] | None = None,
+) -> None:
+    """Sync granted capabilities: add missing, remove stale, update configs."""
+    existing = repo.list_process_capabilities(process_id)
+    existing_cap_ids = {pc.capability: pc for pc in existing}
+
+    configs = configs or {}
+
+    # Build desired: cap_id -> config
+    desired: dict[UUID, dict] = {}
     for name in cap_names:
         c = repo.get_capability_by_name(name)
         if c:
-            desired_cap_ids.add(c.id)
+            desired[c.id] = configs.get(name, {})
+
+    # name lookup for existing caps
+    cap_id_to_name: dict[UUID, str] = {}
+    for name in cap_names:
+        c = repo.get_capability_by_name(name)
+        if c:
+            cap_id_to_name[c.id] = name
 
     # Add new
-    for cid in desired_cap_ids - set(existing_cap_ids.keys()):
-        repo.create_process_capability(ProcessCapability(process=process_id, capability=cid))
+    for cid in set(desired.keys()) - set(existing_cap_ids.keys()):
+        cfg = desired.get(cid, {})
+        repo.create_process_capability(
+            ProcessCapability(process=process_id, capability=cid, config=cfg or None),
+        )
+
+    # Update existing configs (upsert handles ON CONFLICT)
+    for cid, pc in existing_cap_ids.items():
+        if cid in desired:
+            new_cfg = desired.get(cid, {})
+            if (new_cfg or None) != pc.config:
+                pc.config = new_cfg or None
+                repo.create_process_capability(pc)
 
     # Remove stale
-    for cid, pc_id in existing_cap_ids.items():
-        if cid not in desired_cap_ids:
-            repo.delete_process_capability(pc_id)
+    for cid, pc in existing_cap_ids.items():
+        if cid not in desired:
+            repo.delete_process_capability(pc.id)
 
 
 # ── Routes ──────────────────────────────────────────────────────────
@@ -263,24 +303,28 @@ def get_process(name: str, process_id: str) -> dict:
     # Capabilities granted to this process
     pcs = repo.list_process_capabilities(p.id)
     cap_names: list[str] = []
+    cap_configs: dict[str, dict] = {}
     for pc in pcs:
         c = repo.get_capability(pc.capability)
         if c:
             cap_names.append(c.name)
+            if pc.config:
+                cap_configs[c.name] = pc.config
 
-    # File key for code
-    code_key: str | None = None
-    if p.code:
-        f = repo.get_file_by_id(p.code)
+    # File keys
+    file_keys: list[str] = []
+    for fid in p.files:
+        f = repo.get_file_by_id(fid)
         if f:
-            code_key = f.key
+            file_keys.append(f.key)
 
     return {
         "process": _detail(p).model_dump(),
         "runs": run_list,
         "resolved_prompt": resolved_prompt,
         "capabilities": cap_names,
-        "code_key": code_key,
+        "capability_configs": cap_configs,
+        "file_keys": file_keys,
     }
 
 
@@ -288,19 +332,28 @@ def _resolve_process_prompt(p: Process, repo) -> str:  # noqa: ANN001
     """Build the full composed prompt for a process by resolving file includes."""
     sections: list[str] = []
 
-    # System prompt from linked file (process.code FK)
-    if p.code:
-        from cogos.files.store import FileStore
-        file_store = FileStore(repo)
+    # System prompts from linked files
+    visited: set[str] = set()
+    for fid in (p.files or []):
+        f = repo.get_file_by_id(fid)
+        if not f or f.key in visited:
+            continue
+        visited.add(f.key)
+        fv = repo.get_active_file_version(f.id)
+        if fv:
+            sections.append(f"## File: {f.key}\n\n{fv.content}")
+        if f.includes:
+            _resolve_file_includes(f.includes, visited, sections, repo)
+
+    # Legacy: single code FK
+    if p.code and not p.files:
         f = repo.get_file_by_id(p.code)
-        if f:
+        if f and f.key not in visited:
+            visited.add(f.key)
             fv = repo.get_active_file_version(f.id)
             if fv:
-                sections.append(f"## System Prompt (file: {f.key})\n\n{fv.content}")
-
-            # Resolve includes recursively
+                sections.append(f"## File: {f.key}\n\n{fv.content}")
             if f.includes:
-                visited: set[str] = {f.key}
                 _resolve_file_includes(f.includes, visited, sections, repo)
 
     # User message from process.content
@@ -335,7 +388,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         name=body.name,
         mode=ProcessMode(body.mode),
         content=body.content,
-        code=_resolve_code_key(body.code, repo, create=True),
+        files=_resolve_file_keys(body.files or [], repo, create=True),
         priority=body.priority,
         runner=body.runner,
         status=ProcessStatus(body.status),
@@ -350,7 +403,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
     )
     repo.upsert_process(p)
     if body.capabilities is not None:
-        _sync_capabilities(p.id, body.capabilities, repo)
+        _sync_capabilities(p.id, body.capabilities, repo, configs=body.capability_configs)
     return _detail(p)
 
 
@@ -389,12 +442,12 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
         p.clear_context = body.clear_context
     if body.metadata is not None:
         p.metadata = body.metadata
-    if body.code is not None:
-        p.code = _resolve_code_key(body.code, repo)
+    if body.files is not None:
+        p.files = _resolve_file_keys(body.files, repo, create=True)
 
     repo.upsert_process(p)
     if body.capabilities is not None:
-        _sync_capabilities(p.id, body.capabilities, repo)
+        _sync_capabilities(p.id, body.capabilities, repo, configs=body.capability_configs)
     return _detail(p)
 
 

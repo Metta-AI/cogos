@@ -32,14 +32,19 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 const STATUSES = ["waiting", "runnable", "running", "completed", "disabled", "blocked", "suspended"];
 const MODES: ("daemon" | "one_shot")[] = ["one_shot", "daemon"];
 const RUNNERS = ["lambda", "ecs"];
+const DEFAULT_MODEL = "us.anthropic.claude-opus-4-20250514-v1:0";
 
 const INPUT_CLS = "bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[12px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] w-full";
+
+interface CapabilityConfig {
+  allowed_methods?: string[];
+}
 
 interface ProcessForm {
   name: string;
   mode: "daemon" | "one_shot";
   content: string;
-  code: string; // file key
+  files: string[]; // file keys
   priority: string;
   runner: string;
   status: string;
@@ -51,17 +56,18 @@ interface ProcessForm {
   clear_context: boolean;
   resources: string[];
   capabilities: string[];
+  capabilityConfigs: Record<string, CapabilityConfig>;
 }
 
 const EMPTY_FORM: ProcessForm = {
   name: "",
   mode: "one_shot",
   content: "",
-  code: "",
+  files: [],
   priority: "0",
   runner: "lambda",
   status: "runnable",
-  model: "",
+  model: DEFAULT_MODEL,
   max_duration_val: "",
   max_duration_unit: "m",
   max_retries: "0",
@@ -69,6 +75,7 @@ const EMPTY_FORM: ProcessForm = {
   clear_context: false,
   resources: [],
   capabilities: [],
+  capabilityConfigs: {},
 };
 
 const DURATION_UNITS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -89,22 +96,23 @@ function formDurationToMs(val: string, unit: DurationUnit): number | null {
   return Math.round(n * DURATION_UNITS[unit]);
 }
 
-function formFromProcess(p: CogosProcess, codeKey?: string, capNames?: string[]): ProcessForm {
+function formFromProcess(p: CogosProcess, fileKeys?: string[], capNames?: string[], capConfigs?: Record<string, CapabilityConfig>): ProcessForm {
   return {
     name: p.name,
     mode: p.mode,
     content: p.content,
-    code: codeKey ?? "",
+    files: fileKeys ?? [],
     priority: String(p.priority),
     runner: p.runner,
     status: p.status,
-    model: p.model ?? "",
+    model: p.model || DEFAULT_MODEL,
     ...msToFormDuration(p.max_duration_ms),
     max_retries: String(p.max_retries),
     preemptible: p.preemptible,
     clear_context: p.clear_context,
     resources: p.resources ?? [],
     capabilities: capNames ?? [],
+    capabilityConfigs: capConfigs ?? {},
   };
 }
 
@@ -238,6 +246,230 @@ function TagListEditor({
             if (e.key === "Escape") setShowSuggestions(false);
           }}
           placeholder={`Add ${label.toLowerCase()}...`}
+          className={INPUT_CLS}
+          style={{ fontSize: "11px" }}
+        />
+        {showSuggestions && filtered.length > 0 && (
+          <div
+            className="absolute z-50 left-0 right-0 mt-1 rounded overflow-hidden shadow-lg"
+            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", maxHeight: "160px", overflowY: "auto" }}
+          >
+            {filtered.map((s) => (
+              <button
+                key={s}
+                onClick={() => addItem(s)}
+                className="w-full text-left px-2 py-1 text-[11px] font-mono border-0 cursor-pointer"
+                style={{ background: "transparent", color: "var(--text-secondary)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── CapabilityEditor: capability tags with clickable method selection ── */
+
+function CapabilityEditor({
+  items,
+  configs,
+  onChange,
+  onConfigChange,
+  suggestions,
+  cogentName,
+}: {
+  items: string[];
+  configs: Record<string, CapabilityConfig>;
+  onChange: (items: string[]) => void;
+  onConfigChange: (configs: Record<string, CapabilityConfig>) => void;
+  suggestions: string[];
+  cogentName: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [expandedCap, setExpandedCap] = useState<string | null>(null);
+  const [methodsCache, setMethodsCache] = useState<Record<string, api.CapabilityMethod[]>>({});
+  const [loadingMethods, setLoadingMethods] = useState<string | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    if (!query) return suggestions.filter((s) => !items.includes(s)).slice(0, 8);
+    const q = query.toLowerCase();
+    return suggestions.filter((s) => s.toLowerCase().includes(q) && !items.includes(s)).slice(0, 8);
+  }, [query, suggestions, items]);
+
+  const addItem = useCallback((val: string) => {
+    const trimmed = val.trim();
+    if (trimmed && !items.includes(trimmed)) onChange([...items, trimmed]);
+    setQuery("");
+    setShowSuggestions(false);
+  }, [items, onChange]);
+
+  const removeItem = useCallback((idx: number) => {
+    const removed = items[idx];
+    onChange(items.filter((_, i) => i !== idx));
+    const next = { ...configs };
+    delete next[removed];
+    onConfigChange(next);
+    if (expandedCap === removed) setExpandedCap(null);
+  }, [items, onChange, configs, onConfigChange, expandedCap]);
+
+  const toggleCapExpand = useCallback(async (capName: string) => {
+    if (expandedCap === capName) {
+      setExpandedCap(null);
+      return;
+    }
+    setExpandedCap(capName);
+    if (!methodsCache[capName]) {
+      setLoadingMethods(capName);
+      try {
+        const methods = await api.getCapabilityMethods(cogentName, capName);
+        setMethodsCache((prev) => ({ ...prev, [capName]: methods }));
+      } catch {
+        setMethodsCache((prev) => ({ ...prev, [capName]: [] }));
+      }
+      setLoadingMethods(null);
+    }
+  }, [expandedCap, methodsCache, cogentName]);
+
+  const toggleMethod = useCallback((capName: string, methodName: string) => {
+    const current = configs[capName]?.allowed_methods ?? [];
+    const allMethods = (methodsCache[capName] ?? []).map((m) => m.name);
+    let next: string[];
+    if (current.includes(methodName)) {
+      next = current.filter((m) => m !== methodName);
+    } else {
+      next = [...current, methodName];
+    }
+    // If all methods selected or none, clear the restriction
+    const cfg = next.length > 0 && next.length < allMethods.length
+      ? { allowed_methods: next }
+      : {};
+    onConfigChange({ ...configs, [capName]: cfg });
+  }, [configs, onConfigChange, methodsCache]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const methodLabel = (capName: string) => {
+    const allowed = configs[capName]?.allowed_methods;
+    if (!allowed || allowed.length === 0) return null;
+    return allowed.join(", ");
+  };
+
+  return (
+    <div ref={wrapperRef}>
+      <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Capabilities</label>
+      {items.length > 0 && (
+        <div className="space-y-1 mb-1">
+          {items.map((item, idx) => {
+            const isExpanded = expandedCap === item;
+            const methods = methodsCache[item];
+            const allowed = configs[item]?.allowed_methods;
+            const ml = methodLabel(item);
+            return (
+              <div key={item}>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => toggleCapExpand(item)}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono border-0 cursor-pointer"
+                    style={{
+                      background: isExpanded ? "var(--bg-hover)" : "var(--bg-surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    <span style={{ fontSize: "8px", opacity: 0.5 }}>{isExpanded ? "▾" : "▸"}</span>
+                    {item}
+                    {ml && <span style={{ color: "var(--accent)", fontSize: "10px" }}>({ml})</span>}
+                  </button>
+                  <button
+                    onClick={() => removeItem(idx)}
+                    className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--error)] text-[10px] leading-none p-0"
+                  >
+                    x
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div
+                    className="ml-4 mt-1 rounded p-2 space-y-1"
+                    style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                  >
+                    {loadingMethods === item && (
+                      <div className="text-[10px] text-[var(--text-muted)]">Loading methods...</div>
+                    )}
+                    {methods && methods.length === 0 && (
+                      <div className="text-[10px] text-[var(--text-muted)]">No methods found</div>
+                    )}
+                    {methods && methods.map((m) => {
+                      const isAllowed = !allowed || allowed.length === 0 || allowed.includes(m.name);
+                      const params = m.params.map((p) => {
+                        const t = p.type ? `: ${p.type.replace(/[<>]/g, "")}` : "";
+                        const d = p.default ? ` = ${p.default}` : "";
+                        return `${p.name}${t}${d}`;
+                      }).join(", ");
+                      const ret = m.return_type ? m.return_type.replace(/[<>]/g, "") : "";
+                      return (
+                        <button
+                          key={m.name}
+                          onClick={() => toggleMethod(item, m.name)}
+                          className="flex items-center gap-2 w-full text-left border-0 cursor-pointer rounded px-1.5 py-0.5"
+                          style={{
+                            background: "transparent",
+                            color: isAllowed ? "var(--text-primary)" : "var(--text-muted)",
+                            opacity: isAllowed ? 1 : 0.5,
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <span style={{
+                            width: "14px",
+                            textAlign: "center",
+                            fontSize: "10px",
+                            color: isAllowed ? "var(--success)" : "var(--text-muted)",
+                          }}>
+                            {isAllowed ? "●" : "○"}
+                          </span>
+                          <span className="font-mono text-[11px]">
+                            {m.name}({params})
+                            {ret && <span style={{ color: "var(--text-muted)" }}> → {ret}</span>}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (filtered.length > 0) addItem(filtered[0]);
+              else if (query.trim()) addItem(query);
+            }
+            if (e.key === "Escape") setShowSuggestions(false);
+          }}
+          placeholder="Add capabilities..."
           className={INPUT_CLS}
           style={{ fontSize: "11px" }}
         />
@@ -431,7 +663,6 @@ function StatusMenu({ value, onChange }: { value: string; onChange: (s: string) 
 /* ── Model Menu Button ── */
 
 const MODELS = [
-  { value: "", label: "default (sonnet)" },
   { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "haiku" },
   { value: "us.anthropic.claude-sonnet-4-20250514-v1:0", label: "sonnet" },
   { value: "us.anthropic.claude-opus-4-20250514-v1:0", label: "opus" },
@@ -443,7 +674,7 @@ function modelLabel(value: string): string {
   if (value.includes("haiku")) return "haiku";
   if (value.includes("opus")) return "opus";
   if (value.includes("sonnet")) return "sonnet";
-  return value || "default (sonnet)";
+  return value || "opus";
 }
 
 function ModelMenu({ value, onChange }: { value: string; onChange: (m: string) => void }) {
@@ -572,6 +803,7 @@ function ProcessFormEditor({
   resourceSuggestions,
   fileSuggestions,
   capabilitySuggestions,
+  cogentName,
 }: {
   form: ProcessForm;
   onChange: (form: ProcessForm) => void;
@@ -582,6 +814,7 @@ function ProcessFormEditor({
   resourceSuggestions: string[];
   fileSuggestions: string[];
   capabilitySuggestions: string[];
+  cogentName: string;
 }) {
   return (
     <div className="space-y-3 p-4 rounded-md" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
@@ -702,10 +935,13 @@ function ProcessFormEditor({
       <div>
         <div className="flex items-center gap-2 mb-1">
           <label className="text-[10px] text-[var(--text-muted)] uppercase">Memory (prompt file)</label>
-          {!form.code && form.name.trim() && (
+          {form.name.trim() && (
             <button
               type="button"
-              onClick={() => onChange({ ...form, code: `/scratch/process/${form.name.trim()}/index.md` })}
+              onClick={() => {
+                const scratch = `/scratch/process/${form.name.trim()}/index.md`;
+                if (!form.files.includes(scratch)) onChange({ ...form, files: [...form.files, scratch] });
+              }}
               className="text-[10px] px-1.5 py-0 rounded bg-transparent border border-[var(--border)] text-[var(--accent)] cursor-pointer hover:border-[var(--accent)]"
             >
               + scratch
@@ -714,8 +950,8 @@ function ProcessFormEditor({
         </div>
         <TagListEditor
           label=""
-          items={form.code ? [form.code] : []}
-          onChange={(items) => onChange({ ...form, code: items[0] || "" })}
+          items={form.files}
+          onChange={(files) => onChange({ ...form, files })}
           suggestions={fileSuggestions}
         />
       </div>
@@ -728,13 +964,36 @@ function ProcessFormEditor({
         suggestions={resourceSuggestions}
       />
 
-      {/* Capabilities with typeahead */}
-      <TagListEditor
-        label="Capabilities"
-        items={form.capabilities}
-        onChange={(capabilities) => onChange({ ...form, capabilities })}
-        suggestions={capabilitySuggestions}
-      />
+      {/* Capabilities with clickable methods + templates */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          {[
+            { label: "+ all", caps: capabilitySuggestions },
+            { label: "+ io", caps: ["files", "events", "secrets"] },
+            { label: "+ scratch", caps: ["files"] },
+          ].map((tpl) => (
+            <button
+              key={tpl.label}
+              onClick={() => {
+                const available = tpl.caps.filter((c) => capabilitySuggestions.includes(c));
+                const merged = [...new Set([...form.capabilities, ...available])];
+                onChange({ ...form, capabilities: merged });
+              }}
+              className="text-[10px] px-1.5 py-0 rounded bg-transparent border border-[var(--border)] text-[var(--accent)] cursor-pointer hover:border-[var(--accent)]"
+            >
+              {tpl.label}
+            </button>
+          ))}
+        </div>
+        <CapabilityEditor
+          items={form.capabilities}
+          configs={form.capabilityConfigs}
+          onChange={(capabilities) => onChange({ ...form, capabilities })}
+          onConfigChange={(capabilityConfigs) => onChange({ ...form, capabilityConfigs })}
+          suggestions={capabilitySuggestions}
+          cogentName={cogentName}
+        />
+      </div>
 
       {/* Save / Cancel */}
       <div className="flex gap-2 pt-1">
@@ -773,8 +1032,9 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [resolvedPrompt, setResolvedPrompt] = useState<string>("");
   const [showResolved, setShowResolved] = useState(false);
-  const [detailCodeKey, setDetailCodeKey] = useState<string>("");
+  const [detailFileKeys, setDetailFileKeys] = useState<string[]>([]);
   const [detailCapabilities, setDetailCapabilities] = useState<string[]>([]);
+  const [detailCapConfigs, setDetailCapConfigs] = useState<Record<string, CapabilityConfig>>({});
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
@@ -808,13 +1068,15 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       const detail = await api.getProcessDetail(cogentName, id);
       setDetailRuns(detail.runs);
       setResolvedPrompt(detail.resolved_prompt || "");
-      setDetailCodeKey(detail.code_key || "");
+      setDetailFileKeys(detail.file_keys || []);
       setDetailCapabilities(detail.capabilities || []);
+      setDetailCapConfigs((detail.capability_configs as Record<string, CapabilityConfig>) || {});
     } catch {
       setDetailRuns([]);
       setResolvedPrompt("");
-      setDetailCodeKey("");
+      setDetailFileKeys([]);
       setDetailCapabilities([]);
+      setDetailCapConfigs({});
     }
     setLoadingDetail(false);
   }, [selectedId, cogentName]);
@@ -827,8 +1089,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
 
   const handleEdit = useCallback((p: CogosProcess) => {
     setEditingId(p.id);
-    setForm(formFromProcess(p, detailCodeKey, detailCapabilities));
-  }, [detailCodeKey, detailCapabilities]);
+    setForm(formFromProcess(p, detailFileKeys, detailCapabilities, detailCapConfigs));
+  }, [detailFileKeys, detailCapabilities, detailCapConfigs]);
 
   const handleCancel = useCallback(() => {
     setEditingId(null);
@@ -842,7 +1104,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
         name: form.name.trim(),
         mode: form.mode,
         content: form.content,
-        code: form.code.trim() || null,
+        files: form.files.filter((f) => f.trim()),
         priority: parseFloat(form.priority) || 0,
         runner: form.runner,
         status: form.status,
@@ -853,6 +1115,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
         clear_context: form.clear_context,
         resources: form.resources,
         capabilities: form.capabilities,
+        capability_configs: form.capabilityConfigs,
       };
       if (editingId === "new") {
         await api.createProcess(cogentName, body as Parameters<typeof api.createProcess>[1]);
@@ -924,6 +1187,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             resourceSuggestions={resourceSuggestions}
             fileSuggestions={fileSuggestions}
             capabilitySuggestions={capabilitySuggestions}
+            cogentName={cogentName}
           />
         </div>
       )}
@@ -1187,6 +1451,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     resourceSuggestions={resourceSuggestions}
                     fileSuggestions={fileSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
+                    cogentName={cogentName}
                   />
                 </div>
               )}
