@@ -23,6 +23,7 @@ from polis.aws import (
 )
 from polis.config import PolisConfig
 from polis.secrets.store import SecretStore
+from polis.status import coalesce_status_items, expected_stack_name
 
 console = Console()
 
@@ -304,12 +305,13 @@ def status():
         console.print("\nNo cogents registered.")
         return
 
-    items = sorted(cogent_items, key=lambda x: x.get("cogent_name", ""))
+    items = sorted(coalesce_status_items(cogent_items), key=lambda x: x.get("cogent_name", ""))
 
     for item in items:
         name = item.get("cogent_name", "?")
         safe_name = name.replace(".", "-")
-        dashboard_url = f"https://{_cogent_subdomain(name, config.domain)}"
+        dashboard_host = item.get("domain") or _cogent_subdomain(name, config.domain)
+        dashboard_url = f"https://{dashboard_host}"
 
         def _cell(val):
             s, d = _status_style(str(val) if val else "-")
@@ -554,6 +556,7 @@ def cogents_create(ctx: click.Context, name: str):
     table_resource.put_item(
         Item={
             "cogent_name": name,
+            "stack_name": expected_stack_name(name),
             "stack_status": "REGISTERED",
             "running_count": 0,
             "desired_count": 0,
@@ -669,7 +672,7 @@ def cogents_list():
         console.print(f"[red]Error reading status table: {e}[/red]")
         return
 
-    items = sorted(resp.get("Items", []), key=lambda x: x.get("cogent_name", ""))
+    items = sorted(coalesce_status_items(resp.get("Items", [])), key=lambda x: x.get("cogent_name", ""))
 
     if not items:
         console.print("No cogents found.")
@@ -718,8 +721,15 @@ def cogents_status(name: str):
     ddb = session.resource("dynamodb")
     table_resource = ddb.Table("cogent-status")
 
-    resp = table_resource.get_item(Key={"cogent_name": name})
-    item = resp.get("Item")
+    resp = table_resource.scan()
+    item = next(
+        (
+            row
+            for row in coalesce_status_items(resp.get("Items", []))
+            if row.get("cogent_name") == name or row.get("stack_name") == expected_stack_name(name)
+        ),
+        None,
+    )
 
     if not item:
         console.print(f"[red]No status found for cogent: {name}[/red]")
