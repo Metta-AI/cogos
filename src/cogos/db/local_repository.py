@@ -162,6 +162,20 @@ class LocalRepository:
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> int:
         return 0
 
+    def clear_all(self) -> None:
+        """Wipe all in-memory data and persist the empty state."""
+        self._processes.clear()
+        self._capabilities.clear()
+        self._handlers.clear()
+        self._files.clear()
+        self._file_versions.clear()
+        self._process_capabilities.clear()
+        self._resources.clear()
+        self._cron_rules.clear()
+        self._events.clear()
+        self._runs.clear()
+        self._save()
+
     @staticmethod
     def _json_field(row: dict, key: str, default: Any = None) -> Any:
         val = row.get(key, default)

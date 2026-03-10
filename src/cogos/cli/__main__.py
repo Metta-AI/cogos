@@ -74,6 +74,9 @@ def _ensure_db_env(cogent_name: str) -> None:
 
 
 def _repo():
+    if os.environ.get("USE_LOCAL_DB") == "1":
+        from cogos.db.local_repository import LocalRepository
+        return LocalRepository()
     from cogos.db.repository import Repository
     return Repository.create()
 
@@ -116,6 +119,13 @@ def cogos(ctx: click.Context, cogent: str):
     ctx.obj["cogent_name"] = cogent
     _ensure_db_env(cogent)
 
+
+_ALL_TABLES = [
+    "cogos_trace", "cogos_run", "cogos_event_delivery",
+    "cogos_event", "cogos_handler", "cogos_process_capability",
+    "cogos_cron", "cogos_resource",
+    "cogos_file_version", "cogos_file", "cogos_process", "cogos_capability",
+]
 
 # ═══════════════════════════════════════════════════════════
 # IMAGE commands
@@ -161,13 +171,14 @@ def boot(ctx: click.Context, name: str, clean: bool):
         click.echo("Migration applied.")
 
     if clean:
-        for table in ["cogos_trace", "cogos_run", "cogos_event_delivery",
-                       "cogos_event", "cogos_handler", "cogos_process_capability",
-                       "cogos_file_version", "cogos_file", "cogos_process", "cogos_capability"]:
-            try:
-                repo.execute(f"DELETE FROM {table}")
-            except Exception:
-                pass
+        if hasattr(repo, "clear_all"):
+            repo.clear_all()
+        else:
+            for table in _ALL_TABLES:
+                try:
+                    repo.execute(f"DELETE FROM {table}")
+                except Exception:
+                    pass
         click.echo("Tables cleaned.")
 
     spec = load_image(image_dir)
@@ -875,6 +886,28 @@ def status():
     click.echo(f"Recent events: {len(events)}")
     for e in events:
         click.echo(f"  {e.event_type} ({e.created_at})")
+
+
+# ═══════════════════════════════════════════════════════════
+# RESET
+# ═══════════════════════════════════════════════════════════
+
+@cogos.command()
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def reset(yes: bool):
+    """Wipe all CogOS tables for a blank slate."""
+    if not yes:
+        click.confirm("This will DELETE ALL data. Continue?", abort=True)
+    repo = _repo()
+    if hasattr(repo, "clear_all"):
+        repo.clear_all()
+    else:
+        for table in _ALL_TABLES:
+            try:
+                repo.execute(f"DELETE FROM {table}")
+            except Exception:
+                pass
+    click.echo("All tables cleared.")
 
 
 # ═══════════════════════════════════════════════════════════
