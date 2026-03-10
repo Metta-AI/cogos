@@ -208,6 +208,11 @@ def execute_process(
     if not system_prompt:
         system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
 
+    # Prepend includes — all files under "includes/" are auto-injected
+    includes_content = _load_includes(repo)
+    if includes_content:
+        system_prompt = includes_content + "\n\n" + system_prompt
+
     system = [{"text": system_prompt}]
 
     # Build user message from process content + event
@@ -282,6 +287,19 @@ def execute_process(
     run.tokens_out = total_output_tokens
     run.scope_log = sandbox.scope_log
     return run
+
+
+def _load_includes(repo: Repository) -> str:
+    """Load all files under 'includes/' and concatenate their content."""
+    from cogos.files.store import FileStore
+    file_store = FileStore(repo)
+    files = file_store.list_files(prefix="includes/")
+    parts = []
+    for f in sorted(files, key=lambda f: f.key):
+        fv = repo.get_active_file_version(f.id)
+        if fv and fv.content:
+            parts.append(fv.content)
+    return "\n\n".join(parts)
 
 
 def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:

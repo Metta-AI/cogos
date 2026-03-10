@@ -40,27 +40,33 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
         repo.upsert_capability(cap)
         counts["capabilities"] += 1
 
-    # 2. Resources
-    for res_dict in spec.resources:
-        r = Resource(
-            name=res_dict["name"],
-            resource_type=ResourceType(res_dict.get("type", "pool")),
-            capacity=float(res_dict.get("capacity", 1.0)),
-            metadata=res_dict.get("metadata") or {},
-        )
-        repo.upsert_resource(r)
-        counts["resources"] += 1
+    # 2. Resources (skip if no table/method yet)
+    if hasattr(repo, "upsert_resource"):
+        for res_dict in spec.resources:
+            r = Resource(
+                name=res_dict["name"],
+                resource_type=ResourceType(res_dict.get("type", "pool")),
+                capacity=float(res_dict.get("capacity", 1.0)),
+                metadata=res_dict.get("metadata") or {},
+            )
+            repo.upsert_resource(r)
+            counts["resources"] += 1
+    elif spec.resources:
+        logger.warning("Skipping %d resources — upsert_resource not implemented", len(spec.resources))
 
-    # 3. Cron rules
-    for cron_dict in spec.cron_rules:
-        c = Cron(
-            expression=cron_dict["expression"],
-            event_type=cron_dict["event_type"],
-            payload=cron_dict.get("payload") or {},
-            enabled=cron_dict.get("enabled", True),
-        )
-        repo.upsert_cron(c)
-        counts["cron"] += 1
+    # 3. Cron rules (skip if no table/method yet)
+    if hasattr(repo, "upsert_cron"):
+        for cron_dict in spec.cron_rules:
+            c = Cron(
+                expression=cron_dict["expression"],
+                event_type=cron_dict["event_type"],
+                payload=cron_dict.get("payload") or {},
+                enabled=cron_dict.get("enabled", True),
+            )
+            repo.upsert_cron(c)
+            counts["cron"] += 1
+    elif spec.cron_rules:
+        logger.warning("Skipping %d cron rules — upsert_cron not implemented", len(spec.cron_rules))
 
     # 4. Files
     fs = FileStore(repo)
