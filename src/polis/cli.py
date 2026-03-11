@@ -8,9 +8,8 @@ import subprocess
 import sys
 import time
 
-import requests
-
 import click
+import requests
 from rich.console import Console
 from rich.table import Table
 
@@ -26,8 +25,8 @@ from polis.aws import (
 )
 from polis.config import PolisConfig
 from polis.quotas import QuotaEnsureResult, ensure_service_quota_targets
+from polis.naming import expected_stack_name
 from polis.secrets.store import SecretStore
-from polis.status import coalesce_status_items, expected_stack_name
 
 console = Console()
 _PROFILE_HELP = (
@@ -139,6 +138,7 @@ _SHORT = {
     "UPDATE_FAILED": "FAILED",
     "REGISTERED": "ok",
     "INSUFFICIENT_DATA": "no data",
+    "MISSING": "missing",
     "available": "ok",
 }
 
@@ -151,13 +151,65 @@ def _status_style(value: str) -> tuple[str, str]:
     short = _SHORT.get(v, v)
     if any(k in v for k in ("COMPLETE", "ACTIVE", "available", "ok", "OK", "REGISTERED")):
         return "green", short
-    if any(k in v for k in ("FAILED", "ERROR", "DRAINING", "ALARM", "stale")):
+    if any(k in v for k in ("FAILED", "ERROR", "DRAINING", "ALARM", "MISSING", "stale")):
         return "red", short
     if any(k in v for k in ("PROGRESS", "PENDING", "creating", "modifying")):
         return "yellow", short
     if v == "INSUFFICIENT_DATA":
         return "dim", short
     return "cyan", short
+
+
+def _cell(val: str | None) -> str:
+    style, display = _status_style(str(val) if val not in (None, "") else "-")
+    return f"[{style}]{display}[/{style}]"
+
+
+def _component_state(item: object | None) -> dict:
+    return item if isinstance(item, dict) else {}
+
+
+def _component_status(component: dict) -> str | None:
+    component = _component_state(component)
+    if not component:
+        return None
+    status = str(component.get("status") or "").strip()
+    has_counts = "running_count" in component or "desired_count" in component
+    if not has_counts:
+        return status or None
+    counts = f"{int(component.get('running_count') or 0)}/{int(component.get('desired_count') or 0)}"
+    return f"{status} {counts}".strip() if status else counts
+
+
+def _component_image(component: dict) -> str | None:
+    component = _component_state(component)
+    image = str(component.get("image") or "").strip()
+    if not image or image == "-":
+        return None
+    return image.rsplit("/", 1)[-1]
+
+
+def _component_cpu(component: dict) -> str | None:
+    component = _component_state(component)
+    if "cpu_1m" not in component and "cpu_10m" not in component:
+        return None
+    return f"{int(component.get('cpu_1m') or 0)}%/{int(component.get('cpu_10m') or 0)}%"
+
+
+def _component_mem(component: dict) -> str | None:
+    component = _component_state(component)
+    if "mem_pct" not in component:
+        return None
+    return f"{int(component.get('mem_pct') or 0)}%"
+
+
+def _dashboard_url(item: dict, config: PolisConfig) -> str:
+    dashboard = _component_state(item.get("dashboard"))
+    url = str(item.get("dashboard_url") or dashboard.get("url") or "").strip()
+    if url:
+        return url
+    host = item.get("domain") or _cogent_subdomain(str(item.get("cogent_name") or "?"), config.domain)
+    return f"https://{host}"
 
 
 @polis.command()
@@ -197,41 +249,21 @@ def status():
         return uri, images
 
     def _query_polis_ecs():
-        """ECS cluster + dashboard services in polis account."""
+        """ECS cluster in polis account."""
         ecs = polis_session.client("ecs")
         cluster = None
-        dashboards = {}
         try:
             clusters = ecs.describe_clusters(clusters=["cogent-polis"])["clusters"]
             cluster = clusters[0] if clusters else None
         except Exception:
             pass
-        try:
-            arns = ecs.list_services(cluster="cogent-polis").get("serviceArns", [])
-            if arns:
-                desc = ecs.describe_services(cluster="cogent-polis", services=arns)
-                for svc in desc.get("services", []):
-                    name = svc["serviceName"]
-                    if "-DashService" in name or "-dashboard-" in name:
-                        sep = "-DashService" if "-DashService" in name else "-dashboard-"
-                        cogent = name.split(sep)[0]
-                        if cogent.startswith("cogent-"):
-                            cogent = cogent[len("cogent-"):]
-                        # Strip -brain suffix (e.g. "dr-alpha-brain" -> "dr-alpha")
-                        if cogent.endswith("-brain"):
-                            cogent = cogent[:-len("-brain")]
-                        r = svc.get("runningCount", 0)
-                        d = svc.get("desiredCount", 0)
-                        dashboards[cogent] = f"ACTIVE {r}/{d}" if svc.get("status") == "ACTIVE" else svc.get("status", "?")
-        except Exception:
-            pass
-        return cluster, dashboards
+        return cluster
 
     def _query_cogents_and_secrets():
         """DynamoDB cogent status + secrets list."""
         ddb = polis_session.resource("dynamodb")
         tbl = ddb.Table("cogent-status")
-        items = tbl.scan().get("Items", [])
+        items = _scan_table_items(tbl)
 
         sm = polis_session.client("secretsmanager")
         secrets_by_cogent: dict[str, list[str]] = {}
@@ -288,7 +320,7 @@ def status():
     else:
         table.add_row("ECR", "[red]not found[/red]", "")
 
-    polis_cluster, dashboards = results.get("polis_ecs") or (None, {})
+    polis_cluster = results.get("polis_ecs")
     if polis_cluster:
         running = polis_cluster.get("runningTasksCount", 0)
         table.add_row("ECS Cluster", "[green]ok[/green]", f"cogent-polis  {running} running tasks")
@@ -305,17 +337,18 @@ def status():
         console.print("\nNo cogents registered.")
         return
 
-    items = sorted(coalesce_status_items(cogent_items), key=lambda x: x.get("cogent_name", ""))
+    items = sorted(
+        (item for item in cogent_items if item.get("cogent_name")),
+        key=lambda x: x.get("cogent_name", ""),
+    )
 
     for item in items:
         name = item.get("cogent_name", "?")
         safe_name = name.replace(".", "-")
-        dashboard_host = item.get("domain") or _cogent_subdomain(name, config.domain)
-        dashboard_url = f"https://{dashboard_host}"
-
-        def _cell(val):
-            s, d = _status_style(str(val) if val else "-")
-            return f"[{s}]{d}[/{s}]"
+        dashboard = _component_state(item.get("dashboard"))
+        discord = _component_state(item.get("discord"))
+        executor = _component_state(item.get("executor"))
+        dashboard_url = _dashboard_url(item, config)
 
         # Secrets
         secs = secrets_by_cogent.get(name, [])
@@ -332,21 +365,18 @@ def status():
         else:
             ch_str = "[dim]-[/dim]"
 
-        # Tasks
-        running = int(item.get("running_count", 0))
-        desired = int(item.get("desired_count", 0))
-        tasks_str = f"{running}/{desired}"
-
         console.print()
         ct = Table(title=f"[bold]{name}[/bold]", show_header=False, padding=(0, 1))
         ct.add_column("Component", style="bold")
         ct.add_column("Status")
         ct.add_row("Stack", _cell(item.get("stack_status")))
-        ct.add_row("Tasks", _cell(tasks_str if desired else None))
-        ct.add_row("Image", _cell(item.get("image_tag")))
-        ct.add_row("CPU (1m/10m)", _cell(f"{int(item.get('cpu_1m', 0))}%/{int(item.get('cpu_10m', 0))}%" if item.get("cpu_1m") else None))
-        ct.add_row("Memory", _cell(f"{int(item.get('mem_pct', 0))}%" if item.get("mem_pct") else None))
-        ct.add_row("Dashboard", _cell(dashboards.get(safe_name)))
+        ct.add_row("Dashboard", _cell(_component_status(dashboard)))
+        ct.add_row("Dashboard Image", _cell(_component_image(dashboard)))
+        ct.add_row("Dashboard CPU (1m/10m)", _cell(_component_cpu(dashboard)))
+        ct.add_row("Dashboard Memory", _cell(_component_mem(dashboard)))
+        ct.add_row("Discord", _cell(_component_status(discord)))
+        ct.add_row("Discord Image", _cell(_component_image(discord)))
+        ct.add_row("Executor Image", _cell(_component_image(executor)))
         ct.add_row("Dashboard URL", f"[link={dashboard_url}][underline cyan]{dashboard_url}[/underline cyan][/link]")
 
         # EventBridge
@@ -576,13 +606,13 @@ def cogents_create(ctx: click.Context, name: str):
         Item={
             "cogent_name": name,
             "stack_name": expected_stack_name(name),
-            "record_type": "identity",
             "stack_status": "REGISTERED",
             "running_count": 0,
             "desired_count": 0,
             "image_tag": "-",
             "channels": {},
             "domain": subdomain,
+            "dashboard_url": f"https://{subdomain}",
             "certificate_arn": cert_arn,
             "cpu_1m": 0,
             "cpu_10m": 0,
@@ -665,7 +695,7 @@ def cogents_destroy(ctx: click.Context, name: str):
         ddb = session.resource("dynamodb")
         table_resource = ddb.Table("cogent-status")
         table_resource.delete_item(Key={"cogent_name": name})
-        console.print(f"  [green]Deleted status record[/green]")
+        console.print("  [green]Deleted status record[/green]")
     except Exception as e:
         console.print(f"  [yellow]Status cleanup: {e}[/yellow]")
 
@@ -687,12 +717,12 @@ def cogents_list():
     table_resource = ddb.Table("cogent-status")
 
     try:
-        resp = table_resource.scan()
+        items = _scan_table_items(table_resource)
     except Exception as e:
         console.print(f"[red]Error reading status table: {e}[/red]")
         return
 
-    items = sorted(coalesce_status_items(resp.get("Items", [])), key=lambda x: x.get("cogent_name", ""))
+    items = sorted((item for item in items if item.get("cogent_name")), key=lambda x: x.get("cogent_name", ""))
 
     if not items:
         console.print("No cogents found.")
@@ -702,31 +732,24 @@ def cogents_list():
     table.add_column("Name", style="bold")
     table.add_column("Status")
     table.add_column("Domain")
-    table.add_column("Tasks")
-    table.add_column("Image")
-    table.add_column("CPU (1m)")
-    table.add_column("Mem %")
+    table.add_column("Dashboard")
+    table.add_column("Dash Image")
+    table.add_column("Exec Image")
     table.add_column("Channels")
 
     for item in items:
-        running = item.get("running_count", 0)
-        desired = item.get("desired_count", 0)
-        tasks = f"{running}/{desired}"
-
         channels = item.get("channels", {})
         ch_str = ", ".join(f"{k}:{v}" for k, v in sorted(channels.items())) if channels else "-"
-
-        stack_status = item.get("stack_status", "?")
-        status_style = "green" if "COMPLETE" in stack_status else "cyan" if stack_status == "REGISTERED" else "yellow"
+        dashboard = _component_state(item.get("dashboard"))
+        executor = _component_state(item.get("executor"))
 
         table.add_row(
             item.get("cogent_name", "?"),
-            f"[{status_style}]{stack_status}[/{status_style}]",
+            _cell(item.get("stack_status")),
             item.get("domain", "-"),
-            tasks,
-            str(item.get("image_tag", "-")),
-            str(item.get("cpu_1m", "-")),
-            str(item.get("mem_pct", "-")),
+            _cell(_component_status(dashboard)),
+            _cell(_component_image(dashboard)),
+            _cell(_component_image(executor)),
             ch_str,
         )
 
@@ -741,15 +764,7 @@ def cogents_status(name: str):
     ddb = session.resource("dynamodb")
     table_resource = ddb.Table("cogent-status")
 
-    resp = table_resource.scan()
-    item = next(
-        (
-            row
-            for row in coalesce_status_items(resp.get("Items", []))
-            if row.get("cogent_name") == name or row.get("stack_name") == expected_stack_name(name)
-        ),
-        None,
-    )
+    item = table_resource.get_item(Key={"cogent_name": name}).get("Item")
 
     if not item:
         console.print(f"[red]No status found for cogent: {name}[/red]")
@@ -765,7 +780,7 @@ def cogents_status(name: str):
 
 def _create_cf_validation_record(store: SecretStore, rr: dict, domain: str) -> None:
     """Create a DNS-only CNAME record in Cloudflare for ACM validation."""
-    from polis.cloudflare import _load_cf_config, _headers
+    from polis.cloudflare import _headers, _load_cf_config
 
     cf = _load_cf_config(store)
     zone_id = cf["zone_id"]
@@ -792,6 +807,19 @@ def _create_cf_validation_record(store: SecretStore, rr: dict, domain: str) -> N
         },
     )
     resp.raise_for_status()
+
+
+def _scan_table_items(table_resource) -> list[dict]:
+    """Return all items from a DynamoDB table scan."""
+    items: list[dict] = []
+    params = {}
+    while True:
+        resp = table_resource.scan(**params)
+        items.extend(resp.get("Items", []))
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        params["ExclusiveStartKey"] = last_key
 
 
 def _ensure_cloudflare_access(session, domain: str = "softmax-cogents.com") -> None:

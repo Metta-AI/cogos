@@ -6,10 +6,10 @@ Includes: database, lambdas, ECS tasks, storage, events, monitoring, dashboard.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import aws_cdk as cdk
 from aws_cdk import CfnOutput, Duration, Stack
-from aws_cdk import aws_certificatemanager as acm
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
@@ -44,6 +44,9 @@ class BrainStack(Stack):
         super().__init__(scope, id, **kwargs)
 
         safe_name = config.cogent_name.replace(".", "-")
+        self.dashboard_service: ecs.FargateService | None = None
+        self.dashboard_url: str | None = None
+        self.discord_service: ecs.FargateService | None = None
         cdk.Tags.of(self).add("cogent_name", config.cogent_name)
         cdk.Tags.of(self).add("cogent_safe_name", safe_name)
 
@@ -120,6 +123,38 @@ class BrainStack(Stack):
             CfnOutput(self, "SecretArn", value=self.database.secret.secret_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "SessionsBucket", value=self.storage.bucket.bucket_name)
+        CfnOutput(
+            self,
+            "StatusManifest",
+            value=self.to_json_string(self._status_manifest(config, safe_name)),
+        )
+
+    def _status_manifest(self, config: BrainConfig, safe_name: str) -> dict[str, Any]:
+        """Return the canonical status manifest for watcher/runtime resolution."""
+        assert self.discord_service is not None
+        manifest: dict[str, Any] = {
+            "version": 1,
+            "cogent_name": config.cogent_name,
+            "discord": {
+                "service_arn": self.discord_service.service_arn,
+                "container_name": "bridge",
+            },
+            "executor": {
+                "task_definition_arn": self.compute.task_definition.task_definition_arn,
+                "container_name": "Executor",
+            },
+        }
+        if self.dashboard_service and self.dashboard_url:
+            manifest["dashboard"] = {
+                "service_arn": self.dashboard_service.service_arn,
+                "container_name": "web",
+                "url": self.dashboard_url,
+            }
+        else:
+            manifest["dashboard"] = {
+                "url": f"https://{safe_name}.{config.domain}",
+            }
+        return manifest
 
     def _create_discord_bridge(self, config: BrainConfig, safe_name: str) -> None:
         """Create the Discord bridge SQS queue + Fargate service."""
@@ -205,7 +240,7 @@ class BrainStack(Stack):
         # Fargate service (starts with 0 desired — use CLI to start)
         sg = ec2.SecurityGroup(self, "DiscordSg", vpc=vpc, allow_all_outbound=True)
 
-        ecs.FargateService(
+        self.discord_service = ecs.FargateService(
             self, "DiscordService",
             service_name=f"cogent-{safe_name}-discord",
             cluster=cluster,
@@ -275,6 +310,9 @@ class BrainStack(Stack):
 
         # Task definition — same account, direct access to DB via Data API
         task_def = ecs.FargateTaskDefinition(self, "DashTaskDef", cpu=256, memory_limit_mib=512)
+        docker_version = (
+            Path(__file__).resolve().parent.parent.parent.parent / "dashboard" / "DOCKER_VERSION"
+        ).read_text().strip()
 
         db_env = {
             "COGENT_NAME": config.cogent_name,
@@ -286,7 +324,7 @@ class BrainStack(Stack):
             "EVENT_BUS_NAME": self.event_bus.event_bus_name,
             "SESSIONS_BUCKET": self.storage.bucket.bucket_name,
             "DASHBOARD_ASSETS_S3": f"s3://{self.storage.bucket.bucket_name}/dashboard/frontend.tar.gz",
-            "DASHBOARD_DOCKER_VERSION": (Path(__file__).resolve().parent.parent.parent.parent / "dashboard" / "DOCKER_VERSION").read_text().strip(),
+            "DASHBOARD_DOCKER_VERSION": docker_version,
         }
 
         task_def.add_container(
@@ -367,5 +405,7 @@ class BrainStack(Stack):
 
         target_group.add_target(service)
 
-        CfnOutput(self, "DashboardUrl", value=f"https://{safe_name}.{config.domain}")
+        self.dashboard_service = service
+        self.dashboard_url = f"https://{safe_name}.{config.domain}"
+        CfnOutput(self, "DashboardUrl", value=self.dashboard_url)
         CfnOutput(self, "AlbDns", value=lb.load_balancer_dns_name)

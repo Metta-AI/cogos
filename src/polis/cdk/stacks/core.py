@@ -8,21 +8,39 @@ import aws_cdk as cdk
 from aws_cdk import (
     Duration,
     RemovalPolicy,
+)
+from aws_cdk import (
     aws_dynamodb as dynamodb,
+)
+from aws_cdk import (
     aws_ecr as ecr,
+)
+from aws_cdk import (
     aws_ecs as ecs,
+)
+from aws_cdk import (
     aws_events as events,
+)
+from aws_cdk import (
     aws_events_targets as targets,
+)
+from aws_cdk import (
     aws_iam as iam,
+)
+from aws_cdk import (
     aws_lambda as lambda_,
+)
+from aws_cdk import (
     aws_route53 as route53,
+)
+from aws_cdk import (
     aws_secretsmanager as secretsmanager,
 )
 from constructs import Construct
 
 from polis.config import PolisConfig
 
-WATCHER_HANDLER_DIR = Path(__file__).resolve().parent.parent.parent / "watcher"
+SRC_DIR = Path(__file__).resolve().parents[3]
 EMAIL_HANDLER_DIR = Path(__file__).resolve().parent.parent.parent / "io" / "email"
 
 
@@ -110,8 +128,8 @@ class PolisStack(cdk.Stack):
             "WatcherLambda",
             function_name="cogent-watcher",
             runtime=lambda_.Runtime.PYTHON_3_12,
-            handler="handler.handler",
-            code=lambda_.Code.from_asset(str(WATCHER_HANDLER_DIR)),
+            handler="polis.watcher.handler.handler",
+            code=lambda_.Code.from_asset(str(SRC_DIR)),
             timeout=Duration.seconds(120),
             environment={
                 "DYNAMO_TABLE": self.status_table.table_name,
@@ -135,6 +153,7 @@ class PolisStack(cdk.Stack):
                 actions=[
                     "ecs:ListServices",
                     "ecs:DescribeServices",
+                    "ecs:DescribeTaskDefinition",
                     "ecs:ListClusters",
                 ],
                 resources=["*"],

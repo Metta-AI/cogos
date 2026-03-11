@@ -8,11 +8,11 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import boto3
 
-from polis.status import coalesce_status_items, expected_stack_name, safe_name_from_stack_name
+from polis.runtime_status import load_status_manifest, resolve_runtime_status
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -41,11 +41,8 @@ def handler(event, context):
     logger.info("Found %d cogent stacks", len(stacks))
 
     existing_items = _load_existing_status_items(table)
-    existing_by_stack = {
-        item.get("stack_name") or expected_stack_name(item["cogent_name"]): item
-        for item in existing_items
-        if item.get("cogent_name")
-    }
+    existing_by_name = {item["cogent_name"]: item for item in existing_items if item.get("cogent_name")}
+    existing_by_stack = {item["stack_name"]: item for item in existing_items if item.get("stack_name")}
 
     channels_map = _poll_channels(sm_client)
     now = int(time.time())
@@ -55,67 +52,34 @@ def handler(event, context):
     for st in stacks:
         stack_name = st["Name"]
         stack_status = st["Status"]
-        existing = existing_by_stack.get(stack_name, {})
-        cogent_name = existing.get("cogent_name") or safe_name_from_stack_name(stack_name)
-        running_count = 0
-        desired_count = 0
-        image_tag = "-"
-        cluster_name = None
-        service_name = None
 
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
             stack = resp["Stacks"][0]
-            outputs = {
-                o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])
-            }
-            tags = {t["Key"]: t["Value"] for t in stack.get("Tags", [])}
-            cogent_name = tags.get("cogent_name") or outputs.get("CogentName", cogent_name)
-            image_tag = outputs.get("ImageTag", "-")
-
-            cluster_arn = outputs.get("ClusterArn")
-            service_name = outputs.get("ServiceName")
-            if cluster_arn:
-                cluster_name = cluster_arn.split("/")[-1]
-            if cluster_arn and service_name:
-                svc = ecs.describe_services(cluster=cluster_arn, services=[service_name])
-                if svc["services"]:
-                    s = svc["services"][0]
-                    running_count = s.get("runningCount", 0)
-                    desired_count = s.get("desiredCount", 0)
+            manifest = load_status_manifest(stack)
+            cogent_name = manifest["cogent_name"]
+            existing = existing_by_name.get(cogent_name) or existing_by_stack.get(stack_name, {})
+            items.append(
+                resolve_runtime_status(
+                    ecs_client=ecs,
+                    cloudwatch_client=cw,
+                    stack_name=stack_name,
+                    stack_status=stack_status,
+                    manifest=manifest,
+                    existing=existing,
+                    channels=channels_map.get(cogent_name, {}),
+                    updated_at=now,
+                )
+            )
+            seen_names.add(cogent_name)
         except Exception:
             logger.exception("Error polling stack %s", stack_name)
-
-        seen_names.add(cogent_name)
-        items.append(
-            {
-                "cogent_name": cogent_name,
-                "stack_name": stack_name,
-                "stack_status": stack_status,
-                "running_count": running_count,
-                "desired_count": desired_count,
-                "image_tag": image_tag,
-                "channels": channels_map.get(cogent_name, {}),
-                "record_type": "runtime",
-                "domain": existing.get("domain"),
-                "certificate_arn": existing.get("certificate_arn"),
-                "_cluster_name": cluster_name,
-                "_service_name": service_name,
-                "updated_at": now,
-            }
-        )
-
-    metrics = _poll_metrics(cw, items)
+            existing = existing_by_stack.get(stack_name, {})
+            if existing.get("cogent_name"):
+                seen_names.add(existing["cogent_name"])
 
     with table.batch_writer() as batch:
         for item in items:
-            name = item["cogent_name"]
-            m = metrics.get(name, {})
-            item["cpu_1m"] = m.get("cpu_1m", 0)
-            item["cpu_10m"] = m.get("cpu_10m", 0)
-            item["mem_pct"] = m.get("mem_pct", 0)
-            item.pop("_cluster_name", None)
-            item.pop("_service_name", None)
             batch.put_item(Item=item)
 
     _cleanup_stale(table, seen_names)
@@ -136,7 +100,7 @@ def _find_cogent_stacks(cfn) -> list[dict]:
 
 
 def _load_existing_status_items(table) -> list[dict]:
-    """Load and coalesce existing cogent status rows from DynamoDB."""
+    """Load existing cogent status rows from DynamoDB."""
     items: list[dict] = []
     params = {}
     while True:
@@ -146,7 +110,7 @@ def _load_existing_status_items(table) -> list[dict]:
         if not last_key:
             break
         params["ExclusiveStartKey"] = last_key
-    return coalesce_status_items(items)
+    return items
 
 
 def _poll_channels(sm_client) -> dict[str, dict[str, str]]:
@@ -178,90 +142,6 @@ def _poll_channels(sm_client) -> dict[str, dict[str, str]]:
     return result
 
 
-def _poll_metrics(cw, items: list[dict]) -> dict[str, dict[str, int]]:
-    """Batch-query CloudWatch for CPU and memory utilization."""
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(minutes=12)
-
-    queries = []
-    id_map: dict[str, tuple[str, str]] = {}
-
-    for i, item in enumerate(items):
-        cluster = item.get("_cluster_name")
-        service = item.get("_service_name")
-        if not cluster or not service:
-            continue
-
-        name = item["cogent_name"]
-        dims = [
-            {"Name": "ClusterName", "Value": cluster},
-            {"Name": "ServiceName", "Value": service},
-        ]
-
-        cpu_id = f"c{i}"
-        queries.append(
-            {
-                "Id": cpu_id,
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/ECS",
-                        "MetricName": "CPUUtilization",
-                        "Dimensions": dims,
-                    },
-                    "Period": 60,
-                    "Stat": "Average",
-                },
-            }
-        )
-        id_map[cpu_id] = (name, "cpu")
-
-        mem_id = f"m{i}"
-        queries.append(
-            {
-                "Id": mem_id,
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/ECS",
-                        "MetricName": "MemoryUtilization",
-                        "Dimensions": dims,
-                    },
-                    "Period": 60,
-                    "Stat": "Average",
-                },
-            }
-        )
-        id_map[mem_id] = (name, "mem")
-
-    if not queries:
-        return {}
-
-    results: dict[str, dict[str, int]] = {}
-    try:
-        for chunk_start in range(0, len(queries), 500):
-            chunk = queries[chunk_start : chunk_start + 500]
-            resp = cw.get_metric_data(
-                MetricDataQueries=chunk, StartTime=start, EndTime=now
-            )
-            for mr in resp["MetricDataResults"]:
-                qid = mr["Id"]
-                if qid not in id_map:
-                    continue
-                name, metric_type = id_map[qid]
-                values = mr.get("Values", [])
-                if name not in results:
-                    results[name] = {}
-                if values:
-                    if metric_type == "cpu":
-                        results[name]["cpu_1m"] = round(values[0])
-                        results[name]["cpu_10m"] = round(sum(values) / len(values))
-                    elif metric_type == "mem":
-                        results[name]["mem_pct"] = round(values[0])
-    except Exception:
-        logger.exception("Error polling CloudWatch metrics")
-
-    return results
-
-
 def _cleanup_stale(table, seen_names: set[str]) -> None:
     """Remove DynamoDB entries for cogents that no longer have stacks.
 
@@ -269,12 +149,18 @@ def _cleanup_stale(table, seen_names: set[str]) -> None:
     not yet deployed).
     """
     try:
-        resp = table.scan(ProjectionExpression="cogent_name, stack_status")
-        for item in resp.get("Items", []):
-            name = item["cogent_name"]
-            status = item.get("stack_status", "")
-            if name not in seen_names and status != "REGISTERED":
-                table.delete_item(Key={"cogent_name": name})
-                logger.info("Cleaned up stale entry: %s", name)
+        params = {"ProjectionExpression": "cogent_name, stack_status"}
+        while True:
+            resp = table.scan(**params)
+            for item in resp.get("Items", []):
+                name = item["cogent_name"]
+                status = item.get("stack_status", "")
+                if name not in seen_names and status != "REGISTERED":
+                    table.delete_item(Key={"cogent_name": name})
+                    logger.info("Cleaned up stale entry: %s", name)
+            last_key = resp.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            params["ExclusiveStartKey"] = last_key
     except Exception:
         logger.exception("Error cleaning up stale entries")
