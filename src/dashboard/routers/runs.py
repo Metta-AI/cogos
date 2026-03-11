@@ -109,6 +109,56 @@ def _log_window(run: Run) -> tuple[int, int]:
     return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
 
+def _find_run_seed_events(logs, log_group: str, run_id: str, start_ms: int, end_ms: int) -> list[dict]:
+    try:
+        seed = logs.filter_log_events(
+            logGroupName=log_group,
+            startTime=start_ms,
+            endTime=end_ms,
+            filterPattern=run_id,
+            limit=20,
+        )
+        events = seed.get("events", [])
+        if events:
+            return events
+    except logs.exceptions.ResourceNotFoundException:
+        raise
+    except Exception as exc:
+        logger.debug("CloudWatch seed filter fell back to scan for run %s: %s", run_id, exc)
+
+    # CloudWatch filter patterns are less reliable for UUID-like strings than
+    # the Logs Insights query behind the CW link, so fall back to scanning a
+    # bounded slice of the run window and matching in Python.
+    matched: list[dict] = []
+    next_token: str | None = None
+    scanned = 0
+    max_scan = 500
+
+    while scanned < max_scan:
+        kwargs = {
+            "logGroupName": log_group,
+            "startTime": start_ms,
+            "endTime": end_ms,
+            "limit": min(100, max_scan - scanned),
+        }
+        if next_token:
+            kwargs["nextToken"] = next_token
+
+        page = logs.filter_log_events(**kwargs)
+        events = page.get("events", [])
+        scanned += len(events)
+        matched.extend(event for event in events if run_id in event.get("message", ""))
+        if matched:
+            break
+
+        candidate = page.get("nextToken")
+        if not candidate or candidate == next_token:
+            break
+        next_token = candidate
+
+    return matched
+
+
 def _summary(
     r: Run,
     process_names: dict[UUID, str] | None = None,
@@ -197,13 +247,7 @@ def get_run_logs(
     logs = boto3.client("logs", region_name="us-east-1")
 
     try:
-        seed = logs.filter_log_events(
-            logGroupName=log_group,
-            startTime=start_ms,
-            endTime=end_ms,
-            filterPattern=run_id,
-            limit=20,
-        )
+        seed_events = _find_run_seed_events(logs, log_group, run_id, start_ms, end_ms)
     except logs.exceptions.ResourceNotFoundException:
         return RunLogsResponse(log_group=log_group, entries=[])
     except Exception as exc:
@@ -215,7 +259,7 @@ def get_run_logs(
         )
 
     stream_name = next(
-        (event.get("logStreamName") for event in seed.get("events", []) if event.get("logStreamName")),
+        (event.get("logStreamName") for event in seed_events if event.get("logStreamName")),
         None,
     )
     if not stream_name:
