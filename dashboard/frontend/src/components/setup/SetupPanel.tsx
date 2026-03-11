@@ -77,7 +77,7 @@ function StepCard({ index, step }: { index: number; step: SetupStep }) {
           </div>
           <p className="text-[13px] leading-6 text-[var(--text-secondary)]">{step.description}</p>
           {step.detail && (
-            <p className="mt-2 text-[12px] leading-5 text-[var(--text-muted)]">{step.detail}</p>
+            <p className="mt-2 whitespace-pre-line text-[12px] leading-5 text-[var(--text-muted)]">{step.detail}</p>
           )}
           <ActionBlock action={step.action} />
         </div>

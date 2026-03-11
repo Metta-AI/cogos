@@ -121,6 +121,20 @@ def _build_discord_setup(name: str) -> ChannelSetup:
     safe_name = name.replace(".", "-")
     secret_path = f"cogent/{name}/discord"
     service_name = f"cogent-{safe_name}-discord"
+    create_bot_instructions = (
+        "In Discord Developer Portal:\n"
+        "1. Open the app and go to Bot.\n"
+        "2. If needed, click Add Bot or Reset Token so you have a bot user and token.\n"
+        "3. Enable Message Content Intent.\n"
+        "4. Go to Installation and enable Guild Install.\n"
+        "5. Add scopes: bot and applications.commands.\n"
+        "6. Choose permissions and use the generated install link to invite the bot to your test server.\n"
+        "If your server is missing from the picker, your Discord account cannot install apps there."
+    )
+    create_bot_if_missing = (
+        "If the bot is not in your server yet, use these steps:\n"
+        f"{create_bot_instructions}"
+    )
 
     cogos_initialized = True
     cogos_error = None
@@ -191,9 +205,12 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         create_bot_step = SetupStep(
             key="create-bot",
             title="Create and invite the bot",
-            description="Create a Discord application, confirm the bot user, enable Message Content Intent, and invite it into the server you want to test.",
+            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
             status=SetupStatus.READY,
-            detail="A Discord token is already stored, which is a good sign the bot has been created.",
+            detail=(
+                "A Discord token is already stored, so the bot was probably created.\n"
+                f"{create_bot_if_missing}"
+            ),
             action=SetupAction(
                 label="Open Discord Developer Portal",
                 href="https://discord.com/developers/applications",
@@ -203,9 +220,12 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         create_bot_step = SetupStep(
             key="create-bot",
             title="Create and invite the bot",
-            description="Create a Discord application, confirm the bot user, enable Message Content Intent, and invite it into the server you want to test.",
+            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
             status=SetupStatus.NEEDS_ACTION,
-            detail="This dashboard cannot verify Discord-side configuration, but there is no token stored yet.",
+            detail=(
+                "This dashboard cannot verify Discord-side configuration, and there is no token stored yet.\n"
+                f"{create_bot_instructions}"
+            ),
             action=SetupAction(
                 label="Open Discord Developer Portal",
                 href="https://discord.com/developers/applications",
@@ -215,9 +235,12 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         create_bot_step = SetupStep(
             key="create-bot",
             title="Create and invite the bot",
-            description="Create a Discord application, confirm the bot user, enable Message Content Intent, and invite it into the server you want to test.",
+            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
             status=SetupStatus.UNKNOWN,
-            detail="Live token checks are unavailable, so this step cannot be confirmed from the dashboard.",
+            detail=(
+                "Live token checks are unavailable, so this step cannot be confirmed from the dashboard.\n"
+                f"{create_bot_if_missing}"
+            ),
             action=SetupAction(
                 label="Open Discord Developer Portal",
                 href="https://discord.com/developers/applications",
