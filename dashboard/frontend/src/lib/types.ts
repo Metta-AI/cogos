@@ -325,3 +325,22 @@ export interface DashboardData {
   runs: CogosRun[];
   eventTypes: EventType[];
 }
+
+export interface DiscordSetupStatus {
+  secret_path: string;
+  service_name: string;
+  cogos_initialized: boolean;
+  cogos_error: string | null;
+  capability_enabled: boolean;
+  dm_handler_enabled: boolean;
+  mention_handler_enabled: boolean;
+  secret_configured: boolean | null;
+  secret_check_error: string | null;
+  bridge_service_exists: boolean | null;
+  bridge_status: string | null;
+  bridge_desired_count: number | null;
+  bridge_running_count: number | null;
+  bridge_pending_count: number | null;
+  service_check_error: string | null;
+  ready_for_test: boolean;
+}

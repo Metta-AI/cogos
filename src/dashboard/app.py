@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
         processes,
         resources,
         runs,
+        setup,
     )
     app.include_router(processes.router, prefix="/api/cogents/{name}")
     app.include_router(handlers.router, prefix="/api/cogents/{name}")
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router, prefix="/api/cogents/{name}")
     app.include_router(cron.router, prefix="/api/cogents/{name}")
     app.include_router(resources.router, prefix="/api/cogents/{name}")
+    app.include_router(setup.router, prefix="/api/cogents/{name}")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

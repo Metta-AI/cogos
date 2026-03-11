@@ -14,6 +14,7 @@ import { EventsPanel } from "@/components/events/EventsPanel";
 import { ResourcesPanel } from "@/components/resources/ResourcesPanel";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { CronPanel } from "@/components/cron/CronPanel";
+import { SetupPanel } from "@/components/setup/SetupPanel";
 
 function getTabFromHash(): TabId {
   if (typeof window === "undefined") return "overview";
@@ -21,10 +22,21 @@ function getTabFromHash(): TabId {
   return VALID_TABS.has(hash as TabId) ? (hash as TabId) : "overview";
 }
 
+function resolveCogentName(hostname: string): string | null {
+  const explicit = process.env.NEXT_PUBLIC_DASHBOARD_COGENT_NAME?.trim();
+  if (explicit) return explicit;
+  if (hostname === "localhost" || hostname === "127.0.0.1") return hostname;
+  if (hostname.endsWith(".localhost")) return hostname.slice(0, -".localhost".length);
+  const firstLabel = hostname.split(".")[0];
+  if (!firstLabel) return null;
+  if (hostname.endsWith(".softmax-cogents.com")) return firstLabel.replace(/-/g, ".");
+  return firstLabel;
+}
+
 function useCogentName(): string | null {
   const [name, setName] = useState<string | null>(null);
   useEffect(() => {
-    setName(window.location.hostname.split(".")[0].replace(/-/g, "."));
+    setName(resolveCogentName(window.location.hostname));
   }, []);
   return name;
 }
@@ -138,6 +150,9 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
         )}
         {activeTab === "alerts" && (
           <AlertsPanel alerts={data.alerts} cogentName={cogentName} onRefresh={refresh} />
+        )}
+        {activeTab === "setup" && (
+          <SetupPanel cogentName={cogentName} />
         )}
       </main>
     </div>
