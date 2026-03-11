@@ -1032,6 +1032,8 @@ function ProcessFormEditor({
   onRefresh?: () => void;
 }) {
   const [expandedEditFiles, setExpandedEditFiles] = useState<Set<string>>(new Set());
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
+  const [deletingFile, setDeletingFile] = useState(false);
   return (
     <div className="space-y-3 p-4 rounded-md" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-2">
@@ -1172,16 +1174,65 @@ function ProcessFormEditor({
                       {isExpanded ? "▾" : "▸"}
                     </span>
                     <span className="font-mono text-[var(--text-secondary)] flex-1 truncate">{fileKey}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
-                      }}
-                      className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                      title="Remove from process"
-                    >
-                      ✕
-                    </button>
+                    {confirmDeleteFile === fileKey ? (
+                      <span className="flex items-center gap-1 text-[9px]" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[var(--text-muted)]">Delete file?</span>
+                        <button
+                          onClick={async () => {
+                            setDeletingFile(true);
+                            try {
+                              await api.deleteFile(cogentName, fileKey);
+                              onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
+                              onRefresh?.();
+                            } finally {
+                              setDeletingFile(false);
+                              setConfirmDeleteFile(null);
+                            }
+                          }}
+                          disabled={deletingFile}
+                          className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[9px] font-semibold disabled:opacity-40"
+                        >
+                          {deletingFile ? "..." : "Yes"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteFile(null)}
+                          className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[9px]"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedEditFiles((prev) => new Set([...prev, fileKey]));
+                          }}
+                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--accent)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteFile(fileKey);
+                          }}
+                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
+                          }}
+                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                          title="Remove from process"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
                   </div>
                   {isExpanded && (
                     <InlineFileEditor
