@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 
+from polis.status import coalesce_status_items, expected_stack_name, safe_name_from_stack_name
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -38,6 +40,13 @@ def handler(event, context):
     stacks = _find_cogent_stacks(cfn)
     logger.info("Found %d cogent stacks", len(stacks))
 
+    existing_items = _load_existing_status_items(table)
+    existing_by_stack = {
+        item.get("stack_name") or expected_stack_name(item["cogent_name"]): item
+        for item in existing_items
+        if item.get("cogent_name")
+    }
+
     channels_map = _poll_channels(sm_client)
     now = int(time.time())
     seen_names: set[str] = set()
@@ -46,7 +55,8 @@ def handler(event, context):
     for st in stacks:
         stack_name = st["Name"]
         stack_status = st["Status"]
-        cogent_name = stack_name.removeprefix("cogent-")
+        existing = existing_by_stack.get(stack_name, {})
+        cogent_name = existing.get("cogent_name") or safe_name_from_stack_name(stack_name)
         running_count = 0
         desired_count = 0
         image_tag = "-"
@@ -55,10 +65,12 @@ def handler(event, context):
 
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
+            stack = resp["Stacks"][0]
             outputs = {
-                o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])
+                o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])
             }
-            cogent_name = outputs.get("CogentName", cogent_name)
+            tags = {t["Key"]: t["Value"] for t in stack.get("Tags", [])}
+            cogent_name = tags.get("cogent_name") or outputs.get("CogentName", cogent_name)
             image_tag = outputs.get("ImageTag", "-")
 
             cluster_arn = outputs.get("ClusterArn")
@@ -84,6 +96,9 @@ def handler(event, context):
                 "desired_count": desired_count,
                 "image_tag": image_tag,
                 "channels": channels_map.get(cogent_name, {}),
+                "record_type": "runtime",
+                "domain": existing.get("domain"),
+                "certificate_arn": existing.get("certificate_arn"),
                 "_cluster_name": cluster_name,
                 "_service_name": service_name,
                 "updated_at": now,
@@ -118,6 +133,20 @@ def _find_cogent_stacks(cfn) -> list[dict]:
             if name.startswith("cogent-") and name not in ("cogent-polis", "cogent-secrets"):
                 stacks.append({"Name": name, "Status": s["StackStatus"]})
     return sorted(stacks, key=lambda s: s["Name"])
+
+
+def _load_existing_status_items(table) -> list[dict]:
+    """Load and coalesce existing cogent status rows from DynamoDB."""
+    items: list[dict] = []
+    params = {}
+    while True:
+        resp = table.scan(**params)
+        items.extend(resp.get("Items", []))
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        params["ExclusiveStartKey"] = last_key
+    return coalesce_status_items(items)
 
 
 def _poll_channels(sm_client) -> dict[str, dict[str, str]]:

@@ -44,6 +44,8 @@ class BrainStack(Stack):
         super().__init__(scope, id, **kwargs)
 
         safe_name = config.cogent_name.replace(".", "-")
+        cdk.Tags.of(self).add("cogent_name", config.cogent_name)
+        cdk.Tags.of(self).add("cogent_safe_name", safe_name)
 
         # 1. Database (Aurora Serverless v2 in default VPC)
         self.database = DatabaseConstruct(self, "Database", config=config)
