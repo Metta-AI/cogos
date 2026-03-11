@@ -124,6 +124,17 @@ export function useCogentData(cogentName: string) {
     });
   }, [lastMessage]);
 
+  // Poll cogos-status every 30s to keep scheduler tick fresh
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const cs = await api.getCogosStatus(cogentName);
+        setData((prev) => ({ ...prev, cogosStatus: cs }));
+      } catch { /* ignore */ }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [cogentName]);
+
   // Fallback polling: if WS not connected after 5s, poll every 30s
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectedRef = useRef(connected);
