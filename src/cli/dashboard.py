@@ -5,6 +5,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -38,6 +39,31 @@ def _key_file(name: str) -> Path:
     d = _COGENT_DIR / safe
     d.mkdir(parents=True, exist_ok=True)
     return d / "dashboard-key"
+
+
+def _frontend_next_bin() -> Path:
+    bin_name = "next.cmd" if os.name == "nt" else "next"
+    return _FRONTEND_DIR / "node_modules" / ".bin" / bin_name
+
+
+def _ensure_frontend_ready() -> None:
+    """Fail fast if the local frontend dependencies are missing."""
+    if not _FRONTEND_DIR.exists():
+        return
+
+    next_bin = _frontend_next_bin()
+    if next_bin.exists():
+        return
+
+    install_cmd = "cd dashboard/frontend && npm ci"
+    if not (_FRONTEND_DIR / "package-lock.json").exists():
+        install_cmd = "cd dashboard/frontend && npm install"
+
+    raise click.ClickException(
+        "Dashboard frontend dependencies are not installed.\n"
+        f"Expected local Next.js binary at `{next_bin}`.\n"
+        f"Run `{install_cmd}` and retry."
+    )
 
 
 @click.group()
@@ -141,6 +167,8 @@ def serve(
     else:
         env = _ensure_db_env(name, env, assume_polis=(db_mode == "prod"))
 
+    _ensure_frontend_ready()
+
     # Start FastAPI backend
     backend = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "dashboard.app:app", "--host", "0.0.0.0", "--port", str(port)],
@@ -155,6 +183,13 @@ def serve(
             cwd=str(_FRONTEND_DIR),
             env=env,
         )
+        time.sleep(1)
+        if frontend.poll() is not None:
+            backend.terminate()
+            backend.wait(timeout=5)
+            raise click.ClickException(
+                "Dashboard frontend exited during startup. See the frontend error output above."
+            )
 
     if not no_browser:
         url = f"http://localhost:{frontend_port}" if frontend else f"http://localhost:{port}"
