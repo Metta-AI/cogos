@@ -1,8 +1,9 @@
-"""MCP server exposing search + run_code for CogOS ECS runner.
+"""MCP server exposing run_code for CogOS ECS runner.
 
 Runs as a stdio-transport MCP server. Claude Code connects to it and uses
-the two meta-capabilities (search, run_code) to interact with the CogOS
-system on behalf of a process.
+the run_code meta-capability to interact with the CogOS system on behalf
+of a process.  Capability discovery happens inside the sandbox via the
+`capabilities` directory object.
 
 Usage:
     python -m cogos.sandbox.server --process-id <UUID>
@@ -15,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 from uuid import UUID
 
@@ -73,30 +73,15 @@ def _build_capability_proxies(repo: Repository, process_id: UUID) -> dict[str, o
     return proxies
 
 
-def _format_capabilities(caps: list) -> str:
-    """Format capability list for the search tool response."""
-    lines: list[str] = []
-    for cap in caps:
-        lines.append(f"## {cap.name}")
-        if cap.description:
-            lines.append(f"  {cap.description}")
-        if cap.instructions:
-            lines.append(f"  Instructions: {cap.instructions}")
-        if cap.input_schema:
-            lines.append(f"  Input: {json.dumps(cap.input_schema, indent=2)}")
-        if cap.output_schema:
-            lines.append(f"  Output: {json.dumps(cap.output_schema, indent=2)}")
-        lines.append("")
-    return "\n".join(lines) if lines else "No capabilities matched."
-
-
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 
 
 def create_server(process_id: UUID, repo: Repository) -> Server:
-    """Create an MCP server with search and run_code tools for *process_id*."""
+    """Create an MCP server with the run_code tool for *process_id*."""
+    from cogos.capabilities.base import Capability
+    from cogos.capabilities.directory import CapabilitiesDirectory
 
     server = Server("cogos-sandbox")
 
@@ -105,7 +90,22 @@ def create_server(process_id: UUID, repo: Repository) -> Server:
     proxies = _build_capability_proxies(repo, process_id)
     for name, proxy in proxies.items():
         vt.set(name, proxy)
+
+    # Inject CapabilitiesDirectory for in-sandbox discovery
+    cap_entries = {n: p for n, p in proxies.items() if isinstance(p, Capability)}
+    directory = CapabilitiesDirectory(cap_entries)
+    vt.set("capabilities", directory)
+
     executor = SandboxExecutor(vt)
+
+    # Build the system description that tells Claude what's available
+    cap_names = sorted(cap_entries.keys())
+    cap_list = ", ".join(cap_names)
+    dir_note = (
+        f"Available capabilities: [{cap_list}]. "
+        "Use capabilities.list(), capabilities.search(query), or <name>.help() "
+        "to discover methods and schemas."
+    )
 
     # -- Tool list --------------------------------------------------------
 
@@ -113,28 +113,13 @@ def create_server(process_id: UUID, repo: Repository) -> Server:
     async def list_tools() -> list[Tool]:
         return [
             Tool(
-                name="search",
-                description=(
-                    "Search available capabilities by keyword. Returns names, "
-                    "descriptions, and schemas for capabilities bound to this process."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Keyword to search capabilities by name or description.",
-                        },
-                    },
-                    "required": ["query"],
-                },
-            ),
-            Tool(
                 name="run_code",
                 description=(
-                    "Execute Python code in a sandboxed environment. Capability "
-                    "proxy objects are pre-injected (e.g. files, procs, events). "
-                    "Returns stdout/stderr output."
+                    "Execute Python code in the CogOS sandbox. "
+                    "Capability proxy objects are pre-injected as variables: "
+                    f"{cap_list}. "
+                    "A `capabilities` directory is also available for discovery. "
+                    f"{dir_note}"
                 ),
                 inputSchema={
                     "type": "object",
@@ -153,11 +138,6 @@ def create_server(process_id: UUID, repo: Repository) -> Server:
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-        if name == "search":
-            query = arguments.get("query", "")
-            caps = repo.search_capabilities(query, process_id=process_id)
-            return [TextContent(type="text", text=_format_capabilities(caps))]
-
         if name == "run_code":
             code = arguments.get("code", "")
             result = executor.execute(code)
