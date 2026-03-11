@@ -34,7 +34,7 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 const STATUSES = ["waiting", "runnable", "running", "completed", "disabled", "blocked", "suspended"];
 const MODES: ("daemon" | "one_shot")[] = ["one_shot", "daemon"];
 const RUNNERS = ["lambda", "ecs"];
-const DEFAULT_MODEL = "us.anthropic.claude-opus-4-20250514-v1:0";
+const EXECUTOR_DEFAULT_MODEL_LABEL = "default (sonnet)";
 
 const INPUT_CLS = "bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[12px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] w-full";
 
@@ -71,7 +71,7 @@ const EMPTY_FORM: ProcessForm = {
   priority: "0",
   runner: "lambda",
   status: "runnable",
-  model: DEFAULT_MODEL,
+  model: "",
   max_duration_val: "",
   max_duration_unit: "m",
   max_retries: "0",
@@ -117,7 +117,7 @@ function formFromProcess(
     priority: String(p.priority),
     runner: p.runner,
     status: p.status,
-    model: p.model || DEFAULT_MODEL,
+    model: p.model ?? "",
     ...msToFormDuration(p.max_duration_ms),
     max_retries: String(p.max_retries),
     preemptible: p.preemptible,
@@ -789,18 +789,20 @@ function StatusMenu({ value, onChange }: { value: string; onChange: (s: string) 
 /* ── Model Menu Button ── */
 
 const MODELS = [
+  { value: "", label: EXECUTOR_DEFAULT_MODEL_LABEL },
   { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "haiku" },
   { value: "us.anthropic.claude-sonnet-4-20250514-v1:0", label: "sonnet" },
   { value: "us.anthropic.claude-opus-4-20250514-v1:0", label: "opus" },
 ];
 
 function modelLabel(value: string): string {
+  if (!value) return EXECUTOR_DEFAULT_MODEL_LABEL;
   const m = MODELS.find((m) => m.value === value);
   if (m) return m.label;
   if (value.includes("haiku")) return "haiku";
   if (value.includes("opus")) return "opus";
   if (value.includes("sonnet")) return "sonnet";
-  return value || "opus";
+  return value;
 }
 
 function ModelMenu({ value, onChange }: { value: string; onChange: (m: string) => void }) {
