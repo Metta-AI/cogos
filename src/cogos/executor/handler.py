@@ -229,7 +229,7 @@ def execute_process(
 
     # Set up sandbox with capability proxies
     vt = VariableTable()
-    _setup_capability_proxies(vt, process, repo)
+    _setup_capability_proxies(vt, process, repo, run_id=run.id)
     sandbox = SandboxExecutor(vt)
 
     model_id = process.model or config.default_model
@@ -319,7 +319,7 @@ def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:
     return json.dumps(results, indent=2) if results else "No capabilities found matching query."
 
 
-def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Repository) -> None:
+def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Repository, *, run_id: UUID | None = None) -> None:
     """Inject capability proxy objects into the variable table.
 
     Dynamically loads all capabilities bound to this process via their
@@ -377,6 +377,10 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
     vt.set("events", EventsProxy())
     vt.set("print", print)
 
+    # "me" capability — needs run_id, injected separately
+    from cogos.capabilities.me import MeCapability
+    vt.set("me", MeCapability(repo, process.id, run_id=run_id))
+
     # Dynamically load additional capabilities bound to this process
     pcs = repo.list_process_capabilities(process.id)
     for pc in pcs:
@@ -384,7 +388,7 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
         if cap is None or not cap.enabled:
             continue
         ns = cap.name.split("/")[0] if "/" in cap.name else cap.name
-        if ns in ("files", "procs", "events", "scheduler"):
+        if ns in ("files", "procs", "events", "scheduler", "me"):
             continue  # already set up above
         if ":" in cap.handler:
             mod_path, attr_name = cap.handler.rsplit(":", 1)

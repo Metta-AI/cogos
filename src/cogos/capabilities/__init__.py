@@ -368,6 +368,43 @@ BUILTIN_CAPABILITIES: list[dict] = [
         },
     },
     {
+        "name": "me",
+        "description": "Self-referential capability — scoped file/dir access for the current process and run.",
+        "handler": "cogos.capabilities.me.MeCapability",
+        "instructions": (
+            "Use me to access scoped scratch/tmp/log storage for the current process and run.\n"
+            "- me.run() — returns a RunScope with scratch/tmp/log scoped to the current run\n"
+            "- me.process() — returns a ProcessScope with scratch/tmp/log scoped to the process\n"
+            "\n"
+            "Each scope provides:\n"
+            "- .tmp() — a FileHandle for a single tmp file\n"
+            "- .tmp_dir() — a DirHandle for tmp files (list/read/write by name)\n"
+            "- .log() — a FileHandle for a log file\n"
+            "- .scratch() — a FileHandle for a single scratch file\n"
+            "- .scratch_dir() — a DirHandle for scratch files (list/read/write by name)\n"
+            "\n"
+            "FileHandle: .read() -> str, .write(content) -> result, .key -> str\n"
+            "DirHandle: .list() -> [keys], .read(name) -> str, .write(name, content) -> result, .file(name) -> FileHandle\n"
+            "\n"
+            "Run-scoped storage is ephemeral per run. Process-scoped storage persists across runs.\n"
+            "Paths: /proc/{process_id}/[tmp|scratch|log] and /proc/{process_id}/runs/{run_id}/[tmp|scratch|log]"
+        ),
+        "input_schema": {
+            "run": {"type": "object", "properties": {}},
+            "process": {"type": "object", "properties": {}},
+        },
+        "output_schema": {
+            "run": {
+                "type": "object",
+                "description": "RunScope with .tmp(), .tmp_dir(), .log(), .scratch(), .scratch_dir()",
+            },
+            "process": {
+                "type": "object",
+                "description": "ProcessScope with .tmp(), .tmp_dir(), .log(), .scratch(), .scratch_dir()",
+            },
+        },
+    },
+    {
         "name": "scheduler",
         "description": "Process scheduling — event matching, process selection, and dispatch.",
         "handler": "cogos.capabilities.scheduler.SchedulerCapability",
