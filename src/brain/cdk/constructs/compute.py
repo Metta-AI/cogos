@@ -223,7 +223,7 @@ class ComputeConstruct(Construct):
             },
         )
 
-        # Dispatcher Lambda — polls proposed events and publishes to EventBridge
+        # Dispatcher Lambda — runs CogOS scheduler tick
         dispatcher_role = iam.Role(
             self,
             "DispatcherRole",
@@ -232,6 +232,12 @@ class ComputeConstruct(Construct):
         )
         for stmt in data_api_statements:
             dispatcher_role.add_to_policy(stmt)
+        dispatcher_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[f"arn:aws:lambda:*:*:function:cogent-{safe_name}-executor"],
+            )
+        )
 
         self.dispatcher = lambda_.Function(
             self,

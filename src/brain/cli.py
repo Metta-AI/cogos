@@ -210,8 +210,8 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
         "--app", "python -m brain.cdk.app",
         "--require-approval", "never",
     ]
-    if not watch:
-        cmd.append("--no-rollback")
+    if watch:
+        cmd.append("--watch")
 
     env = {**os.environ, "AWS_PROFILE": profile}
     result = subprocess.run(cmd, capture_output=False, env=env)
