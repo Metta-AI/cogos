@@ -74,8 +74,11 @@ def cogos_status(name: str) -> CogosStatusResponse:
     scheduler_tick = None
     try:
         meta = repo.get_meta("scheduler:last_tick")
-        if meta:
-            scheduler_tick = meta["updated_at"]
+        if meta and meta["updated_at"]:
+            ts = meta["updated_at"]
+            if "+" not in ts and "Z" not in ts:
+                ts += "+00:00"
+            scheduler_tick = ts
     except Exception:
         pass
 
