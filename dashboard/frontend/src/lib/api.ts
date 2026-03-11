@@ -11,6 +11,7 @@ import type {
   CapabilityProcess,
   CogosHandler,
   CogosRun,
+  EventType,
 } from "./types";
 
 function getApiKey(): string | null {
@@ -300,6 +301,13 @@ export async function getCapabilityMethods(
   capName: string,
 ): Promise<CapabilityMethod[]> {
   return fetchJSON(`/api/cogents/${name}/capabilities/${encodeURIComponent(capName)}/methods`);
+}
+
+export async function getEventTypes(name: string): Promise<EventType[]> {
+  const r = await fetchJSON<{ event_types: EventType[] }>(
+    `/api/cogents/${name}/event-types`,
+  );
+  return r.event_types;
 }
 
 export async function getHandlers(name: string): Promise<CogosHandler[]> {

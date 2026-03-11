@@ -15,6 +15,7 @@ from cogos.db.models import (
     Capability,
     Cron,
     Event,
+    EventType,
     File,
     FileVersion,
     Handler,
@@ -62,6 +63,7 @@ class LocalRepository:
         self._cron_rules: dict[UUID, Cron] = {}
         self._events: list[Event] = []
         self._runs: dict[UUID, Run] = {}
+        self._event_types: dict[str, EventType] = {}  # keyed by name
 
         self._load()
 
@@ -97,6 +99,7 @@ class LocalRepository:
         self._file_versions.clear()
         self._events.clear()
         self._runs.clear()
+        self._event_types.clear()
 
         for p in data.get("processes", []):
             proc = Process(**p)
@@ -127,6 +130,9 @@ class LocalRepository:
         for r in data.get("runs", []):
             run = Run(**r)
             self._runs[run.id] = run
+        for et in data.get("event_types", []):
+            evt = EventType(**et)
+            self._event_types[evt.name] = evt
 
         logger.info(
             "Loaded cogos data: %d processes, %d capabilities, %d files, %d events, %d runs",
@@ -150,6 +156,7 @@ class LocalRepository:
             "cron_rules": [c.model_dump(mode="json") for c in self._cron_rules.values()],
             "events": [e.model_dump(mode="json") for e in self._events],
             "runs": [r.model_dump(mode="json") for r in self._runs.values()],
+            "event_types": [et.model_dump(mode="json") for et in self._event_types.values()],
         }
         self._file.write_text(json.dumps(data, indent=2, default=_json_serial))
         self._file_mtime = self._file.stat().st_mtime
@@ -174,6 +181,7 @@ class LocalRepository:
         self._cron_rules.clear()
         self._events.clear()
         self._runs.clear()
+        self._event_types.clear()
         self._save()
 
     @staticmethod
@@ -463,7 +471,7 @@ class LocalRepository:
         self._maybe_reload()
         rules = list(self._cron_rules.values())
         if enabled_only:
-            rules = [r for r in rules if r.enabled]
+            rules = [c for c in rules if c.enabled]
         rules.sort(key=lambda c: c.expression)
         return rules
 
@@ -501,3 +509,37 @@ class LocalRepository:
             runs = [r for r in runs if r.process == process_id]
         runs.sort(key=lambda r: r.created_at or datetime.min, reverse=True)
         return runs[:limit]
+
+    # ── Event Types ───────────────────────────────────────────
+
+    def list_event_types(self) -> list[EventType]:
+        self._maybe_reload()
+        items = list(self._event_types.values())
+        items.sort(key=lambda et: et.name)
+        return items
+
+    def upsert_event_type(self, et: EventType) -> None:
+        if et.name not in self._event_types:
+            et.created_at = datetime.utcnow()
+        self._event_types[et.name] = et
+        self._save()
+
+    def register_event_types(self, names: list[str], source: str = "") -> None:
+        changed = False
+        for name in names:
+            if "*" in name or "?" in name:
+                continue
+            if name not in self._event_types:
+                self._event_types[name] = EventType(
+                    name=name, source=source, created_at=datetime.utcnow(),
+                )
+                changed = True
+        if changed:
+            self._save()
+
+    def delete_event_type(self, name: str) -> bool:
+        if name in self._event_types:
+            del self._event_types[name]
+            self._save()
+            return True
+        return False

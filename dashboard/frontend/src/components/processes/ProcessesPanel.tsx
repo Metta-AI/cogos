@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability } from "@/lib/types";
+import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability, EventType } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import type { CogosFileVersion } from "@/lib/types";
@@ -16,6 +16,7 @@ interface Props {
   runs: CogosRun[];
   files: CogosFile[];
   capabilities: CogosCapability[];
+  eventTypes: EventType[];
 }
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral" | "accent";
@@ -58,6 +59,8 @@ interface ProcessForm {
   resources: string[];
   capabilities: string[];
   capabilityConfigs: Record<string, CapabilityConfig>;
+  handlers: string[];
+  output_events: string[];
 }
 
 const EMPTY_FORM: ProcessForm = {
@@ -77,6 +80,8 @@ const EMPTY_FORM: ProcessForm = {
   resources: [],
   capabilities: [],
   capabilityConfigs: {},
+  handlers: [],
+  output_events: [],
 };
 
 const DURATION_UNITS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -97,7 +102,13 @@ function formDurationToMs(val: string, unit: DurationUnit): number | null {
   return Math.round(n * DURATION_UNITS[unit]);
 }
 
-function formFromProcess(p: CogosProcess, fileKeys?: string[], capNames?: string[], capConfigs?: Record<string, CapabilityConfig>): ProcessForm {
+function formFromProcess(
+  p: CogosProcess,
+  fileKeys?: string[],
+  capNames?: string[],
+  capConfigs?: Record<string, CapabilityConfig>,
+  handlerPatterns?: string[],
+): ProcessForm {
   return {
     name: p.name,
     mode: p.mode,
@@ -114,6 +125,8 @@ function formFromProcess(p: CogosProcess, fileKeys?: string[], capNames?: string
     resources: p.resources ?? [],
     capabilities: capNames ?? [],
     capabilityConfigs: capConfigs ?? {},
+    handlers: handlerPatterns ?? [],
+    output_events: p.output_events ?? [],
   };
 }
 
@@ -474,6 +487,115 @@ function CapabilityEditor({
             if (e.key === "Escape") setShowSuggestions(false);
           }}
           placeholder="Add capabilities..."
+          className={INPUT_CLS}
+          style={{ fontSize: "11px" }}
+        />
+        {showSuggestions && filtered.length > 0 && (
+          <div
+            className="absolute z-50 left-0 right-0 mt-1 rounded overflow-hidden shadow-lg"
+            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", maxHeight: "160px", overflowY: "auto" }}
+          >
+            {filtered.map((s) => (
+              <button
+                key={s}
+                onClick={() => addItem(s)}
+                className="w-full text-left px-2 py-1 text-[11px] font-mono border-0 cursor-pointer"
+                style={{ background: "transparent", color: "var(--text-secondary)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── TagEditor: simple tag list with typeahead (for handlers, output_events) ── */
+
+function TagEditor({
+  items,
+  onChange,
+  suggestions,
+  label,
+  placeholder,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+  suggestions: string[];
+  label: string;
+  placeholder: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    if (!query) return suggestions.filter((s) => !items.includes(s)).slice(0, 8);
+    const q = query.toLowerCase();
+    return suggestions.filter((s) => s.toLowerCase().includes(q) && !items.includes(s)).slice(0, 8);
+  }, [query, suggestions, items]);
+
+  const addItem = useCallback((val: string) => {
+    const trimmed = val.trim();
+    if (trimmed && !items.includes(trimmed)) onChange([...items, trimmed]);
+    setQuery("");
+    setShowSuggestions(false);
+  }, [items, onChange]);
+
+  const removeItem = useCallback((idx: number) => {
+    onChange(items.filter((_, i) => i !== idx));
+  }, [items, onChange]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={wrapperRef}>
+      <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">{label}</label>
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1">
+          {items.map((item, idx) => (
+            <span
+              key={item}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            >
+              {item}
+              <button
+                onClick={() => removeItem(idx)}
+                className="border-0 bg-transparent cursor-pointer text-[var(--text-muted)] hover:text-[var(--error)] text-[10px] leading-none p-0"
+              >
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (filtered.length > 0) addItem(filtered[0]);
+              else if (query.trim()) addItem(query);
+            }
+            if (e.key === "Escape") setShowSuggestions(false);
+          }}
+          placeholder={placeholder}
           className={INPUT_CLS}
           style={{ fontSize: "11px" }}
         />
@@ -1019,6 +1141,7 @@ function ProcessFormEditor({
   resourceSuggestions,
   fileSuggestions,
   capabilitySuggestions,
+  eventTypeSuggestions,
   cogentName,
   onRefresh,
 }: {
@@ -1031,6 +1154,7 @@ function ProcessFormEditor({
   resourceSuggestions: string[];
   fileSuggestions: string[];
   capabilitySuggestions: string[];
+  eventTypeSuggestions: string[];
   cogentName: string;
   onRefresh?: () => void;
 }) {
@@ -1318,6 +1442,24 @@ function ProcessFormEditor({
         </div>
       </div>
 
+      {/* Event Handlers (subscriptions) */}
+      <TagEditor
+        items={form.handlers}
+        onChange={(handlers) => onChange({ ...form, handlers })}
+        suggestions={eventTypeSuggestions}
+        label="Event Handlers"
+        placeholder="Add event subscription..."
+      />
+
+      {/* Output Events */}
+      <TagEditor
+        items={form.output_events}
+        onChange={(output_events) => onChange({ ...form, output_events })}
+        suggestions={eventTypeSuggestions}
+        label="Output Events"
+        placeholder="Add output event..."
+      />
+
       {/* Save / Cancel */}
       <div className="flex gap-2 pt-1">
         <button
@@ -1345,7 +1487,7 @@ function ProcessFormEditor({
 
 /* ── Main Panel ── */
 
-export function ProcessesPanel({ processes, cogentName, onRefresh, resources, runs, files, capabilities }: Props) {
+export function ProcessesPanel({ processes, cogentName, onRefresh, resources, runs, files, capabilities, eventTypes }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // "new" for create
   const [form, setForm] = useState<ProcessForm>(EMPTY_FORM);
@@ -1370,6 +1512,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
   const fileSuggestions = useMemo(() => files.map((f) => f.key), [files]);
   const capabilitySuggestions = useMemo(() => capabilities.map((c) => c.name), [capabilities]);
+  const eventTypeSuggestions = useMemo(() => eventTypes.map((et) => et.name), [eventTypes]);
 
   // Build map of process_id -> latest run from the runs list
   const lastRunByProcess = useMemo(() => {
@@ -1441,8 +1584,9 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
 
   const handleEdit = useCallback((p: CogosProcess) => {
     setEditingId(p.id);
-    setForm(formFromProcess(p, detailFileKeys, detailCapabilities, detailCapConfigs));
-  }, [detailFileKeys, detailCapabilities, detailCapConfigs]);
+    const handlerPatterns = detailHandlers.map((h) => h.event_pattern);
+    setForm(formFromProcess(p, detailFileKeys, detailCapabilities, detailCapConfigs, handlerPatterns));
+  }, [detailFileKeys, detailCapabilities, detailCapConfigs, detailHandlers]);
 
   const handleCancel = useCallback(() => {
     setEditingId(null);
@@ -1468,6 +1612,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
         resources: form.resources,
         capabilities: form.capabilities,
         capability_configs: form.capabilityConfigs,
+        handlers: form.handlers,
+        output_events: form.output_events,
       };
       if (editingId === "new") {
         await api.createProcess(cogentName, body as Parameters<typeof api.createProcess>[1]);
@@ -1554,6 +1700,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             resourceSuggestions={resourceSuggestions}
             fileSuggestions={fileSuggestions}
             capabilitySuggestions={capabilitySuggestions}
+            eventTypeSuggestions={eventTypeSuggestions}
             cogentName={cogentName}
             onRefresh={onRefresh}
           />
@@ -1847,6 +1994,20 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     </div>
                   )}
 
+                  {/* Output events */}
+                  {proc.output_events && proc.output_events.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-[var(--text-muted)] uppercase mb-1">Output Events ({proc.output_events.length})</div>
+                      <div className="flex flex-wrap gap-1">
+                        {proc.output_events.map((e) => (
+                          <span key={e} className="px-1.5 py-0.5 rounded text-[11px] font-mono" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--success)" }}>
+                            {e}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Recent runs */}
                   {loadingDetail ? (
                     <div className="text-[11px] text-[var(--text-muted)]">Loading runs...</div>
@@ -1947,6 +2108,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     resourceSuggestions={resourceSuggestions}
                     fileSuggestions={fileSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
+                    eventTypeSuggestions={eventTypeSuggestions}
                     cogentName={cogentName}
                     onRefresh={onRefresh}
                   />

@@ -32,8 +32,16 @@ export interface CogosProcess {
   retry_backoff_ms: number | null;
   clear_context: boolean;
   metadata: Record<string, unknown>;
+  output_events: string[];
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface EventType {
+  name: string;
+  description: string;
+  source: string;
+  created_at: string | null;
 }
 
 export interface CogosProcessRun {
@@ -315,4 +323,5 @@ export interface DashboardData {
   capabilities: CogosCapability[];
   handlers: CogosHandler[];
   runs: CogosRun[];
+  eventTypes: EventType[];
 }

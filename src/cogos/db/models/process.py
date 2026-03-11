@@ -48,5 +48,6 @@ class Process(BaseModel):
     retry_backoff_ms: int | None = None
     clear_context: bool = False  # ECS only: resume or fresh
     metadata: dict[str, Any] = Field(default_factory=dict)
+    output_events: list[str] = Field(default_factory=list)  # event types this process emits
     created_at: datetime | None = None
     updated_at: datetime | None = None

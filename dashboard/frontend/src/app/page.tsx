@@ -112,6 +112,7 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
             runs={data.runs}
             files={data.files}
             capabilities={data.capabilities}
+            eventTypes={data.eventTypes}
           />
         )}
         {activeTab === "files" && (

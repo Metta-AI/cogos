@@ -31,6 +31,7 @@ export function useCogentData(cogentName: string) {
     capabilities: [],
     handlers: [],
     runs: [],
+    eventTypes: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function useCogentData(cogentName: string) {
       api.getRuns(cogentName),
       api.getEvents(cogentName, timeRange),
       api.getCrons(cogentName),
+      api.getEventTypes(cogentName),
     ]);
     const failCount = results.filter((r) => r.status === "rejected").length;
     if (failCount === results.length) {
@@ -69,6 +71,7 @@ export function useCogentData(cogentName: string) {
       runs: results[5].status === "fulfilled" ? results[5].value : [],
       events: results[6].status === "fulfilled" ? results[6].value : [],
       crons: results[7].status === "fulfilled" ? results[7].value : [],
+      eventTypes: results[8].status === "fulfilled" ? results[8].value : [],
     }));
     setLoading(false);
   }, [cogentName, timeRange]);

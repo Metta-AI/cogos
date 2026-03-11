@@ -24,6 +24,7 @@ from cogos.db.models import (
     DeliveryStatus,
     Event,
     EventDelivery,
+    EventType,
     File,
     FileVersion,
     Handler,
@@ -180,12 +181,12 @@ class Repository:
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     max_duration_ms, max_retries, retry_count, retry_backoff_ms,
-                    clear_context, metadata)
+                    clear_context, metadata, output_events)
                VALUES (:id, :name, :mode, :content, :code, :files::jsonb, :priority, :resources::jsonb, :runner,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
-                       :clear_context, :metadata::jsonb)
+                       :clear_context, :metadata::jsonb, :output_events::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content, code = EXCLUDED.code,
                    files = EXCLUDED.files,
@@ -198,6 +199,7 @@ class Repository:
                    retry_backoff_ms = EXCLUDED.retry_backoff_ms,
                    clear_context = EXCLUDED.clear_context,
                    metadata = EXCLUDED.metadata,
+                   output_events = EXCLUDED.output_events,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
@@ -223,12 +225,14 @@ class Repository:
                 self._param("retry_backoff_ms", p.retry_backoff_ms),
                 self._param("clear_context", p.clear_context),
                 self._param("metadata", p.metadata),
+                self._param("output_events", p.output_events),
             ],
         )
         row = self._first_row(response)
         if row:
             p.created_at = self._ts(row, "created_at")
             p.updated_at = self._ts(row, "updated_at")
+            self.register_event_types(p.output_events, source="process")
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert process")
 
@@ -326,6 +330,7 @@ class Repository:
             retry_backoff_ms=row.get("retry_backoff_ms"),
             clear_context=row.get("clear_context", False),
             metadata=self._json_field(row, "metadata", {}),
+            output_events=self._json_field(row, "output_events", []),
             created_at=self._ts(row, "created_at"),
             updated_at=self._ts(row, "updated_at"),
         )
@@ -425,6 +430,7 @@ class Repository:
         row = self._first_row(response)
         if row:
             h.created_at = self._ts(row, "created_at")
+            self.register_event_types([h.event_pattern], source="handler")
             return UUID(row["id"])
         return h.id
 
@@ -801,10 +807,10 @@ class Repository:
         response = self._execute(
             """INSERT INTO cogos_capability
                    (id, name, description, instructions, handler,
-                    input_schema, output_schema, iam_role_arn, enabled, metadata)
+                    input_schema, output_schema, iam_role_arn, enabled, metadata, event_types)
                VALUES (:id, :name, :description, :instructions, :handler,
                        :input_schema::jsonb, :output_schema::jsonb,
-                       :iam_role_arn, :enabled, :metadata::jsonb)
+                       :iam_role_arn, :enabled, :metadata::jsonb, :event_types::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    description = EXCLUDED.description,
                    instructions = EXCLUDED.instructions,
@@ -814,6 +820,7 @@ class Repository:
                    iam_role_arn = EXCLUDED.iam_role_arn,
                    enabled = EXCLUDED.enabled,
                    metadata = EXCLUDED.metadata,
+                   event_types = EXCLUDED.event_types,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
@@ -827,12 +834,14 @@ class Repository:
                 self._param("iam_role_arn", cap.iam_role_arn),
                 self._param("enabled", cap.enabled),
                 self._param("metadata", cap.metadata),
+                self._param("event_types", cap.event_types),
             ],
         )
         row = self._first_row(response)
         if row:
             cap.created_at = self._ts(row, "created_at")
             cap.updated_at = self._ts(row, "updated_at")
+            self.register_event_types(cap.event_types, source="capability")
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert capability")
 
@@ -893,6 +902,7 @@ class Repository:
             iam_role_arn=row.get("iam_role_arn"),
             enabled=row.get("enabled", True),
             metadata=self._json_field(row, "metadata", {}),
+            event_types=self._json_field(row, "event_types", []),
             created_at=self._ts(row, "created_at"),
             updated_at=self._ts(row, "updated_at"),
         )
@@ -1059,3 +1069,44 @@ class Repository:
             "value": row.get("value", ""),
             "updated_at": str(self._ts(row, "updated_at")) if self._ts(row, "updated_at") else "",
         }
+
+    # ═══════════════════════════════════════════════════════════
+    # EVENT TYPES
+    # ═══════════════════════════════════════════════════════════
+
+    def list_event_types(self) -> list[EventType]:
+        """List all registered event types."""
+        rows = self._rows_to_dicts(self._execute("SELECT * FROM cogos_event_type ORDER BY name"))
+        return [
+            EventType(
+                name=r["name"],
+                description=r.get("description", ""),
+                source=r.get("source", ""),
+                created_at=self._ts(r, "created_at"),
+            )
+            for r in rows
+        ]
+
+    def upsert_event_type(self, et: EventType) -> None:
+        """Insert or update an event type."""
+        self._execute(
+            """INSERT INTO cogos_event_type (name, description, source)
+               VALUES (:name, :desc, :source)
+               ON CONFLICT (name) DO UPDATE SET
+                   description = CASE WHEN cogos_event_type.description = '' THEN EXCLUDED.description ELSE cogos_event_type.description END""",
+            [self._param("name", et.name), self._param("desc", et.description), self._param("source", et.source)],
+        )
+
+    def register_event_types(self, names: list[str], source: str = "", description: str = "") -> None:
+        """Bulk-register event type names (skip globs with * or ?)."""
+        for name in names:
+            if "*" in name or "?" in name:
+                continue
+            self.upsert_event_type(EventType(name=name, source=source, description=description))
+
+    def delete_event_type(self, name: str) -> bool:
+        resp = self._execute(
+            "DELETE FROM cogos_event_type WHERE name = :name",
+            [self._param("name", name)],
+        )
+        return resp.get("numberOfRecordsUpdated", 0) > 0

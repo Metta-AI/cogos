@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS cogos_capability (
     iam_role_arn    TEXT,
     enabled         BOOLEAN NOT NULL DEFAULT TRUE,
     metadata        JSONB NOT NULL DEFAULT '{}',
+    event_types     JSONB NOT NULL DEFAULT '[]',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS cogos_process (
     retry_backoff_ms    INT,
     clear_context       BOOLEAN NOT NULL DEFAULT FALSE,
     metadata            JSONB NOT NULL DEFAULT '{}',
+    output_events       JSONB NOT NULL DEFAULT '[]',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -178,6 +180,17 @@ ALTER TABLE cogos_event_delivery
 -- CRON (scheduled event emitter)
 -- Reuse existing cron table
 -- ═══════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════
+-- EVENT TYPES (registry for typeahead suggestions)
+-- ═══════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS cogos_event_type (
+    name        TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ═══════════════════════════════════════════════════════════
 -- TRACES (detailed execution audit)

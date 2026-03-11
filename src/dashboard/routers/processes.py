@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from cogos.db.models import Process, ProcessMode, ProcessStatus
+from cogos.db.models import Handler, Process, ProcessMode, ProcessStatus
 from cogos.db.models.file import File, FileVersion
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
@@ -59,6 +59,7 @@ class ProcessDetail(BaseModel):
     retry_backoff_ms: int | None = None
     clear_context: bool
     metadata: dict
+    output_events: list[str] = []
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -79,8 +80,10 @@ class ProcessCreate(BaseModel):
     preemptible: bool = False
     clear_context: bool = False
     metadata: dict | None = None
+    output_events: list[str] | None = None
     capabilities: list[str] | None = None  # capability names to grant
     capability_configs: dict[str, dict] | None = None  # per-capability config keyed by name
+    handlers: list[str] | None = None  # event patterns for handlers
 
 
 class ProcessUpdate(BaseModel):
@@ -99,8 +102,10 @@ class ProcessUpdate(BaseModel):
     preemptible: bool | None = None
     clear_context: bool | None = None
     metadata: dict | None = None
+    output_events: list[str] | None = None
     capabilities: list[str] | None = None  # capability names to grant
     capability_configs: dict[str, dict] | None = None  # per-capability config keyed by name
+    handlers: list[str] | None = None  # event patterns for handlers
 
 
 class ProcessesResponse(BaseModel):
@@ -153,9 +158,30 @@ def _detail(p: Process) -> ProcessDetail:
         retry_backoff_ms=p.retry_backoff_ms,
         clear_context=p.clear_context,
         metadata=p.metadata,
+        output_events=p.output_events,
         created_at=str(p.created_at) if p.created_at else None,
         updated_at=str(p.updated_at) if p.updated_at else None,
     )
+
+
+def _sync_handlers(
+    process_id: UUID,
+    event_patterns: list[str],
+    repo,  # noqa: ANN001
+) -> None:
+    """Sync handlers: add missing, remove stale."""
+    existing = repo.list_handlers(process_id=process_id)
+    existing_patterns = {h.event_pattern: h for h in existing}
+    desired = set(event_patterns)
+
+    # Add new
+    for pattern in desired - set(existing_patterns.keys()):
+        repo.create_handler(Handler(process=process_id, event_pattern=pattern))
+
+    # Remove stale
+    for pattern, h in existing_patterns.items():
+        if pattern not in desired:
+            repo.delete_handler(h.id)
 
 
 def _resolve_file_key(key: str, repo, *, create: bool = False) -> UUID | None:  # noqa: ANN001
@@ -372,9 +398,13 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         clear_context=body.clear_context,
         metadata=body.metadata or {},
     )
+    if body.output_events is not None:
+        p.output_events = body.output_events
     repo.upsert_process(p)
     if body.capabilities is not None:
         _sync_capabilities(p.id, body.capabilities, repo, configs=body.capability_configs)
+    if body.handlers is not None:
+        _sync_handlers(p.id, body.handlers, repo)
     return _detail(p)
 
 
@@ -415,10 +445,14 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
         p.metadata = body.metadata
     if body.files is not None:
         p.files = _resolve_file_keys(body.files, repo, create=True)
+    if body.output_events is not None:
+        p.output_events = body.output_events
 
     repo.upsert_process(p)
     if body.capabilities is not None:
         _sync_capabilities(p.id, body.capabilities, repo, configs=body.capability_configs)
+    if body.handlers is not None:
+        _sync_handlers(p.id, body.handlers, repo)
     return _detail(p)
 
 
