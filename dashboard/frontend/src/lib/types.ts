@@ -325,3 +325,35 @@ export interface DashboardData {
   runs: CogosRun[];
   eventTypes: EventType[];
 }
+
+export type SetupStatus = "ready" | "needs_action" | "manual" | "unknown";
+
+export interface SetupAction {
+  label: string;
+  command: string | null;
+  href: string | null;
+}
+
+export interface SetupStep {
+  key: string;
+  title: string;
+  description: string;
+  status: SetupStatus;
+  detail: string | null;
+  action: SetupAction | null;
+}
+
+export interface ChannelSetup {
+  key: string;
+  title: string;
+  description: string;
+  status: SetupStatus;
+  summary: string;
+  ready_for_test: boolean;
+  steps: SetupStep[];
+  diagnostics: string[];
+}
+
+export interface SetupResponse {
+  channels: ChannelSetup[];
+}
