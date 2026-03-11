@@ -203,7 +203,7 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
         click.echo(f"  Certificate: {cert_arn}")
 
     cmd = [
-        "cdk", "deploy", f"cogent-{safe_name}-brain",
+        "npx", "cdk", "deploy", f"cogent-{safe_name}-brain",
         "-c", f"cogent_name={name}",
         "-c", f"certificate_arn={cert_arn}",
         "-c", f"ecr_repo_uri={ecr_repo_uri}",
@@ -306,7 +306,7 @@ def destroy_cmd(ctx: click.Context, profile: str, yes: bool):
     if not yes:
         click.confirm(f"This will destroy the stack for cogent-{name}. Continue?", abort=True)
     cmd = [
-        "cdk", "destroy", f"cogent-{safe_name}-brain",
+        "npx", "cdk", "destroy", f"cogent-{safe_name}-brain",
         "-c", f"cogent_name={name}",
         "--app", "python -m brain.cdk.app",
         "--force",
