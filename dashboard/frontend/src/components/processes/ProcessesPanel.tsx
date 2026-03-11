@@ -1393,7 +1393,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailHandlers(detail.handlers || []);
       setPromptTree(detail.prompt_tree || []);
       if (!opts?.preserveExpanded) {
-        setExpandedPromptFiles(new Set((detail.prompt_tree || []).map((e: { key: string }) => e.key)));
+        const tree = detail.prompt_tree || [];
+        setExpandedPromptFiles(new Set(tree.length > 0 ? [tree[tree.length - 1].key] : []));
       }
     } catch {
       setDetailRuns([]);
