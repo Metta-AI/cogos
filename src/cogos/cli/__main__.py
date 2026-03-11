@@ -150,11 +150,12 @@ def _run_migrations(repo) -> None:
     # 2. CogOS SQL file migrations (cogos_* tables)
     migrations_dir = Path(__file__).parent.parent / "db" / "migrations"
     if migrations_dir.is_dir():
+        from cogos.db.migrations import _split_sql
+
         for migration in sorted(migrations_dir.glob("*.sql")):
-            sql = migration.read_text()
-            for stmt in sql.split(";"):
+            for stmt in _split_sql(migration.read_text()):
                 stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
+                if stmt:
                     try:
                         repo.execute(stmt)
                     except Exception as e:
