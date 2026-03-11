@@ -390,10 +390,15 @@ def _get_sessions_bucket(session, safe_name: str) -> str:
     return bucket
 
 
+def _is_dashboard_service_name(service_name: str, safe_name: str) -> bool:
+    """Return True when the ECS service name belongs to the dashboard."""
+    return safe_name in service_name and ("DashService" in service_name or "dashboard" in service_name)
+
+
 def _find_dashboard_service(ecs_client, safe_name: str) -> str:
     """Find the dashboard ECS service ARN on cogent-polis cluster."""
     services = ecs_client.list_services(cluster="cogent-polis").get("serviceArns", [])
-    dash_services = [s for s in services if safe_name in s]
+    dash_services = [s for s in services if _is_dashboard_service_name(s.rsplit("/", 1)[-1], safe_name)]
     if not dash_services:
         raise click.ClickException(f"No dashboard service found for {safe_name} on cogent-polis cluster")
     return dash_services[0]
