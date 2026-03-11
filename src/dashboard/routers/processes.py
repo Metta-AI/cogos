@@ -328,6 +328,13 @@ def get_process(name: str, process_id: str) -> dict:
         if fv and fv.content:
             includes.append({"key": f.key, "content": fv.content})
 
+    # Event subscriptions (handlers)
+    handlers = repo.list_handlers(process_id=p.id)
+    handler_list = [
+        {"id": str(h.id), "event_pattern": h.event_pattern, "enabled": h.enabled}
+        for h in handlers
+    ]
+
     return {
         "process": _detail(p).model_dump(),
         "runs": run_list,
@@ -336,6 +343,7 @@ def get_process(name: str, process_id: str) -> dict:
         "capability_configs": cap_configs,
         "file_keys": file_keys,
         "includes": includes,
+        "handlers": handler_list,
     }
 
 

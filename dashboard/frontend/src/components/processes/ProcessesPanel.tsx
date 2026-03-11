@@ -1037,6 +1037,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [detailCapConfigs, setDetailCapConfigs] = useState<Record<string, CapabilityConfig>>({});
   const [detailIncludes, setDetailIncludes] = useState<Array<{ key: string; content: string }>>([]);
   const [expandedIncludes, setExpandedIncludes] = useState<Set<string>>(new Set());
+  const [detailHandlers, setDetailHandlers] = useState<Array<{ id: string; event_pattern: string; enabled: boolean }>>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
@@ -1063,6 +1064,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setShowResolved(false);
       setDetailIncludes([]);
       setExpandedIncludes(new Set());
+      setDetailHandlers([]);
       return;
     }
     setSelectedId(id);
@@ -1077,6 +1079,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailCapConfigs((detail.capability_configs as Record<string, CapabilityConfig>) || {});
       setDetailIncludes(detail.includes || []);
       setExpandedIncludes(new Set());
+      setDetailHandlers(detail.handlers || []);
     } catch {
       setDetailRuns([]);
       setResolvedPrompt("");
@@ -1085,6 +1088,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailCapConfigs({});
       setDetailIncludes([]);
       setExpandedIncludes(new Set());
+      setDetailHandlers([]);
     }
     setLoadingDetail(false);
   }, [selectedId, cogentName]);
@@ -1387,6 +1391,29 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                         {proc.resources.map((r) => (
                           <span key={r} className="px-1.5 py-0.5 rounded text-[11px] font-mono" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
                             {r}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Event subscriptions (handlers) */}
+                  {detailHandlers.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-[var(--text-muted)] uppercase mb-1">Event Subscriptions ({detailHandlers.length})</div>
+                      <div className="flex flex-wrap gap-1">
+                        {detailHandlers.map((h) => (
+                          <span
+                            key={h.id}
+                            className="px-1.5 py-0.5 rounded text-[11px] font-mono"
+                            style={{
+                              background: "var(--bg-surface)",
+                              border: "1px solid var(--border)",
+                              color: h.enabled ? "var(--accent)" : "var(--text-muted)",
+                              opacity: h.enabled ? 1 : 0.6,
+                            }}
+                          >
+                            {h.event_pattern}{!h.enabled && " (disabled)"}
                           </span>
                         ))}
                       </div>
