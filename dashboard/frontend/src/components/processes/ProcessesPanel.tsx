@@ -1268,18 +1268,6 @@ function ProcessFormEditor({
       <div>
         <div className="flex items-center gap-2 mb-1">
           <label className="text-[10px] text-[var(--text-muted)] uppercase">Context</label>
-          {form.name.trim() && (
-            <button
-              type="button"
-              onClick={() => {
-                const scratch = `/scratch/process/${form.name.trim()}/index.md`;
-                if (!form.files.includes(scratch)) onChange((prev) => ({ ...prev, files: [...prev.files, scratch] }));
-              }}
-              className="text-[10px] px-1.5 py-0 rounded bg-transparent border border-[var(--border)] text-[var(--accent)] cursor-pointer hover:border-[var(--accent)]"
-            >
-              + scratch
-            </button>
-          )}
         </div>
         {form.files.length > 0 && (
           <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
@@ -1838,7 +1826,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                   {/* Included files (collapsible) */}
                   {detailIncludes.length > 0 && (
                     <div>
-                      <div className="text-[10px] text-[var(--text-muted)] uppercase mb-1">Includes ({detailIncludes.length})</div>
+                      <div className="text-[10px] text-[var(--text-muted)] uppercase mb-1">Context ({detailIncludes.length})</div>
                       <div className="flex flex-col gap-0" style={{ border: "1px solid var(--border)", borderRadius: "4px", overflow: "hidden" }}>
                         {detailIncludes.map((inc) => {
                           const isExpanded = expandedIncludes.has(inc.key);
