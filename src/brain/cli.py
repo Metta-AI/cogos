@@ -180,7 +180,15 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     """Deploy a cogent's brain infrastructure in the polis account."""
     import os
     import subprocess
+    import time
 
+    from brain.update_cli import (
+        _build_dashboard_tarball,
+        _get_polis_admin_session,
+        _sessions_bucket_name,
+        _upload_dashboard_tarball,
+        _wait_for_bucket,
+    )
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
 
@@ -202,6 +210,11 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     if cert_arn:
         click.echo(f"  Certificate: {cert_arn}")
 
+    click.echo("Preparing dashboard bootstrap assets...")
+    tarball_path, _size_mb = _build_dashboard_tarball()
+    bootstrap_bucket = _sessions_bucket_name(safe_name)
+    admin_session = _get_polis_admin_session(profile)
+
     cmd = [
         "npx", "cdk", "deploy", f"cogent-{safe_name}-brain",
         "-c", f"cogent_name={name}",
@@ -214,17 +227,48 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
         cmd.append("--watch")
 
     env = {**os.environ, "AWS_PROFILE": profile}
-    result = subprocess.run(cmd, capture_output=False, env=env)
-    if result.returncode != 0:
+    deploy = subprocess.Popen(cmd, env=env)
+    uploaded_assets = False
+    deadline = time.monotonic() + 600
+    try:
+        while deploy.poll() is None and not uploaded_assets and time.monotonic() < deadline:
+            if _wait_for_bucket(admin_session, bootstrap_bucket, timeout_s=5, poll_s=5):
+                click.echo("Uploading dashboard bootstrap assets...")
+                try:
+                    s3_uri = _upload_dashboard_tarball(admin_session, bootstrap_bucket, tarball_path)
+                except Exception as e:
+                    deploy.terminate()
+                    try:
+                        deploy.wait(timeout=10)
+                    except Exception:
+                        pass
+                    raise click.ClickException(f"Dashboard bootstrap upload failed: {e}") from e
+                click.echo(f"  Upload: {s3_uri}")
+                uploaded_assets = True
+
+        result_code = deploy.wait()
+        if result_code == 0 and not uploaded_assets:
+            click.echo("Uploading dashboard bootstrap assets...")
+            s3_uri = _upload_dashboard_tarball(admin_session, bootstrap_bucket, tarball_path)
+            click.echo(f"  Upload: {s3_uri}")
+            uploaded_assets = True
+        elif not uploaded_assets:
+            click.echo(
+                f"Warning: sessions bucket {bootstrap_bucket} did not appear before timeout; "
+                "dashboard may still need a manual deploy.",
+                err=True,
+            )
+    finally:
+        if os.path.exists(tarball_path):
+            os.unlink(tarball_path)
+
+    if result_code != 0:
         raise click.ClickException("CDK deploy failed")
     click.echo(f"Brain infrastructure for cogent-{name} deployed in polis account.")
 
     # Re-assume role with full admin to read stack outputs (cogent-polis-admin lacks CF perms)
-    from polis.aws import _assume_role, get_org_session, POLIS_ACCOUNT_ID
     try:
-        admin_session = _assume_role(
-            get_org_session(), POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole",
-        )
+        admin_session = _get_polis_admin_session(profile)
         admin_creds = admin_session.get_credentials().get_frozen_credentials()
         cf = admin_session.client("cloudformation", region_name="us-east-1")
         resp = cf.describe_stacks(StackName=f"cogent-{safe_name}-brain")
@@ -264,9 +308,7 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
             from polis.cloudflare import ensure_dns_record
             from polis.secrets.store import SecretStore
 
-            dns_session = _assume_role(
-                get_org_session(), POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole",
-            )
+            dns_session = _get_polis_admin_session(profile)
             store = SecretStore(session=dns_session)
             cfn = dns_session.client("cloudformation", region_name="us-east-1")
             resp = cfn.describe_stacks(StackName=f"cogent-{safe_name}-brain")

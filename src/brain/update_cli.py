@@ -275,11 +275,100 @@ def update_mind(ctx: click.Context):
     click.echo(f"  Mind: {time.monotonic() - t0:.1f}s")
 
 
-def _get_polis_admin_session():
+def _get_polis_admin_session(profile: str = "softmax-org"):
     """Get a polis session with full admin (OrganizationAccountAccessRole)."""
     from polis.aws import POLIS_ACCOUNT_ID, _assume_role
-    org_session = boto3.Session(profile_name="softmax-org", region_name=DEFAULT_REGION)
+    org_session = boto3.Session(profile_name=profile, region_name=DEFAULT_REGION)
     return _assume_role(org_session, POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole")
+
+
+def _dashboard_project_root() -> str:
+    """Return the repository root for dashboard build operations."""
+    return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+
+def _dashboard_frontend_dir(project_root: str | None = None) -> str:
+    """Return the Next.js frontend directory."""
+    root = project_root or _dashboard_project_root()
+    return os.path.join(root, "dashboard", "frontend")
+
+
+def _sessions_bucket_name(safe_name: str) -> str:
+    """Return the deterministic sessions bucket name for a cogent."""
+    return f"cogent-{safe_name}-brain-sessions"
+
+
+def _build_dashboard_tarball(project_root: str | None = None) -> tuple[str, float]:
+    """Build and package the dashboard frontend into a tarball."""
+    import subprocess
+    import tarfile
+    import tempfile
+
+    frontend_dir = _dashboard_frontend_dir(project_root)
+
+    click.echo("  Building Next.js...")
+    t1 = time.monotonic()
+    result = subprocess.run(
+        ["npx", "next", "build"],
+        cwd=frontend_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        click.echo(result.stderr[-500:] if result.stderr else result.stdout[-500:])
+        raise click.ClickException("Next.js build failed")
+    click.echo(f"  Build: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
+
+    click.echo("  Packaging assets...")
+    t1 = time.monotonic()
+    standalone_dir = os.path.join(frontend_dir, ".next", "standalone")
+    static_dir = os.path.join(frontend_dir, ".next", "static")
+    public_dir = os.path.join(frontend_dir, "public")
+
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+        tarball_path = tmp.name
+        with tarfile.open(tarball_path, "w:gz") as tar:
+            for entry in os.listdir(standalone_dir):
+                tar.add(os.path.join(standalone_dir, entry), arcname=entry)
+            if os.path.isdir(static_dir):
+                tar.add(static_dir, arcname=".next/static")
+            if os.path.isdir(public_dir):
+                tar.add(public_dir, arcname="public")
+
+    size_mb = os.path.getsize(tarball_path) / (1024 * 1024)
+    click.echo(f"  Package: {size_mb:.1f} MB ({time.monotonic() - t1:.1f}s)")
+    return tarball_path, size_mb
+
+
+def _upload_dashboard_tarball(
+    session: boto3.Session,
+    bucket: str,
+    tarball_path: str,
+    s3_key: str = "dashboard/frontend.tar.gz",
+) -> str:
+    """Upload dashboard assets to the cogent sessions bucket."""
+    s3_client = session.client("s3", region_name=DEFAULT_REGION)
+    s3_client.upload_file(tarball_path, bucket, s3_key)
+    return f"s3://{bucket}/{s3_key}"
+
+
+def _wait_for_bucket(
+    session: boto3.Session,
+    bucket: str,
+    *,
+    timeout_s: int = 900,
+    poll_s: int = 5,
+) -> bool:
+    """Poll until the sessions bucket exists and is accessible."""
+    s3_client = session.client("s3", region_name=DEFAULT_REGION)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            s3_client.head_bucket(Bucket=bucket)
+            return True
+        except Exception:
+            time.sleep(poll_s)
+    return False
 
 
 def _get_sessions_bucket(session, safe_name: str) -> str:
@@ -364,7 +453,7 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    project_root = _dashboard_project_root()
 
     click.echo(f"Updating dashboard for cogent-{name}...")
     session = _get_polis_admin_session()
@@ -431,52 +520,18 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
 
 def _build_and_upload_frontend(session, safe_name, project_root):
     """Build Next.js frontend and upload tarball to S3."""
-    import subprocess
-    import tarfile
-    import tempfile
+    # 1. Build Next.js and package standalone output
+    tarball_path, _size_mb = _build_dashboard_tarball(project_root)
 
-    frontend_dir = os.path.join(project_root, "dashboard", "frontend")
-
-    click.echo("  Building Next.js...")
-    t1 = time.monotonic()
-    result = subprocess.run(
-        ["npx", "next", "build"],
-        cwd=frontend_dir,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        click.echo(result.stderr[-500:] if result.stderr else result.stdout[-500:])
-        raise click.ClickException("Next.js build failed")
-    click.echo(f"  Build: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
-
-    click.echo("  Packaging assets...")
-    t1 = time.monotonic()
-    standalone_dir = os.path.join(frontend_dir, ".next", "standalone")
-    static_dir = os.path.join(frontend_dir, ".next", "static")
-    public_dir = os.path.join(frontend_dir, "public")
-
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-        tarball_path = tmp.name
-        with tarfile.open(tarball_path, "w:gz") as tar:
-            for entry in os.listdir(standalone_dir):
-                tar.add(os.path.join(standalone_dir, entry), arcname=entry)
-            if os.path.isdir(static_dir):
-                tar.add(static_dir, arcname=".next/static")
-            if os.path.isdir(public_dir):
-                tar.add(public_dir, arcname="public")
-
-    size_mb = os.path.getsize(tarball_path) / (1024 * 1024)
-    click.echo(f"  Package: {size_mb:.1f} MB ({time.monotonic() - t1:.1f}s)")
-
+    # 2. Upload to S3
     click.echo("  Uploading to S3...")
     t1 = time.monotonic()
     bucket = _get_sessions_bucket(session, safe_name)
-    s3_key = "dashboard/frontend.tar.gz"
-    s3_client = session.client("s3", region_name=DEFAULT_REGION)
-    s3_client.upload_file(tarball_path, bucket, s3_key)
-    os.unlink(tarball_path)
-    click.echo(f"  Upload: s3://{bucket}/{s3_key} ({time.monotonic() - t1:.1f}s)")
+    try:
+        s3_uri = _upload_dashboard_tarball(session, bucket, tarball_path)
+    finally:
+        os.unlink(tarball_path)
+    click.echo(f"  Upload: {s3_uri} ({time.monotonic() - t1:.1f}s)")
 
 
 def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_health, t0):
