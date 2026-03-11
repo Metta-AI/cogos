@@ -318,6 +318,16 @@ def get_process(name: str, process_id: str) -> dict:
         if f:
             file_keys.append(f.key)
 
+    # Includes — files under "includes/" prefix
+    from cogos.files.store import FileStore
+    file_store = FileStore(repo)
+    include_files = file_store.list_files(prefix="includes/")
+    includes = []
+    for f in sorted(include_files, key=lambda f: f.key):
+        fv = repo.get_active_file_version(f.id)
+        if fv and fv.content:
+            includes.append({"key": f.key, "content": fv.content})
+
     return {
         "process": _detail(p).model_dump(),
         "runs": run_list,
@@ -325,6 +335,7 @@ def get_process(name: str, process_id: str) -> dict:
         "capabilities": cap_names,
         "capability_configs": cap_configs,
         "file_keys": file_keys,
+        "includes": includes,
     }
 
 

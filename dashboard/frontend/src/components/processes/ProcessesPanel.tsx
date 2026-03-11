@@ -1035,6 +1035,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [detailFileKeys, setDetailFileKeys] = useState<string[]>([]);
   const [detailCapabilities, setDetailCapabilities] = useState<string[]>([]);
   const [detailCapConfigs, setDetailCapConfigs] = useState<Record<string, CapabilityConfig>>({});
+  const [detailIncludes, setDetailIncludes] = useState<Array<{ key: string; content: string }>>([]);
+  const [expandedIncludes, setExpandedIncludes] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
@@ -1059,6 +1061,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailRuns([]);
       setResolvedPrompt("");
       setShowResolved(false);
+      setDetailIncludes([]);
+      setExpandedIncludes(new Set());
       return;
     }
     setSelectedId(id);
@@ -1071,12 +1075,16 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailFileKeys(detail.file_keys || []);
       setDetailCapabilities(detail.capabilities || []);
       setDetailCapConfigs((detail.capability_configs as Record<string, CapabilityConfig>) || {});
+      setDetailIncludes(detail.includes || []);
+      setExpandedIncludes(new Set());
     } catch {
       setDetailRuns([]);
       setResolvedPrompt("");
       setDetailFileKeys([]);
       setDetailCapabilities([]);
       setDetailCapConfigs({});
+      setDetailIncludes([]);
+      setExpandedIncludes(new Set());
     }
     setLoadingDetail(false);
   }, [selectedId, cogentName]);
@@ -1314,6 +1322,40 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     )}
                     <span className="text-[var(--text-muted)]">clear ctx: <span className="text-[var(--text-secondary)]">{proc.clear_context ? "yes" : "no"}</span></span>
                   </div>
+
+                  {/* Included files (collapsible) */}
+                  {detailIncludes.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-[var(--text-muted)] uppercase mb-1">Includes ({detailIncludes.length})</div>
+                      <div className="flex flex-col gap-0" style={{ border: "1px solid var(--border)", borderRadius: "4px", overflow: "hidden" }}>
+                        {detailIncludes.map((inc) => {
+                          const isExpanded = expandedIncludes.has(inc.key);
+                          return (
+                            <div key={inc.key}>
+                              <button
+                                className="w-full text-left text-[11px] font-mono px-2 py-1 bg-transparent border-0 cursor-pointer flex items-center gap-1 hover:bg-[var(--bg-surface)]"
+                                style={{ color: "var(--text-secondary)", borderBottom: isExpanded ? "1px solid var(--border)" : "none" }}
+                                onClick={() => setExpandedIncludes((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(inc.key)) next.delete(inc.key);
+                                  else next.add(inc.key);
+                                  return next;
+                                })}
+                              >
+                                <span style={{ color: "var(--text-muted)", fontSize: "9px" }}>{isExpanded ? "▼" : "▶"}</span>
+                                {inc.key}
+                              </button>
+                              {isExpanded && (
+                                <div className="text-[11px] text-[var(--text-secondary)] font-mono whitespace-pre-wrap p-2" style={{ background: "var(--bg-surface)", maxHeight: "200px", overflowY: "auto" }}>
+                                  {inc.content}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Content with resolved prompt toggle */}
                   {(proc.content || resolvedPrompt) && (
