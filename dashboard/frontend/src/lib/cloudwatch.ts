@@ -5,14 +5,9 @@ function encodeInsightsValue(value: string): string {
   return encodeURIComponent(value).replace(/%/g, "*");
 }
 
-function executorLogGroups(cogentName: string, runner: string | null | undefined): string[] {
+function executorLogGroup(cogentName: string): string {
   const safeName = cogentName.replace(/\./g, "-");
-  const lambdaGroup = `/aws/lambda/cogent-${safeName}-executor`;
-  const ecsGroup = `/ecs/cogent-${safeName}-executor`;
-
-  if (runner === "ecs") return [ecsGroup, lambdaGroup];
-  if (runner === "lambda") return [lambdaGroup, ecsGroup];
-  return [lambdaGroup, ecsGroup];
+  return `/aws/lambda/cogent-${safeName}-executor`;
 }
 
 function parseCreatedAtMillis(createdAt: string | null): number {
@@ -40,27 +35,26 @@ function buildTimeRangeFragment(createdAt: string | null): string {
   return `start~${start}~end~${end}~timeType~'ABSOLUTE`;
 }
 
-function buildSourceFragment(logGroups: string[]): string {
-  const groups = logGroups.map((logGroup) => `~'${encodeInsightsValue(logGroup)}`).join("");
-  return `source~(${groups})`;
+function buildSourceFragment(logGroup: string): string {
+  return `source~(~'${encodeInsightsValue(logGroup)})`;
 }
 
 export function buildCogentRunLogsUrl(
   cogentName: string,
   runId: string,
   createdAt: string | null,
-  runner?: string | null,
+  _runner?: string | null,
 ): string {
-  const logGroups = executorLogGroups(cogentName, runner);
+  const logGroup = executorLogGroup(cogentName);
   const query = [
-    "fields @timestamp, @message, @logStream, run_id",
-    `| filter run_id = "${runId}" or @message like /${runId}/`,
+    "fields @timestamp, @message, @logStream",
+    `| filter @message like /${runId}/ or run_id = "${runId}"`,
     "| sort @timestamp asc",
   ].join("\n");
   const fragment = [
     buildTimeRangeFragment(createdAt),
     `editorString~'${encodeInsightsValue(query)}`,
-    buildSourceFragment(logGroups),
+    buildSourceFragment(logGroup),
   ].join("~");
 
   return (
