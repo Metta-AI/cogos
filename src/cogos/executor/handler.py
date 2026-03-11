@@ -101,6 +101,7 @@ def handler(event: dict, context: Any = None) -> dict:
 
     process_id = event.get("process_id")
     event_id = event.get("event_id")
+    run_id_str = event.get("run_id")
 
     if not process_id:
         return {"statusCode": 400, "error": "Missing process_id"}
@@ -109,16 +110,19 @@ def handler(event: dict, context: Any = None) -> dict:
     if not process:
         return {"statusCode": 404, "error": f"Process not found: {process_id}"}
 
-    # Mark as running
-    repo.update_process_status(process.id, ProcessStatus.RUNNING)
-
-    # Create run record
-    run = Run(
-        process=process.id,
-        event=UUID(event_id) if event_id else None,
-        status=RunStatus.RUNNING,
-    )
-    run_id = repo.create_run(run)
+    # Use existing run from dispatcher, or create a new one as fallback
+    if run_id_str:
+        run = repo.get_run(UUID(run_id_str))
+        if not run:
+            logger.warning(f"Run {run_id_str} not found, creating new run")
+            run = Run(process=process.id, event=UUID(event_id) if event_id else None, status=RunStatus.RUNNING)
+            repo.create_run(run)
+        run_id = run.id
+    else:
+        # Legacy: no run_id in payload — create one (and mark process running)
+        repo.update_process_status(process.id, ProcessStatus.RUNNING)
+        run = Run(process=process.id, event=UUID(event_id) if event_id else None, status=RunStatus.RUNNING)
+        run_id = repo.create_run(run)
     logger.info(f"Starting run {run_id} for process {process.name}")
 
     start_time = time.time()
