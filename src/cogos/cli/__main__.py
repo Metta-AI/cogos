@@ -32,13 +32,13 @@ def _ensure_db_env(cogent_name: str) -> None:
             aws_session_token=frozen.token,
         )
 
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, set_org_profile
 
     safe_name = cogent_name.replace(".", "-")
     stack_name = f"cogent-{safe_name}-brain"
 
     try:
-        set_profile("softmax-org")
+        set_org_profile()
         session, _ = get_polis_session()
     except Exception:
         return

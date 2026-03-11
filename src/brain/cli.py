@@ -5,9 +5,12 @@ from __future__ import annotations
 import click
 
 from cli import DefaultCommandGroup, get_cogent_name  # noqa: F401
+from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV
 
 
-CDK_PROFILE = "softmax-org"
+_PROFILE_HELP = (
+    f"AWS profile for polis account (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
+)
 
 
 @click.group(cls=DefaultCommandGroup, default_cmd="status")
@@ -33,8 +36,9 @@ def status_cmd(ctx: click.Context):
     table.add_column("Status")
     table.add_column("Details")
 
-    from polis.aws import get_polis_session, set_profile
-    set_profile(CDK_PROFILE)
+    from polis.aws import get_polis_session, set_org_profile
+
+    set_org_profile()
     try:
         session, _ = get_polis_session()
     except Exception as e:
@@ -173,10 +177,10 @@ def status_cmd(ctx: click.Context):
 
 
 @brain.command("create")
-@click.option("--profile", default=CDK_PROFILE, help="AWS profile for polis account")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--watch", "-w", is_flag=True, help="Wait for stack to complete")
 @click.pass_context
-def create_cmd(ctx: click.Context, profile: str, watch: bool):
+def create_cmd(ctx: click.Context, profile: str | None, watch: bool):
     """Deploy a cogent's brain infrastructure in the polis account."""
     import os
     import subprocess
@@ -193,7 +197,9 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
     safe_name = name.replace(".", "-")
 
     # Look up certificate ARN and ECR repo URI from polis account
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, resolve_org_profile, set_profile
+
+    profile = resolve_org_profile(profile)
     set_profile(profile)
     polis_session, _ = get_polis_session()
     cert_arn = _find_certificate(polis_session, f"{safe_name}.softmax-cogents.com")
@@ -335,16 +341,19 @@ def _find_certificate(session, domain: str) -> str:
 
 
 @brain.command("destroy")
-@click.option("--profile", default=CDK_PROFILE, help="AWS profile for polis account")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
-def destroy_cmd(ctx: click.Context, profile: str, yes: bool):
+def destroy_cmd(ctx: click.Context, profile: str | None, yes: bool):
     """Destroy a cogent's brain infrastructure."""
     import os
     import subprocess
 
+    from polis.aws import resolve_org_profile
+
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
+    profile = resolve_org_profile(profile)
     if not yes:
         click.confirm(f"This will destroy the stack for cogent-{name}. Continue?", abort=True)
     cmd = [
@@ -361,14 +370,16 @@ def destroy_cmd(ctx: click.Context, profile: str, yes: bool):
 
 
 @brain.command("build")
-@click.option("--profile", default=CDK_PROFILE, help="AWS profile for polis account")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
-def build_cmd(ctx: click.Context, profile: str):
+def build_cmd(ctx: click.Context, profile: str | None):
     """Build and push the executor Docker image to polis ECR."""
     import base64
     import subprocess
 
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, resolve_org_profile, set_profile
+
+    profile = resolve_org_profile(profile)
     set_profile(profile)
 
     name = get_cogent_name(ctx)

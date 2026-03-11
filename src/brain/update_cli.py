@@ -13,8 +13,10 @@ import boto3
 import click
 
 from cli import DefaultCommandGroup, get_cogent_name
+from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV, resolve_org_profile, set_org_profile
 
 DEFAULT_REGION = "us-east-1"
+_PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
 
 class UpdateGroup(DefaultCommandGroup):
@@ -36,19 +38,21 @@ def update():
 
 def _get_session(profile: str | None = None) -> boto3.Session:
     """Get a boto3 session for the polis account (all brain resources live there)."""
-    from polis.aws import get_polis_session, set_profile
-    set_profile(profile or "softmax-org")
+    from polis.aws import get_polis_session
+
+    set_org_profile(profile)
     session, _ = get_polis_session()
     return session
 
 
-def _ensure_db_env(name: str) -> None:
+def _ensure_db_env(name: str, profile: str | None = None) -> None:
     """Ensure DB_CLUSTER_ARN and DB_SECRET_ARN are set from CloudFormation stack in polis."""
     if os.environ.get("DB_CLUSTER_ARN") and os.environ.get("DB_SECRET_ARN"):
         return
 
-    from polis.aws import get_polis_session, set_profile
-    set_profile("softmax-org")
+    from polis.aws import get_polis_session
+
+    set_org_profile(profile)
     session, _ = get_polis_session()
 
     safe_name = name.replace(".", "-")
@@ -136,11 +140,12 @@ def _package_lambda_code() -> bytes:
 
 
 @update.command("all")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--no-mind", is_flag=True, help="Skip mind update")
 @click.pass_context
-def update_all(ctx: click.Context, profile: str, no_mind: bool):
+def update_all(ctx: click.Context, profile: str | None, no_mind: bool):
     """Update Lambda + DB migrations + mind sync (default)."""
+    profile = resolve_org_profile(profile)
     t0 = time.monotonic()
     ctx.invoke(update_lambda, profile=profile)
     ctx.invoke(update_rds, profile=profile, force=False)
@@ -150,9 +155,9 @@ def update_all(ctx: click.Context, profile: str, no_mind: bool):
 
 
 @update.command("lambda")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
-def update_lambda(ctx: click.Context, profile: str):
+def update_lambda(ctx: click.Context, profile: str | None):
     """Update Lambda function code."""
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
@@ -190,10 +195,10 @@ def update_lambda(ctx: click.Context, profile: str):
 
 
 @update.command("ecs")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--skip-health", is_flag=True, help="Skip waiting for service stability")
 @click.pass_context
-def update_ecs(ctx: click.Context, profile: str, skip_health: bool):
+def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool):
     """Force new ECS deployment (new container)."""
     name = get_cogent_name(ctx)
     session = _get_session(profile)
@@ -245,7 +250,7 @@ def update_ecs(ctx: click.Context, profile: str, skip_health: bool):
 
 
 @update.command("rds")
-@click.option("--profile", default=None, help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--force", is_flag=True, help="Force re-run migrations")
 @click.pass_context
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
@@ -254,7 +259,7 @@ def update_rds(ctx: click.Context, profile: str | None, force: bool):
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
-    _ensure_db_env(name)
+    _ensure_db_env(name, profile)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
     version = apply_schema()
     click.echo(f"  Schema at version {version}. ({time.monotonic() - t0:.1f}s)")
@@ -275,10 +280,12 @@ def update_mind(ctx: click.Context):
     click.echo(f"  Mind: {time.monotonic() - t0:.1f}s")
 
 
-def _get_polis_admin_session(profile: str = "softmax-org"):
+def _get_polis_admin_session(profile: str | None = None):
     """Get a polis session with full admin (OrganizationAccountAccessRole)."""
     from polis.aws import POLIS_ACCOUNT_ID, _assume_role
-    org_session = boto3.Session(profile_name=profile, region_name=DEFAULT_REGION)
+
+    resolved_profile = resolve_org_profile(profile)
+    org_session = boto3.Session(profile_name=resolved_profile, region_name=DEFAULT_REGION)
     return _assume_role(org_session, POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole")
 
 
@@ -667,16 +674,17 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
 
 
 @update.command("stack")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
-def update_stack(ctx: click.Context, profile: str):
+def update_stack(ctx: click.Context, profile: str | None):
     """Full CDK stack update (rebuilds dashboard container)."""
     import subprocess
 
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, resolve_org_profile, set_profile
 
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
+    profile = resolve_org_profile(profile)
 
     # Look up certificate ARN from polis account
     set_profile(profile)

@@ -96,8 +96,9 @@ def list_cmd(ctx: click.Context):
 
 def _get_ecs_config(name: str) -> dict:
     """Get ECS config from the brain's orchestrator Lambda environment."""
-    from polis.aws import get_polis_session, set_profile
-    set_profile("softmax-org")
+    from polis.aws import get_polis_session, set_org_profile
+
+    set_org_profile()
     session, _ = get_polis_session()
     lambda_client = session.client("lambda")
     safe_name = name.replace(".", "-")
@@ -272,8 +273,9 @@ def _connect(cluster: str, target: dict) -> None:
     """Connect to a task's tmux session via ECS Exec."""
     import subprocess
 
-    from polis.aws import get_polis_session, set_profile
-    set_profile("softmax-org")
+    from polis.aws import get_polis_session, set_org_profile
+
+    set_org_profile()
     session, _ = get_polis_session()
     creds = session.get_credentials().get_frozen_credentials()
 

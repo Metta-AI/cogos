@@ -46,17 +46,25 @@ def dashboard():
     pass
 
 
-def _ensure_db_env(name: str, env: dict) -> dict:
+def _ensure_db_env(name: str, env: dict, *, assume_polis: bool = False) -> dict:
     """Auto-discover DB ARNs from CloudFormation and add to env dict."""
-    if env.get("DB_RESOURCE_ARN") and env.get("DB_SECRET_ARN"):
+    if not assume_polis and env.get("DB_RESOURCE_ARN") and env.get("DB_SECRET_ARN"):
         return env
-
-    import boto3
 
     safe_name = name.replace(".", "-")
     stack_name = f"cogent-{safe_name}-brain"
     try:
-        cf = boto3.client("cloudformation", region_name="us-east-1")
+        if assume_polis:
+            from polis.aws import get_polis_session, set_org_profile
+
+            set_org_profile()
+            session, _ = get_polis_session()
+            cf = session.client("cloudformation", region_name="us-east-1")
+        else:
+            import boto3
+
+            session = None
+            cf = boto3.client("cloudformation", region_name="us-east-1")
         resp = cf.describe_stacks(StackName=stack_name)
         outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
         if "ClusterArn" in outputs:
@@ -72,6 +80,14 @@ def _ensure_db_env(name: str, env: dict) -> dict:
                         env.setdefault("DB_SECRET_ARN", r["PhysicalResourceId"])
                         break
         env.setdefault("DB_NAME", "cogent")
+        if assume_polis and session is not None:
+            creds = session.get_credentials().get_frozen_credentials()
+            env["AWS_ACCESS_KEY_ID"] = creds.access_key
+            env["AWS_SECRET_ACCESS_KEY"] = creds.secret_key
+            if creds.token:
+                env["AWS_SESSION_TOKEN"] = creds.token
+            env.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+            env.setdefault("AWS_REGION", "us-east-1")
     except Exception as e:
         click.echo(f"Warning: could not auto-discover DB credentials: {e}")
     return env
@@ -81,15 +97,35 @@ def _ensure_db_env(name: str, env: dict) -> dict:
 @click.option("--port", default=None, type=int, help="Backend port (default: derived from checkout path)")
 @click.option("--frontend-port", default=None, type=int, help="Frontend port (default: derived from checkout path)")
 @click.option("--no-browser", is_flag=True, help="Don't open browser")
+@click.option(
+    "--db",
+    "db_mode",
+    type=click.Choice(["auto", "local", "prod"]),
+    default="auto",
+    show_default=True,
+    help="DB source: ambient AWS/env (`auto`), local JSON repo (`local`), or polis-assumed live DB (`prod`).",
+)
 @click.option("--local", is_flag=True, help="Use local DB (USE_LOCAL_DB=1)")
 @click.pass_context
-def serve(ctx: click.Context, port: int | None, frontend_port: int | None, no_browser: bool, local: bool):
+def serve(
+    ctx: click.Context,
+    port: int | None,
+    frontend_port: int | None,
+    no_browser: bool,
+    db_mode: str,
+    local: bool,
+):
     """Start the dashboard dev server."""
     from cli import get_cogent_name
 
     default_be, default_fe = _checkout_ports()
     port = port or default_be
     frontend_port = frontend_port or default_fe
+
+    if local:
+        if db_mode != "auto":
+            raise click.UsageError("Use either --local or --db, not both.")
+        db_mode = "local"
 
     name = get_cogent_name(ctx)
     env = {
@@ -99,9 +135,11 @@ def serve(ctx: click.Context, port: int | None, frontend_port: int | None, no_br
         "DASHBOARD_BE_PORT": str(port),
         "DASHBOARD_FE_PORT": str(frontend_port),
     }
-    if local:
+
+    if db_mode == "local":
         env["USE_LOCAL_DB"] = "1"
-    env = _ensure_db_env(name, env)
+    else:
+        env = _ensure_db_env(name, env, assume_polis=(db_mode == "prod"))
 
     # Start FastAPI backend
     backend = subprocess.Popen(
@@ -157,10 +195,10 @@ def create_pat(ctx: click.Context, force: bool):
     After creating, run 'brain update stack' to apply the ALB rule.
     """
     from cli import get_cogent_name
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, set_org_profile
 
     name = get_cogent_name(ctx)
-    set_profile("softmax-org")
+    set_org_profile()
     session, _ = get_polis_session()
 
     from polis.secrets.store import SecretStore
@@ -203,10 +241,10 @@ def create_pat(ctx: click.Context, force: bool):
 def show_pat(ctx: click.Context):
     """Show the dashboard PAT (from polis secrets)."""
     from cli import get_cogent_name
-    from polis.aws import get_polis_session, set_profile
+    from polis.aws import get_polis_session, set_org_profile
 
     name = get_cogent_name(ctx)
-    set_profile("softmax-org")
+    set_org_profile()
     session, _ = get_polis_session()
 
     from polis.secrets.store import SecretStore

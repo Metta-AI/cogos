@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 POLIS_ACCOUNT_NAME = "cogent-polis"
 POLIS_ACCOUNT_ID = "901289084804"
 DEFAULT_REGION = "us-east-1"
+DEFAULT_ORG_PROFILE = "softmax-org"
+ORG_PROFILE_ENV = "COGENT_ORG_PROFILE"
 
 # Module-level profile override, set by CLI --profile
 _profile: str | None = None
@@ -22,6 +24,23 @@ def set_profile(profile: str | None) -> None:
     """Set the AWS profile used for org-level operations."""
     global _profile
     _profile = profile
+
+
+def resolve_org_profile(profile: str | None = None) -> str:
+    """Resolve the org-admin AWS profile for polis-targeting operations."""
+    for candidate in (profile, os.getenv(ORG_PROFILE_ENV)):
+        if candidate:
+            cleaned = candidate.strip()
+            if cleaned:
+                return cleaned
+    return DEFAULT_ORG_PROFILE
+
+
+def set_org_profile(profile: str | None = None) -> str:
+    """Resolve and store the AWS profile used for org-level operations."""
+    resolved = resolve_org_profile(profile)
+    set_profile(resolved)
+    return resolved
 
 
 def get_org_session() -> boto3.Session:

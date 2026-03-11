@@ -8,12 +8,15 @@ import sys
 from pathlib import Path
 
 import click
+from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV
 
 CHANNEL_TYPES = {
     "discord": "static",
     "github": "github_app",
     "asana": "static",
 }
+
+_PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
 
 def _load_guide(channel_name: str) -> str | None:
@@ -32,9 +35,9 @@ def channels():
 
 
 @channels.command("list")
-@click.option("--profile", default="softmax-org", help="AWS profile")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.argument("cogent_name")
-def list_cmd(profile: str, cogent_name: str):
+def list_cmd(profile: str | None, cogent_name: str):
     """List provisioned channels for a cogent."""
     import boto3
 

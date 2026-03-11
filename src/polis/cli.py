@@ -15,10 +15,13 @@ from rich.console import Console
 from rich.table import Table
 
 from polis.aws import (
+    DEFAULT_ORG_PROFILE,
+    ORG_PROFILE_ENV,
     create_polis_account,
     find_polis_account,
     get_org_id,
     get_polis_session,
+    resolve_org_profile,
     set_profile,
 )
 from polis.config import PolisConfig
@@ -26,21 +29,21 @@ from polis.secrets.store import SecretStore
 from polis.status import coalesce_status_items, expected_stack_name
 
 console = Console()
-
-# CDK commands need org admin access (OrganizationAccountAccessRole).
-# Default profile for CDK operations when --profile is not specified.
-CDK_PROFILE = "softmax-org"
+_PROFILE_HELP = (
+    f"AWS profile override (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
+)
 
 
 @click.group()
-@click.option("--profile", default=None, help="AWS profile override (default: use active profile)")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
 def polis(ctx: click.Context, profile: str | None):
     """Manage the polis shared infrastructure."""
     ctx.ensure_object(dict)
     ctx.obj["config"] = PolisConfig()
-    ctx.obj["profile"] = profile
-    set_profile(profile)
+    resolved_profile = resolve_org_profile(profile)
+    ctx.obj["profile"] = resolved_profile
+    set_profile(resolved_profile)
 
 
 # ---------------------------------------------------------------------------
@@ -54,9 +57,6 @@ def create(ctx: click.Context):
     """Create the polis account and deploy CDK stacks (requires org admin)."""
     config: PolisConfig = ctx.obj["config"]
     profile = ctx.obj["profile"]
-
-    # Org operations need admin — use CDK_PROFILE if no explicit profile
-    set_profile(profile or CDK_PROFILE)
 
     console.print(f"Creating polis: [bold]{config.name}[/bold]")
 
@@ -73,7 +73,7 @@ def create(ctx: click.Context):
 
     # Deploy CDK
     console.print("  Deploying CDK stacks...")
-    _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
+    _cdk_deploy(org_id, profile=profile)
 
     # Cloudflare Access
     polis_session, _ = get_polis_session()
@@ -88,12 +88,9 @@ def update(ctx: click.Context):
     """Update the polis CDK stacks (requires org admin)."""
     profile = ctx.obj["profile"]
 
-    # Org operations need admin — use CDK_PROFILE if no explicit profile
-    set_profile(profile or CDK_PROFILE)
-
     org_id = get_org_id()
     console.print("Updating CDK stacks...")
-    _cdk_deploy(org_id, profile=profile or CDK_PROFILE)
+    _cdk_deploy(org_id, profile=profile)
 
     # Cloudflare Access
     config: PolisConfig = ctx.obj["config"]
@@ -124,7 +121,7 @@ def destroy(ctx: click.Context):
         console.print(f"  [yellow]Cloudflare Access cleanup: {e}[/yellow]")
 
     console.print("Destroying CDK stacks...")
-    _cdk_cmd(["destroy", "--all", "--force"], profile=profile or CDK_PROFILE)
+    _cdk_cmd(["destroy", "--all", "--force"], profile=profile)
     console.print("[green]Polis stacks destroyed.[/green]")
 
 
@@ -796,9 +793,9 @@ def _cdk_deploy(org_id: str, profile: str | None = None):
 
 
 def _cdk_cmd(args: list[str], profile: str | None = None):
-    """Run a CDK CLI command. Uses CDK_PROFILE for org-level access."""
+    """Run a CDK CLI command using the resolved org-admin profile."""
     cmd = ["npx", "cdk", *args, "--app", "python -m polis.cdk.app"]
-    env = {**os.environ, "AWS_PROFILE": profile or CDK_PROFILE}
+    env = {**os.environ, "AWS_PROFILE": resolve_org_profile(profile)}
     result = subprocess.run(cmd, capture_output=False, env=env)
     if result.returncode != 0:
         console.print(f"[red]CDK command failed (exit {result.returncode})[/red]")
