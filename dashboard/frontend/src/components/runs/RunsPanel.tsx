@@ -4,6 +4,7 @@ import type { CogosRun } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { fmtTimestamp, fmtMs, fmtCost, fmtNum } from "@/lib/format";
+import { buildCogentRunLogsUrl } from "@/lib/cloudwatch";
 
 interface Props {
   runs: CogosRun[];
@@ -29,43 +30,6 @@ const STATUS_ABBREV: Record<string, string> = {
   timeout: "T",
   pending: "P",
 };
-
-const AWS_REGION = "us-east-1";
-
-function buildCloudWatchUrl(cogentName: string, runId: string, createdAt: string | null): string {
-  const safeName = cogentName.replace(/\./g, "-");
-  const logGroup = `/aws/lambda/cogent-${safeName}-executor`;
-  const encodedLogGroup = logGroup.replace(/\//g, "$252F");
-
-  // Build a Logs Insights query URL filtered by run ID
-  const query = `fields @timestamp, @message | filter @message like "${runId}" | sort @timestamp asc`;
-  const encodedQuery = encodeURIComponent(query)
-    .replace(/%20/g, "*20")
-    .replace(/%22/g, "*22")
-    .replace(/%7C/g, "*7c")
-    .replace(/%40/g, "*40")
-    .replace(/%0A/g, "*0a");
-
-  // Time window: 1 hour before created_at to 1 hour after (or now)
-  let startParam = "start~-3600~timeType~'RELATIVE~unit~'seconds";
-  if (createdAt) {
-    const ts = new Date(createdAt).getTime();
-    const start = ts - 60 * 60 * 1000;
-    const end = ts + 60 * 60 * 1000;
-    startParam = `start~${start}~end~${end}~timeType~'ABSOLUTE`;
-  }
-
-  const encodedSource = logGroup
-    .replace(/\//g, "*2f");
-
-  return (
-    `https://${AWS_REGION}.console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}` +
-    `#logsV2:logs-insights$3FqueryDetail$3D~(` +
-    `${startParam}` +
-    `~editorString~'${encodedQuery}` +
-    `~source~(~'${encodedSource}))`
-  );
-}
 
 function makeColumns(cogentName?: string): Column<CogosRun & Record<string, unknown>>[] {
   const cols: Column<CogosRun & Record<string, unknown>>[] = [
@@ -144,7 +108,7 @@ function makeColumns(cogentName?: string): Column<CogosRun & Record<string, unkn
       label: "Logs",
       render: (row) => (
         <a
-          href={buildCloudWatchUrl(cogentName, row.id, row.created_at)}
+          href={buildCogentRunLogsUrl(cogentName, row.id, row.created_at, row.runner)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[var(--accent)] text-xs hover:underline"

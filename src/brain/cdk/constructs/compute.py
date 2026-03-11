@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import tempfile
 
-from aws_cdk import Duration
+from aws_cdk import Duration, RemovalPolicy
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
@@ -335,10 +336,20 @@ class ComputeConstruct(Construct):
         else:
             image = ecs.ContainerImage.from_registry("python:3.12-slim")
 
+        self.executor_task_log_group = logs.LogGroup(
+            self,
+            "ExecutorTaskExecutorLogGroup",
+            log_group_name=f"/ecs/cogent-{safe_name}-executor",
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         self.task_definition.add_container(
             "Executor",
             image=image,
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="executor"),
+            logging=ecs.LogDrivers.aws_logs(
+                stream_prefix="executor",
+                log_group=self.executor_task_log_group,
+            ),
             environment={
                 **env,
                 "CLAUDE_CODE_USE_BEDROCK": "1",

@@ -21,6 +21,7 @@ class RunSummary(BaseModel):
     id: str
     process: str
     process_name: str | None = None
+    runner: str | None = None
     event: str | None = None
     conversation: str | None = None
     status: str
@@ -60,11 +61,16 @@ class RunsResponse(BaseModel):
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
-def _summary(r: Run, process_names: dict[UUID, str] | None = None) -> RunSummary:
+def _summary(
+    r: Run,
+    process_names: dict[UUID, str] | None = None,
+    process_runners: dict[UUID, str] | None = None,
+) -> RunSummary:
     return RunSummary(
         id=str(r.id),
         process=str(r.process),
         process_name=process_names.get(r.process) if process_names else None,
+        runner=process_runners.get(r.process) if process_runners else None,
         event=str(r.event) if r.event else None,
         conversation=str(r.conversation) if r.conversation else None,
         status=r.status.value,
@@ -113,7 +119,8 @@ def list_runs(
     items = repo.list_runs(process_id=pid, limit=limit)
     processes = repo.list_processes()
     process_names = {p.id: p.name for p in processes}
-    out = [_summary(r, process_names) for r in items]
+    process_runners = {p.id: p.runner for p in processes}
+    out = [_summary(r, process_names, process_runners) for r in items]
     return RunsResponse(count=len(out), runs=out)
 
 

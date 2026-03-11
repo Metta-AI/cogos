@@ -115,6 +115,7 @@ export interface CogosRun {
   id: string;
   process: string;
   process_name?: string;
+  runner?: string | null;
   status: string;
   tokens_in: number;
   tokens_out: number;

@@ -7,6 +7,7 @@ import { JsonViewer } from "@/components/shared/JsonViewer";
 import type { CogosFileVersion } from "@/lib/types";
 import * as api from "@/lib/api";
 import { fmtTimestamp } from "@/lib/format";
+import { buildCogentRunLogsUrl } from "@/lib/cloudwatch";
 
 interface Props {
   processes: CogosProcess[];
@@ -145,35 +146,6 @@ function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
-}
-
-const AWS_REGION = "us-east-1";
-
-function buildCloudWatchUrl(cogentName: string, runId: string, createdAt: string | null): string {
-  const safeName = cogentName.replace(/\./g, "-");
-  const logGroup = `/aws/lambda/cogent-${safeName}-executor`;
-  const query = `fields @timestamp, @message | filter @message like "${runId}" | sort @timestamp asc`;
-  const encodedQuery = encodeURIComponent(query)
-    .replace(/%20/g, "*20")
-    .replace(/%22/g, "*22")
-    .replace(/%7C/g, "*7c")
-    .replace(/%40/g, "*40")
-    .replace(/%0A/g, "*0a");
-  let startParam = "start~-3600~timeType~'RELATIVE~unit~'seconds";
-  if (createdAt) {
-    const ts = new Date(createdAt).getTime();
-    const start = ts - 60 * 60 * 1000;
-    const end = ts + 60 * 60 * 1000;
-    startParam = `start~${start}~end~${end}~timeType~'ABSOLUTE`;
-  }
-  const encodedSource = logGroup.replace(/\//g, "*2f");
-  return (
-    `https://${AWS_REGION}.console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}` +
-    `#logsV2:logs-insights$3FqueryDetail$3D~(` +
-    `${startParam}` +
-    `~editorString~'${encodedQuery}` +
-    `~source~(~'${encodedSource}))`
-  );
 }
 
 /* ── TagListEditor: editable list with typeahead ── */
@@ -625,7 +597,7 @@ function TagEditor({
 
 /* ── Last Run Display ── */
 
-function LastRunInfo({ run, cogentName }: { run: CogosProcessRun; cogentName?: string }) {
+function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogentName?: string; runner?: string }) {
   const [showResult, setShowResult] = useState(false);
   return (
     <div
@@ -640,7 +612,7 @@ function LastRunInfo({ run, cogentName }: { run: CogosProcessRun; cogentName?: s
           </Badge>
           {cogentName && (
             <a
-              href={buildCloudWatchUrl(cogentName, run.id, run.created_at)}
+              href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, runner)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--accent)] text-[10px] hover:underline"
@@ -1812,7 +1784,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                   <span className="inline-flex items-center justify-center w-[22px] h-[18px]">
                     {lastRun ? (
                       <a
-                        href={buildCloudWatchUrl(cogentName, lastRun.id, lastRun.created_at)}
+                        href={buildCogentRunLogsUrl(cogentName, lastRun.id, lastRun.created_at, proc.runner)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[10px] font-mono px-1 py-0 rounded hover:underline"
@@ -2037,7 +2009,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                               <td className="px-2 py-1 text-red-400 text-[10px] truncate max-w-[200px]" title={run.error || ""}>{run.error ? (run.error.length > 30 ? run.error.slice(0, 30) + "…" : run.error) : ""}</td>
                               <td className="px-2 py-1 text-right">
                                 <a
-                                  href={buildCloudWatchUrl(cogentName, run.id, run.created_at)}
+                                  href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, proc.runner)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-[var(--accent)] text-[10px] hover:underline"
