@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from cogos.db.models import Capability
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _to_out(c: Capability) -> CapabilityOut:
 
 @router.get("/capabilities", response_model=CapabilitiesResponse)
 def list_capabilities(name: str) -> CapabilitiesResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     items = repo.list_capabilities()
     out = [_to_out(c) for c in items]
     return CapabilitiesResponse(count=len(out), capabilities=out)
@@ -79,7 +79,7 @@ def list_capabilities(name: str) -> CapabilitiesResponse:
 
 @router.get("/capabilities/{cap_name}")
 def get_capability(name: str, cap_name: str) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     c = repo.get_capability_by_name(cap_name)
     if not c:
         raise HTTPException(status_code=404, detail="Capability not found")
@@ -88,7 +88,7 @@ def get_capability(name: str, cap_name: str) -> dict:
 
 @router.put("/capabilities/{cap_name}", response_model=CapabilityOut)
 def update_capability(name: str, cap_name: str, body: CapabilityUpdate) -> CapabilityOut:
-    repo = get_cogos_repo()
+    repo = get_repo()
     c = repo.get_capability_by_name(cap_name)
     if not c:
         raise HTTPException(status_code=404, detail="Capability not found")
@@ -122,7 +122,7 @@ class CapabilityProcessOut(BaseModel):
 
 @router.get("/capabilities/{cap_name}/processes")
 def list_capability_processes(name: str, cap_name: str) -> list[dict]:
-    repo = get_cogos_repo()
+    repo = get_repo()
     c = repo.get_capability_by_name(cap_name)
     if not c:
         raise HTTPException(status_code=404, detail="Capability not found")
@@ -147,7 +147,7 @@ class MethodInfo(BaseModel):
 @router.get("/capabilities/{cap_name}/methods", response_model=list[MethodInfo])
 def get_capability_methods(name: str, cap_name: str) -> list[MethodInfo]:
     """Introspect the handler class to return its public methods."""
-    repo = get_cogos_repo()
+    repo = get_repo()
     c = repo.get_capability_by_name(cap_name)
     if not c:
         raise HTTPException(status_code=404, detail="Capability not found")

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from cogos.db.models import Handler
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def list_handlers(
     name: str,
     process: str | None = Query(None, description="Filter by process UUID"),
 ) -> HandlersResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     pid = UUID(process) if process else None
     items = repo.list_handlers(process_id=pid)
 
@@ -112,7 +112,7 @@ def list_handlers(
 
 @router.post("/handlers", response_model=HandlerOut)
 def create_handler(name: str, body: HandlerCreate) -> HandlerOut:
-    repo = get_cogos_repo()
+    repo = get_repo()
     h = Handler(
         process=UUID(body.process),
         event_pattern=body.event_pattern,
@@ -124,7 +124,7 @@ def create_handler(name: str, body: HandlerCreate) -> HandlerOut:
 
 @router.delete("/handlers/{handler_id}")
 def delete_handler(name: str, handler_id: str) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     if not repo.delete_handler(UUID(handler_id)):
         raise HTTPException(status_code=404, detail="Handler not found")
     return {"deleted": True, "id": handler_id}

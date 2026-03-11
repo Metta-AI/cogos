@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from cogos.db.models import ProcessStatus
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class CogosStatusResponse(BaseModel):
 
 @router.get("/cogos-status", response_model=CogosStatusResponse)
 def cogos_status(name: str) -> CogosStatusResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
 
     # Process counts by status
     all_procs = repo.list_processes()

@@ -72,20 +72,18 @@ npx agent-browser open http://localhost:5174 && npx agent-browser wait --load ne
 
 ### Dashboard Panels to Test
 
-The dashboard has 10 tabs accessible via the sidebar:
+The dashboard uses CogOS routers. Key tabs:
 
 | Tab | Description | Key interactions |
 |-----|-------------|-----------------|
-| Overview | Stat cards, recent events, top programs | Verify stat rendering |
-| Programs | Program table with expandable executions | Click rows to expand execution detail |
-| Sessions | Session list with execution stats | Sort columns, verify data |
-| Events | Event log with expandable payloads | Expand events, click tree view button |
-| Triggers | Grouped triggers with toggle switches | Toggle switches on/off |
-| Memory | Scoped memory browser | Expand/collapse groups |
-| Resources | Active sessions with stat cards | Verify stat cards |
-| Tasks | Task queue with expandable detail | Expand task rows |
-| Channels | Channel registry table | Click for channel detail |
-| Alerts | Alert list with severity badges | Check badge colors by severity |
+| Overview | CogOS status, process counts, recent runs | Verify stat rendering |
+| Processes | Process list with detail panel | Click rows to open detail |
+| Files | File browser with version history | Click rows, edit versions |
+| Capabilities | Capability list with method introspection | Click rows for detail |
+| Handlers | Event handler list with fire counts | View handler patterns |
+| Runs | Run history with scope logs | Click for run detail |
+| Events | Event log with tree view | Expand events, click tree |
+| Cron | Cron rules with toggle switches | Toggle on/off, create/edit |
 
 ### Testing Workflow
 

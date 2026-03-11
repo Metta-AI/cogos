@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from cogos.db.models import File, FileVersion
 from cogos.files.store import FileStore
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class VersionContentUpdate(BaseModel):
 
 
 def _store() -> FileStore:
-    return FileStore(get_cogos_repo())
+    return FileStore(get_repo())
 
 
 def _file_out(f: File) -> FileOut:
@@ -145,7 +145,7 @@ def update_file(name: str, key: str, body: FileUpdate) -> FileVersionOut:
 
 @router.post("/files/{key:path}/versions/{version}/activate")
 def activate_file_version(name: str, key: str, version: int) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     f = repo.get_file_by_key(key)
     if not f:
         raise HTTPException(status_code=404, detail="File not found")
@@ -158,7 +158,7 @@ def activate_file_version(name: str, key: str, version: int) -> dict:
 
 @router.put("/files/{key:path}/versions/{version}/content")
 def update_file_version_content(name: str, key: str, version: int, body: VersionContentUpdate) -> FileVersionOut:
-    repo = get_cogos_repo()
+    repo = get_repo()
     f = repo.get_file_by_key(key)
     if not f:
         raise HTTPException(status_code=404, detail="File not found")
@@ -173,7 +173,7 @@ def update_file_version_content(name: str, key: str, version: int, body: Version
 
 @router.delete("/files/{key:path}/versions/{version}")
 def delete_file_version(name: str, key: str, version: int) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     f = repo.get_file_by_key(key)
     if not f:
         raise HTTPException(status_code=404, detail="File not found")

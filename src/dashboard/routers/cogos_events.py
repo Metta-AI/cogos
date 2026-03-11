@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from cogos.db.models import Event, EventDelivery
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def list_events(
     event_type: str | None = Query(None, description="Filter by event type"),
     limit: int = Query(100, ge=1, le=1000),
 ) -> EventsResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     items = repo.get_events(event_type=event_type, limit=limit)
     out = [_event_out(e) for e in items]
     return EventsResponse(count=len(out), events=out)
@@ -87,7 +87,7 @@ def list_events(
 
 @router.get("/cogos-events/{event_id}", response_model=EventDetail)
 def get_event(name: str, event_id: str) -> EventDetail:
-    repo = get_cogos_repo()
+    repo = get_repo()
     # Fetch the specific event by querying for it
     rows = repo.query(
         "SELECT * FROM cogos_event WHERE id = :id",

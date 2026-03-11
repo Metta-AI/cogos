@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from cogos.db.models import Run
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def list_runs(
     process: str | None = Query(None, description="Filter by process UUID"),
     limit: int = Query(50, ge=1, le=500),
 ) -> RunsResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     pid = UUID(process) if process else None
     items = repo.list_runs(process_id=pid, limit=limit)
     processes = repo.list_processes()
@@ -119,7 +119,7 @@ def list_runs(
 
 @router.get("/runs/{run_id}", response_model=RunDetail)
 def get_run(name: str, run_id: str) -> RunDetail:
-    repo = get_cogos_repo()
+    repo = get_repo()
     r = repo.get_run(UUID(run_id))
     if not r:
         raise HTTPException(status_code=404, detail="Run not found")

@@ -63,46 +63,25 @@ def create_app() -> FastAPI:
     )
 
     from dashboard.routers import (
-        alerts,
-        cron,
-        events,
-        memory,
-        programs,
-        resources,
-        sessions,
-        status,
-        tasks,
-        tools,
-        triggers,
-        # CogOS routers
-        processes,
-        handlers as handlers_router,
-        files as files_router,
-        capabilities as capabilities_router,
-        runs,
+        capabilities,
         cogos_events,
         cogos_status,
+        cron,
+        events,
+        files,
+        handlers,
+        processes,
+        runs,
     )
-    app.include_router(status.router, prefix="/api/cogents/{name}")
-    app.include_router(programs.router, prefix="/api/cogents/{name}")
-    app.include_router(sessions.router, prefix="/api/cogents/{name}")
-    app.include_router(tasks.router, prefix="/api/cogents/{name}")
-    app.include_router(alerts.router, prefix="/api/cogents/{name}")
-    app.include_router(resources.router, prefix="/api/cogents/{name}")
-    app.include_router(events.router, prefix="/api/cogents/{name}")
-    app.include_router(triggers.router, prefix="/api/cogents/{name}")
-    app.include_router(tools.router, prefix="/api/cogents/{name}")
-    app.include_router(memory.router, prefix="/api/cogents/{name}")
-    app.include_router(cron.router, prefix="/api/cogents/{name}")
-
-    # CogOS routers
     app.include_router(processes.router, prefix="/api/cogents/{name}")
-    app.include_router(handlers_router.router, prefix="/api/cogents/{name}")
-    app.include_router(files_router.router, prefix="/api/cogents/{name}")
-    app.include_router(capabilities_router.router, prefix="/api/cogents/{name}")
+    app.include_router(handlers.router, prefix="/api/cogents/{name}")
+    app.include_router(files.router, prefix="/api/cogents/{name}")
+    app.include_router(capabilities.router, prefix="/api/cogents/{name}")
     app.include_router(runs.router, prefix="/api/cogents/{name}")
     app.include_router(cogos_events.router, prefix="/api/cogents/{name}")
     app.include_router(cogos_status.router, prefix="/api/cogents/{name}")
+    app.include_router(events.router, prefix="/api/cogents/{name}")
+    app.include_router(cron.router, prefix="/api/cogents/{name}")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

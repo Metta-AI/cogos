@@ -11,7 +11,7 @@ from cogos.db.models.file import File, FileVersion
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ def list_processes(
     name: str,
     status: str | None = Query(None, description="Filter by process status"),
 ) -> ProcessesResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     ps = ProcessStatus(status) if status else None
     procs = repo.list_processes(status=ps)
 
@@ -277,7 +277,7 @@ def list_processes(
 
 @router.get("/processes/{process_id}")
 def get_process(name: str, process_id: str) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     p = repo.get_process(UUID(process_id))
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
@@ -353,7 +353,7 @@ def get_process(name: str, process_id: str) -> dict:
 
 @router.post("/processes", response_model=ProcessDetail)
 def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
-    repo = get_cogos_repo()
+    repo = get_repo()
     p = Process(
         name=body.name,
         mode=ProcessMode(body.mode),
@@ -379,7 +379,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
 
 @router.put("/processes/{process_id}", response_model=ProcessDetail)
 def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDetail:
-    repo = get_cogos_repo()
+    repo = get_repo()
     p = repo.get_process(UUID(process_id))
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")
@@ -423,7 +423,7 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
 
 @router.delete("/processes/{process_id}")
 def delete_process(name: str, process_id: str) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     p = repo.get_process(UUID(process_id))
     if not p:
         raise HTTPException(status_code=404, detail="Process not found")

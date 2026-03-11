@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from cogos.db.models import Cron
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 from dashboard.models import (
     CronCreate,
     CronItem,
@@ -31,7 +31,7 @@ def _cron_to_item(c: Cron) -> CronItem:
 
 @router.get("/cron", response_model=CronsResponse)
 def list_cron(name: str) -> CronsResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     rules = repo.list_cron_rules(enabled_only=False)
     items = [_cron_to_item(c) for c in rules]
     return CronsResponse(cogent_name=name, count=len(items), crons=items)
@@ -39,7 +39,7 @@ def list_cron(name: str) -> CronsResponse:
 
 @router.post("/cron", response_model=CronItem)
 def create_cron(name: str, body: CronCreate) -> CronItem:
-    repo = get_cogos_repo()
+    repo = get_repo()
     cron = Cron(
         expression=body.cron_expression,
         event_type=body.event_pattern,
@@ -52,7 +52,7 @@ def create_cron(name: str, body: CronCreate) -> CronItem:
 
 @router.put("/cron/{cron_id}", response_model=CronItem)
 def update_cron(name: str, cron_id: str, body: CronUpdate) -> CronItem:
-    repo = get_cogos_repo()
+    repo = get_repo()
     uid = UUID(cron_id)
 
     # Find existing
@@ -83,14 +83,14 @@ def update_cron(name: str, cron_id: str, body: CronUpdate) -> CronItem:
 
 @router.delete("/cron/{cron_id}")
 def delete_cron(name: str, cron_id: str) -> dict:
-    repo = get_cogos_repo()
+    repo = get_repo()
     deleted = repo.delete_cron(UUID(cron_id))
     return {"deleted": deleted}
 
 
 @router.post("/cron/toggle", response_model=ToggleResponse)
 def toggle_cron(name: str, body: ToggleRequest) -> ToggleResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     count = 0
     for cid_str in body.ids:
         if repo.update_cron_enabled(UUID(cid_str), body.enabled):

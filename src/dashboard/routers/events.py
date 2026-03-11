@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from dashboard.db import get_cogos_repo
+from dashboard.db import get_repo
 from dashboard.models import Event, EventsResponse, EventTreeResponse
 
 router = APIRouter(tags=["events"])
@@ -26,7 +26,7 @@ def list_events(
     type: str | None = Query(None, alias="type"),
     limit: int = Query(100, le=1000),
 ) -> EventsResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     db_events = repo.get_events(event_type=type, limit=limit)
     events = [_event_to_model(e) for e in db_events]
     return EventsResponse(cogent_name=name, count=len(events), events=events)
@@ -34,7 +34,7 @@ def list_events(
 
 @router.get("/events/{event_id}/tree", response_model=EventTreeResponse)
 def event_tree(name: str, event_id: str) -> EventTreeResponse:
-    repo = get_cogos_repo()
+    repo = get_repo()
     # Fetch all events and find the tree containing this event
     all_events = repo.get_events(limit=1000)
     by_id = {str(e.id): e for e in all_events}
