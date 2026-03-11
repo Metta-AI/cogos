@@ -1032,7 +1032,6 @@ function ProcessFormEditor({
   onRefresh?: () => void;
 }) {
   const [expandedEditFiles, setExpandedEditFiles] = useState<Set<string>>(new Set());
-  const [editingEditFileKey, setEditingEditFileKey] = useState<string | null>(null);
   return (
     <div className="space-y-3 p-4 rounded-md" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-2">
@@ -1136,22 +1135,10 @@ function ProcessFormEditor({
         </div>
       </div>
 
-      {/* Content */}
-      <div>
-        <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Content (prompt)</label>
-        <textarea
-          className={INPUT_CLS}
-          rows={4}
-          value={form.content}
-          onChange={(e) => onChange({ ...form, content: e.target.value })}
-          style={{ resize: "vertical" }}
-        />
-      </div>
-
-      {/* Files — collapsible rows with inline editing */}
+      {/* Context (files) — collapsible rows with inline editing */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <label className="text-[10px] text-[var(--text-muted)] uppercase">Files</label>
+          <label className="text-[10px] text-[var(--text-muted)] uppercase">Context</label>
           {form.name.trim() && (
             <button
               type="button"
@@ -1169,7 +1156,6 @@ function ProcessFormEditor({
           <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
             {form.files.map((fileKey) => {
               const isExpanded = expandedEditFiles.has(fileKey);
-              const isFileEditing = editingEditFileKey === fileKey;
               return (
                 <div key={fileKey} style={{ borderBottom: "1px solid var(--border)" }}>
                   <div
@@ -1186,24 +1172,10 @@ function ProcessFormEditor({
                       {isExpanded ? "▾" : "▸"}
                     </span>
                     <span className="font-mono text-[var(--text-secondary)] flex-1 truncate">{fileKey}</span>
-                    {!isFileEditing && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingEditFileKey(fileKey);
-                          setExpandedEditFiles((prev) => new Set([...prev, fileKey]));
-                        }}
-                        className="text-[9px] text-[var(--text-muted)] hover:text-[var(--accent)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                        title="Edit file"
-                      >
-                        Edit
-                      </button>
-                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
-                        if (editingEditFileKey === fileKey) setEditingEditFileKey(null);
                       }}
                       className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
                       title="Remove from process"
@@ -1212,21 +1184,12 @@ function ProcessFormEditor({
                     </button>
                   </div>
                   {isExpanded && (
-                    isFileEditing ? (
-                      <InlineFileEditor
-                        fileKey={fileKey}
-                        cogentName={cogentName}
-                        onRefresh={onRefresh}
-                        onClose={() => setEditingEditFileKey(null)}
-                      />
-                    ) : (
-                      <div
-                        className="text-[10px] text-[var(--text-muted)] font-mono px-2 py-1"
-                        style={{ background: "var(--bg-deep)" }}
-                      >
-                        (click Edit to view/modify content)
-                      </div>
-                    )
+                    <InlineFileEditor
+                      fileKey={fileKey}
+                      cogentName={cogentName}
+                      onRefresh={onRefresh}
+                      onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(fileKey); return next; })}
+                    />
                   )}
                 </div>
               );
@@ -1245,6 +1208,18 @@ function ProcessFormEditor({
             }
           }}
           suggestions={fileSuggestions.filter((s) => !form.files.includes(s))}
+        />
+      </div>
+
+      {/* Content */}
+      <div>
+        <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Content (prompt)</label>
+        <textarea
+          className={INPUT_CLS}
+          rows={4}
+          value={form.content}
+          onChange={(e) => onChange({ ...form, content: e.target.value })}
+          style={{ resize: "vertical" }}
         />
       </div>
 
@@ -1351,7 +1326,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
     return map;
   }, [runs]);
 
-  const fetchDetail = useCallback(async (id: string) => {
+  const fetchDetail = useCallback(async (id: string, opts?: { preserveExpanded?: boolean }) => {
     setLoadingDetail(true);
     try {
       const detail = await api.getProcessDetail(cogentName, id);
@@ -1361,10 +1336,12 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setDetailCapabilities(detail.capabilities || []);
       setDetailCapConfigs((detail.capability_configs as Record<string, CapabilityConfig>) || {});
       setDetailIncludes(detail.includes || []);
-      setExpandedIncludes(new Set());
+      if (!opts?.preserveExpanded) setExpandedIncludes(new Set());
       setDetailHandlers(detail.handlers || []);
       setPromptTree(detail.prompt_tree || []);
-      setExpandedPromptFiles(new Set(["<content>"]));
+      if (!opts?.preserveExpanded) {
+        setExpandedPromptFiles(new Set((detail.prompt_tree || []).map((e: { key: string }) => e.key)));
+      }
     } catch {
       setDetailRuns([]);
       setResolvedPrompt("");
@@ -1740,7 +1717,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                                   <InlineFileEditor
                                     fileKey={entry.key}
                                     cogentName={cogentName}
-                                    onRefresh={async () => { onRefresh(); await fetchDetail(proc.id); }}
+                                    onRefresh={async () => { onRefresh(); await fetchDetail(proc.id, { preserveExpanded: true }); }}
                                     onClose={() => setEditingFileKey(null)}
                                   />
                                 ) : (
