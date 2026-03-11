@@ -136,6 +136,35 @@ def image():
     """Manage CogOS images (boot, snapshot, list)."""
 
 
+def _run_migrations(repo) -> None:
+    """Run brain schema migrations (via Data API) and CogOS SQL file migrations."""
+    # 1. Brain-level versioned migrations (events, memory, programs, etc.)
+    if os.environ.get("USE_LOCAL_DB") != "1":
+        try:
+            from cogos.db.migrations import apply_schema
+            version = apply_schema()
+            click.echo(f"Brain schema at version {version}.")
+        except Exception as e:
+            click.echo(f"Warning: brain migrations failed: {e}")
+
+    # 2. CogOS SQL file migrations (cogos_* tables)
+    migrations_dir = Path(__file__).parent.parent / "db" / "migrations"
+    if migrations_dir.is_dir():
+        for migration in sorted(migrations_dir.glob("*.sql")):
+            sql = migration.read_text()
+            for stmt in sql.split(";"):
+                stmt = stmt.strip()
+                if stmt and not stmt.startswith("--"):
+                    try:
+                        repo.execute(stmt)
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
+                            pass
+                        else:
+                            click.echo(f"  Warning ({migration.name}): {e}")
+        click.echo("CogOS migrations applied.")
+
+
 @image.command()
 @click.argument("name")
 @click.option("--clean", is_flag=True, help="Wipe all tables before loading")
@@ -154,22 +183,7 @@ def boot(ctx: click.Context, name: str, clean: bool):
 
     repo = _repo()
 
-    # Run migrations in order
-    migrations_dir = Path(__file__).parent.parent / "db" / "migrations"
-    if migrations_dir.is_dir():
-        for migration in sorted(migrations_dir.glob("*.sql")):
-            sql = migration.read_text()
-            for stmt in sql.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
-                    try:
-                        repo.execute(stmt)
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
-                            pass
-                        else:
-                            click.echo(f"  Warning ({migration.name}): {e}")
-        click.echo("Migrations applied.")
+    _run_migrations(repo)
 
     if clean:
         if hasattr(repo, "clear_all"):
@@ -932,22 +946,7 @@ def reload(ctx: click.Context, image: str, yes: bool):
 
     repo = _repo()
 
-    # Run migrations
-    migrations_dir = Path(__file__).parent.parent / "db" / "migrations"
-    if migrations_dir.is_dir():
-        for migration in sorted(migrations_dir.glob("*.sql")):
-            sql = migration.read_text()
-            for stmt in sql.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
-                    try:
-                        repo.execute(stmt)
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
-                            pass
-                        else:
-                            click.echo(f"  Warning ({migration.name}): {e}")
-        click.echo("Migrations applied.")
+    _run_migrations(repo)
 
     # Wipe
     if hasattr(repo, "clear_all"):

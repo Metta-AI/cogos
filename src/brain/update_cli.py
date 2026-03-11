@@ -250,7 +250,7 @@ def update_ecs(ctx: click.Context, profile: str, skip_health: bool):
 @click.pass_context
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
-    from brain.db.migrations import apply_schema
+    from cogos.db.migrations import apply_schema
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)

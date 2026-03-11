@@ -250,7 +250,7 @@ def create_cmd(ctx: click.Context, profile: str, watch: bool):
 
     # Apply database schema
     click.echo("Applying database schema...")
-    from brain.db.migrations import apply_schema
+    from cogos.db.migrations import apply_schema
     try:
         apply_schema()
         click.echo("Database schema applied.")
