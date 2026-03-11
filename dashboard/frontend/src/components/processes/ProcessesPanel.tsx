@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { JsonViewer } from "@/components/shared/JsonViewer";
+import type { CogosFileVersion } from "@/lib/types";
 import * as api from "@/lib/api";
 import { fmtTimestamp } from "@/lib/format";
 
@@ -791,6 +792,218 @@ function DurationUnitMenu({ value, onChange }: { value: DurationUnit; onChange: 
   );
 }
 
+/* ── InlineFileEditor: version selector + edit for a single file ── */
+
+function InlineFileEditor({
+  fileKey,
+  cogentName,
+  onRefresh,
+  onClose,
+}: {
+  fileKey: string;
+  cogentName: string;
+  onRefresh?: () => void;
+  onClose: () => void;
+}) {
+  const [versions, setVersions] = useState<CogosFileVersion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [activating, setActivating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState<"update" | null>(null);
+
+  const loadVersions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const detail = await api.getFileDetail(cogentName, fileKey);
+      const sorted = [...detail.versions].sort((a, b) => b.version - a.version);
+      setVersions(sorted);
+      if (selectedVersion === null && sorted.length > 0) {
+        const active = sorted.find((v) => v.is_active);
+        setSelectedVersion(active?.version ?? sorted[0].version);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [cogentName, fileKey, selectedVersion]);
+
+  useEffect(() => {
+    setSelectedVersion(null);
+    setEditing(false);
+    loadVersions();
+  }, [fileKey, cogentName]);
+
+  const currentVersion = useMemo(
+    () => versions.find((v) => v.version === selectedVersion) ?? versions[0],
+    [versions, selectedVersion],
+  );
+
+  const handleActivate = useCallback(async (version: number) => {
+    if (activating) return;
+    setActivating(true);
+    try {
+      await api.activateFileVersion(cogentName, fileKey, version);
+      await loadVersions();
+      onRefresh?.();
+    } finally {
+      setActivating(false);
+    }
+  }, [cogentName, fileKey, activating, loadVersions, onRefresh]);
+
+  const handleStartEdit = useCallback(() => {
+    setEditContent(currentVersion?.content ?? "");
+    setEditing(true);
+    setSaveConfirm(null);
+  }, [currentVersion]);
+
+  const handleUpdate = useCallback(async () => {
+    if (saving || !selectedVersion) return;
+    setSaving(true);
+    try {
+      await api.updateFileVersionContent(cogentName, fileKey, selectedVersion, editContent);
+      setEditing(false);
+      setSaveConfirm(null);
+      await loadVersions();
+      onRefresh?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [cogentName, fileKey, selectedVersion, editContent, saving, loadVersions, onRefresh]);
+
+  const handleSaveNewVersion = useCallback(async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const fv = await api.updateFile(cogentName, fileKey, { content: editContent });
+      setSelectedVersion(fv.version);
+      setEditing(false);
+      setSaveConfirm(null);
+      await loadVersions();
+      onRefresh?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [cogentName, fileKey, editContent, saving, loadVersions, onRefresh]);
+
+  if (loading) {
+    return <div className="px-2 py-1 text-[10px] text-[var(--text-muted)]">Loading...</div>;
+  }
+
+  return (
+    <div style={{ background: "var(--bg-deep)" }}>
+      {/* Version selector bar */}
+      <div className="px-2 py-1 flex items-center gap-1 overflow-x-auto flex-wrap" style={{ borderTop: "1px solid var(--border)" }}>
+        {versions.map((v) => {
+          const isActive = v.is_active;
+          const isSel = v.version === selectedVersion;
+          return (
+            <button
+              key={v.version}
+              onClick={() => { setSelectedVersion(v.version); setEditing(false); }}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded border cursor-pointer text-[10px] font-mono flex-shrink-0"
+              style={{
+                background: isSel ? "var(--bg-hover)" : "transparent",
+                borderColor: isSel ? "var(--accent)" : "var(--border)",
+                color: isSel ? "var(--accent)" : "var(--text-muted)",
+                fontWeight: isSel ? 600 : 400,
+              }}
+            >
+              v{v.version}
+              {isActive && (
+                <span className="text-[7px] px-0.5 rounded-full font-semibold" style={{ background: "var(--accent)", color: "var(--bg-deep)" }}>
+                  active
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {currentVersion && !currentVersion.is_active && (
+          <button
+            onClick={() => handleActivate(currentVersion.version)}
+            disabled={activating}
+            className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer disabled:opacity-40"
+            style={{ background: "transparent", borderColor: "var(--accent)", color: "var(--accent)" }}
+          >
+            {activating ? "..." : "Make Active"}
+          </button>
+        )}
+        {!editing && (
+          <button
+            onClick={handleStartEdit}
+            className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer"
+            style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
+          >
+            Edit
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer ml-auto"
+          style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
+        >
+          Close
+        </button>
+      </div>
+
+      {/* Content area */}
+      {currentVersion && (
+        editing ? (
+          <div className="px-2 py-1.5 space-y-1.5">
+            <textarea
+              value={editContent}
+              onChange={(e) => { setEditContent(e.target.value); setSaveConfirm(null); }}
+              rows={8}
+              className="w-full px-2 py-1 text-[11px] rounded border font-mono resize-y"
+              style={{ background: "var(--bg-base)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+            />
+            <div className="flex gap-1.5 items-center flex-wrap">
+              {saveConfirm === "update" ? (
+                <span className="flex items-center gap-1 text-[10px]">
+                  <span className="text-[var(--text-muted)]">Overwrite v{selectedVersion}?</span>
+                  <button onClick={handleUpdate} disabled={saving} className="text-[var(--accent)] border-0 bg-transparent cursor-pointer text-[10px] font-semibold disabled:opacity-40">{saving ? "..." : "Yes"}</button>
+                  <button onClick={() => setSaveConfirm(null)} className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[10px]">No</button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setSaveConfirm("update")}
+                  className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer"
+                  style={{ background: "transparent", borderColor: "var(--accent)", color: "var(--accent)" }}
+                >
+                  Update v{selectedVersion}
+                </button>
+              )}
+              <button
+                onClick={handleSaveNewVersion}
+                disabled={saving}
+                className="text-[9px] px-1.5 py-0.5 rounded border-0 cursor-pointer disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "white" }}
+              >
+                {saving ? "Saving..." : "Save as New Version"}
+              </button>
+              <button
+                onClick={() => { setEditing(false); setSaveConfirm(null); }}
+                className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer"
+                style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="text-[11px] text-[var(--text-secondary)] font-mono whitespace-pre-wrap px-2 py-1.5"
+            style={{ maxHeight: "300px", overflowY: "auto" }}
+          >
+            {currentVersion.content || "(empty)"}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 /* ── Process Form ── */
 
 function ProcessFormEditor({
@@ -804,6 +1017,7 @@ function ProcessFormEditor({
   fileSuggestions,
   capabilitySuggestions,
   cogentName,
+  onRefresh,
 }: {
   form: ProcessForm;
   onChange: React.Dispatch<React.SetStateAction<ProcessForm>>;
@@ -815,7 +1029,10 @@ function ProcessFormEditor({
   fileSuggestions: string[];
   capabilitySuggestions: string[];
   cogentName: string;
+  onRefresh?: () => void;
 }) {
+  const [expandedEditFiles, setExpandedEditFiles] = useState<Set<string>>(new Set());
+  const [editingEditFileKey, setEditingEditFileKey] = useState<string | null>(null);
   return (
     <div className="space-y-3 p-4 rounded-md" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-2">
@@ -931,10 +1148,10 @@ function ProcessFormEditor({
         />
       </div>
 
-      {/* Memory (file) with typeahead + scratch default */}
+      {/* Files — collapsible rows with inline editing */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <label className="text-[10px] text-[var(--text-muted)] uppercase">Memory (prompt file)</label>
+          <label className="text-[10px] text-[var(--text-muted)] uppercase">Files</label>
           {form.name.trim() && (
             <button
               type="button"
@@ -948,11 +1165,86 @@ function ProcessFormEditor({
             </button>
           )}
         </div>
+        {form.files.length > 0 && (
+          <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
+            {form.files.map((fileKey) => {
+              const isExpanded = expandedEditFiles.has(fileKey);
+              const isFileEditing = editingEditFileKey === fileKey;
+              return (
+                <div key={fileKey} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <div
+                    className="flex items-center gap-2 px-2 py-1 cursor-pointer text-[11px]"
+                    style={{ background: "var(--bg-elevated)" }}
+                    onClick={() => setExpandedEditFiles((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(fileKey)) next.delete(fileKey);
+                      else next.add(fileKey);
+                      return next;
+                    })}
+                  >
+                    <span className="text-[9px] text-[var(--text-muted)]" style={{ width: "10px" }}>
+                      {isExpanded ? "▾" : "▸"}
+                    </span>
+                    <span className="font-mono text-[var(--text-secondary)] flex-1 truncate">{fileKey}</span>
+                    {!isFileEditing && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingEditFileKey(fileKey);
+                          setExpandedEditFiles((prev) => new Set([...prev, fileKey]));
+                        }}
+                        className="text-[9px] text-[var(--text-muted)] hover:text-[var(--accent)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                        title="Edit file"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
+                        if (editingEditFileKey === fileKey) setEditingEditFileKey(null);
+                      }}
+                      className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                      title="Remove from process"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    isFileEditing ? (
+                      <InlineFileEditor
+                        fileKey={fileKey}
+                        cogentName={cogentName}
+                        onRefresh={onRefresh}
+                        onClose={() => setEditingEditFileKey(null)}
+                      />
+                    ) : (
+                      <div
+                        className="text-[10px] text-[var(--text-muted)] font-mono px-2 py-1"
+                        style={{ background: "var(--bg-deep)" }}
+                      >
+                        (click Edit to view/modify content)
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
         <TagListEditor
           label=""
-          items={form.files}
-          onChange={(files) => onChange((prev) => ({ ...prev, files }))}
-          suggestions={fileSuggestions}
+          items={[]}
+          onChange={(items) => {
+            if (items.length > 0) {
+              const newFile = items[items.length - 1];
+              if (!form.files.includes(newFile)) {
+                onChange((prev) => ({ ...prev, files: [...prev.files, newFile] }));
+              }
+            }
+          }}
+          suggestions={fileSuggestions.filter((s) => !form.files.includes(s))}
         />
       </div>
 
@@ -1040,6 +1332,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [detailIncludes, setDetailIncludes] = useState<Array<{ key: string; content: string }>>([]);
   const [expandedIncludes, setExpandedIncludes] = useState<Set<string>>(new Set());
   const [detailHandlers, setDetailHandlers] = useState<Array<{ id: string; event_pattern: string; enabled: boolean }>>([]);
+  const [editingFileKey, setEditingFileKey] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
@@ -1227,6 +1520,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             fileSuggestions={fileSuggestions}
             capabilitySuggestions={capabilitySuggestions}
             cogentName={cogentName}
+            onRefresh={onRefresh}
           />
         </div>
       )}
@@ -1403,6 +1697,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                         {promptTree.map((entry) => {
                           const isExpanded = expandedPromptFiles.has(entry.key);
                           const isContent = entry.key === "<content>";
+                          const isFileEditing = editingFileKey === entry.key;
                           return (
                             <div key={entry.key} style={{ borderBottom: "1px solid var(--border)" }}>
                               <div
@@ -1426,33 +1721,36 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                                     {entry.is_direct ? "direct" : "include"}
                                   </span>
                                 )}
-                                {entry.is_direct && !isContent && (
+                                {!isContent && !isFileEditing && (
                                   <button
-                                    onClick={async (e) => {
+                                    onClick={(e) => {
                                       e.stopPropagation();
-                                      const newFiles = detailFileKeys.filter((k) => k !== entry.key);
-                                      try {
-                                        await api.updateProcess(cogentName, proc.id, { files: newFiles } as Parameters<typeof api.updateProcess>[2]);
-                                        onRefresh();
-                                        await fetchDetail(proc.id);
-                                      } catch (err) {
-                                        setError(err instanceof Error ? err.message : "Failed to remove file");
-                                      }
+                                      setEditingFileKey(entry.key);
+                                      setExpandedPromptFiles((prev) => new Set([...prev, entry.key]));
                                     }}
-                                    className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                                    title="Remove from process"
+                                    className="text-[9px] text-[var(--text-muted)] hover:text-[var(--accent)] bg-transparent border-0 cursor-pointer p-0 leading-none"
+                                    title="Edit file"
                                   >
-                                    ✕
+                                    Edit
                                   </button>
                                 )}
                               </div>
                               {isExpanded && (
-                                <div
-                                  className="text-[11px] text-[var(--text-secondary)] font-mono whitespace-pre-wrap px-2 py-1.5"
-                                  style={{ background: "var(--bg-deep)", maxHeight: "300px", overflowY: "auto" }}
-                                >
-                                  {entry.content || "(empty)"}
-                                </div>
+                                isFileEditing ? (
+                                  <InlineFileEditor
+                                    fileKey={entry.key}
+                                    cogentName={cogentName}
+                                    onRefresh={async () => { onRefresh(); await fetchDetail(proc.id); }}
+                                    onClose={() => setEditingFileKey(null)}
+                                  />
+                                ) : (
+                                  <div
+                                    className="text-[11px] text-[var(--text-secondary)] font-mono whitespace-pre-wrap px-2 py-1.5"
+                                    style={{ background: "var(--bg-deep)", maxHeight: "300px", overflowY: "auto" }}
+                                  >
+                                    {entry.content || "(empty)"}
+                                  </div>
+                                )
                               )}
                             </div>
                           );
@@ -1599,6 +1897,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     fileSuggestions={fileSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
                     cogentName={cogentName}
+                    onRefresh={onRefresh}
                   />
                 </div>
               )}

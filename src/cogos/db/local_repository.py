@@ -459,9 +459,11 @@ class LocalRepository:
         self._save()
         return c.id
 
-    def list_cron_rules(self) -> list[Cron]:
+    def list_cron_rules(self, *, enabled_only: bool = False) -> list[Cron]:
         self._maybe_reload()
         rules = list(self._cron_rules.values())
+        if enabled_only:
+            rules = [r for r in rules if r.enabled]
         rules.sort(key=lambda c: c.expression)
         return rules
 
