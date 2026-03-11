@@ -360,15 +360,10 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
     Auto-detects when DOCKER_VERSION changes and rebuilds image.
     --docker: force rebuild Docker image + push ECR + update task def.
     """
-    import subprocess
-    import tarfile
-    import tempfile
-
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    frontend_dir = os.path.join(project_root, "dashboard", "frontend")
 
     click.echo(f"Updating dashboard for cogent-{name}...")
     session = _get_polis_admin_session()
@@ -388,8 +383,59 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
         return
 
     # --- Fast path: build frontend → S3 → restart ---
+    _build_and_upload_frontend(session, safe_name, project_root)
 
-    # 1. Build Next.js
+    # 4. Signal running container to reload frontend (no ECS restart needed)
+    click.echo("  Reloading frontend...")
+    t1 = time.monotonic()
+    reload_url = f"https://{safe_name}.softmax-cogents.com/admin/reload-frontend"
+    try:
+        import urllib.request
+
+        import json
+
+        # Load Cloudflare Access service token + dashboard API key
+        sm = session.client("secretsmanager", region_name=DEFAULT_REGION)
+        cf_token = json.loads(sm.get_secret_value(SecretId="cogent/polis/cloudflare-service-token")["SecretString"])
+        api_key = json.loads(sm.get_secret_value(SecretId=f"cogent/{name}/dashboard-api-key")["SecretString"])["api_key"]
+
+        req = urllib.request.Request(reload_url, method="POST")
+        req.add_header("CF-Access-Client-Id", cf_token["client_id"])
+        req.add_header("CF-Access-Client-Secret", cf_token["client_secret"])
+        req.add_header("X-Api-Key", api_key)
+        req.add_header("User-Agent", "cogent-cli/1.0")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode()
+        click.echo(f"  Reload: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
+    except Exception as e:
+        click.echo(f"  Reload failed ({e}), falling back to ECS restart...")
+        ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
+        service_arn = _find_dashboard_service(ecs_client, safe_name)
+        _restart_ecs_service(ecs_client, service_arn, skip_health, t0)
+
+    # 5. Purge Cloudflare cache so browsers get the new build
+    click.echo("  Purging CDN cache...")
+    t1 = time.monotonic()
+    try:
+        from polis.cloudflare import purge_cache
+        from polis.secrets.store import SecretStore
+        store = SecretStore(session=session)
+        purge_cache(store)
+        click.echo(f"  Cache: {click.style('purged', fg='green')} ({time.monotonic() - t1:.1f}s)")
+    except Exception as e:
+        click.echo(f"  Cache purge failed: {e}")
+
+    click.echo(f"  Dashboard: {click.style('deployed', fg='green')} ({time.monotonic() - t0:.1f}s)")
+
+
+def _build_and_upload_frontend(session, safe_name, project_root):
+    """Build Next.js frontend and upload tarball to S3."""
+    import subprocess
+    import tarfile
+    import tempfile
+
+    frontend_dir = os.path.join(project_root, "dashboard", "frontend")
+
     click.echo("  Building Next.js...")
     t1 = time.monotonic()
     result = subprocess.run(
@@ -403,7 +449,6 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
         raise click.ClickException("Next.js build failed")
     click.echo(f"  Build: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
 
-    # 2. Create tar.gz of standalone output
     click.echo("  Packaging assets...")
     t1 = time.monotonic()
     standalone_dir = os.path.join(frontend_dir, ".next", "standalone")
@@ -413,20 +458,16 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         tarball_path = tmp.name
         with tarfile.open(tarball_path, "w:gz") as tar:
-            # Add standalone output (server.js, node_modules, etc.)
             for entry in os.listdir(standalone_dir):
                 tar.add(os.path.join(standalone_dir, entry), arcname=entry)
-            # Add static assets into .next/static/
             if os.path.isdir(static_dir):
                 tar.add(static_dir, arcname=".next/static")
-            # Add public/ dir
             if os.path.isdir(public_dir):
                 tar.add(public_dir, arcname="public")
 
     size_mb = os.path.getsize(tarball_path) / (1024 * 1024)
     click.echo(f"  Package: {size_mb:.1f} MB ({time.monotonic() - t1:.1f}s)")
 
-    # 3. Upload to S3
     click.echo("  Uploading to S3...")
     t1 = time.monotonic()
     bucket = _get_sessions_bucket(session, safe_name)
@@ -436,11 +477,6 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
     os.unlink(tarball_path)
     click.echo(f"  Upload: s3://{bucket}/{s3_key} ({time.monotonic() - t1:.1f}s)")
 
-    # 4. Restart ECS service (container will download new assets on startup)
-    ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
-    service_arn = _find_dashboard_service(ecs_client, safe_name)
-    _restart_ecs_service(ecs_client, service_arn, skip_health, t0)
-
 
 def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_health, t0):
     """Full Docker rebuild: build image → push ECR → update task def → deploy."""
@@ -448,6 +484,9 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     import subprocess
 
     from polis.aws import POLIS_ACCOUNT_ID
+
+    # Build and upload frontend assets to S3 first
+    _build_and_upload_frontend(session, safe_name, project_root)
 
     image_tag = f"{safe_name}-dashboard"
 

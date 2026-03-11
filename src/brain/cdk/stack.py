@@ -313,6 +313,13 @@ class BrainStack(Stack):
                     resources=[self.database.secret.secret_arn],
                 )
             )
+        # Allow reading dashboard API key for admin endpoint auth
+        task_def.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/dashboard-api-key-*"],
+            )
+        )
         task_def.task_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["events:PutEvents"],

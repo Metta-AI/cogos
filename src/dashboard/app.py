@@ -14,6 +14,36 @@ from dashboard.config import settings
 
 logger = logging.getLogger(__name__)
 
+_cached_admin_key: str | None = None
+
+
+def _verify_admin_key(key: str) -> bool:
+    """Check key against the dashboard API key stored in Secrets Manager."""
+    global _cached_admin_key
+    if _cached_admin_key is None:
+        # Try env var first (set by CDK or task def), then Secrets Manager
+        env_key = os.environ.get("DASHBOARD_API_KEY")
+        if env_key:
+            _cached_admin_key = env_key
+        else:
+            cogent_name = os.environ.get("COGENT_NAME", "")
+            if cogent_name:
+                try:
+                    import json
+
+                    import boto3
+                    sm = boto3.client("secretsmanager", region_name="us-east-1")
+                    secret_id = f"cogent/{cogent_name}/dashboard-api-key"
+                    resp = sm.get_secret_value(SecretId=secret_id)
+                    data = json.loads(resp["SecretString"])
+                    _cached_admin_key = data.get("api_key", "")
+                except Exception:
+                    logger.warning("Could not load dashboard API key from Secrets Manager")
+                    _cached_admin_key = ""
+            else:
+                _cached_admin_key = ""
+    return bool(_cached_admin_key) and key == _cached_admin_key
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -85,6 +115,23 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict:
         return {"ok": True}
+
+    @app.post("/admin/reload-frontend")
+    async def reload_frontend(request: Request) -> dict:
+        """Signal the entrypoint to re-download frontend assets from S3 and restart Node."""
+        import signal
+
+        # Validate API key from header against Secrets Manager
+        api_key = request.headers.get("x-api-key", "")
+        if not api_key or not _verify_admin_key(api_key):
+            return JSONResponse(status_code=403, content={"detail": "forbidden"})
+
+        pid_file = Path("/tmp/entrypoint.pid")
+        if not pid_file.exists():
+            return JSONResponse(status_code=500, content={"ok": False, "error": "entrypoint PID file not found"})
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, signal.SIGUSR1)
+        return {"ok": True, "message": "reload signal sent"}
 
     from dashboard.ws import manager
 

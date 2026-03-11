@@ -1418,6 +1418,14 @@ class Repository:
             return UUID(row["id"])
         raise RuntimeError("Failed to insert cron")
 
+    def upsert_cron(self, cron: Cron) -> UUID:
+        """Insert or update a cron rule, deduplicating by (cron_expression, event_pattern)."""
+        existing = self.list_cron(enabled_only=False)
+        for ec in existing:
+            if ec.cron_expression == cron.cron_expression and ec.event_pattern == cron.event_pattern:
+                return ec.id
+        return self.insert_cron(cron)
+
     def list_cron(self, *, enabled_only: bool = False) -> list[Cron]:
         if enabled_only:
             response = self._execute(

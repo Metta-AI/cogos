@@ -236,6 +236,21 @@ def delete_dns_record(
     return True
 
 
+def purge_cache(store: SecretStore) -> None:
+    """Purge entire Cloudflare cache for the zone."""
+    cf = _load_cf_config(store)
+    zone_id = cf["zone_id"]
+    api_token = cf["api_token"]
+
+    resp = requests.post(
+        f"https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache",
+        headers=_headers(api_token),
+        json={"purge_everything": True},
+    )
+    resp.raise_for_status()
+    logger.info("Purged Cloudflare cache for zone %s", zone_id)
+
+
 def delete_access(store: SecretStore) -> bool:
     """Delete the Cloudflare Access Application (and its policies).
 
