@@ -1277,14 +1277,6 @@ function ProcessFormEditor({
       {/* Resources + Capabilities side by side */}
       <div className="flex gap-4">
         <div className="flex-1">
-          <TagListEditor
-            label="Resources"
-            items={form.resources}
-            onChange={(resources) => onChange((prev) => ({ ...prev, resources }))}
-            suggestions={resourceSuggestions}
-          />
-        </div>
-        <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             {[
               { label: "+ all", caps: capabilitySuggestions },
@@ -1310,6 +1302,14 @@ function ProcessFormEditor({
             onConfigChange={(capabilityConfigs) => onChange((prev) => ({ ...prev, capabilityConfigs }))}
             suggestions={capabilitySuggestions}
             cogentName={cogentName}
+          />
+        </div>
+        <div className="flex-1">
+          <TagListEditor
+            label="Resources"
+            items={form.resources}
+            onChange={(resources) => onChange((prev) => ({ ...prev, resources }))}
+            suggestions={resourceSuggestions}
           />
         </div>
       </div>
