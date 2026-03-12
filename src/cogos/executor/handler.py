@@ -425,3 +425,18 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
             vt.set(ns, instance)
         except (ImportError, AttributeError) as exc:
             logger.warning("Could not load capability %s (%s): %s", cap_model.name, handler_path, exc)
+
+    # Create implicit process channel if it doesn't exist
+    try:
+        from cogos.db.models import Channel, ChannelType
+
+        implicit_name = f"process:{process.name}"
+        if repo.get_channel_by_name(implicit_name) is None:
+            ch = Channel(
+                name=implicit_name,
+                owner_process=process.id,
+                channel_type=ChannelType.IMPLICIT,
+            )
+            repo.upsert_channel(ch)
+    except Exception as exc:
+        logger.warning("Could not create implicit channel for process %s: %s", process.name, exc)

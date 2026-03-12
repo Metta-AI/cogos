@@ -662,4 +662,61 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    {
+        "name": "channels",
+        "description": "Named topic channels for inter-process communication.",
+        "handler": "cogos.capabilities.channels.ChannelsCapability",
+        "instructions": (
+            "Use channels to create and interact with typed message channels.\n"
+            "- channels.create(name, schema) — create a named channel with schema\n"
+            "- channels.send(name, payload) — send a message to a channel\n"
+            "- channels.read(name, limit?) — read messages from a channel\n"
+            "- channels.subscribe(name) — subscribe for push notifications\n"
+            "- channels.list() — list available channels\n"
+            "- channels.get(name) — get channel details\n"
+            "- channels.close(name) — close a channel you own\n"
+            "- channels.schema(name) — get channel schema\n"
+            "Messages are validated against the channel's schema on send."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["create", "list", "get", "send", "read", "subscribe", "close"],
+                        },
+                    },
+                    "names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Channel name patterns (fnmatch)",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "name": "schemas",
+        "description": "Schema definitions for channel messages.",
+        "handler": "cogos.capabilities.schemas.SchemasCapability",
+        "instructions": (
+            "Use schemas to discover message type definitions.\n"
+            "- schemas.get(name) — get a schema by name\n"
+            "- schemas.list() — list all available schemas\n"
+            "Schemas define the structure of channel messages."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Schema name patterns (fnmatch)",
+                    },
+                },
+            },
+        },
+    },
 ]
