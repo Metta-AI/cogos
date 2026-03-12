@@ -15,7 +15,7 @@
 
 ### Image
 
-A new CogOS image: `newsfromthefront`, added as processes within the existing `cogent-v1` image. All process names are prefixed `newsfromthefront-` to provide ad-hoc namespacing within the flat image structure.
+A new CogOS image located at `images/apps/newsfromthefront/`. This is a standalone image directory, separate from `cogent-v1`, under an `images/apps/` convention for application-level cogents. All process names are prefixed `newsfromthefront-` for clarity.
 
 ### Processes
 
@@ -24,9 +24,9 @@ A new CogOS image: `newsfromthefront`, added as processes within the existing `c
 | `newsfromthefront-researcher` | daemon | lambda | daily cron channel message |
 | `newsfromthefront-analyst` | daemon | lambda | `newsfromthefront:findings-ready`, `newsfromthefront:discord-feedback` |
 | `newsfromthefront-test` | daemon | lambda | `newsfromthefront:run-requested` (mode: "test") |
-| `newsfromthefront-backfill` | daemon | ecs | `newsfromthefront:run-requested` (mode: "backfill") |
+| `newsfromthefront-backfill` | daemon | lambda | `newsfromthefront:run-requested` (mode: "backfill") |
 
-`newsfromthefront-backfill` uses the ECS runner because iterating over a wide date range may exceed Lambda's execution timeout.
+`newsfromthefront-backfill` is re-entrant: each Lambda invocation processes one interval, then re-triggers itself for the next, so no single run is long-lived.
 
 ### New Capability
 
@@ -47,6 +47,7 @@ newsfromthefront/
   brief.md                  — GitHub URL + user goals/context (evolves via thread replies)
   knowledge-base.json       — structured history of all findings seen to date
   state.json                — Discord thread IDs for active report threads
+  backfill-state.json       — re-entrant backfill progress (present only during an active backfill)
   findings/<date>.md        — raw Perplexity output per researcher run
   reports/<date>.md         — generated analyst report per run
 ```
@@ -84,7 +85,7 @@ newsfromthefront/
 4. Classify new findings by type: `competitor`, `product_update`, `funding`, `launch`, `other`.
 5. Write the delta report to `newsfromthefront/reports/<date>.md`.
 6. If `is_test: false` and `is_backfill: false`: post the report to the configured Discord channel as a new thread titled "Newsfromthefront — `<date>`". Store the thread ID in `newsfromthefront/state.json`.
-7. If `is_backfill: true`: skip Discord posting, update knowledge base only. The `newsfromthefront-backfill` process drives these analyst invocations sequentially (emit one `findings-ready` message, wait for the analyst to complete via the spawn channel, then proceed to the next interval) to avoid concurrent writes to `knowledge-base.json`. When all intervals are complete, backfill posts a single summary thread.
+7. If `is_backfill: true`: not applicable — backfill handles its own research and KB updates directly, and does not route through the analyst.
 8. If `is_test: true`: post to a clearly labeled test thread. Do not update the knowledge base or state.
 9. Update `newsfromthefront/knowledge-base.json` with new findings (unless `is_test: true`).
 
@@ -113,14 +114,17 @@ newsfromthefront/
 
 ### `newsfromthefront-backfill`
 
-**Trigger:** `newsfromthefront:run-requested` with `mode: "backfill"`, `after_date`, `before_date`.
+**Trigger:** `newsfromthefront:run-requested` with `mode: "backfill"`. On first trigger, payload includes `after_date` and `before_date`; on subsequent self-triggers those are omitted (state is read from file store).
+
+**Re-entrancy:** Backfill is re-entrant — each Lambda invocation processes exactly one interval, then self-triggers for the next. Progress is tracked in `newsfromthefront/backfill-state.json` so a crash or restart resumes from the last completed interval rather than restarting from scratch.
 
 **Behavior:**
-1. Parse the date range. Determine granularity — week-by-week for ranges > 30 days, day-by-day otherwise.
-2. For each interval: run researcher-style Perplexity searches using `after_date`/`before_date` params. Write findings to `newsfromthefront/findings/<date>.md`. Emit on `newsfromthefront:findings-ready` with `is_backfill: true`.
-3. After all intervals complete: post a summary thread to Discord — "Backfill complete: `<after_date>` → `<before_date>`. Knowledge base initialized with N findings."
+1. If `after_date`/`before_date` present in payload: initialize `backfill-state.json` with `{after_date, before_date, current_date: after_date, intervals_done: 0, findings_count: 0}`. Determine granularity — week-by-week for ranges > 30 days, day-by-day otherwise.
+2. Read `backfill-state.json`. Process the next interval starting from `current_date`: run researcher-style Perplexity searches using `after_date`/`before_date` params for the interval. Write findings to `newsfromthefront/findings/<date>.md`. Run analyst logic (dedup against KB, update KB). Increment `current_date` and `intervals_done`. Write updated state.
+3. If more intervals remain: send `{mode: "backfill"}` on `newsfromthefront:run-requested` to trigger the next invocation.
+4. If all intervals complete: post a summary thread to Discord — "Backfill complete: `<after_date>` → `<before_date>`. Knowledge base initialized with N findings." Delete `backfill-state.json`.
 
-**Runner:** ECS (long-running; Lambda timeout not suitable for wide date ranges).
+**Note:** Because each invocation updates the knowledge base directly (rather than routing through the analyst channel), there are no concurrent KB write races.
 
 **Capabilities:** `web_search`, `dir`, `channels`, `discord`, `secrets`
 
