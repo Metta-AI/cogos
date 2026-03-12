@@ -162,6 +162,11 @@ uv run pytest                 # Run tests
 uv run polis status           # Check infrastructure
 ```
 
+## Git Workflow
+
+- Do not push directly to `main` unless the user explicitly asks for that push in the current conversation.
+- If a change is ready but push behavior is not specified, make a Graphite PR instead of pushing or merging directly to `main`.
+
 ## PR Writeups
 
 When writing PR titles, descriptions, or review comments:
