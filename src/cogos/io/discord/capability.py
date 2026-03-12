@@ -76,6 +76,46 @@ class DiscordCapability(Capability):
         messages = discord.receive(limit=10)
     """
 
+    ALL_OPS = {"send", "react", "create_thread", "dm", "receive"}
+
+    def _narrow(self, existing: dict, requested: dict) -> dict:
+        result: dict = {}
+
+        # Channels: intersection if both exist, otherwise keep whichever exists
+        e_ch = existing.get("channels")
+        r_ch = requested.get("channels")
+        if e_ch is not None and r_ch is not None:
+            result["channels"] = list(set(e_ch) & set(r_ch))
+        elif e_ch is not None:
+            result["channels"] = e_ch
+        elif r_ch is not None:
+            result["channels"] = r_ch
+
+        # Ops: intersection
+        e_ops = existing.get("ops")
+        r_ops = requested.get("ops")
+        if e_ops is not None and r_ops is not None:
+            result["ops"] = set(e_ops) & set(r_ops)
+        elif e_ops is not None:
+            result["ops"] = e_ops
+        elif r_ops is not None:
+            result["ops"] = r_ops
+
+        return result
+
+    def _check(self, op: str, **context: object) -> None:
+        if not self._scope:
+            return
+        allowed_ops = self._scope.get("ops")
+        if allowed_ops is not None and op not in allowed_ops:
+            raise PermissionError(f"Operation '{op}' not allowed by scope")
+        channel = context.get("channel")
+        allowed_channels = self._scope.get("channels")
+        if channel and allowed_channels is not None and channel not in allowed_channels:
+            raise PermissionError(
+                f"Channel '{channel}' not allowed by scope"
+            )
+
     def send(
         self,
         channel: str,
@@ -88,6 +128,7 @@ class DiscordCapability(Capability):
         """Send a message to a Discord channel."""
         if not channel or not content:
             return DiscordError(error="'channel' and 'content' are required")
+        self._check("send", channel=channel)
 
         body: dict = {"channel": channel, "content": content}
         if thread_id:
@@ -112,6 +153,7 @@ class DiscordCapability(Capability):
         """Add a reaction to a message."""
         if not channel or not message_id or not emoji:
             return DiscordError(error="'channel', 'message_id', and 'emoji' are required")
+        self._check("react", channel=channel)
 
         try:
             _send_sqs({
@@ -135,6 +177,7 @@ class DiscordCapability(Capability):
         """Create a new thread in a channel."""
         if not channel or not thread_name:
             return DiscordError(error="'channel' and 'thread_name' are required")
+        self._check("create_thread", channel=channel)
 
         body: dict = {
             "type": "thread_create",
@@ -156,6 +199,7 @@ class DiscordCapability(Capability):
         """Send a direct message to a user."""
         if not user_id or not content:
             return DiscordError(error="'user_id' and 'content' are required")
+        self._check("dm")
 
         try:
             _send_sqs({"type": "dm", "user_id": user_id, "content": content})
@@ -171,6 +215,7 @@ class DiscordCapability(Capability):
             event_type: Filter by event type (discord:dm, discord:mention, discord:message).
                         If None, returns all discord events.
         """
+        self._check("receive")
         et = event_type or "discord:%"
         events = self.repo.get_events(event_type=et, limit=limit)
         return [_message_from_event(e) for e in events]
