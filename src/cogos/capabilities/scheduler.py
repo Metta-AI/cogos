@@ -122,6 +122,34 @@ class SchedulerCapability(Capability):
 
         return created
 
+    def match_channel_messages(self) -> MatchResult:
+        """Backstop: find undelivered channel messages and create deliveries."""
+        all_handlers = self.repo.list_handlers(enabled_only=True)
+        channel_handlers = [h for h in all_handlers if h.channel is not None]
+
+        created = []
+        for handler in channel_handlers:
+            msgs = self.repo.list_channel_messages(handler.channel, limit=200)
+            for msg in msgs:
+                delivery = EventDelivery(event=msg.id, handler=handler.id)
+                delivery_id, inserted = self.repo.create_event_delivery(delivery)
+                if not inserted:
+                    continue
+
+                proc = self.repo.get_process(handler.process)
+                if proc and proc.status == ProcessStatus.WAITING:
+                    self.repo.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+
+                created.append(DeliveryInfo(
+                    delivery_id=str(delivery_id),
+                    event_id=str(msg.id),
+                    event_type=f"channel:{handler.channel}",
+                    handler_id=str(handler.id),
+                    process_id=str(handler.process),
+                ))
+
+        return MatchResult(deliveries_created=len(created), deliveries=created)
+
     def select_processes(self, slots: int = 1) -> SelectResult:
         now_ts = time.time()
 

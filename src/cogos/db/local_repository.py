@@ -929,6 +929,17 @@ class LocalRepository:
         if msg.created_at is None:
             msg.created_at = datetime.utcnow()
         self._channel_messages[msg.id] = msg
+
+        # Auto-create deliveries for handlers bound to this channel
+        handlers = self.match_handlers_by_channel(msg.channel)
+        for handler in handlers:
+            delivery = EventDelivery(event=msg.id, handler=handler.id)
+            _delivery_id, inserted = self.create_event_delivery(delivery)
+            if inserted:
+                proc = self.get_process(handler.process)
+                if proc and proc.status == ProcessStatus.WAITING:
+                    self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+
         self._save()
         return msg.id
 

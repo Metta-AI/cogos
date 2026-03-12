@@ -1554,10 +1554,23 @@ class Repository:
             ],
         )
         row = self._first_row(response)
-        if row:
-            msg.created_at = self._ts(row, "created_at")
-            return UUID(row["id"])
-        raise RuntimeError("Failed to append channel message")
+        if not row:
+            raise RuntimeError("Failed to append channel message")
+
+        msg.created_at = self._ts(row, "created_at")
+        msg_id = UUID(row["id"])
+
+        # Auto-create deliveries for handlers bound to this channel
+        handlers = self.match_handlers_by_channel(msg.channel)
+        for handler in handlers:
+            delivery = EventDelivery(event=msg_id, handler=handler.id)
+            _delivery_id, inserted = self.create_event_delivery(delivery)
+            if inserted:
+                proc = self.get_process(handler.process)
+                if proc and proc.status == ProcessStatus.WAITING:
+                    self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+
+        return msg_id
 
     def list_channel_messages(
         self, channel_id: UUID, *, limit: int = 100,
