@@ -208,24 +208,58 @@ class DiscordCapability(Capability):
             return DiscordError(error=str(e))
 
     def receive(self, limit: int = 10, event_type: str | None = None) -> list[DiscordMessage]:
-        """Read recent Discord messages from the event log.
+        """Read recent Discord messages from channels.
 
         Args:
             limit: Max messages to return.
             event_type: Filter by event type (discord:dm, discord:mention, discord:message).
-                        If None, returns all discord events.
+                        If None, returns messages from all discord channels.
         """
         self._check("receive")
-        et = event_type or "discord:%"
-        events = self.repo.get_events(event_type=et, limit=limit)
-        return [_message_from_event(e) for e in events]
+
+        if event_type:
+            # Single channel: io:discord:dm, io:discord:mention, io:discord:message
+            channel_names = [f"io:discord:{event_type.split(':')[1]}"]
+        else:
+            channel_names = ["io:discord:dm", "io:discord:mention", "io:discord:message"]
+
+        messages: list[DiscordMessage] = []
+        for name in channel_names:
+            ch = self.repo.get_channel_by_name(name)
+            if ch is None:
+                continue
+            for msg in self.repo.list_channel_messages(ch.id, limit=limit):
+                messages.append(_message_from_channel_message(msg))
+
+        # Sort by created_at and apply limit across all channels
+        messages.sort(key=lambda m: m.message_id or "")
+        return messages[:limit]
 
     def __repr__(self) -> str:
         return "<DiscordCapability send() react() create_thread() dm() receive()>"
 
 
 def _message_from_event(e) -> DiscordMessage:
+    """Legacy helper for constructing DiscordMessage from an event-like object."""
     p = e.payload or {}
+    return DiscordMessage(
+        content=p.get("content"),
+        author=p.get("author"),
+        author_id=p.get("author_id"),
+        channel_id=p.get("channel_id"),
+        message_id=p.get("message_id"),
+        is_dm=p.get("is_dm", False),
+        is_mention=p.get("is_mention", False),
+        attachments=p.get("attachments"),
+        thread_id=p.get("thread_id"),
+        reference_message_id=p.get("reference_message_id"),
+        event_type=p.get("event_type"),
+    )
+
+
+def _message_from_channel_message(msg) -> DiscordMessage:
+    """Construct a DiscordMessage from a ChannelMessage."""
+    p = msg.payload or {}
     return DiscordMessage(
         content=p.get("content"),
         author=p.get("author"),

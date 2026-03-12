@@ -47,7 +47,21 @@ def _get_sender() -> SesSender:
 
 
 def _email_from_event(e) -> EmailMessage:
+    """Legacy helper for constructing EmailMessage from an event-like object."""
     p = e.payload or {}
+    return EmailMessage(
+        sender=p.get("from"),
+        to=p.get("to"),
+        subject=p.get("subject"),
+        body=p.get("body"),
+        date=p.get("date"),
+        message_id=p.get("message_id"),
+    )
+
+
+def _email_from_channel_message(msg) -> EmailMessage:
+    """Construct an EmailMessage from a ChannelMessage."""
+    p = msg.payload or {}
     return EmailMessage(
         sender=p.get("from"),
         to=p.get("to"),
@@ -130,8 +144,11 @@ class EmailCapability(Capability):
 
     def receive(self, limit: int = 10) -> list[EmailMessage]:
         self._check("receive")
-        events = self.repo.get_events(event_type="email:received", limit=limit)
-        return [_email_from_event(e) for e in events]
+        ch = self.repo.get_channel_by_name("io:email:inbound")
+        if ch is None:
+            return []
+        messages = self.repo.list_channel_messages(ch.id, limit=limit)
+        return [_email_from_channel_message(m) for m in messages]
 
     def __repr__(self) -> str:
         return "<EmailCapability send() receive()>"

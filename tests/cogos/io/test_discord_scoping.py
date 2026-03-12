@@ -13,7 +13,8 @@ from cogos.io.discord.capability import DiscordCapability
 @pytest.fixture
 def repo():
     mock = MagicMock()
-    mock.get_events.return_value = []
+    mock.get_channel_by_name.return_value = None
+    mock.list_channel_messages.return_value = []
     return mock
 
 

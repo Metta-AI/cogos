@@ -156,7 +156,7 @@ class DiscordBridge:
             await self._relay_to_db(message)
 
     async def _relay_to_db(self, message: discord.Message):
-        """Classify a Discord message and write it as a cogos event."""
+        """Classify a Discord message and write it as a channel message."""
         if isinstance(message.channel, discord.DMChannel):
             event_type = "discord:dm"
         elif self.client.user and self.client.user.mentioned_in(message):
@@ -170,14 +170,28 @@ class DiscordBridge:
         payload = _make_event_payload(message, event_type, is_dm=is_dm, is_mention=is_mention)
 
         try:
-            from cogos.db.models import Event
+            from cogos.db.models import Channel, ChannelMessage, ChannelType
             repo = self._get_repo()
-            repo.append_event(Event(
-                event_type=event_type,
-                source="discord",
+
+            # Get or create the channel for this event type
+            channel_name = f"io:discord:{event_type.split(':')[1]}"  # io:discord:dm, io:discord:mention, io:discord:message
+            ch = repo.get_channel_by_name(channel_name)
+            if ch is None:
+                from uuid import uuid4
+                ch = Channel(
+                    name=channel_name,
+                    owner_process=uuid4(),  # system-owned
+                    channel_type=ChannelType.NAMED,
+                )
+                repo.upsert_channel(ch)
+                ch = repo.get_channel_by_name(channel_name)
+
+            repo.append_channel_message(ChannelMessage(
+                channel=ch.id,
+                sender_process=ch.owner_process,
                 payload=payload,
             ))
-            logger.info("Wrote %s from %s to DB", event_type, message.author)
+            logger.info("Wrote %s from %s to channel %s", event_type, message.author, channel_name)
 
             # Start typing indicator for DMs and mentions
             if event_type in ("discord:dm", "discord:mention"):

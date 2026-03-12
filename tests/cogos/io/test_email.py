@@ -101,12 +101,29 @@ class TestEmailCapabilitySend:
         assert "required" in result.error
 
 
+class FakeChannel:
+    def __init__(self, id):
+        self.id = id
+        self.name = "io:email:inbound"
+
+
+class FakeChannelMessage:
+    def __init__(self, payload):
+        self.id = uuid4()
+        self.channel = uuid4()
+        self.sender_process = uuid4()
+        self.payload = payload
+        self.created_at = None
+
+
 class TestEmailCapabilityReceive:
     def test_receive_returns_emails(self):
         repo = MagicMock()
-        repo.get_events.return_value = [
-            FakeEvent({"from": "a@b.com", "subject": "Hi", "body": "Hello", "to": "ovo@x.com", "date": "Mon", "message_id": "1"}),
-            FakeEvent({"from": "c@d.com", "subject": "Hey", "body": "World", "to": "ovo@x.com", "date": "Tue", "message_id": "2"}),
+        fake_ch = FakeChannel(uuid4())
+        repo.get_channel_by_name.return_value = fake_ch
+        repo.list_channel_messages.return_value = [
+            FakeChannelMessage({"from": "a@b.com", "subject": "Hi", "body": "Hello", "to": "ovo@x.com", "date": "Mon", "message_id": "1"}),
+            FakeChannelMessage({"from": "c@d.com", "subject": "Hey", "body": "World", "to": "ovo@x.com", "date": "Tue", "message_id": "2"}),
         ]
 
         email = EmailCapability(repo, uuid4())
@@ -114,15 +131,27 @@ class TestEmailCapabilityReceive:
         assert len(result) == 2
         assert isinstance(result[0], EmailMessage)
         assert result[0].sender == "a@b.com"
-        repo.get_events.assert_called_once_with(event_type="email:received", limit=10)
+        repo.get_channel_by_name.assert_called_once_with("io:email:inbound")
+        repo.list_channel_messages.assert_called_once_with(fake_ch.id, limit=10)
 
     def test_receive_default_limit(self):
         repo = MagicMock()
-        repo.get_events.return_value = []
+        fake_ch = FakeChannel(uuid4())
+        repo.get_channel_by_name.return_value = fake_ch
+        repo.list_channel_messages.return_value = []
 
         email = EmailCapability(repo, uuid4())
         email.receive()
-        repo.get_events.assert_called_once_with(event_type="email:received", limit=10)
+        repo.get_channel_by_name.assert_called_once_with("io:email:inbound")
+        repo.list_channel_messages.assert_called_once_with(fake_ch.id, limit=10)
+
+    def test_receive_no_channel(self):
+        repo = MagicMock()
+        repo.get_channel_by_name.return_value = None
+
+        email = EmailCapability(repo, uuid4())
+        result = email.receive()
+        assert result == []
 
 
 # ── Ingest Lambda ────────────────────────────────────────────
