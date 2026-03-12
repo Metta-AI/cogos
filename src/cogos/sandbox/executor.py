@@ -7,6 +7,7 @@ pre-injected for all capabilities bound to the process.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
@@ -14,6 +15,47 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+
+_SAFE_BUILTINS: dict[str, Any] = {
+    "print": print,
+    "len": len,
+    "range": range,
+    "enumerate": enumerate,
+    "zip": zip,
+    "sorted": sorted,
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "str": str,
+    "int": int,
+    "float": float,
+    "list": list,
+    "dict": dict,
+    "set": set,
+    "tuple": tuple,
+    "bool": bool,
+    "isinstance": isinstance,
+    "hasattr": hasattr,
+    "map": map,
+    "filter": filter,
+    "any": any,
+    "all": all,
+    "abs": abs,
+    "round": round,
+    "reversed": reversed,
+    "repr": repr,
+    "None": None,
+    "True": True,
+    "False": False,
+    "Exception": Exception,
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+    "KeyError": KeyError,
+    "IndexError": IndexError,
+    "AttributeError": AttributeError,
+    "RuntimeError": RuntimeError,
+    "StopIteration": StopIteration,
+}
 
 
 @dataclass
@@ -77,7 +119,8 @@ class SandboxExecutor:
 
         Returns stdout+stderr output or error traceback.
         """
-        namespace = {"__builtins__": __builtins__}
+        namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
+        namespace["json"] = json
         namespace.update(self.vt.as_dict())
 
         stdout_buf = io.StringIO()
