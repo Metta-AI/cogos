@@ -54,9 +54,43 @@ class FilesCapability(Capability):
         files.search("config/")
     """
 
+    ALL_OPS = {"read", "write", "search"}
+
+    def _narrow(self, existing: dict, requested: dict) -> dict:
+        merged = {**existing, **requested}
+        # Prefix narrowing: new prefix must start with old prefix
+        if "prefix" in existing and "prefix" in requested:
+            if not requested["prefix"].startswith(existing["prefix"]):
+                raise ValueError(
+                    f"Cannot widen prefix from {existing['prefix']!r} "
+                    f"to {requested['prefix']!r}"
+                )
+            merged["prefix"] = requested["prefix"]
+        # Ops narrowing: intersection
+        if "ops" in existing and "ops" in requested:
+            merged["ops"] = existing["ops"] & requested["ops"]
+        return merged
+
+    def _check(self, op: str, **context: object) -> None:
+        if not self._scope:
+            return
+        # Check ops
+        allowed_ops = self._scope.get("ops")
+        if allowed_ops is not None and op not in allowed_ops:
+            raise PermissionError(f"Operation '{op}' not permitted")
+        # Check prefix
+        prefix = self._scope.get("prefix")
+        if prefix is not None:
+            key = context.get("key", "")
+            if not str(key).startswith(prefix):
+                raise PermissionError(
+                    f"Key {key!r} outside allowed prefix {prefix!r}"
+                )
+
     def read(self, key: str) -> FileContent | FileError:
         if not key:
             return FileError(error="key is required")
+        self._check("read", key=key)
 
         store = FileStore(self.repo)
         f = store.get(key)
@@ -86,6 +120,7 @@ class FilesCapability(Capability):
     ) -> FileWriteResult | FileError:
         if not key:
             return FileError(error="key is required")
+        self._check("write", key=key)
 
         store = FileStore(self.repo)
         result = store.upsert(key, content, source=source, read_only=read_only, includes=includes)
@@ -101,6 +136,7 @@ class FilesCapability(Capability):
         return FileWriteResult(id=str(result.file_id), key=key, version=result.version, created=False)
 
     def search(self, prefix: str | None = None, limit: int = 50) -> list[FileSearchResult]:
+        self._check("search", key=prefix or "")
         store = FileStore(self.repo)
         files = store.list_files(prefix=prefix, limit=limit)
         return [FileSearchResult(id=str(f.id), key=f.key) for f in files]
