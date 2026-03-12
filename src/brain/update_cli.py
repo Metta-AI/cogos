@@ -13,6 +13,7 @@ import boto3
 import click
 
 from cli import DefaultCommandGroup, get_cogent_name
+from cogos.io.discord.setup import discord_secret_status, discord_service_status
 from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV, resolve_org_profile, set_org_profile
 
 DEFAULT_REGION = "us-east-1"
@@ -413,6 +414,57 @@ def _find_dashboard_service(ecs_client, safe_name: str) -> str:
     return dash_services[0]
 
 
+def _discord_service_name(safe_name: str) -> str:
+    return f"cogent-{safe_name}-discord"
+
+
+def _get_discord_desired_count(session: boto3.Session, name: str) -> int | None:
+    """Return the current desired count for the Discord bridge service."""
+    service_status, _ = discord_service_status(name, DEFAULT_REGION, session=session)
+    return service_status.get("bridge_desired_count")
+
+
+def _restore_discord_desired_count(ecs_client, safe_name: str, desired_count: int | None) -> None:
+    """Restore Discord desired count after a stack deploy if it was previously running."""
+    if not desired_count or desired_count <= 0:
+        return
+
+    ecs_client.update_service(
+        cluster="cogent-polis",
+        service=_discord_service_name(safe_name),
+        desiredCount=desired_count,
+    )
+
+
+def _ensure_discord_bridge_state(
+    session: boto3.Session,
+    name: str,
+    safe_name: str,
+    *,
+    previous_desired_count: int | None,
+) -> tuple[str, int] | None:
+    """Restore or auto-start the Discord bridge when it is already configured."""
+    ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
+
+    if previous_desired_count and previous_desired_count > 0:
+        _restore_discord_desired_count(ecs_client, safe_name, previous_desired_count)
+        return ("restored", previous_desired_count)
+
+    if previous_desired_count is not None:
+        return None
+
+    secret_configured, _ = discord_secret_status(name, DEFAULT_REGION, session=session)
+    if secret_configured is not True:
+        return None
+
+    current_desired_count = _get_discord_desired_count(session, name)
+    if current_desired_count and current_desired_count > 0:
+        return None
+
+    _restore_discord_desired_count(ecs_client, safe_name, 1)
+    return ("autostarted", 1)
+
+
 def _restart_ecs_service(ecs_client, service_arn: str, skip_health: bool, t0: float):
     """Force a new ECS deployment and optionally wait for stability."""
     click.echo("  Restarting ECS service...")
@@ -720,6 +772,8 @@ def update_stack(ctx: click.Context, profile: str | None):
     except Exception:
         click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
 
+    discord_desired_count = _get_discord_desired_count(session, name)
+
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [
         "npx",
@@ -736,4 +790,21 @@ def update_stack(ctx: click.Context, profile: str | None):
     result = subprocess.run(cmd, capture_output=False, env=env)
     if result.returncode != 0:
         raise click.ClickException("CDK deploy failed")
+    try:
+        discord_action = _ensure_discord_bridge_state(
+            session,
+            name,
+            safe_name,
+            previous_desired_count=discord_desired_count,
+        )
+    except Exception as e:
+        click.echo(f"Warning: could not reconcile Discord bridge state: {e}")
+    else:
+        if discord_action == ("restored", discord_desired_count):
+            click.echo(
+                f"Restoring Discord bridge desired count to {discord_desired_count} "
+                f"for cogent-{name}..."
+            )
+        elif discord_action == ("autostarted", 1):
+            click.echo(f"Starting Discord bridge for cogent-{name} because a token is configured...")
     click.echo(f"Stack update for cogent-{name} completed.")

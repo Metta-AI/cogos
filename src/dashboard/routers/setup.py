@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from enum import Enum
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from cogos.io.discord.setup import discord_secret_status, discord_service_status
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
@@ -53,69 +51,6 @@ class ChannelSetup(BaseModel):
 class SetupResponse(BaseModel):
     channels: list[ChannelSetup]
 
-
-def _discord_secret_status(name: str, region: str) -> tuple[bool | None, str | None]:
-    secret_id = f"cogent/{name}/discord"
-    sm = boto3.client("secretsmanager", region_name=region)
-    try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        data = json.loads(resp.get("SecretString", "{}"))
-        return bool(data.get("access_token")), None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code == "ResourceNotFoundException":
-            return False, None
-        logger.warning("Discord secret check failed for %s: %s", name, code or exc)
-        return None, code or type(exc).__name__
-    except Exception as exc:
-        logger.warning("Discord secret check failed for %s: %s", name, exc)
-        return None, type(exc).__name__
-
-
-def _discord_service_status(name: str, region: str) -> tuple[dict[str, int | str | bool | None], str | None]:
-    safe_name = name.replace(".", "-")
-    service_name = f"cogent-{safe_name}-discord"
-    ecs = boto3.client("ecs", region_name=region)
-    try:
-        resp = ecs.describe_services(cluster="cogent-polis", services=[service_name])
-        services = resp.get("services", [])
-        if not services:
-            return {
-                "bridge_service_exists": False,
-                "bridge_status": None,
-                "bridge_desired_count": None,
-                "bridge_running_count": None,
-                "bridge_pending_count": None,
-            }, None
-        svc = services[0]
-        return {
-            "bridge_service_exists": True,
-            "bridge_status": svc.get("status"),
-            "bridge_desired_count": svc.get("desiredCount"),
-            "bridge_running_count": svc.get("runningCount"),
-            "bridge_pending_count": svc.get("pendingCount"),
-        }, None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        logger.warning("Discord service check failed for %s: %s", name, code or exc)
-        return {
-            "bridge_service_exists": None,
-            "bridge_status": None,
-            "bridge_desired_count": None,
-            "bridge_running_count": None,
-            "bridge_pending_count": None,
-        }, code or type(exc).__name__
-    except Exception as exc:
-        logger.warning("Discord service check failed for %s: %s", name, exc)
-        return {
-            "bridge_service_exists": None,
-            "bridge_status": None,
-            "bridge_desired_count": None,
-            "bridge_running_count": None,
-            "bridge_pending_count": None,
-        }, type(exc).__name__
-
-
 def _build_discord_setup(name: str) -> ChannelSetup:
     region = os.environ.get("AWS_REGION", "us-east-1")
     safe_name = name.replace(".", "-")
@@ -155,8 +90,8 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         cogos_initialized = False
         cogos_error = type(exc).__name__
 
-    secret_configured, secret_check_error = _discord_secret_status(name, region)
-    service_status, service_check_error = _discord_service_status(name, region)
+    secret_configured, secret_check_error = discord_secret_status(name, region)
+    service_status, service_check_error = discord_service_status(name, region)
     bridge_running = (
         service_status["bridge_running_count"] is not None
         and int(service_status["bridge_running_count"]) > 0

@@ -241,7 +241,8 @@ class BrainStack(Stack):
             self.compute.task_definition.task_role
         )
 
-        # Fargate service (starts with 0 desired — use CLI to start)
+        # Fargate service starts stopped by default. CLI flows can auto-start it
+        # after deploy when the Discord token is already configured.
         sg = ec2.SecurityGroup(self, "DiscordSg", vpc=vpc, allow_all_outbound=True)
 
         self.discord_service = ecs.FargateService(

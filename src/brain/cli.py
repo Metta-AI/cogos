@@ -188,6 +188,7 @@ def create_cmd(ctx: click.Context, profile: str | None, watch: bool):
 
     from brain.update_cli import (
         _build_dashboard_tarball,
+        _ensure_discord_bridge_state,
         _get_polis_admin_session,
         _sessions_bucket_name,
         _upload_dashboard_tarball,
@@ -301,11 +302,27 @@ def create_cmd(ctx: click.Context, profile: str | None, watch: bool):
     # Apply database schema
     click.echo("Applying database schema...")
     from cogos.db.migrations import apply_schema
+    schema_ready = False
     try:
         apply_schema()
+        schema_ready = True
         click.echo("Database schema applied.")
     except Exception as e:
         click.echo(f"Warning: schema apply failed: {e}")
+
+    if schema_ready:
+        try:
+            discord_action = _ensure_discord_bridge_state(
+                polis_session,
+                name,
+                safe_name,
+                previous_desired_count=None,
+            )
+        except Exception as e:
+            click.echo(f"Warning: could not reconcile Discord bridge state: {e}")
+        else:
+            if discord_action == ("autostarted", 1):
+                click.echo(f"Starting Discord bridge for cogent-{name} because a token is configured...")
 
     # Update Cloudflare DNS to point at the dashboard ALB
     if cert_arn:
