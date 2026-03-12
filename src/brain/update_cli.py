@@ -255,14 +255,23 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool):
 @click.pass_context
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
-    from cogos.db.migrations import apply_schema
+    from cogos.db.migrations import apply_cogos_sql_migrations, apply_schema
+    from cogos.db.repository import Repository
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
     _ensure_db_env(name, profile)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
     version = apply_schema()
-    click.echo(f"  Schema at version {version}. ({time.monotonic() - t0:.1f}s)")
+    repo = Repository.create(
+        resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+        secret_arn=os.environ.get("DB_SECRET_ARN"),
+        database=os.environ.get("DB_NAME", "cogent"),
+        region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+    )
+    statements = apply_cogos_sql_migrations(repo)
+    click.echo(f"  Schema at version {version}.")
+    click.echo(f"  CogOS SQL migrations applied ({statements} statements). ({time.monotonic() - t0:.1f}s)")
 
 
 @update.command("mind")

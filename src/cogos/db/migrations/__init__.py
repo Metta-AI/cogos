@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 import boto3
 
 SCHEMA_FILE = Path(__file__).parent.parent / "schema.sql"
+COGOS_MIGRATIONS_DIR = Path(__file__).parent
 
 
 def _get_data_client():
@@ -106,6 +108,40 @@ def _split_sql(sql: str) -> list[str]:
         statements.append(remainder)
 
     return statements
+
+
+def _is_redundant_migration_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "already exists" in message or "duplicate" in message
+
+
+def apply_cogos_sql_migrations(
+    repo,
+    *,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> int:
+    """Apply raw CogOS SQL migrations using the repository's execute method."""
+    if not COGOS_MIGRATIONS_DIR.is_dir():
+        return 0
+
+    applied = 0
+    for migration in sorted(COGOS_MIGRATIONS_DIR.glob("*.sql")):
+        for stmt in _split_sql(migration.read_text()):
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            try:
+                repo.execute(stmt)
+                applied += 1
+            except Exception as exc:
+                if _is_redundant_migration_error(exc):
+                    continue
+                if on_error is not None:
+                    on_error(migration.name, exc)
+                    continue
+                raise
+
+    return applied
 
 
 def get_current_version(client, resource_arn: str, secret_arn: str, database: str) -> int | None:

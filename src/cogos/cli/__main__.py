@@ -148,22 +148,13 @@ def _run_migrations(repo) -> None:
             click.echo(f"Warning: brain migrations failed: {e}")
 
     # 2. CogOS SQL file migrations (cogos_* tables)
-    migrations_dir = Path(__file__).parent.parent / "db" / "migrations"
-    if migrations_dir.is_dir():
-        from cogos.db.migrations import _split_sql
+    from cogos.db.migrations import apply_cogos_sql_migrations
 
-        for migration in sorted(migrations_dir.glob("*.sql")):
-            for stmt in _split_sql(migration.read_text()):
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        repo.execute(stmt)
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
-                            pass
-                        else:
-                            click.echo(f"  Warning ({migration.name}): {e}")
-        click.echo("CogOS migrations applied.")
+    apply_cogos_sql_migrations(
+        repo,
+        on_error=lambda migration_name, exc: click.echo(f"  Warning ({migration_name}): {exc}"),
+    )
+    click.echo("CogOS migrations applied.")
 
 
 @image.command()
