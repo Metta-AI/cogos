@@ -21,7 +21,7 @@ A new CogOS image: `newsfromthefront`, added as processes within the existing `c
 
 | Process | Mode | Runner | Trigger |
 |---|---|---|---|
-| `newsfromthefront-researcher` | daemon | lambda | daily cron → `newsfromthefront:findings-ready` |
+| `newsfromthefront-researcher` | daemon | lambda | daily cron channel message |
 | `newsfromthefront-analyst` | daemon | lambda | `newsfromthefront:findings-ready`, `newsfromthefront:discord-feedback` |
 | `newsfromthefront-test` | daemon | lambda | `newsfromthefront:run-requested` (mode: "test") |
 | `newsfromthefront-backfill` | daemon | ecs | `newsfromthefront:run-requested` (mode: "backfill") |
@@ -84,7 +84,7 @@ newsfromthefront/
 4. Classify new findings by type: `competitor`, `product_update`, `funding`, `launch`, `other`.
 5. Write the delta report to `newsfromthefront/reports/<date>.md`.
 6. If `is_test: false` and `is_backfill: false`: post the report to the configured Discord channel as a new thread titled "Newsfromthefront — `<date>`". Store the thread ID in `newsfromthefront/state.json`.
-7. If `is_backfill: true`: skip Discord posting, update knowledge base only. When backfill is complete, post a single summary thread.
+7. If `is_backfill: true`: skip Discord posting, update knowledge base only. The `newsfromthefront-backfill` process drives these analyst invocations sequentially (emit one `findings-ready` message, wait for the analyst to complete via the spawn channel, then proceed to the next interval) to avoid concurrent writes to `knowledge-base.json`. When all intervals are complete, backfill posts a single summary thread.
 8. If `is_test: true`: post to a clearly labeled test thread. Do not update the knowledge base or state.
 9. Update `newsfromthefront/knowledge-base.json` with new findings (unless `is_test: true`).
 
@@ -93,6 +93,7 @@ newsfromthefront/
 2. Read `newsfromthefront/brief.md`.
 3. Incorporate the feedback — update goals, add context, refine competitors list, adjust search focus.
 4. Write the updated brief back to `newsfromthefront/brief.md`.
+5. Reply in the Discord thread to confirm: "Brief updated." so the user knows their feedback was received.
 
 **Capabilities:** `web_search`, `dir`, `channels`, `discord`, `secrets`
 
@@ -216,7 +217,7 @@ The `competitors` list is fed back into the researcher's search query generation
 
 When a user @mentions the bot in a report thread:
 
-1. The Discord bridge captures the mention via `io:discord:mention`. The message payload includes `channel_id` (the Discord thread's channel ID). *(See CogOS Enhancement #1 below.)*
+1. The Discord bridge captures the mention via `io:discord:mention`. The message payload includes `channel_id` (the Discord thread's channel ID) — this is already supported by the bridge.
 2. `discord-handle-message` checks whether `channel_id` is present in `newsfromthefront/state.json`.
 3. If yes: forwards to `newsfromthefront:discord-feedback` with `{thread_id, content, author}`.
 4. If no: handles normally as a chat message.
@@ -251,17 +252,7 @@ Use full fresh tests for tuning end-to-end output. Use analyst-only to iterate o
 
 These are not blockers — the application can be built without them — but they are real gaps that will recur with every new CogOS application.
 
-### Enhancement #1: Discord bridge thread context
-
-The `io:discord:mention` channel schema should include `thread_id` and `parent_channel_id` fields so that processes can distinguish messages arriving in threads from top-level channel messages. This is required for the feedback routing in `discord-handle-message` to work cleanly. Without it, a workaround is possible (e.g., requiring users to DM the bot with explicit feedback commands), but the natural thread-reply interaction model depends on this.
-
-**Proposed schema additions to `io:discord:mention`:**
-```yaml
-thread_id:         string?   — set if message was sent inside a thread
-parent_channel_id: string?   — the parent channel of the thread
-```
-
-### Enhancement #2: HTTP capability
+### Enhancement #1: HTTP capability
 
 GitHub repo ingestion currently requires writing raw Python HTTP code in `run_code()` using the `secrets` capability for the API key. A general-purpose `http` capability would make external API calls a clean, typed, auditable primitive rather than raw code:
 
