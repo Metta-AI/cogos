@@ -60,7 +60,22 @@ class ProcsCapability(Capability):
         procs.spawn(name="subtask", content="do something")
     """
 
+    ALL_OPS = {"list", "get", "spawn"}
+
+    def _narrow(self, existing: dict, requested: dict) -> dict:
+        old_ops = set(existing.get("ops") or self.ALL_OPS)
+        new_ops = set(requested.get("ops") or self.ALL_OPS)
+        return {"ops": sorted(old_ops & new_ops)}
+
+    def _check(self, op: str, **context: object) -> None:
+        if not self._scope:
+            return
+        allowed = set(self._scope.get("ops") or self.ALL_OPS)
+        if op not in allowed:
+            raise PermissionError(f"Operation '{op}' not allowed by scope (allowed: {sorted(allowed)})")
+
     def list(self, status: str | None = None, limit: int = 200) -> list[ProcessSummary]:
+        self._check("list")
         ps = ProcessStatus(status) if status else None
         processes = self.repo.list_processes(status=ps, limit=limit)
         return [
@@ -77,6 +92,7 @@ class ProcsCapability(Capability):
         ]
 
     def get(self, name: str | None = None, id: str | None = None) -> ProcessDetail | ProcessError:
+        self._check("get")
         if id:
             proc = self.repo.get_process(UUID(id))
         elif name:
@@ -123,6 +139,8 @@ class ProcsCapability(Capability):
         """
         if not name:
             return ProcessError(error="name is required")
+
+        self._check("spawn")
 
         child = Process(
             name=name,
