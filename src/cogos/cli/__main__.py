@@ -852,8 +852,7 @@ def event_emit(channel_name: str, payload: str):
     if not ch:
         ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
         repo.upsert_channel(ch)
-    from uuid import uuid4
-    msg = ChannelMessage(channel=ch.id, sender_process=uuid4(), payload=json.loads(payload))
+    msg = ChannelMessage(channel=ch.id, sender_process=None, payload=json.loads(payload))
     mid = repo.append_channel_message(msg)
     click.echo(f"Message sent to {channel_name} ({mid})")
 
