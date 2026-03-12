@@ -15,7 +15,7 @@ Inside `run_code`, capability objects are pre-injected as top-level variables. T
 config = files.read("/config/system")
 print(config.content)
 
-events.emit("task:completed", {"result": "success"})
+channels.send("task-results", {"result": "success"})
 
 child = procs.spawn("worker", content="do the thing", capabilities={
     "workspace": dir.scope("/workspace/", ops=["list", "read"]),
@@ -24,7 +24,7 @@ child = procs.spawn("worker", content="do the thing", capabilities={
 
 ## Capability-Only Authority
 
-**No ambient capabilities.** A process only gets the capabilities explicitly bound to it via ProcessCapability records. If a process doesn't have a `files` binding, it can't access files. If it doesn't have `events`, it can't emit or query events.
+**No ambient capabilities.** A process only gets the capabilities explicitly bound to it via ProcessCapability records. If a process doesn't have a `files` binding, it can't access files. If it doesn't have `channels`, it can't send or read channel messages.
 
 Capabilities are injected by grant name — a process can hold multiple grants of the same capability type with different scopes:
 
@@ -61,7 +61,7 @@ When a process spawns a child via `procs.spawn()`, capabilities are NOT inherite
 
 ```python
 procs.spawn("worker", capabilities={
-    "events": events,                                    # pass as-is
+    "channels": channels,                                # pass as-is
     "workspace": dir.scope("/workspace/", ops=["read"]), # narrowed
 })
 ```
@@ -97,19 +97,16 @@ capabilities.search("email")     # search by keyword
 discord.help()                   # full method signatures and schemas
 ```
 
-## Event Scoping
+## Channel Scoping
 
-The events capability supports scoping on both emit and query:
+The channels capability supports scoping by operations and channel name patterns:
 
 ```python
-# Can only emit task events, can query anything
-events.scope(emit=["task:*"])
+# Read-only access
+channels.scope(ops=["read", "subscribe"])
 
-# Can only query email events
-events.scope(query=["email:*"])
-
-# When query is scoped, event_type is required (no unfiltered queries)
-events.query()  # PermissionError if query patterns are set
+# Restrict to specific channel patterns
+channels.scope(names=["metrics*", "io:discord:*"])
 ```
 
 ## Built-in Capabilities
@@ -119,7 +116,8 @@ events.query()  # PermissionError if query patterns are set
 | **file** | Single-file access | key, ops (read/write/delete/get_metadata) |
 | **file_version** | Version history access | key, ops (add/list/get/update) |
 | **dir** | Directory-prefix access | prefix, ops (list/read/write/create/delete) |
-| **events** | Event log | emit patterns, query patterns |
+| **channels** | Channel messaging | ops (create/send/read/subscribe), name patterns |
+| **schemas** | Schema management | ops (list/get/create) |
 | **procs** | Process management | ops (list/get/spawn) |
 | **secrets** | Secret retrieval | key patterns |
 | **discord** | Discord messaging | channels, ops (send/react/create_thread/dm/receive) |

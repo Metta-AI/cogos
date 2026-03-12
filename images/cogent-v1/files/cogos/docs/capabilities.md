@@ -34,7 +34,8 @@ workspace.scope(prefix="/")
 Scope dimensions vary by capability type:
 - **file** — key (single file), ops
 - **dir** — prefix (directory subtree), ops
-- **events** — emit patterns, query patterns (fnmatch)
+- **channels** — ops (create/send/read/subscribe), name patterns (fnmatch)
+- **schemas** — ops (list/get/create)
 - **discord** — channels, ops
 - **email** — recipient allowlist (to), ops
 - **secrets** — key patterns (fnmatch)
@@ -59,7 +60,7 @@ When spawning a child process, capabilities are NOT inherited. Pass them explici
 
 ```python
 procs.spawn("worker", capabilities={
-    "events": events,                                      # unscoped
+    "channels": channels,                                  # unscoped
     "workspace": dir.scope("/workspace/", ops=["read"]),   # narrowed
 })
 ```
@@ -84,7 +85,8 @@ discord.help()                   # full method docs
 | **file** | Single-file read/write/delete |
 | **file_version** | Version history for a single file |
 | **dir** | Directory-prefix access (list/read/write/create/delete) |
-| **events** | Append-only event log (emit/query) |
+| **channels** | Channel messaging (create/send/read/subscribe) |
+| **schemas** | Schema management (list/get/create) |
 | **procs** | Process management (list/get/spawn) |
 | **secrets** | Secret retrieval from AWS SSM/Secrets Manager |
 | **discord** | Discord messaging, reactions, threads, DMs |

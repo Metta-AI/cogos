@@ -1,4 +1,4 @@
-"""CogOS CLI — management interface for processes, files, capabilities, events."""
+"""CogOS CLI — management interface for processes, files, capabilities, and channels."""
 
 from __future__ import annotations
 
@@ -243,6 +243,19 @@ def image_list():
             click.echo(f"  {d.name:20s}  (error: {e})")
 
 
+def _publish_process_event(repo, process, payload: dict) -> None:
+    """Publish a message to the process's implicit channel (process:<name>)."""
+    from cogos.db.models import Channel, ChannelType, ChannelMessage
+    ch_name = f"process:{process.name}"
+    ch = repo.get_channel_by_name(ch_name)
+    if not ch:
+        ch = Channel(name=ch_name, owner_process=process.id, channel_type=ChannelType.IMPLICIT)
+        repo.upsert_channel(ch)
+    repo.append_channel_message(ChannelMessage(
+        channel=ch.id, sender_process=process.id, payload=payload,
+    ))
+
+
 # ═══════════════════════════════════════════════════════════
 # PROCESS commands
 # ═══════════════════════════════════════════════════════════
@@ -329,7 +342,7 @@ def process_run(name: str, local: bool):
 
     if local:
         from cogos.executor.handler import execute_process, get_config, Run, RunStatus
-        from cogos.db.models import Event, ProcessStatus
+        from cogos.db.models import ProcessStatus
         import time
 
         config = get_config()
@@ -353,13 +366,11 @@ def process_run(name: str, local: bool):
                 result=run.result, scope_log=run.scope_log,
             )
 
-            # Emit completion event
-            repo.append_event(Event(
-                event_type="process:run:success",
-                source=name,
-                payload={"run_id": str(run.id), "process_id": str(p.id),
-                         "process_name": name, "duration_ms": duration_ms},
-            ))
+            # Publish completion message on process channel
+            _publish_process_event(repo, p, {
+                "status": "success", "run_id": str(run.id),
+                "process_name": name, "duration_ms": duration_ms,
+            })
 
             # Transition process state: daemons go back to runnable, one-shots complete
             if p.mode.value == "daemon":
@@ -376,12 +387,11 @@ def process_run(name: str, local: bool):
                 duration_ms=duration_ms, error=str(e)[:4000],
             )
 
-            # Emit failure event
-            repo.append_event(Event(
-                event_type=f"process:failed:{name}",
-                source=name,
-                payload={"run_id": str(run.id), "error": str(e)[:1000]},
-            ))
+            # Publish failure message on process channel
+            _publish_process_event(repo, p, {
+                "status": "failed", "run_id": str(run.id),
+                "error": str(e)[:1000],
+            })
 
             # Retry or disable
             if p.retry_count < p.max_retries:
@@ -489,11 +499,16 @@ def process_load(file_path: str):
             repo.create_process_capability(pc)
             click.echo(f"    Bound capability: {cap_name}")
 
-        # Create handlers
-        for pattern in entry.get("handlers", []):
-            h = HandlerModel(process=pid, event_pattern=pattern, enabled=True)
+        # Create handlers (subscribe to channels)
+        for ch_name in entry.get("handlers", []):
+            from cogos.db.models import Channel, ChannelType
+            ch = repo.get_channel_by_name(ch_name)
+            if not ch:
+                ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
+                repo.upsert_channel(ch)
+            h = HandlerModel(process=pid, channel=ch.id, enabled=True)
             repo.create_handler(h)
-            click.echo(f"    Handler added: {pattern}")
+            click.echo(f"    Handler added: {ch_name}")
 
         count += 1
 
@@ -506,7 +521,7 @@ def process_load(file_path: str):
 
 @cogos.group()
 def handler():
-    """Manage event handlers."""
+    """Manage channel handlers (process-to-channel subscriptions)."""
 
 
 @handler.command("list")
@@ -531,10 +546,16 @@ def handler_list(process_name: str | None, use_json: bool):
         if pkey not in proc_cache:
             proc = repo.get_process(h.process)
             proc_cache[pkey] = proc.name if proc else pkey
+        ch_name = None
+        if h.channel:
+            ch = repo.get_channel(h.channel)
+            ch_name = ch.name if ch else str(h.channel)
+        elif h.event_pattern:
+            ch_name = h.event_pattern  # legacy
         data.append({
             "id": str(h.id),
             "process": proc_cache[pkey],
-            "event_pattern": h.event_pattern,
+            "channel": ch_name,
             "enabled": h.enabled,
         })
     _output(data, use_json=use_json)
@@ -542,18 +563,23 @@ def handler_list(process_name: str | None, use_json: bool):
 
 @handler.command("add")
 @click.argument("process_name")
-@click.argument("event_pattern")
-def handler_add(process_name: str, event_pattern: str):
-    """Add a handler binding a process to an event pattern."""
-    from cogos.db.models import Handler as HandlerModel
+@click.argument("channel_name")
+def handler_add(process_name: str, channel_name: str):
+    """Add a handler subscribing a process to a channel."""
+    from cogos.db.models import Handler as HandlerModel, Channel, ChannelType
     repo = _repo()
     p = repo.get_process_by_name(process_name)
     if not p:
         click.echo(f"Process not found: {process_name}")
         return
-    h = HandlerModel(process=p.id, event_pattern=event_pattern, enabled=True)
+    # Ensure the channel exists
+    ch = repo.get_channel_by_name(channel_name)
+    if not ch:
+        ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
+        repo.upsert_channel(ch)
+    h = HandlerModel(process=p.id, channel=ch.id, enabled=True)
     hid = repo.create_handler(h)
-    click.echo(f"Handler created: {event_pattern} -> {process_name} ({hid})")
+    click.echo(f"Handler created: {channel_name} -> {process_name} ({hid})")
 
 
 @handler.command("remove")
@@ -816,15 +842,20 @@ def event_list(event_type: str | None, limit: int, use_json: bool):
 
 
 @event.command("emit")
-@click.argument("event_type")
+@click.argument("channel_name")
 @click.option("--payload", default="{}")
-def event_emit(event_type: str, payload: str):
-    """Emit an event."""
-    from cogos.db.models import Event
+def event_emit(channel_name: str, payload: str):
+    """Send a message to a channel (replaces legacy event emit)."""
+    from cogos.db.models import Channel, ChannelType, ChannelMessage
     repo = _repo()
-    evt = Event(event_type=event_type, source="cli", payload=json.loads(payload))
-    eid = repo.append_event(evt)
-    click.echo(f"Event emitted: {event_type} ({eid})")
+    ch = repo.get_channel_by_name(channel_name)
+    if not ch:
+        ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
+        repo.upsert_channel(ch)
+    from uuid import uuid4
+    msg = ChannelMessage(channel=ch.id, sender_process=uuid4(), payload=json.loads(payload))
+    mid = repo.append_channel_message(msg)
+    click.echo(f"Message sent to {channel_name} ({mid})")
 
 
 # ═══════════════════════════════════════════════════════════

@@ -94,6 +94,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
                     if ch:
                         handler_patterns.append(ch.name)
                 elif h.event_pattern:
+                    # Legacy fallback — kept for backward compat with old snapshots
                     handler_patterns.append(h.event_pattern)
         except (AttributeError, TypeError):
             pass

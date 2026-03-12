@@ -4,14 +4,14 @@ A process is the only active entity in CogOS. It has a lifecycle, priority, reso
 
 ## Modes
 
-**Daemon** — runs indefinitely. Completes a run, returns to WAITING for the next matching event. Must have at least one handler.
+**Daemon** — runs indefinitely. Completes a run, returns to WAITING for the next matching channel message. Must have at least one handler (channel subscription).
 
 **One-shot** — runs once and completes. Cannot have handlers. Used for batch jobs, subtasks, and child work spawned by daemons.
 
 ## Lifecycle
 
 ```
-            event match
+            channel message
   WAITING ──────────────> RUNNABLE
      ^                        |
      |                        |-- resources available --> RUNNING
@@ -32,7 +32,7 @@ A process is the only active entity in CogOS. It has a lifecycle, priority, reso
 
 | State | Meaning |
 |---|---|
-| WAITING | Sleeping. Wakes when a matching event arrives. |
+| WAITING | Sleeping. Wakes when a message arrives on a subscribed channel. |
 | RUNNABLE | Ready to run. Waiting for the scheduler to dispatch. |
 | RUNNING | Currently executing. |
 | BLOCKED | Runnable but resources unavailable. |
@@ -56,7 +56,7 @@ child = procs.spawn(
     content="Reindex documents 4200-4299",
     capabilities={
         "workspace": dir.scope("/data/", ops=["read", "write"]),
-        "events": events,
+        "channels": channels,
     },
 )
 ```

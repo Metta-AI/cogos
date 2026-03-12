@@ -183,21 +183,37 @@ def _detail(p: Process) -> ProcessDetail:
 
 def _sync_handlers(
     process_id: UUID,
-    event_patterns: list[str],
+    channel_names: list[str],
     repo,  # noqa: ANN001
 ) -> None:
     """Sync handlers: add missing, remove stale."""
+    from cogos.db.models import Channel, ChannelType
     existing = repo.list_handlers(process_id=process_id)
-    existing_patterns = {h.event_pattern: h for h in existing}
-    desired = set(event_patterns)
+    # Build map of channel name -> handler
+    existing_by_name: dict[str, object] = {}
+    for h in existing:
+        name = None
+        if h.channel:
+            ch = repo.get_channel(h.channel)
+            name = ch.name if ch else None
+        elif h.event_pattern:
+            name = h.event_pattern  # legacy
+        if name:
+            existing_by_name[name] = h
+
+    desired = set(channel_names)
 
     # Add new
-    for pattern in desired - set(existing_patterns.keys()):
-        repo.create_handler(Handler(process=process_id, event_pattern=pattern))
+    for ch_name in desired - set(existing_by_name.keys()):
+        ch = repo.get_channel_by_name(ch_name)
+        if not ch:
+            ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
+            repo.upsert_channel(ch)
+        repo.create_handler(Handler(process=process_id, channel=ch.id))
 
     # Remove stale
-    for pattern, h in existing_patterns.items():
-        if pattern not in desired:
+    for name, h in existing_by_name.items():
+        if name not in desired:
             repo.delete_handler(h.id)
 
 
@@ -365,12 +381,17 @@ def get_process(name: str, process_id: str) -> dict:
         if fv and fv.content:
             includes.append({"key": f.key, "content": fv.content})
 
-    # Event subscriptions (handlers)
+    # Channel subscriptions (handlers)
     handlers = repo.list_handlers(process_id=p.id)
-    handler_list = [
-        {"id": str(h.id), "event_pattern": h.event_pattern, "enabled": h.enabled}
-        for h in handlers
-    ]
+    handler_list = []
+    for h in handlers:
+        ch_name = None
+        if h.channel:
+            ch = repo.get_channel(h.channel)
+            ch_name = ch.name if ch else str(h.channel)
+        elif h.event_pattern:
+            ch_name = h.event_pattern  # legacy
+        handler_list.append({"id": str(h.id), "channel": ch_name, "enabled": h.enabled})
 
     return {
         "process": _detail(p).model_dump(),

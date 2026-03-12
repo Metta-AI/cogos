@@ -83,8 +83,22 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         capability_enabled = any(cap.name == "discord" and cap.enabled for cap in caps)
 
         handlers = repo.list_handlers()
-        dm_handler_enabled = any(h.enabled and h.event_pattern == "discord:dm" for h in handlers)
-        mention_handler_enabled = any(h.enabled and h.event_pattern == "discord:mention" for h in handlers)
+        # Check for channel-based handlers for discord
+        dm_handler_enabled = False
+        mention_handler_enabled = False
+        for h in handlers:
+            if not h.enabled:
+                continue
+            ch_name = None
+            if h.channel:
+                ch = repo.get_channel(h.channel)
+                ch_name = ch.name if ch else None
+            elif h.event_pattern:
+                ch_name = h.event_pattern  # legacy
+            if ch_name in ("io:discord:dm", "discord:dm"):
+                dm_handler_enabled = True
+            elif ch_name in ("io:discord:mention", "discord:mention"):
+                mention_handler_enabled = True
     except Exception as exc:
         logger.warning("CogOS setup check failed for %s: %s", name, exc)
         cogos_initialized = False

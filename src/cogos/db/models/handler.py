@@ -1,4 +1,4 @@
-"""Handler model — binds a process to an event pattern."""
+"""Handler model — binds a process to a channel subscription."""
 
 from __future__ import annotations
 
