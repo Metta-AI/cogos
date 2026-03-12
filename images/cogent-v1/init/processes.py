@@ -6,7 +6,7 @@ add_process(
     runner="lambda",
     priority=100.0,
     capabilities=[
-        "scheduler/match_events",
+        "scheduler/match_channel_messages",
         "scheduler/select_processes",
         "scheduler/dispatch_process",
         "scheduler/unblock_processes",

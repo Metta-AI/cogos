@@ -7,5 +7,4 @@ for cap in BUILTIN_CAPABILITIES:
         description=cap.get("description", ""),
         instructions=cap.get("instructions", ""),
         schema=cap.get("schema"),
-        event_types=cap.get("event_types"),
     )

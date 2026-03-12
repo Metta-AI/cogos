@@ -36,7 +36,7 @@ discord.create_thread("123456789", "Follow-up", message_id="987654321")
 discord.dm("user-id-here", "Private message from your cogent")
 ```
 
-## receive(limit?, event_type?)
+## receive(limit?, channel_name?)
 
 ```python
 # All recent discord messages
@@ -44,11 +44,11 @@ messages = discord.receive(limit=10)
 for m in messages:
     print(f"{m.author}: {m.content}")
 
-# Only DMs
-dms = discord.receive(event_type="discord:dm")
+# Only DMs (reads from io:discord:dm channel)
+dms = discord.receive(channel_name="io:discord:dm")
 
-# Only mentions
-mentions = discord.receive(event_type="discord:mention")
+# Only mentions (reads from io:discord:mention channel)
+mentions = discord.receive(channel_name="io:discord:mention")
 ```
 
 Returns `list[DiscordMessage]` — content, author, author_id, channel_id, message_id, is_dm, is_mention, thread_id.

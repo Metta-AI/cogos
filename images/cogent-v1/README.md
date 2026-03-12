@@ -7,10 +7,10 @@ Declarative snapshot of everything needed to initialize a new cogent.
 ```
 images/cogent-v1/
 ├── init/
-│   ├── capabilities.py   # built-in capabilities (files, procs, events, etc.)
+│   ├── capabilities.py   # built-in capabilities (files, procs, channels, etc.)
 │   ├── resources.py       # resource pools (lambda=5, ecs=2)
 │   ├── processes.py       # process definitions with handler + capability bindings
-│   └── cron.py            # scheduled event emitters
+│   └── cron.py            # scheduled channel message emitters
 └── files/
     └── cogos/
         └── scheduler.md   # scheduler daemon prompt template
@@ -18,8 +18,8 @@ images/cogent-v1/
 
 ## What gets synced
 
-1. **Capabilities** — all BUILTIN_CAPABILITIES (files, procs, events, resources, secrets, email, scheduler)
+1. **Capabilities** — all BUILTIN_CAPABILITIES (files, procs, channels, schemas, resources, secrets, email, scheduler)
 2. **Resources** — execution slot pools (lambda=5, ecs=2)
 3. **Files** — prompt templates from `files/` tree
 4. **Processes** — process definitions with handler + capability bindings
-5. **Cron** — scheduled event emitters
+5. **Cron** — scheduled channel message emitters

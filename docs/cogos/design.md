@@ -11,8 +11,8 @@ CogOS maps classical OS concepts onto the problem of running many autonomous LLM
 | Process | Process | Agents are long-lived entities with lifecycles, priorities, and resource requirements. |
 | Filesystem | File Store | Agents need persistent, versioned, shared storage for prompts, configs, and working data. |
 | Syscall / capability | Capability | Agents must be sandboxed. All side effects go through typed, auditable capability calls. |
-| Signal | Event | Agents communicate asynchronously through an append-only event log. |
-| Scheduler | Scheduler daemon | A dedicated process matches events to handlers, manages resources, and dispatches work. |
+| Signal | Channel message | Agents communicate asynchronously through typed, append-only channels. |
+| Scheduler | Scheduler daemon | A dedicated process matches channel messages to handlers, manages resources, and dispatches work. |
 | Container image | Image | Declarative snapshots of a cogent's entire configuration, bootable and restorable. |
 
 The key insight: LLM agents can't be trusted with raw system access. CogOS interposes a capability layer between agent code and the outside world. Every action an agent takes is mediated, typed, logged, and revocable.
@@ -54,13 +54,13 @@ Process
 
 **Modes:**
 
-- `daemon` -- runs indefinitely. Completes a run, returns to WAITING for the next matching event. If more deliveries are already pending when a run finishes, it returns directly to RUNNABLE instead of WAITING. Must have at least one handler.
+- `daemon` -- runs indefinitely. Completes a run, returns to WAITING for the next matching channel message. If more deliveries are already pending when a run finishes, it returns directly to RUNNABLE instead of WAITING. Must have at least one handler.
 - `one_shot` -- runs once and completes. Cannot have handlers.
 
 **Lifecycle:**
 
 ```
-            event match
+            channel message match
   WAITING ─────────────────> RUNNABLE
      ^                          |
      |                          |-- resources available --> RUNNING
@@ -85,54 +85,52 @@ Process
 
 **Rules:**
 
-- A process handles one event per run, strictly sequential.
+- A process handles one channel message per run, strictly sequential.
 - For parallelism, a process spawns child `one_shot` processes.
 - A process that stays RUNNABLE too long gets its effective priority aged upward to prevent starvation.
 - Preemptible processes can be suspended between capability calls (not mid-generation).
-- Delivery creation is idempotent per `(event, handler)`. Handler matching may be retried, but duplicate deliveries are not created.
+- Delivery creation is idempotent per `(channel_message, handler)`. Handler matching may be retried, but duplicate deliveries are not created.
 - A dispatched run is authoritative. The executor must use the scheduler's `run_id`; it must not create a replacement run for the same delivery.
 
-## Event Wakeup Path
+## Channel Message Wakeup Path
 
-New external events should not wait for the minute scheduler tick before they become runnable.
+New external channel messages should not wait for the minute scheduler tick before they become runnable.
 
 ### Source of truth
 
-`cogos_event` is the authoritative append-only event log.
-
-`cogos_event_outbox` is separate operational state used only to track which new events still need ingress processing. We do not overload the main event log with mutable scheduler fields like `handled_at`.
+`cogos_channel_message` is the authoritative append-only message log, scoped by channel.
 
 ### Hot path
 
-For normal external events such as Discord DMs:
+For normal external messages such as Discord DMs:
 
-1. A producer appends a row to `cogos_event`.
-2. A DB trigger inserts one `cogos_event_outbox` row for that event in the same transaction.
+1. A producer appends a row to `cogos_channel_message`.
+2. Handlers bound to that channel are matched.
 3. The producer-side repository sends a coalesced, best-effort wake nudge to the per-cogent ingress queue.
-4. The ingress Lambda drains a batch of outbox rows, loads the corresponding committed events, matches handlers, creates `cogos_event_delivery` rows idempotently, marks affected WAITING processes RUNNABLE, creates runs, and invokes executors immediately.
+4. The ingress Lambda drains a batch, loads the corresponding committed channel messages, matches handlers, creates delivery rows idempotently, marks affected WAITING processes RUNNABLE, creates runs, and invokes executors immediately.
 
 ### Coalesced wakeups
 
-The queue message is only a wake signal. It is not the event source of truth and does not carry authoritative work state.
+The queue message is only a wake signal. It is not the source of truth and does not carry authoritative work state.
 
-At higher event rates we do not want one queue message per event. Instead:
+At higher message rates we do not want one queue message per channel message. Instead:
 
 - Postgres records the most recent ingress wake request in `cogos_ingress_wake`
 - wake requests are coalesced inside a short cooldown window
-- the ingress Lambda drains as many outbox rows as it can in a batch
+- the ingress Lambda drains as many pending messages as it can in a batch
 
-This means bursts of events still produce a small number of wake messages while the outbox remains the real pending-work set.
+This means bursts of channel messages still produce a small number of wake messages while pending deliveries remain the real pending-work set.
 
 ### Backstop path
 
 The minute dispatcher remains in place, but its role is different:
 
-- generate virtual `system:tick:*` events
-- reconcile missed or stuck outbox work
-- catch legacy or unreconciled events
+- generate virtual `system:tick:*` messages
+- reconcile missed or stuck deliveries
+- catch legacy or unreconciled messages
 - dispatch any remaining runnable processes
 
-The minute dispatcher is a reconciliation loop, not the expected hot path for fresh external events.
+The minute dispatcher is a reconciliation loop, not the expected hot path for fresh external messages.
 
 ### Dispatch invariants
 
@@ -143,7 +141,7 @@ The scheduler and ingress path rely on these invariants:
 - the executor loads the provided `run_id` instead of synthesizing a new one
 - when a daemon run completes, the process returns to RUNNABLE if additional deliveries are already pending, otherwise WAITING
 
-These rules keep event, delivery, and run accounting stable even when ingress and reconciliation paths overlap.
+These rules keep channel message, delivery, and run accounting stable even when ingress and reconciliation paths overlap.
 
 ### File
 
@@ -184,7 +182,6 @@ Capability
   input_schema    dict            JSON Schema per method
   output_schema   dict?           JSON Schema per method
   iam_role_arn    str?            scoped IAM access
-  event_types     list[str]       events this capability may emit
   metadata        dict?
   enabled         bool
 ```
@@ -195,11 +192,12 @@ Capability
 |---|---|
 | `files` | Versioned file store (read, write, search) |
 | `procs` | Process management (list, get, spawn) |
-| `events` | Event log (emit, query) |
+| `channels` | Channel messaging (send, read, create, list) |
+| `schemas` | Schema definitions (get, list) |
 | `resources` | Resource pool queries |
 | `me` | Scoped scratch/tmp/log storage per process and run |
 | `secrets` | AWS SSM / Secrets Manager retrieval |
-| `scheduler` | Event matching, process selection, dispatch (scheduler only) |
+| `scheduler` | Channel message matching, process selection, dispatch (scheduler only) |
 | `discord` | Discord messaging, reactions, threads, DMs |
 | `email` | SES send/receive |
 
@@ -218,60 +216,73 @@ ProcessCapability
 
 When a process spawns a child, only capabilities marked `delegatable=true` on the parent can be granted to the child.
 
-### Event
+### Channel
 
-An append-only log entry for inter-process communication.
+A typed, append-only message stream with a defined schema and an owner.
 
 ```
-Event
+Channel
   id              UUID            PK
-  event_type      str             hierarchical (e.g. "process:run:success")
-  source          str             originating process name
+  name            str             hierarchical (e.g. "io:discord:dm", "process:scheduler")
+  owner_process   UUID?           FK -> Process
+  schema_id       UUID?           FK -> Schema
+  inline_schema   dict?           inline schema definition
+  channel_type    str             'implicit' | 'spawn' | 'named'
+  auto_close      bool            default false
+  closed_at       datetime?
+  created_at      datetime
+```
+
+### Schema
+
+Defines the structure of messages on a channel.
+
+```
+Schema
+  id              UUID            PK
+  name            str             e.g. "metrics", "discord_message"
+  definition      dict            JSON schema definition
+  file_id         UUID?           FK -> File
+  created_at      datetime
+```
+
+### ChannelMessage
+
+An append-only message on a channel.
+
+```
+ChannelMessage
+  id              UUID            PK
+  channel         UUID            FK -> Channel
+  sender_process  UUID?           FK -> Process
   payload         dict
-  parent_event    UUID?           FK -> Event (causal chain)
   created_at      datetime
 ```
 
 ### Handler
 
-Binds a process to an event pattern. When a matching event arrives, the process becomes eligible to run.
+Binds a process to a channel. When a matching message arrives on that channel, the process becomes eligible to run.
 
 ```
 Handler
   id              UUID            PK
   process         UUID            FK -> Process
-  event_pattern   str             matched against Event.event_type
+  channel         UUID            FK -> Channel (bound channel)
   enabled         bool
   fire_count      int             how many times this handler has fired
 ```
 
-### EventDelivery
+### Delivery
 
-Per-handler delivery tracking. One idempotent row per event per matching handler.
+Per-handler delivery tracking. One idempotent row per channel message per matching handler.
 
 ```
-EventDelivery
+Delivery
   id              UUID            PK
-  event           UUID            FK -> Event
+  channel_message UUID            FK -> ChannelMessage
   handler         UUID            FK -> Handler
   status          enum            pending | queued | delivered | skipped
   run             UUID?           FK -> Run
-  created_at      datetime
-```
-
-### EventOutbox
-
-Operational scheduler state for newly appended events. One row per event that still needs ingress processing.
-
-```
-EventOutbox
-  id              UUID            PK
-  event           UUID            FK -> Event
-  status          enum            pending | processing | completed | failed
-  attempt_count   int
-  claimed_at      datetime?
-  completed_at    datetime?
-  last_error      str?
   created_at      datetime
 ```
 
@@ -283,7 +294,7 @@ Execution record for a single process invocation.
 Run
   id              UUID            PK
   process         UUID            FK -> Process
-  event           UUID?           FK -> Event (triggering event)
+  channel_message UUID?           FK -> ChannelMessage (triggering message)
   conversation    UUID?           FK -> Conversation
   status          enum            running | completed | failed | timeout | suspended
   snapshot        dict?           serialized state for preemption resume
@@ -320,9 +331,8 @@ ResourceUsage
 
 ### Supporting Models
 
-- **Cron** -- scheduled event emitter (expression, event_type, payload, enabled)
+- **Cron** -- scheduled message emitter (expression, channel, payload, enabled)
 - **Conversation** -- multi-turn context routing for channels
-- **Channel** -- external integrations (Discord, GitHub, Gmail, Asana, CLI)
 - **Alert** -- algedonic system (warning / critical / emergency)
 - **Budget** -- token and cost accounting per period
 - **Trace** -- detailed execution audit (capability calls, file ops per run)
@@ -353,7 +363,7 @@ Inside `run_code`, capabilities appear as Python objects with methods. The LLM w
 # Static capabilities are top-level objects in the sandbox
 files       # .read(key) .write(key, content) .search(prefix)
 procs       # .list() .get(name) .spawn(name, content)
-events      # .emit(event_type, payload) .query(event_type?, limit?)
+channels    # .send(channel, payload) .read(channel, limit?) .create(name, schema)
 resources   # .check()
 me          # .run() .process() -- scoped storage
 
@@ -367,8 +377,8 @@ child = procs.spawn(
     content="Reindex after data-sync failure",
 )
 
-# Human-in-the-loop via events
-events.emit("approval:requested", {
+# Human-in-the-loop via channels
+channels.send("approval:requested", {
     "action": "delete staging data",
     "process": "cleanup",
 })
@@ -400,7 +410,7 @@ Our executor controls the full Bedrock converse API loop:
 
 1. Load process from DB
 2. Build system prompt via ContextEngine (resolve includes, prepend global includes)
-3. Build user message from `process.content` + event payload
+3. Build user message from `process.content` + channel message payload
 4. Inject `search` and `run_code` as Bedrock tool definitions
 5. Conversation loop (max N turns):
    - LLM returns tool_use for `search` or `run_code`
@@ -438,11 +448,11 @@ cogos/sandbox/
 
 ## Scheduler
 
-The scheduler is itself a daemon process. It registers for `system:tick:minute` events and runs the scheduling loop using the `scheduler` capability.
+The scheduler is itself a daemon process. It registers for `system:tick:minute` messages and runs the scheduling loop using the `scheduler` capability.
 
 ### Per-Tick Flow
 
-1. **match_events()** -- scan undelivered events, match to handlers by pattern, create EventDelivery rows. Mark WAITING processes with pending deliveries as RUNNABLE.
+1. **match_channel_messages()** -- scan undelivered channel messages, match to handlers by channel, create delivery rows. Mark WAITING processes with pending deliveries as RUNNABLE.
 
 2. **unblock_processes()** -- check BLOCKED processes. Resources now available -> RUNNABLE.
 
@@ -450,9 +460,9 @@ The scheduler is itself a daemon process. It registers for `system:tick:minute` 
 
 4. **dispatch_process(process_id)** -- transition to RUNNING, create a Run record, invoke the appropriate runner (Lambda invocation or ECS task start).
 
-### System Tick Events
+### System Tick Messages
 
-The dispatcher generates virtual tick events (not written to the event log):
+The dispatcher generates virtual tick messages (not written to channels):
 - `system:tick:minute` -- every invocation
 - `system:tick:hour` -- when minute == 0
 
@@ -485,10 +495,12 @@ images/<name>/
 Each `.py` in `init/` is exec'd with builder functions injected into its namespace:
 
 ```python
-add_capability(name, *, handler, description="", instructions="", input_schema=None, output_schema=None, iam_role_arn=None, metadata=None, event_types=None)
+add_capability(name, *, handler, description="", instructions="", input_schema=None, output_schema=None, iam_role_arn=None, metadata=None)
 add_resource(name, *, type, capacity, metadata=None)
-add_process(name, *, mode="one_shot", content="", code_key=None, runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, output_events=None, metadata=None)
-add_cron(expression, *, event_type, payload=None, enabled=True)
+add_schema(name, *, definition)
+add_channel(name, *, schema=None, channel_type="named")
+add_process(name, *, mode="one_shot", content="", code_key=None, runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, metadata=None)
+add_cron(expression, *, channel, payload=None, enabled=True)
 ```
 
 All calls accumulate into an `ImageSpec` dataclass. `load_image(path) -> ImageSpec` handles execution.
@@ -498,32 +510,34 @@ All calls accumulate into an `ImageSpec` dataclass. `load_image(path) -> ImageSp
 1. Run DB migrations
 2. If `--clean`: truncate all CogOS tables
 3. Upsert capabilities by name
-4. Upsert resources by name
-5. Upsert cron rules
-6. Upsert files via FileStore (creates if new, new version if changed, skips if unchanged)
-7. Upsert processes by name, bind capabilities, create handlers
+4. Upsert schemas by name
+5. Upsert channels by name
+6. Upsert resources by name
+7. Upsert cron rules
+8. Upsert files via FileStore (creates if new, new version if changed, skips if unchanged)
+9. Upsert processes by name, bind capabilities, create handlers
 
 ### Snapshot
 
-Captures running state into a new image directory. Queries all capabilities, resources, processes (with bindings + handlers), cron rules, and files (active version only). Generated images are immediately bootable.
+Captures running state into a new image directory. Queries all capabilities, resources, processes (with bindings + handlers), cron rules, schemas, channels, and files (active version only). Generated images are immediately bootable.
 
 ### What Gets Captured
 
 Config only:
-- Capabilities, resources, processes (with capability bindings and handler patterns)
-- Cron rules, files (active version content only)
+- Capabilities, resources, processes (with capability bindings and channel subscriptions)
+- Schemas, channels, cron rules, files (active version content only)
 
-Not captured: events, runs, traces, conversations, file version history.
+Not captured: channel messages, runs, traces, conversations, file version history.
 
 ## Human-in-the-Loop
 
-No special mechanism. It falls out naturally from events:
+No special mechanism. It falls out naturally from channels:
 
-1. Process emits `approval:requested` with action details
-2. Process registers handler for `approval:granted:{process_id}`
+1. Process sends a message to `approval:requested` channel with action details
+2. Process registers handler for `approval:granted:{process_id}` channel
 3. Process returns, goes to WAITING
 4. Human reviews in dashboard or channel, approves or rejects
-5. Approval event emitted, process wakes and proceeds (or handles rejection)
+5. Approval message sent, process wakes and proceeds (or handles rejection)
 
 This pattern works for any human interaction: approvals, reviews, input requests, escalations.
 
@@ -552,9 +566,9 @@ The executor uses `process.model` if set, otherwise falls back to a configurable
 
 ### Database
 
-All state lives in PostgreSQL, accessed via RDS Data API. Tables are prefixed with `cogos_` (process, handler, event, event_delivery, file, file_version, capability, process_capability, run, resource, resource_usage, cron, conversation, channel, alert, budget, trace).
+All state lives in PostgreSQL, accessed via RDS Data API. Tables are prefixed with `cogos_` (process, handler, channel, channel_message, delivery, file, file_version, capability, process_capability, run, resource, resource_usage, schema, cron, conversation, alert, budget, trace).
 
-Events are DB records matched by the scheduler -- no external event bus (EventBridge was eliminated).
+Channel messages are DB records matched by the scheduler -- no external event bus (EventBridge was eliminated).
 
 ## Source Structure
 
@@ -566,7 +580,8 @@ src/cogos/
     directory.py        # CapabilitiesDirectory for runtime discovery
     files.py            # FilesCapability
     procs.py            # ProcsCapability
-    events.py           # EventsCapability
+    channels.py         # ChannelsCapability
+    schemas.py          # SchemasCapability
     resources.py        # ResourcesCapability
     me.py               # MeCapability (scoped scratch/tmp/log)
     secrets.py          # SecretsCapability (SSM/Secrets Manager)
@@ -593,7 +608,7 @@ src/cogos/
     apply.py            # apply_image() (boot/upsert into DB)
     design.md
   cli/
-    __main__.py         # CLI entry point (process, handler, file, capability, event, cron, image)
+    __main__.py         # CLI entry point (process, handler, file, capability, channel, cron, image)
 ```
 
 ## Security Model
@@ -612,10 +627,10 @@ The `run_code` sandbox executes in a controlled namespace. Only capability proxy
 
 ### Audit Trail
 
-Every capability call, file operation, and event emission is tracked:
+Every capability call, file operation, and channel message is tracked:
 - `Run.scope_log` records scope changes during execution
 - `Trace` records detailed capability calls and file ops
-- `EventDelivery` tracks which events were delivered to which handlers
+- `Delivery` tracks which channel messages were delivered to which handlers
 - `FileVersion` maintains full history of every file change
 
 ### Resource Limits
@@ -628,8 +643,7 @@ Processes declare resource requirements. The scheduler enforces limits:
 
 ## Open Questions
 
-1. **Event pattern syntax.** Currently simple string matching. Glob (`process:completed:*`)? Regex? JSONPath filters on payload?
+1. **Channel subscription syntax.** Currently handler binds to a channel directly. Glob patterns on channel names (`io:discord:*`)? JSONPath filters on payload?
 2. **Scope persistence.** Should the variable table survive ECS session resume, or start fresh each wake?
 3. **Capability versioning.** Should ProcessCapability pin a capability version or always use latest?
 4. **Preemption granularity.** Can we snapshot mid-LLM-generation, or only between capability calls?
-5. **Event sockets.** Design exists for runtime event delivery to RUNNING processes (listen/on_event pattern), not yet implemented.

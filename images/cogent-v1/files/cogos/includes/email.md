@@ -32,7 +32,7 @@ for e in emails:
     print(f"Body: {e.body}")
 ```
 
-Reads from the event log (`email:received` events). Returns `list[EmailMessage]` — sender, to, subject, body, date, message_id.
+Reads from the `io:email:inbound` channel. Returns `list[EmailMessage]` — sender, to, subject, body, date, message_id.
 
 ## Scoping
 

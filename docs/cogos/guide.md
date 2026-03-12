@@ -25,7 +25,7 @@ cogent dr.alpha cogos image boot cogent-v1 --clean
 
 ```bash
 cogent dr.alpha cogos process list
-cogent dr.alpha cogos event list --limit 20
+cogent dr.alpha cogos channel list --limit 20
 cogent dr.alpha cogos capability list
 ```
 
@@ -41,7 +41,7 @@ images/cogent-v1/
     capabilities.py    # registers capabilities
     resources.py       # defines resource pools
     processes.py       # defines processes with bindings
-    cron.py            # scheduled event rules
+    cron.py            # scheduled channel messages
   files/
     cogos/
       docs/            # CogOS documentation for LLM agents
@@ -71,11 +71,10 @@ for cap in BUILTIN_CAPABILITIES:
         instructions=cap.get("instructions", ""),
         input_schema=cap.get("input_schema"),
         output_schema=cap.get("output_schema"),
-        event_types=cap.get("event_types"),
     )
 ```
 
-**processes.py** -- define processes with capability bindings and event handlers:
+**processes.py** -- define processes with capability bindings and channel handlers:
 
 ```python
 # Scheduler daemon -- runs every minute, dispatches other processes
@@ -87,27 +86,25 @@ add_process(
     runner="lambda",
     priority=100.0,
     capabilities=[
-        "scheduler/match_events",
+        "scheduler/match_channel_messages",
         "scheduler/select_processes",
         "scheduler/dispatch_process",
         "scheduler/unblock_processes",
         "scheduler/kill_process",
     ],
     handlers=[],                      # scheduler is invoked by the dispatcher directly
-    output_events=["process:run:success", "process:run:failed"],
 )
 
 # Discord message handler -- wakes on DMs and mentions
 add_process(
     "discord-handle-message",
     mode="daemon",
-    content="You received a Discord message. Read the event payload...",
+    content="You received a Discord message. Read the channel message payload...",
     runner="lambda",
     model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
     priority=10.0,
-    capabilities=["discord", "events", "files"],
-    handlers=["discord:dm", "discord:mention"],
-    output_events=["discord:reply"],
+    capabilities=["discord", "channels", "files"],
+    handlers=["io:discord:dm", "io:discord:mention"],
 )
 ```
 
@@ -118,10 +115,10 @@ add_resource("lambda-slots", type="pool", capacity=5)
 add_resource("ecs-slots", type="pool", capacity=2)
 ```
 
-**cron.py** -- schedule recurring events:
+**cron.py** -- schedule recurring channel messages:
 
 ```python
-add_cron("* * * * *", event_type="system:tick:minute")
+add_cron("* * * * *", channel="system:tick:minute")
 ```
 
 ### Files Directory
@@ -167,7 +164,7 @@ cogent dr.alpha cogos image list
 
 ### Modes
 
-**Daemon** processes run indefinitely. They wake on events, do their work, and go back to WAITING. They must have at least one handler binding them to an event pattern.
+**Daemon** processes run indefinitely. They wake on channel messages, do their work, and go back to WAITING. They must have at least one handler binding them to a channel.
 
 **One-shot** processes run once and complete. They cannot have handlers. Use these for batch jobs, one-time tasks, and child work spawned by daemons.
 
@@ -175,7 +172,7 @@ cogent dr.alpha cogos image list
 
 | State | Meaning |
 |---|---|
-| WAITING | Sleeping. Wakes when a matching event arrives. |
+| WAITING | Sleeping. Wakes when a matching channel message arrives. |
 | RUNNABLE | Ready to run. Waiting for the scheduler to dispatch. |
 | RUNNING | Currently executing. |
 | BLOCKED | Runnable but resources unavailable. |
@@ -195,7 +192,7 @@ add_process(
     code_key="agents/data-sync",
     runner="lambda",
     priority=5.0,
-    capabilities=["files", "events", "procs"],
+    capabilities=["files", "channels", "procs"],
     handlers=["cron:hourly"],
 )
 ```
@@ -285,7 +282,7 @@ Bind it to a process:
 
 ```python
 # init/processes.py
-add_process("worker", capabilities=["my_cap", "files", "events"], ...)
+add_process("worker", capabilities=["my_cap", "files", "channels"], ...)
 ```
 
 ### Discovery at Runtime
@@ -305,28 +302,27 @@ discord.help()
 
 The `help()` method on each capability auto-generates documentation from method signatures, type hints, docstrings, and Pydantic model schemas.
 
-## Events
+## Channels
 
-### Event Types
+### Channel Names
 
-Events use hierarchical string types with `:` separators:
+Channels use hierarchical string names with `:` separators:
 
 ```
-process:run:success
-process:run:failed
-discord:dm
-discord:mention
-email:received
+io:discord:dm
+io:discord:mention
+io:email:inbound
 system:tick:minute
+process:scheduler
 approval:requested
 ```
 
-### Emitting Events
+### Sending Messages
 
 From a running process:
 
 ```python
-events.emit("task:completed", {
+channels.send("task:completed", {
     "task_name": "data-sync",
     "records_processed": 1500,
 })
@@ -334,7 +330,7 @@ events.emit("task:completed", {
 
 ### Handlers
 
-Handlers bind processes to event patterns:
+Handlers bind processes to channels:
 
 ```python
 # In image init
@@ -342,19 +338,19 @@ add_process(
     "on-completion",
     mode="daemon",
     handlers=["task:completed"],
-    capabilities=["events", "files"],
+    capabilities=["channels", "files"],
     ...
 )
 ```
 
-When a `task:completed` event is emitted, the scheduler's `match_events()` creates an EventDelivery for this handler and marks the process RUNNABLE.
+When a message is sent to the `task:completed` channel, the scheduler's `match_channel_messages()` creates a delivery for this handler and marks the process RUNNABLE.
 
-### Event Payload in Process Context
+### Channel Message Payload in Process Context
 
-When a daemon wakes from a handler match, the triggering event is injected into the user message:
+When a daemon wakes from a handler match, the triggering channel message is injected into the user message:
 
 ```
-Event: task:completed
+Channel: task:completed
 Payload: {
   "task_name": "data-sync",
   "records_processed": 1500
@@ -364,8 +360,8 @@ Payload: {
 ### Human-in-the-Loop Pattern
 
 ```python
-# Process requests approval
-events.emit("approval:requested", {
+# Process sends approval request to a channel
+channels.send("approval:requested", {
     "action": "delete staging data",
     "process": "cleanup",
 })
@@ -375,7 +371,7 @@ events.emit("approval:requested", {
 # (configured in image: handlers=["approval:granted:cleanup"])
 ```
 
-Human approves via dashboard or channel. The approval event wakes the process.
+Human approves via dashboard or channel. The approval message wakes the process.
 
 ## Scheduler
 
@@ -383,7 +379,7 @@ The scheduler is a daemon process (`scheduler`) that runs every minute. It uses 
 
 ### Tick Sequence
 
-1. **match_events()** -- find undelivered events, match to handlers, create deliveries, wake WAITING processes
+1. **match_channel_messages()** -- find undelivered channel messages, match to handlers, create deliveries, wake WAITING processes
 2. **unblock_processes()** -- check BLOCKED processes, move to RUNNABLE if resources freed
 3. **select_processes(slots=3)** -- softmax sample from RUNNABLE by effective priority
 4. **dispatch_process(process_id)** -- create Run, transition to RUNNING, invoke runner
@@ -406,7 +402,7 @@ If resources are unavailable, the process transitions to BLOCKED and is rechecke
 
 ### Lambda
 
-Best for short-lived, stateless work. The executor Lambda receives `{process_id, event_id, run_id}`, loads the process, builds the prompt, and runs a Bedrock converse loop.
+Best for short-lived, stateless work. The executor Lambda receives `{process_id, channel_message_id, run_id}`, loads the process, builds the prompt, and runs a Bedrock converse loop.
 
 Key env vars:
 - `DB_CLUSTER_ARN` / `DB_RESOURCE_ARN` -- RDS cluster
@@ -455,7 +451,7 @@ cogos file history <key>
 
 ```bash
 cogos handler list [--process NAME]
-cogos handler add --process NAME --pattern PATTERN
+cogos handler add --process NAME --channel CHANNEL
 cogos handler remove <id>
 cogos handler enable <id>
 cogos handler disable <id>
@@ -470,19 +466,19 @@ cogos capability enable <name>
 cogos capability disable <name>
 ```
 
-### Event Commands
+### Channel Commands
 
 ```bash
-cogos event list [--type TYPE] [--limit N]
-cogos event emit --type TYPE [--payload JSON]
-cogos event show <id>
+cogos channel list [--name NAME] [--limit N]
+cogos channel send --name NAME [--payload JSON]
+cogos channel read <name> [--limit N]
 ```
 
 ### Cron Commands
 
 ```bash
 cogos cron list
-cogos cron add --expression EXPR --event-type TYPE [--payload JSON]
+cogos cron add --expression EXPR --channel NAME [--payload JSON]
 cogos cron enable <id>
 cogos cron disable <id>
 cogos cron delete <id>
@@ -525,9 +521,9 @@ cd dashboard/frontend && npm run dev
 | Processes | Process list with status, mode, capabilities, handlers |
 | Files | File browser with version history and include tree |
 | Capabilities | Capability list with method introspection |
-| Handlers | Event handler list with fire counts |
+| Handlers | Channel handler list with fire counts |
 | Runs | Run history with cost, duration, scope logs |
-| Events | Event log with causal tree view |
+| Channels | Channel list with message log and causal tree view |
 | Cron | Cron rules with toggle switches |
 
 ### API Endpoints
@@ -541,7 +537,7 @@ All under `/api/cogents/{name}/`:
 | `/cogos/files` | File list |
 | `/cogos/capabilities` | Capability list |
 | `/cogos/handlers` | Handler list |
-| `/cogos/events` | Event list |
+| `/cogos/channels` | Channel list |
 | `/cogos/runs` | Run list |
 | `/cogos/cron` | Cron rules |
 
@@ -550,7 +546,7 @@ All under `/api/cogents/{name}/`:
 ### Adding a New Agent
 
 1. Write the prompt as a markdown file in `images/<image>/files/agents/<name>.md`
-2. Define the process in `images/<image>/init/processes.py` with capability bindings and handler patterns
+2. Define the process in `images/<image>/init/processes.py` with capability bindings and channel handlers
 3. Boot the image: `cogent <instance> cogos image boot <image>`
 4. Verify: `cogent <instance> cogos process list`
 
@@ -558,7 +554,7 @@ All under `/api/cogents/{name}/`:
 
 1. Check run history: `cogent <instance> cogos run list --process <name> --status failed`
 2. Inspect the run: `cogent <instance> cogos run show <run_id>` (shows error, tokens, duration)
-3. Check events: `cogent <instance> cogos event list --type process:run:failed`
+3. Check channels: `cogent <instance> cogos channel read process:run:failed`
 4. Look at CloudWatch logs for the executor Lambda or ECS task
 
 ### Updating a Prompt
@@ -591,4 +587,4 @@ cogent dr.alpha cogos image snapshot backup-2026-03-11
 cogent dr.beta cogos image boot backup-2026-03-11 --clean
 ```
 
-This copies the entire configuration (capabilities, processes, files, handlers, cron) but not runtime state (events, runs, conversations).
+This copies the entire configuration (capabilities, processes, files, handlers, cron) but not runtime state (channel messages, runs, conversations).
