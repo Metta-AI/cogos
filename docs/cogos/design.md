@@ -54,7 +54,7 @@ Process
 
 **Modes:**
 
-- `daemon` -- runs indefinitely. Completes a run, returns to WAITING for the next matching event. Must have at least one handler.
+- `daemon` -- runs indefinitely. Completes a run, returns to WAITING for the next matching event. If more deliveries are already pending when a run finishes, it returns directly to RUNNABLE instead of WAITING. Must have at least one handler.
 - `one_shot` -- runs once and completes. Cannot have handlers.
 
 **Lifecycle:**
@@ -87,8 +87,63 @@ Process
 
 - A process handles one event per run, strictly sequential.
 - For parallelism, a process spawns child `one_shot` processes.
-- Starvation prevention: effective priority = `process.priority + f(now - runnable_since)`.
+- A process that stays RUNNABLE too long gets its effective priority aged upward to prevent starvation.
 - Preemptible processes can be suspended between capability calls (not mid-generation).
+- Delivery creation is idempotent per `(event, handler)`. Handler matching may be retried, but duplicate deliveries are not created.
+- A dispatched run is authoritative. The executor must use the scheduler's `run_id`; it must not create a replacement run for the same delivery.
+
+## Event Wakeup Path
+
+New external events should not wait for the minute scheduler tick before they become runnable.
+
+### Source of truth
+
+`cogos_event` is the authoritative append-only event log.
+
+`cogos_event_outbox` is separate operational state used only to track which new events still need ingress processing. We do not overload the main event log with mutable scheduler fields like `handled_at`.
+
+### Hot path
+
+For normal external events such as Discord DMs:
+
+1. A producer appends a row to `cogos_event`.
+2. A DB trigger inserts one `cogos_event_outbox` row for that event in the same transaction.
+3. The producer-side repository sends a coalesced, best-effort wake nudge to the per-cogent ingress queue.
+4. The ingress Lambda drains a batch of outbox rows, loads the corresponding committed events, matches handlers, creates `cogos_event_delivery` rows idempotently, marks affected WAITING processes RUNNABLE, creates runs, and invokes executors immediately.
+
+### Coalesced wakeups
+
+The queue message is only a wake signal. It is not the event source of truth and does not carry authoritative work state.
+
+At higher event rates we do not want one queue message per event. Instead:
+
+- Postgres records the most recent ingress wake request in `cogos_ingress_wake`
+- wake requests are coalesced inside a short cooldown window
+- the ingress Lambda drains as many outbox rows as it can in a batch
+
+This means bursts of events still produce a small number of wake messages while the outbox remains the real pending-work set.
+
+### Backstop path
+
+The minute dispatcher remains in place, but its role is different:
+
+- generate virtual `system:tick:*` events
+- reconcile missed or stuck outbox work
+- catch legacy or unreconciled events
+- dispatch any remaining runnable processes
+
+The minute dispatcher is a reconciliation loop, not the expected hot path for fresh external events.
+
+### Dispatch invariants
+
+The scheduler and ingress path rely on these invariants:
+
+- a process transitions to RUNNING only when the scheduler has decided to dispatch it
+- the delivery attached to that dispatch moves `pending -> queued -> delivered`
+- the executor loads the provided `run_id` instead of synthesizing a new one
+- when a daemon run completes, the process returns to RUNNABLE if additional deliveries are already pending, otherwise WAITING
+
+These rules keep event, delivery, and run accounting stable even when ingress and reconciliation paths overlap.
 
 ### File
 
@@ -192,15 +247,31 @@ Handler
 
 ### EventDelivery
 
-Per-handler delivery tracking. One row per event per matching handler.
+Per-handler delivery tracking. One idempotent row per event per matching handler.
 
 ```
 EventDelivery
   id              UUID            PK
   event           UUID            FK -> Event
   handler         UUID            FK -> Handler
-  status          enum            pending | delivered | skipped
+  status          enum            pending | queued | delivered | skipped
   run             UUID?           FK -> Run
+  created_at      datetime
+```
+
+### EventOutbox
+
+Operational scheduler state for newly appended events. One row per event that still needs ingress processing.
+
+```
+EventOutbox
+  id              UUID            PK
+  event           UUID            FK -> Event
+  status          enum            pending | processing | completed | failed
+  attempt_count   int
+  claimed_at      datetime?
+  completed_at    datetime?
+  last_error      str?
   created_at      datetime
 ```
 
@@ -337,7 +408,7 @@ Our executor controls the full Bedrock converse API loop:
    - Return results to LLM
    - Loop until stop_reason != tool_use
 6. Record Run (tokens, cost, duration, result, scope_log)
-7. Transition process: daemon -> WAITING, one_shot -> COMPLETED
+7. Transition process: daemon -> RUNNABLE if more deliveries are pending, otherwise WAITING; one_shot -> COMPLETED
 8. On failure: increment retry_count, backoff, or DISABLED
 
 Good for: reasoning, data operations, API calls, short-lived work.
