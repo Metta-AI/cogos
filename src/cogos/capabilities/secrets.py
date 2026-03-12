@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from typing import Any
@@ -36,7 +37,35 @@ class SecretsCapability(Capability):
         secrets.get("my-api-key")
     """
 
+    def _narrow(self, existing: dict, requested: dict) -> dict:
+        result = {}
+        key = "keys"
+        old = existing.get(key)
+        new = requested.get(key)
+        if old is not None and new is not None:
+            result[key] = [p for p in old if p in new]
+        elif old is not None:
+            result[key] = old
+        elif new is not None:
+            result[key] = new
+        return result
+
+    def _check(self, op: str, **context: object) -> None:
+        if not self._scope:
+            return
+        patterns = self._scope.get("keys")
+        if patterns is None:
+            return
+        key = context.get("key", "")
+        for pattern in patterns:
+            if fnmatch.fnmatch(str(key), pattern):
+                return
+        raise PermissionError(
+            f"Secret key '{key}' not permitted; allowed patterns: {patterns}"
+        )
+
     def get(self, key: str) -> SecretValue | SecretError:
+        self._check("get", key=key)
         import boto3
 
         try:
