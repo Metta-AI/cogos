@@ -13,14 +13,13 @@ add_process(
         "scheduler/kill_process",
     ],
     handlers=[],
-    output_events=["process:run:success", "process:run:failed"],
 )
 
 add_process(
     "discord-handle-message",
     mode="daemon",
     content="""\
-You received a Discord message. Read the event payload to understand who sent it and what they said.
+You received a Discord message. Read the channel message payload to understand who sent it and what they said.
 
 Use the discord capability to respond:
 - For DMs: use discord.dm(user_id=author_id, content=your_reply)
@@ -31,7 +30,6 @@ Be helpful, concise, and friendly. If you don't know something, say so.
     runner="lambda",
     model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
     priority=10.0,
-    capabilities=["discord", "events", "dir"],
-    handlers=["discord:dm", "discord:mention"],
-    output_events=["discord:reply"],
+    capabilities=["discord", "channels", "dir"],
+    handlers=["io:discord:dm", "io:discord:mention"],
 )

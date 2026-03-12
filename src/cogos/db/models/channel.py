@@ -18,7 +18,7 @@ class ChannelType(str, enum.Enum):
 class Channel(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
-    owner_process: UUID  # FK -> Process.id
+    owner_process: UUID | None = None  # FK -> Process.id (None for system channels)
     schema_id: UUID | None = None  # FK -> Schema.id
     inline_schema: dict[str, Any] | None = None
     channel_type: ChannelType

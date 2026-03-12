@@ -13,6 +13,8 @@ class ImageSpec:
     processes: list[dict] = field(default_factory=list)
     cron_rules: list[dict] = field(default_factory=list)
     files: dict[str, str] = field(default_factory=dict)
+    schemas: list[dict] = field(default_factory=list)
+    channels: list[dict] = field(default_factory=list)
 
 
 def load_image(image_dir: Path) -> ImageSpec:
@@ -53,12 +55,25 @@ def load_image(image_dir: Path) -> ImageSpec:
             "payload": payload or {}, "enabled": enabled,
         })
 
+    def add_schema(name, *, definition, file_key=None):
+        spec.schemas.append({
+            "name": name, "definition": definition, "file_key": file_key,
+        })
+
+    def add_channel(name, *, schema=None, channel_type="named", auto_close=False):
+        spec.channels.append({
+            "name": name, "schema": schema, "channel_type": channel_type,
+            "auto_close": auto_close,
+        })
+
     builtins = {
         "__builtins__": __builtins__,
         "add_capability": add_capability,
         "add_resource": add_resource,
         "add_process": add_process,
         "add_cron": add_cron,
+        "add_schema": add_schema,
+        "add_channel": add_channel,
     }
 
     init_dir = image_dir / "init"

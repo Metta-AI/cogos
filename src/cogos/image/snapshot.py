@@ -84,11 +84,17 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         except (AttributeError, TypeError):
             pass
 
-        # Get handler patterns
+        # Get handler channel names
         handler_patterns = []
         try:
             handlers = repo.list_handlers(process_id=p.id)
-            handler_patterns = [h.event_pattern for h in handlers]
+            for h in handlers:
+                if h.channel:
+                    ch = repo.get_channel(h.channel)
+                    if ch:
+                        handler_patterns.append(ch.name)
+                elif h.event_pattern:
+                    handler_patterns.append(h.event_pattern)
         except (AttributeError, TypeError):
             pass
 
@@ -121,6 +127,50 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         lines.append(",\n".join(parts) + ",\n)")
     (init_dir / "processes.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
+    # -- Schemas --
+    schemas = []
+    if hasattr(repo, "list_schemas"):
+        schemas = repo.list_schemas()
+    lines = []
+    for s in schemas:
+        file_key = None
+        if s.file_id:
+            try:
+                f = repo.get_file_by_id(s.file_id)
+                if f:
+                    file_key = f.key
+            except (AttributeError, TypeError):
+                pass
+        parts = [f'add_schema({_repr_val(s.name)}']
+        parts.append(f'    definition={_repr_val(s.definition)}')
+        if file_key:
+            parts.append(f'    file_key={_repr_val(file_key)}')
+        lines.append(",\n".join(parts) + ",\n)")
+    (init_dir / "schemas.py").write_text("\n\n".join(lines) + "\n" if lines else "")
+
+    # -- Channels --
+    channels = []
+    if hasattr(repo, "list_channels"):
+        channels = repo.list_channels()
+    lines = []
+    for ch in channels:
+        schema_name = None
+        if ch.schema_id:
+            try:
+                s = repo.get_schema(ch.schema_id)
+                if s:
+                    schema_name = s.name
+            except (AttributeError, TypeError):
+                pass
+        parts = [f'add_channel({_repr_val(ch.name)}']
+        if schema_name:
+            parts.append(f'    schema={_repr_val(schema_name)}')
+        parts.append(f'    channel_type={_repr_val(ch.channel_type.value)}')
+        if ch.auto_close:
+            parts.append(f'    auto_close=True')
+        lines.append(",\n".join(parts) + ",\n)")
+    (init_dir / "channels.py").write_text("\n\n".join(lines) + "\n" if lines else "")
+
     # -- Cron --
     cron_rules = repo.list_cron_rules()
     lines = []
@@ -151,6 +201,8 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         f"Generated: {now}Z\n\n"
         f"- {len(caps)} capabilities\n"
         f"- {len(resources)} resources\n"
+        f"- {len(schemas)} schemas\n"
+        f"- {len(channels)} channels\n"
         f"- {len(procs)} processes\n"
         f"- {len(cron_rules)} cron rules\n"
         f"- {len(file_list)} files\n"
