@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from uuid import UUID, uuid4
 
 import boto3
 from pydantic import BaseModel
@@ -60,6 +62,19 @@ def _send_sqs(body: dict) -> None:
     url = _get_queue_url()
     client = boto3.client("sqs", region_name=region)
     client.send_message(QueueUrl=url, MessageBody=json.dumps(body))
+
+
+def _with_reply_meta(body: dict, *, process_id: UUID, run_id: UUID | None) -> dict:
+    meta = {
+        "queued_at_ms": int(time.time() * 1000),
+        "trace_id": str(uuid4()),
+        "process_id": str(process_id),
+    }
+    if run_id is not None:
+        meta["run_id"] = str(run_id)
+    enriched = dict(body)
+    enriched["_meta"] = meta
+    return enriched
 
 
 # ── Capability ───────────────────────────────────────────────
@@ -139,7 +154,7 @@ class DiscordCapability(Capability):
             body["files"] = files
 
         try:
-            _send_sqs(body)
+            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id))
             return SendResult(channel=channel, content_length=len(content))
         except Exception as e:
             return DiscordError(error=str(e))
@@ -156,12 +171,12 @@ class DiscordCapability(Capability):
         self._check("react", channel=channel)
 
         try:
-            _send_sqs({
+            _send_sqs(_with_reply_meta({
                 "type": "reaction",
                 "channel": channel,
                 "message_id": message_id,
                 "emoji": emoji,
-            })
+            }, process_id=self.process_id, run_id=self.run_id))
             return SendResult(channel=channel, content_length=0, type="reaction")
         except Exception as e:
             return DiscordError(error=str(e))
@@ -190,7 +205,7 @@ class DiscordCapability(Capability):
             body["message_id"] = message_id
 
         try:
-            _send_sqs(body)
+            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id))
             return SendResult(channel=channel, content_length=len(content), type="thread_create")
         except Exception as e:
             return DiscordError(error=str(e))
@@ -202,7 +217,11 @@ class DiscordCapability(Capability):
         self._check("dm")
 
         try:
-            _send_sqs({"type": "dm", "user_id": user_id, "content": content})
+            _send_sqs(_with_reply_meta(
+                {"type": "dm", "user_id": user_id, "content": content},
+                process_id=self.process_id,
+                run_id=self.run_id,
+            ))
             return SendResult(channel=f"dm:{user_id}", content_length=len(content), type="dm")
         except Exception as e:
             return DiscordError(error=str(e))

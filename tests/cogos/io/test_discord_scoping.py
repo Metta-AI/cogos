@@ -31,6 +31,28 @@ class TestUnscopedAllowsAnyChannel:
         assert result.channel == "chan-123"
         mock_sqs.assert_called_once()
 
+    @patch("cogos.io.discord.capability.uuid4")
+    @patch("cogos.io.discord.capability.time.time", return_value=1234.567)
+    @patch("cogos.io.discord.capability._send_sqs")
+    def test_send_includes_reply_timing_metadata(self, mock_sqs, _mock_time, mock_uuid4, repo, pid):
+        run_id = uuid4()
+        trace_id = uuid4()
+        mock_uuid4.return_value = trace_id
+
+        cap = DiscordCapability(repo, pid, run_id=run_id)
+        result = cap.send("chan-123", "hello")
+
+        assert result.channel == "chan-123"
+        body = mock_sqs.call_args.args[0]
+        assert body["channel"] == "chan-123"
+        assert body["content"] == "hello"
+        assert body["_meta"] == {
+            "queued_at_ms": 1234567,
+            "trace_id": str(trace_id),
+            "process_id": str(pid),
+            "run_id": str(run_id),
+        }
+
 
 class TestScopedChannelsAllowsMatching:
     @patch("cogos.io.discord.capability._send_sqs")

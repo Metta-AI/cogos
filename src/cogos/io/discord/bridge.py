@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import time
 
 import aiohttp
 import boto3
@@ -86,6 +87,20 @@ def _make_event_payload(
             str(message.reference.message_id) if message.reference else None
         ),
     }
+
+
+def _reply_queue_latency_ms(body: dict) -> int | None:
+    meta = body.get("_meta")
+    if not isinstance(meta, dict):
+        return None
+    queued_at_ms = meta.get("queued_at_ms")
+    if isinstance(queued_at_ms, str):
+        if not queued_at_ms.isdigit():
+            return None
+        queued_at_ms = int(queued_at_ms)
+    if not isinstance(queued_at_ms, int):
+        return None
+    return max(0, int(time.time() * 1000) - queued_at_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +304,21 @@ class DiscordBridge:
         else:
             await self._handle_message(body, channel)
 
+    def _log_reply_send_latency(self, body: dict, *, msg_type: str, target_id: int | str):
+        latency_ms = _reply_queue_latency_ms(body)
+        if latency_ms is None:
+            return
+        meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+        logger.info(
+            "CogOS latency discord_queue->send=%sms type=%s target=%s process=%s run=%s trace=%s",
+            latency_ms,
+            msg_type,
+            target_id,
+            meta.get("process_id", ""),
+            meta.get("run_id", ""),
+            meta.get("trace_id", ""),
+        )
+
     async def _handle_message(self, body: dict, channel):
         content = body.get("content", "")
         file_specs = body.get("files") or []
@@ -323,6 +353,7 @@ class DiscordBridge:
             await target.send(chunks[0], reference=reference)
             for c in chunks[1:]:
                 await target.send(c)
+        self._log_reply_send_latency(body, msg_type="message", target_id=target.id)
 
     async def _handle_reaction(self, body: dict, channel):
         message_id = body.get("message_id")
@@ -332,6 +363,7 @@ class DiscordBridge:
         try:
             message = await channel.fetch_message(int(message_id))
             await message.add_reaction(emoji)
+            self._log_reply_send_latency(body, msg_type="reaction", target_id=channel.id)
         except Exception:
             logger.exception("Failed to add reaction %s to message %s", emoji, message_id)
 
@@ -351,6 +383,7 @@ class DiscordBridge:
             if content:
                 for c in chunk_message(content):
                     await thread.send(c)
+            self._log_reply_send_latency(body, msg_type="thread_create", target_id=channel.id)
         except Exception:
             logger.exception("Failed to create thread '%s' in channel %s", thread_name, channel.id)
 
@@ -365,6 +398,7 @@ class DiscordBridge:
             self._stop_typing(dm_channel.id)
             for c in chunk_message(content):
                 await dm_channel.send(c)
+            self._log_reply_send_latency(body, msg_type="dm", target_id=dm_channel.id)
         except Exception:
             logger.exception("Failed to send DM to user %s", user_id)
 

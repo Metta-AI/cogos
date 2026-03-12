@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -278,8 +279,16 @@ def execute_process(
 
     total_input_tokens = 0
     total_output_tokens = 0
+    turns_executed = 0
+    tool_turns = 0
+    tool_calls = 0
+    bedrock_total_ms = 0
+    tool_total_ms = 0
+    tool_latency_by_name: dict[str, int] = defaultdict(int)
+    final_stop_reason = "end_turn"
 
     for _turn in range(config.max_turns):
+        turn_number = _turn + 1
         kwargs: dict[str, Any] = {
             "modelId": model_id,
             "messages": messages,
@@ -287,7 +296,11 @@ def execute_process(
             "toolConfig": TOOL_CONFIG,
         }
 
+        bedrock_started = time.monotonic()
         response = bedrock.converse(**kwargs)
+        bedrock_latency_ms = int((time.monotonic() - bedrock_started) * 1000)
+        turns_executed += 1
+        bedrock_total_ms += bedrock_latency_ms
         output_message = response["output"]["message"]
         messages.append(output_message)
 
@@ -296,8 +309,21 @@ def execute_process(
         total_output_tokens += usage.get("outputTokens", 0)
 
         stop_reason = response.get("stopReason", "end_turn")
+        final_stop_reason = stop_reason
+        logger.info(
+            "CogOS latency bedrock_turn=%sms run=%s process=%s turn=%s stop_reason=%s "
+            "input_tokens=%s output_tokens=%s",
+            bedrock_latency_ms,
+            run.id,
+            process.name,
+            turn_number,
+            stop_reason,
+            usage.get("inputTokens", 0),
+            usage.get("outputTokens", 0),
+        )
 
         if stop_reason == "tool_use":
+            tool_turns += 1
             tool_results = []
             for block in output_message.get("content", []):
                 if "toolUse" not in block:
@@ -305,6 +331,7 @@ def execute_process(
                 tool_use = block["toolUse"]
                 tool_name = tool_use.get("name", "")
                 tool_input = tool_use.get("input", {})
+                tool_started = time.monotonic()
 
                 if tool_name == "search":
                     result = _handle_search(tool_input, process, repo)
@@ -313,6 +340,18 @@ def execute_process(
                 else:
                     result = f"Unknown tool: {tool_name}"
 
+                tool_latency_ms = int((time.monotonic() - tool_started) * 1000)
+                tool_calls += 1
+                tool_total_ms += tool_latency_ms
+                tool_latency_by_name[tool_name] += tool_latency_ms
+                logger.info(
+                    "CogOS latency tool=%sms run=%s process=%s turn=%s tool=%s",
+                    tool_latency_ms,
+                    run.id,
+                    process.name,
+                    turn_number,
+                    tool_name,
+                )
                 tool_results.append({
                     "toolResult": {
                         "toolUseId": tool_use["toolUseId"],
@@ -326,6 +365,25 @@ def execute_process(
     run.tokens_in = total_input_tokens
     run.tokens_out = total_output_tokens
     run.scope_log = sandbox.scope_log
+    logger.info(
+        "CogOS execution breakdown run=%s process=%s model=%s turns=%s final_stop_reason=%s "
+        "bedrock_calls=%s tool_turns=%s tool_calls=%s bedrock_total_ms=%s tool_total_ms=%s "
+        "search_ms=%s run_code_ms=%s tokens_in=%s tokens_out=%s",
+        run.id,
+        process.name,
+        model_id,
+        turns_executed,
+        final_stop_reason,
+        turns_executed,
+        tool_turns,
+        tool_calls,
+        bedrock_total_ms,
+        tool_total_ms,
+        tool_latency_by_name.get("search", 0),
+        tool_latency_by_name.get("run_code", 0),
+        total_input_tokens,
+        total_output_tokens,
+    )
     return run
 
 
@@ -402,8 +460,6 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
     import importlib
     import inspect
 
-    from cogos.capabilities.me import MeCapability
-
     vt.set("print", print)
 
     pcs = repo.list_process_capabilities(process.id)
@@ -432,8 +488,8 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
             if not inspect.isclass(handler_cls):
                 vt.set(ns, handler_cls)
                 continue
-            # MeCapability needs run_id injected
-            if issubclass(handler_cls, MeCapability):
+            init_params = inspect.signature(handler_cls.__init__).parameters
+            if "run_id" in init_params:
                 instance = handler_cls(repo, process.id, run_id=run_id)
             else:
                 instance = handler_cls(repo, process.id)

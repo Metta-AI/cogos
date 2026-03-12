@@ -4,10 +4,11 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from cogos.capabilities.files import FilesCapability
-from cogos.capabilities.procs import ProcsCapability
 from cogos.capabilities.me import MeCapability
+from cogos.capabilities.procs import ProcsCapability
 from cogos.db.models import Process, ProcessMode, ProcessStatus
 from cogos.executor.handler import _setup_capability_proxies
+from cogos.io.discord.capability import DiscordCapability
 from cogos.sandbox.executor import VariableTable
 
 
@@ -92,6 +93,16 @@ class TestBoundCapabilities:
         me = vt.get("me")
         assert isinstance(me, MeCapability)
         assert me.run_id == run_id
+
+    def test_discord_from_binding_receives_run_id(self):
+        cap = _make_cap_model("discord", "cogos.io.discord.capability.DiscordCapability")
+        pc = _make_pc(cap)
+        run_id = uuid4()
+        vt = VariableTable()
+        _setup_capability_proxies(vt, _make_process(), _make_repo([cap], [pc]), run_id=run_id)
+        discord = vt.get("discord")
+        assert isinstance(discord, DiscordCapability)
+        assert discord.run_id == run_id
 
     def test_scoped_capability_from_config(self):
         """When ProcessCapability has config, the injected instance should be scoped."""
