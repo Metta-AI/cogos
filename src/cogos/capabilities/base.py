@@ -112,18 +112,49 @@ def _method_help(method: callable) -> str:
     return "\n".join(lines)
 
 
+class _ScopeDescriptor:
+    """Descriptor that guards access to the scope dict.
+
+    Internal access (from cogos package code) works normally.
+    External access (from sandbox-executed code) raises AttributeError,
+    preventing LLM-generated code from inspecting capability scope.
+    """
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._attr = f"_scope_data"
+
+    def __get__(self, obj: object, objtype: type | None = None) -> dict:
+        if obj is None:
+            return self  # type: ignore[return-value]
+        import sys
+        frame = sys._getframe(1)
+        caller_file = frame.f_code.co_filename
+        # Allow access from cogos package internals and test code
+        if "cogos/" in caller_file or "tests/" in caller_file or "test_" in caller_file:
+            return getattr(obj, self._attr)
+        raise AttributeError("Cannot access capability scope from sandbox code")
+
+    def __set__(self, obj: object, value: dict) -> None:
+        object.__setattr__(obj, self._attr, value)
+
+
 class Capability:
     """Base class for CogOS capabilities.
 
     Subclasses define typed methods that processes call in the sandbox.
     Each capability is instantiated once per process session with a
     repository handle and the owning process ID.
+
+    The ``_scope`` attribute is protected by a descriptor that blocks
+    access from sandbox-executed code while allowing normal internal use.
     """
+
+    _scope = _ScopeDescriptor()
 
     def __init__(self, repo: Repository, process_id: UUID) -> None:
         self.repo = repo
         self.process_id = process_id
-        self._scope: dict = {}
+        self._scope = {}
 
     def scope(self, **kwargs: object) -> Capability:
         """Return a clone of this capability with a narrower scope.

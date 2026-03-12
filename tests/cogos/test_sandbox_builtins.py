@@ -50,3 +50,24 @@ def test_safe_builtins_allows_json():
 def test_safe_builtins_blocks_dunder_import():
     result = _run("__import__('os')")
     assert "Error" in result or "error" in result.lower()
+
+
+def test_safe_builtins_blocks_hasattr():
+    result = _run("print(hasattr([], '__class__'))")
+    assert "Error" in result or "error" in result.lower()
+
+
+def test_scope_not_accessible_from_sandbox():
+    """Sandbox code should not be able to read _scope from capability objects."""
+    from unittest.mock import MagicMock
+    from uuid import uuid4
+    from cogos.capabilities.files import FilesCapability
+
+    repo = MagicMock()
+    cap = FilesCapability(repo, uuid4()).scope(prefix="/secret/", ops={"read"})
+
+    vt = VariableTable()
+    vt.set("files", cap)
+    executor = SandboxExecutor(vt)
+    result = executor.execute("print(files._scope)")
+    assert "Error" in result or "error" in result.lower()

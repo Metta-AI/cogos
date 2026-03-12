@@ -74,7 +74,11 @@ class EventsCapability(Capability):
             return
         event_type = context.get("event_type", "")
         if not event_type:
-            return
+            # No event_type provided but scope restricts this op — deny
+            raise PermissionError(
+                f"Event type required when '{op}' is scoped; "
+                f"allowed patterns: {patterns}"
+            )
         for pattern in patterns:
             if fnmatch.fnmatch(str(event_type), pattern):
                 return
@@ -108,6 +112,13 @@ class EventsCapability(Capability):
             created_at=event.created_at.isoformat() if event.created_at else None,
         )
 
+    def _matches_query_scope(self, event_type: str) -> bool:
+        """Check if an event type matches the query scope patterns."""
+        patterns = self._scope.get("query") if self._scope else None
+        if patterns is None:
+            return True
+        return any(fnmatch.fnmatch(event_type, p) for p in patterns)
+
     def query(self, event_type: str | None = None, limit: int = 100) -> list[EventRecord]:
         self._check("query", event_type=event_type or "")
         events = self.repo.get_events(event_type=event_type, limit=limit)
@@ -121,6 +132,7 @@ class EventsCapability(Capability):
                 created_at=e.created_at.isoformat() if e.created_at else None,
             )
             for e in events
+            if self._matches_query_scope(e.event_type)
         ]
 
     def __repr__(self) -> str:

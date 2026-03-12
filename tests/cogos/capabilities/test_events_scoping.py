@@ -72,10 +72,11 @@ class TestScopedQuery:
         with pytest.raises(PermissionError):
             cap.query("email:sent")
 
-    def test_scoped_query_no_filter_allowed(self, repo, pid):
-        """Query with no event_type filter is always allowed."""
+    def test_scoped_query_no_filter_denied(self, repo, pid):
+        """Query with no event_type filter is denied when scope restricts query."""
         cap = EventsCapability(repo, pid).scope(query=["task:*"])
-        cap.query()  # should not raise
+        with pytest.raises(PermissionError, match="Event type required"):
+            cap.query()
 
 
 class TestNarrow:

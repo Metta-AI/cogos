@@ -35,7 +35,6 @@ _SAFE_BUILTINS: dict[str, Any] = {
     "tuple": tuple,
     "bool": bool,
     "isinstance": isinstance,
-    "hasattr": hasattr,
     "map": map,
     "filter": filter,
     "any": any,
