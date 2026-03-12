@@ -1,7 +1,8 @@
 """Singleton Repository for dashboard handlers.
 
-Requires DB_RESOURCE_ARN, DB_SECRET_ARN, and DB_NAME env vars for RDS Data API.
-Set USE_LOCAL_DB=1 to use LocalRepository (JSON file persistence) for local dev.
+Requires DB_RESOURCE_ARN (or DB_CLUSTER_ARN), DB_SECRET_ARN, and DB_NAME env vars
+for RDS Data API. Set USE_LOCAL_DB=1 to use LocalRepository (JSON file
+persistence) for local dev.
 """
 
 from __future__ import annotations
