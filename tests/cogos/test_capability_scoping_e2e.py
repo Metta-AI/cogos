@@ -1,6 +1,6 @@
 """End-to-end tests for the full capability scoping system.
 
-Exercises FilesCapability, EventsCapability, ProcsCapability scoping,
+Exercises FilesCapability, ProcsCapability scoping,
 spawn delegation, and sandbox restrictions without mocking capability logic.
 Only the repo/DB layer is mocked.
 """
@@ -13,7 +13,6 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.base import Capability
-from cogos.capabilities.events import EventsCapability
 from cogos.capabilities.files import FilesCapability
 from cogos.capabilities.procs import ProcsCapability
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
@@ -75,44 +74,7 @@ class TestScopedFilesCapabilityEnforcesPrefix:
             cap.write("/workspace/doc.md", "x")
 
 
-# ── 2. EventsCapability pattern scoping ───────────────────────
-
-
-class TestScopedEventsCapabilityEnforcesPatterns:
-    def test_emit_matching_pattern_allowed(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        cap._check("emit", event_type="task:completed")
-
-    def test_emit_non_matching_pattern_denied(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        with pytest.raises(PermissionError):
-            cap._check("emit", event_type="email:sent")
-
-    def test_query_wildcard_allows_anything(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        cap._check("query", event_type="anything")
-
-    def test_emit_method_matching_pattern_does_not_raise_permission(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        try:
-            cap.emit("task:completed", {})
-        except PermissionError:
-            pytest.fail("emit('task:completed') should not raise PermissionError")
-
-    def test_emit_method_non_matching_pattern_raises(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        with pytest.raises(PermissionError):
-            cap.emit("email:sent", {})
-
-    def test_query_method_wildcard_does_not_raise_permission(self, repo, pid):
-        cap = EventsCapability(repo, pid).scope(emit=["task:*"], query=["*"])
-        try:
-            cap.query("anything")
-        except PermissionError:
-            pytest.fail("query('anything') should not raise PermissionError")
-
-
-# ── 3. Scope chain only narrows ───────────────────────────────
+# ── 2. Scope chain only narrows ───────────────────────────────
 
 
 class TestScopeChainOnlyNarrows:

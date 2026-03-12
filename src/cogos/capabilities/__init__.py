@@ -257,64 +257,6 @@ BUILTIN_CAPABILITIES: list[dict] = [
         },
     },
     {
-        "name": "events",
-        "description": "Append-only event log for inter-process communication.",
-        "handler": "cogos.capabilities.events.EventsCapability",
-        "event_types": [],  # dynamic — processes define their own event types
-        "instructions": (
-            "Use events to emit and query the event log.\n"
-            "- events.emit(event_type, payload?) — emit an event (e.g. 'task:completed')\n"
-            "- events.query(event_type?, limit?) — query recent events\n"
-            "Events are immutable once emitted. Handlers can subscribe to event types."
-        ),
-        "schema": {
-            "scope": {
-                "properties": {
-                    "emit": {"type": "array", "items": {"type": "string"}, "description": "Event patterns allowed to emit (fnmatch)"},
-                    "query": {"type": "array", "items": {"type": "string"}, "description": "Event patterns allowed to query (fnmatch)"},
-                },
-            },
-            "emit": {
-                "input": {
-                    "type": "object",
-                    "properties": {
-                        "event_type": {"type": "string", "description": "Event type (e.g. 'task:completed')"},
-                        "payload": {"type": "object", "description": "Arbitrary JSON payload"},
-                        "parent_event": {"type": "string", "description": "Parent event UUID for chaining"},
-                    },
-                    "required": ["event_type"],
-                },
-                "output": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "string"}, "event_type": {"type": "string"},
-                        "created_at": {"type": "string"},
-                    },
-                },
-            },
-            "query": {
-                "input": {
-                    "type": "object",
-                    "properties": {
-                        "event_type": {"type": "string", "description": "Filter by event type"},
-                        "limit": {"type": "integer", "default": 100},
-                    },
-                },
-                "output": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "string"}, "event_type": {"type": "string"},
-                            "source": {"type": "string"}, "payload": {"type": "object"},
-                            "created_at": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        },
-    },
-    {
         "name": "resources",
         "description": "Resource pool management — check availability before resource-gated operations.",
         "handler": "cogos.capabilities.resources.ResourcesCapability",

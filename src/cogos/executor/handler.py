@@ -14,7 +14,8 @@ from uuid import UUID
 
 import boto3
 
-from cogos.db.models import Event, Process, ProcessStatus, Run, RunStatus
+from cogos.db.models import Process, ProcessStatus, Run, RunStatus
+from cogos.db.models.channel_message import ChannelMessage
 from cogos.db.repository import Repository
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
@@ -164,13 +165,14 @@ def handler(event: dict, context: Any = None) -> dict:
         )
         _log_run_completion_latency(run, process.name, duration_ms)
 
-        # Emit completion event
-        repo.append_event(Event(
-            event_type="process:run:success",
-            source=process.name,
-            payload={"run_id": str(run.id), "process_id": str(process.id),
-                     "process_name": process.name, "duration_ms": duration_ms},
-        ))
+        # Emit lifecycle message to implicit process channel
+        _emit_lifecycle_message(repo, process, {
+            "type": "process:run:success",
+            "run_id": str(run.id),
+            "process_id": str(process.id),
+            "process_name": process.name,
+            "duration_ms": duration_ms,
+        })
 
         # Transition process state — respect out-of-band status changes
         current = repo.get_process(process.id)
@@ -202,11 +204,13 @@ def handler(event: dict, context: Any = None) -> dict:
         )
         _log_run_completion_latency(run, process.name, duration_ms)
 
-        repo.append_event(Event(
-            event_type=f"process:failed:{process.name}",
-            source=process.name,
-            payload={"run_id": str(run.id), "error": str(e)[:1000]},
-        ))
+        _emit_lifecycle_message(repo, process, {
+            "type": "process:run:failed",
+            "run_id": str(run.id),
+            "process_id": str(process.id),
+            "process_name": process.name,
+            "error": str(e)[:1000],
+        })
 
         # Retry logic — respect out-of-band status changes
         current = repo.get_process(process.id)
@@ -353,6 +357,20 @@ def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -
         process_name,
         duration_ms,
     )
+
+
+def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -> None:
+    """Write a lifecycle event to the implicit process channel."""
+    try:
+        implicit_ch = repo.get_channel_by_name(f"process:{process.name}")
+        if implicit_ch:
+            repo.append_channel_message(ChannelMessage(
+                channel=implicit_ch.id,
+                sender_process=process.id,
+                payload=payload,
+            ))
+    except Exception:
+        logger.warning("Failed to emit lifecycle message for process %s", process.name, exc_info=True)
 
 
 def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:

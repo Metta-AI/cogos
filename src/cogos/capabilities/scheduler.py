@@ -94,6 +94,10 @@ class SchedulerCapability(Capability):
         for event in events:
             created.extend(self.deliver_event(event))
 
+        # Also match channel messages to handlers
+        channel_result = self.match_channel_messages()
+        created.extend(channel_result.deliveries)
+
         return MatchResult(deliveries_created=len(created), deliveries=created)
 
     def deliver_event(self, event) -> list[DeliveryInfo]:
