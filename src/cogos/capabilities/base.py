@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import inspect
 import typing
 from uuid import UUID
@@ -122,6 +123,32 @@ class Capability:
     def __init__(self, repo: Repository, process_id: UUID) -> None:
         self.repo = repo
         self.process_id = process_id
+        self._scope: dict = {}
+
+    def scope(self, **kwargs: object) -> Capability:
+        """Return a clone of this capability with a narrower scope.
+
+        Never modifies the original instance.
+        """
+        new_scope = self._narrow(self._scope, kwargs)
+        clone = copy.copy(self)
+        clone._scope = new_scope
+        return clone
+
+    def _narrow(self, existing: dict, requested: dict) -> dict:
+        """Compute the new scope from existing and requested constraints.
+
+        Default implementation: merge dicts (requested overrides existing).
+        Subclasses should override for intersection / validation logic.
+        """
+        return {**existing, **requested}
+
+    def _check(self, op: str, **context: object) -> None:
+        """Verify that *op* is allowed under the current scope.
+
+        Default implementation: no enforcement (everything allowed).
+        Subclasses should override to raise ``PermissionError`` when needed.
+        """
 
     def help(self) -> str:
         """Describe this capability: all public methods with signatures and IO schemas."""
