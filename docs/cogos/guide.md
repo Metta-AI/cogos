@@ -44,11 +44,12 @@ images/cogent-v1/
     cron.py            # scheduled event rules
   files/
     cogos/
-      scheduler.md     # scheduler daemon prompt
+      docs/            # CogOS documentation for LLM agents
+      includes/        # per-subsystem API references (auto-injected)
+      lib/
+        scheduler.md   # scheduler daemon prompt
     whoami/
       index.md         # agent identity
-    includes/
-      code_mode.md     # shared prompt fragment
   README.md
 ```
 
@@ -128,12 +129,13 @@ add_cron("* * * * *", event_type="system:tick:minute")
 Every file under `files/` becomes a File entry in the store. The relative path from `files/` becomes the key:
 
 ```
-files/cogos/scheduler.md    -> key: "cogos/scheduler"
-files/whoami/index.md       -> key: "whoami/index"
-files/includes/code_mode.md -> key: "includes/code_mode"
+files/cogos/lib/scheduler.md          -> key: "cogos/lib/scheduler"
+files/whoami/index.md                 -> key: "whoami/index"
+files/cogos/includes/code_mode.md     -> key: "cogos/includes/code_mode"
+files/cogos/docs/layout.md            -> key: "cogos/docs/layout"
 ```
 
-Files under `includes/` are automatically prepended to every process's system prompt by the executor.
+Files under `cogos/includes/` are automatically prepended to every process's system prompt by the executor.
 
 ### File Includes
 
@@ -145,7 +147,7 @@ Files can reference other files using the `includes` field (set during file crea
 add_process("my-agent", code_key="agents/my-agent", ...)
 ```
 
-The file at `agents/my-agent` might have includes `["whoami/index", "includes/code_mode"]`, and those are prepended to its content when building the prompt.
+The file at `agents/my-agent` might have includes `["whoami/index", "cogos/includes/code_mode"]`, and those are prepended to its content when building the prompt.
 
 ### Boot vs Snapshot
 

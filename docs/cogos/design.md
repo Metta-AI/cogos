@@ -168,7 +168,7 @@ FileVersion
   created_at      datetime
 ```
 
-Files support an include system. A file can declare `includes: ["whoami/index", "includes/code_mode"]` and the context engine resolves these recursively, depth-first, concatenating content with section headers. Circular includes are detected and reported.
+Files support an include system. A file can declare `includes: ["whoami/index", "cogos/includes/code_mode"]` and the context engine resolves these recursively, depth-first, concatenating content with section headers. Circular includes are detected and reported.
 
 ### Capability
 
@@ -388,7 +388,7 @@ The `ContextEngine` resolves file includes to build the complete prompt for a pr
    - Recursively resolve `file.includes` depth-first
    - Concatenate with `--- key ---` section headers
 2. Append `process.content` last
-3. Prepend all files under `includes/` as global context
+3. Prepend all files under `cogos/includes/` as global context
 
 This is used by both the Lambda executor (system prompt) and the dashboard (prompt preview).
 
@@ -473,11 +473,12 @@ images/<name>/
     cron.py            # add_cron() calls
   files/
     cogos/
-      scheduler.md     # file key = relative path from files/
+      docs/            # CogOS documentation for LLM agents
+      includes/        # per-subsystem API references (auto-injected)
+      lib/
+        scheduler.md   # scheduler daemon prompt
     whoami/
       index.md
-    includes/
-      code_mode.md
   README.md
 ```
 

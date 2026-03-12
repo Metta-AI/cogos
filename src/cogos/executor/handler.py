@@ -244,7 +244,7 @@ def execute_process(
     if not system_prompt:
         system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
 
-    # Prepend includes — all files under "includes/" are auto-injected
+    # Prepend includes — all files under "cogos/includes/" are auto-injected
     includes_content = _load_includes(repo)
     if includes_content:
         system_prompt = includes_content + "\n\n" + system_prompt
@@ -326,10 +326,10 @@ def execute_process(
 
 
 def _load_includes(repo: Repository) -> str:
-    """Load all files under 'includes/' and concatenate their content."""
+    """Load all files under 'cogos/includes/' and concatenate their content."""
     from cogos.files.store import FileStore
     file_store = FileStore(repo)
-    files = file_store.list_files(prefix="includes/")
+    files = file_store.list_files(prefix="cogos/includes/")
     parts = []
     for f in sorted(files, key=lambda f: f.key):
         fv = repo.get_active_file_version(f.id)
