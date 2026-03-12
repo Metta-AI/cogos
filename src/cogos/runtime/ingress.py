@@ -74,10 +74,26 @@ def dispatch_ready_processes(
         event_payload: dict[str, Any] = {}
         event_type = ""
         if dispatch_result.event_id:
-            event = repo.get_event(UUID(dispatch_result.event_id))
-            if event:
-                event_type = event.event_type
-                event_payload = event.payload or {}
+            # event_id now points to a channel message ID
+            msg_id = UUID(dispatch_result.event_id)
+            # Try channel message lookup
+            for ch_msg in getattr(repo, '_channel_messages', {}).values():
+                if ch_msg.id == msg_id:
+                    event_payload = ch_msg.payload or {}
+                    event_type = event_payload.get("event_type", "")
+                    break
+            else:
+                # RDS path: query by message ID
+                try:
+                    rows = repo.query(
+                        "SELECT payload FROM cogos_channel_message WHERE id = :id",
+                        {"id": msg_id},
+                    )
+                    if rows:
+                        event_payload = repo._json_field(rows[0], "payload", {})
+                        event_type = event_payload.get("event_type", "")
+                except Exception:
+                    pass
 
         payload = {
             "process_id": dispatch_result.process_id,

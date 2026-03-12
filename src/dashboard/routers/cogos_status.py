@@ -25,7 +25,7 @@ class CogosStatusResponse(BaseModel):
     processes: ProcessCounts
     files: int
     capabilities: int
-    recent_events: int
+    recent_channels: int
     recent_runs: list[dict]
     scheduler_last_tick: str | None = None
 
@@ -52,9 +52,9 @@ def cogos_status(name: str) -> CogosStatusResponse:
     caps = repo.list_capabilities()
     cap_count = len(caps)
 
-    # Recent events count
-    events = repo.get_events(limit=100)
-    recent_event_count = len(events)
+    # Channel count
+    channels = repo.list_channels() if hasattr(repo, 'list_channels') else []
+    channel_count = len(channels)
 
     # Recent runs (last 10) with process name
     proc_map = {p.id: p.name for p in all_procs}
@@ -86,7 +86,7 @@ def cogos_status(name: str) -> CogosStatusResponse:
         processes=ProcessCounts(total=len(all_procs), by_status=counts),
         files=file_count,
         capabilities=cap_count,
-        recent_events=recent_event_count,
+        recent_channels=channel_count,
         recent_runs=recent_runs,
         scheduler_last_tick=scheduler_tick,
     )

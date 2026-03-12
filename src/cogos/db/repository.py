@@ -295,12 +295,12 @@ class Repository:
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     max_duration_ms, max_retries, retry_count, retry_backoff_ms,
-                    clear_context, metadata, output_events)
+                    clear_context, metadata)
                VALUES (:id, :name, :mode, :content, :code, :files::jsonb, :priority, :resources::jsonb, :runner,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
-                       :clear_context, :metadata::jsonb, :output_events::jsonb)
+                       :clear_context, :metadata::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content, code = EXCLUDED.code,
                    files = EXCLUDED.files,
@@ -313,7 +313,6 @@ class Repository:
                    retry_backoff_ms = EXCLUDED.retry_backoff_ms,
                    clear_context = EXCLUDED.clear_context,
                    metadata = EXCLUDED.metadata,
-                   output_events = EXCLUDED.output_events,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
@@ -339,14 +338,12 @@ class Repository:
                 self._param("retry_backoff_ms", p.retry_backoff_ms),
                 self._param("clear_context", p.clear_context),
                 self._param("metadata", p.metadata),
-                self._param("output_events", p.output_events),
             ],
         )
         row = self._first_row(response)
         if row:
             p.created_at = self._ts(row, "created_at")
             p.updated_at = self._ts(row, "updated_at")
-            self.register_event_types(p.output_events, source="process")
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert process")
 
@@ -391,14 +388,7 @@ class Repository:
             f"UPDATE cogos_process SET status = :status{extra}, updated_at = now() WHERE id = :id",
             [self._param("id", process_id), self._param("status", status.value)],
         )
-        updated = response.get("numberOfRecordsUpdated", 0) == 1
-        if updated and status == ProcessStatus.RUNNABLE:
-            self.append_event(Event(
-                event_type="process:status:runnable",
-                source="system",
-                payload={"process_id": str(process_id)},
-            ))
-        return updated
+        return response.get("numberOfRecordsUpdated", 0) == 1
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         response = self._execute(
@@ -444,7 +434,6 @@ class Repository:
             retry_backoff_ms=row.get("retry_backoff_ms"),
             clear_context=row.get("clear_context", False),
             metadata=self._json_field(row, "metadata", {}),
-            output_events=self._json_field(row, "output_events", []),
             created_at=self._ts(row, "created_at"),
             updated_at=self._ts(row, "updated_at"),
         )
@@ -545,24 +534,10 @@ class Repository:
                 ],
             )
         else:
-            # Legacy event_pattern-based handler
-            response = self._execute(
-                """INSERT INTO cogos_handler (id, process, event_pattern, enabled)
-                   VALUES (:id, :process, :event_pattern, :enabled)
-                   ON CONFLICT (process, event_pattern) DO UPDATE SET enabled = EXCLUDED.enabled
-                   RETURNING id, created_at""",
-                [
-                    self._param("id", h.id),
-                    self._param("process", h.process),
-                    self._param("event_pattern", h.event_pattern),
-                    self._param("enabled", h.enabled),
-                ],
-            )
+            raise ValueError("Handler must have a channel FK set")
         row = self._first_row(response)
         if row:
             h.created_at = self._ts(row, "created_at")
-            if h.event_pattern:
-                self.register_event_types([h.event_pattern], source="handler")
             return UUID(row["id"])
         return h.id
 
@@ -578,7 +553,7 @@ class Repository:
             conditions.append("enabled = TRUE")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         response = self._execute(
-            f"SELECT * FROM cogos_handler {where} ORDER BY COALESCE(event_pattern, '')",
+            f"SELECT * FROM cogos_handler {where} ORDER BY created_at",
             params or None,
         )
         return [self._handler_from_row(r) for r in self._rows_to_dicts(response)]
@@ -591,18 +566,8 @@ class Repository:
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def match_handlers(self, event_type: str) -> list[Handler]:
-        """Find handlers whose event_pattern matches the given event_type.
-
-        Supports glob matching: 'task:*' matches 'task:completed:foo'.
-        """
-        response = self._execute(
-            """SELECT * FROM cogos_handler
-               WHERE enabled = TRUE
-                 AND event_pattern IS NOT NULL
-                 AND :event_type LIKE REPLACE(REPLACE(event_pattern, '*', '%'), '?', '_')""",
-            [self._param("event_type", event_type)],
-        )
-        return [self._handler_from_row(r) for r in self._rows_to_dicts(response)]
+        """Legacy stub — returns empty list since event_pattern column is dropped."""
+        return []
 
     def match_handlers_by_channel(self, channel_id: UUID) -> list[Handler]:
         """Find enabled handlers subscribed to a specific channel."""
@@ -617,86 +582,33 @@ class Repository:
         return Handler(
             id=UUID(r["id"]),
             process=UUID(r["process"]),
-            event_pattern=r.get("event_pattern"),
             channel=UUID(r["channel"]) if r.get("channel") else None,
             enabled=r["enabled"],
             created_at=self._ts(r, "created_at"),
         )
 
     # ═══════════════════════════════════════════════════════════
-    # EVENTS
+    # EVENTS (deprecated — stubs for backwards compat)
     # ═══════════════════════════════════════════════════════════
 
     def append_event(self, event: Event) -> UUID:
-        response = self._execute(
-            """INSERT INTO cogos_event (id, event_type, source, payload, parent_event)
-               VALUES (:id, :event_type, :source, :payload::jsonb, :parent_event)
-               RETURNING id, created_at""",
-            [
-                self._param("id", event.id),
-                self._param("event_type", event.event_type),
-                self._param("source", event.source),
-                self._param("payload", event.payload),
-                self._param("parent_event", event.parent_event),
-            ],
-        )
-        row = self._first_row(response)
-        if row:
-            event.created_at = self._ts(row, "created_at")
-            event_id = UUID(row["id"])
-            self._wake_ingress(event_id)
-            return event_id
-        raise RuntimeError("Failed to insert event")
+        """Deprecated: event table dropped. No-op that returns the event ID."""
+        logger.debug("append_event called (deprecated): %s", event.event_type)
+        return event.id
 
     def get_event(self, event_id: UUID) -> Event | None:
-        row = self._first_row(self._execute(
-            "SELECT * FROM cogos_event WHERE id = :id",
-            [self._param("id", event_id)],
-        ))
-        return self._event_from_row(row) if row else None
+        """Deprecated: event table dropped."""
+        return None
 
     def get_events_by_ids(self, event_ids: list[UUID]) -> dict[UUID, Event]:
-        if not event_ids:
-            return {}
-
-        params = []
-        placeholders = []
-        for idx, event_id in enumerate(event_ids):
-            name = f"id_{idx}"
-            params.append(self._param(name, event_id))
-            placeholders.append(f":{name}")
-
-        rows = self._rows_to_dicts(self._execute(
-            f"SELECT * FROM cogos_event WHERE id IN ({', '.join(placeholders)})",
-            params,
-        ))
-        return {UUID(row["id"]): self._event_from_row(row) for row in rows}
+        """Deprecated: event table dropped."""
+        return {}
 
     def get_events(
         self, *, event_type: str | None = None, limit: int = 100,
     ) -> list[Event]:
-        if event_type:
-            response = self._execute(
-                """SELECT * FROM cogos_event WHERE event_type = :event_type
-                   ORDER BY created_at DESC LIMIT :limit""",
-                [self._param("event_type", event_type), self._param("limit", limit)],
-            )
-        else:
-            response = self._execute(
-                "SELECT * FROM cogos_event ORDER BY created_at DESC LIMIT :limit",
-                [self._param("limit", limit)],
-            )
-        return [self._event_from_row(r) for r in self._rows_to_dicts(response)]
-
-    def _event_from_row(self, row: dict) -> Event:
-        return Event(
-            id=UUID(row["id"]),
-            event_type=row["event_type"],
-            source=row.get("source"),
-            payload=self._json_field(row, "payload", {}),
-            parent_event=UUID(row["parent_event"]) if row.get("parent_event") else None,
-            created_at=self._ts(row, "created_at"),
-        )
+        """Deprecated: event table dropped."""
+        return []
 
     # ═══════════════════════════════════════════════════════════
     # EVENT DELIVERY
@@ -807,65 +719,17 @@ class Repository:
         if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
             self.update_process_status(process_id, ProcessStatus.RUNNABLE)
 
-    def claim_event_outbox_batch(
-        self,
-        *,
-        limit: int = 25,
-        stale_after_seconds: int = 60,
-    ) -> list[EventOutbox]:
-        response = self._execute(
-            """WITH candidates AS (
-                   SELECT id
-                   FROM cogos_event_outbox
-                   WHERE status = 'pending'
-                      OR (status = 'processing' AND claimed_at < now() - make_interval(secs => :stale_after_seconds))
-                      OR (
-                          status = 'failed'
-                          AND attempt_count < :failed_max_attempts
-                          AND COALESCE(claimed_at, created_at) < now() - (
-                              :failed_retry_backoff_seconds
-                              * power(2, GREATEST(attempt_count - 1, 0))
-                              * interval '1 second'
-                          )
-                      )
-                   ORDER BY created_at ASC
-                   LIMIT :limit
-                   FOR UPDATE SKIP LOCKED
-               )
-               UPDATE cogos_event_outbox o
-               SET status = 'processing',
-                   attempt_count = o.attempt_count + 1,
-                   claimed_at = now(),
-                   last_error = NULL
-               FROM candidates
-               WHERE o.id = candidates.id
-               RETURNING o.*""",
-            [
-                self._param("limit", limit),
-                self._param("stale_after_seconds", stale_after_seconds),
-                self._param("failed_retry_backoff_seconds", self._event_outbox_failed_retry_backoff_seconds),
-                self._param("failed_max_attempts", self._event_outbox_failed_max_attempts),
-            ],
-        )
-        return [self._event_outbox_from_row(row) for row in self._rows_to_dicts(response)]
+    def claim_event_outbox_batch(self, *, limit: int = 25, **kwargs) -> list:
+        """Deprecated: event outbox table dropped."""
+        return []
 
     def mark_event_outbox_done(self, outbox_id: UUID) -> bool:
-        response = self._execute(
-            """UPDATE cogos_event_outbox
-               SET status = 'done', completed_at = now(), last_error = NULL
-               WHERE id = :id""",
-            [self._param("id", outbox_id)],
-        )
-        return response.get("numberOfRecordsUpdated", 0) == 1
+        """Deprecated: event outbox table dropped."""
+        return False
 
     def mark_event_outbox_failed(self, outbox_id: UUID, error: str) -> bool:
-        response = self._execute(
-            """UPDATE cogos_event_outbox
-               SET status = 'failed', last_error = :error
-               WHERE id = :id""",
-            [self._param("id", outbox_id), self._param("error", error[:4000])],
-        )
-        return response.get("numberOfRecordsUpdated", 0) == 1
+        """Deprecated: event outbox table dropped."""
+        return False
 
     def _event_outbox_from_row(self, row: dict) -> EventOutbox:
         return EventOutbox(
@@ -1362,42 +1226,21 @@ class Repository:
     # EVENT TYPES
     # ═══════════════════════════════════════════════════════════
 
-    def list_event_types(self) -> list[EventType]:
-        """List all registered event types."""
-        rows = self._rows_to_dicts(self._execute("SELECT * FROM cogos_event_type ORDER BY name"))
-        return [
-            EventType(
-                name=r["name"],
-                description=r.get("description", ""),
-                source=r.get("source", ""),
-                created_at=self._ts(r, "created_at"),
-            )
-            for r in rows
-        ]
+    def list_event_types(self) -> list:
+        """Deprecated: event type table dropped."""
+        return []
 
-    def upsert_event_type(self, et: EventType) -> None:
-        """Insert or update an event type."""
-        self._execute(
-            """INSERT INTO cogos_event_type (name, description, source)
-               VALUES (:name, :desc, :source)
-               ON CONFLICT (name) DO UPDATE SET
-                   description = CASE WHEN cogos_event_type.description = '' THEN EXCLUDED.description ELSE cogos_event_type.description END""",
-            [self._param("name", et.name), self._param("desc", et.description), self._param("source", et.source)],
-        )
+    def upsert_event_type(self, et) -> None:
+        """Deprecated: event type table dropped."""
+        pass
 
     def register_event_types(self, names: list[str], source: str = "", description: str = "") -> None:
-        """Bulk-register event type names (skip globs with * or ?)."""
-        for name in names:
-            if "*" in name or "?" in name:
-                continue
-            self.upsert_event_type(EventType(name=name, source=source, description=description))
+        """Deprecated: event type table dropped."""
+        pass
 
     def delete_event_type(self, name: str) -> bool:
-        resp = self._execute(
-            "DELETE FROM cogos_event_type WHERE name = :name",
-            [self._param("name", name)],
-        )
-        return resp.get("numberOfRecordsUpdated", 0) > 0
+        """Deprecated: event type table dropped."""
+        return False
 
     # ═══════════════════════════════════════════════════════════
     # SCHEMAS
