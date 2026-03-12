@@ -89,7 +89,7 @@ class Repository:
         database: str | None = None,
         region: str | None = None,
     ) -> Repository:
-        resource_arn = resource_arn or os.environ.get("DB_RESOURCE_ARN", "")
+        resource_arn = resource_arn or os.environ.get("DB_RESOURCE_ARN", "") or os.environ.get("DB_CLUSTER_ARN", "")
         secret_arn = secret_arn or os.environ.get("DB_SECRET_ARN", "")
         database = database or os.environ.get("DB_NAME", "")
         region = region or os.environ.get("AWS_REGION", "us-east-1")
@@ -98,7 +98,7 @@ class Repository:
             raise ValueError(
                 "Must provide resource_arn, secret_arn, and database "
                 "via arguments or environment variables "
-                "(DB_RESOURCE_ARN, DB_SECRET_ARN, DB_NAME)"
+                "(DB_RESOURCE_ARN/DB_CLUSTER_ARN, DB_SECRET_ARN, DB_NAME)"
             )
 
         client = boto3.client("rds-data", region_name=region)

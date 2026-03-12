@@ -10,10 +10,13 @@ import webbrowser
 from pathlib import Path
 
 import click
+from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV, resolve_org_profile
 
 _COGENT_DIR = Path.home() / ".cogents"
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _FRONTEND_DIR = _REPO_ROOT / "dashboard" / "frontend"
+_PROFILE_HELP = f"AWS profile for DB lookup (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
+_REQUIRED_DB_ENV = ("DB_RESOURCE_ARN", "DB_SECRET_ARN", "DB_NAME")
 
 
 def _checkout_ports() -> tuple[int, int]:
@@ -66,31 +69,53 @@ def _ensure_frontend_ready() -> None:
     )
 
 
+def _normalize_db_env(env: dict[str, str]) -> dict[str, str]:
+    """Mirror the cluster/resource ARN names used across the repo."""
+    if env.get("DB_CLUSTER_ARN") and not env.get("DB_RESOURCE_ARN"):
+        env["DB_RESOURCE_ARN"] = env["DB_CLUSTER_ARN"]
+    if env.get("DB_RESOURCE_ARN") and not env.get("DB_CLUSTER_ARN"):
+        env["DB_CLUSTER_ARN"] = env["DB_RESOURCE_ARN"]
+    return env
+
+
+def _missing_db_env(env: dict[str, str]) -> list[str]:
+    return [name for name in _REQUIRED_DB_ENV if not env.get(name)]
+
+
 @click.group()
 def dashboard():
     """Dashboard commands."""
     pass
 
 
-def _ensure_db_env(name: str, env: dict, *, assume_polis: bool = False) -> dict:
+def _ensure_db_env(
+    name: str,
+    env: dict[str, str],
+    *,
+    assume_polis: bool = False,
+    profile: str | None = None,
+) -> dict[str, str]:
     """Auto-discover DB ARNs from CloudFormation and add to env dict."""
+    env = _normalize_db_env(env)
     if not assume_polis and env.get("DB_RESOURCE_ARN") and env.get("DB_SECRET_ARN"):
+        env.setdefault("DB_NAME", "cogent")
         return env
 
     safe_name = name.replace(".", "-")
     stack_name = f"cogent-{safe_name}-brain"
+    resolved_profile = resolve_org_profile(profile) if assume_polis else profile
     try:
         if assume_polis:
             from polis.aws import get_polis_session, set_org_profile
 
-            set_org_profile()
+            set_org_profile(profile)
             session, _ = get_polis_session()
             cf = session.client("cloudformation", region_name="us-east-1")
         else:
             import boto3
 
-            session = None
-            cf = boto3.client("cloudformation", region_name="us-east-1")
+            session = boto3.Session(profile_name=profile, region_name="us-east-1") if profile else boto3.Session()
+            cf = session.client("cloudformation", region_name="us-east-1")
         resp = cf.describe_stacks(StackName=stack_name)
         outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
         if "ClusterArn" in outputs:
@@ -115,8 +140,19 @@ def _ensure_db_env(name: str, env: dict, *, assume_polis: bool = False) -> dict:
             env.setdefault("AWS_DEFAULT_REGION", "us-east-1")
             env.setdefault("AWS_REGION", "us-east-1")
     except Exception as e:
+        if assume_polis:
+            raise click.ClickException(
+                "Could not resolve live DB credentials for `--db prod`.\n"
+                f"Cogent: {name}\n"
+                f"Stack: {stack_name}\n"
+                f"AWS profile: {resolved_profile}\n"
+                f"Original error: {e}\n"
+                f"Run `aws sso login --profile {resolved_profile}` or set `{ORG_PROFILE_ENV}` "
+                "to a profile that can assume into polis."
+            ) from e
         click.echo(f"Warning: could not auto-discover DB credentials: {e}")
-    return env
+    env.setdefault("DB_NAME", "cogent")
+    return _normalize_db_env(env)
 
 
 @dashboard.command()
@@ -131,6 +167,7 @@ def _ensure_db_env(name: str, env: dict, *, assume_polis: bool = False) -> dict:
     show_default=True,
     help="DB source: ambient AWS/env (`auto`), local JSON repo (`local`), or polis-assumed live DB (`prod`).",
 )
+@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--local", is_flag=True, help="Use local DB (USE_LOCAL_DB=1)")
 @click.pass_context
 def serve(
@@ -139,6 +176,7 @@ def serve(
     frontend_port: int | None,
     no_browser: bool,
     db_mode: str,
+    profile: str | None,
     local: bool,
 ):
     """Start the dashboard dev server."""
@@ -165,7 +203,22 @@ def serve(
     if db_mode == "local":
         env["USE_LOCAL_DB"] = "1"
     else:
-        env = _ensure_db_env(name, env, assume_polis=(db_mode == "prod"))
+        env = _ensure_db_env(name, env, assume_polis=(db_mode == "prod"), profile=profile)
+        missing = _missing_db_env(env)
+        if missing:
+            if db_mode == "prod":
+                resolved_profile = resolve_org_profile(profile)
+                raise click.ClickException(
+                    "Dashboard requires live DB credentials but `--db prod` did not resolve them.\n"
+                    f"Missing: {', '.join(missing)}\n"
+                    f"AWS profile: {resolved_profile}\n"
+                    f"Run `aws sso login --profile {resolved_profile}` or set `{ORG_PROFILE_ENV}`."
+                )
+            raise click.ClickException(
+                "Dashboard requires DB credentials for live data.\n"
+                f"Missing: {', '.join(missing)}\n"
+                "Export `DB_RESOURCE_ARN`, `DB_SECRET_ARN`, and `DB_NAME`, or use `--db local`."
+            )
 
     _ensure_frontend_ready()
 
