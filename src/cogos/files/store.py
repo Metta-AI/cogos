@@ -15,6 +15,10 @@ class FileStore:
     def __init__(self, repo) -> None:  # noqa: ANN001
         self._repo = repo
 
+    @property
+    def repo(self):  # noqa: ANN201
+        return self._repo
+
     def create(
         self,
         key: str,
