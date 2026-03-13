@@ -701,4 +701,55 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    {
+        "name": "web_fetch",
+        "description": "Fetch and extract content from URLs.",
+        "handler": "cogos.capabilities.web_fetch.WebFetchCapability",
+        "instructions": (
+            "Use web_fetch to fetch web pages and extract text.\n"
+            "- web_fetch.fetch(url) — fetch raw HTML from a URL\n"
+            "- web_fetch.extract_text(url) — fetch and extract clean text content\n"
+            "Returns PageContent/TextContent or FetchError.\n"
+            "Useful for reading GitHub profiles, blog posts, articles."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "domains": {"type": "array", "items": {"type": "string"}, "description": "Domain allowlist"},
+                },
+            },
+            "fetch": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to fetch"},
+                    },
+                    "required": ["url"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"}, "html": {"type": "string"},
+                        "status_code": {"type": "integer"},
+                    },
+                },
+            },
+            "extract_text": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to extract text from"},
+                    },
+                    "required": ["url"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"}, "text": {"type": "string"},
+                        "title": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
 ]
