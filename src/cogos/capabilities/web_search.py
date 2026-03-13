@@ -3,11 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -138,11 +136,11 @@ class WebSearchCapability(Capability):
     def search_github(
         self,
         query: str,
-        type: str = "repositories",
+        search_type: str = "repositories",
         after_date: str | None = None,
         before_date: str | None = None,
     ) -> GithubSearchResult | SearchError:
-        """Search GitHub. type: 'repositories'|'issues'|'discussions'|'code'."""
+        """Search GitHub. search_type: 'repositories'|'issues'|'discussions'|'code'."""
         self._check("search_github")
         try:
             token = self._get_secret("cogent/github_token")
@@ -156,7 +154,7 @@ class WebSearchCapability(Capability):
                 "per_page": 30,
                 "sort": "updated",
             })
-            url = f"https://api.github.com/search/{type}?{params}"
+            url = f"https://api.github.com/search/{search_type}?{params}"
             result = self._http_json(
                 url,
                 headers={
@@ -201,7 +199,7 @@ class WebSearchCapability(Capability):
             if recency and not after_date:
                 import datetime
                 days = {"day": 1, "week": 7, "month": 30}.get(recency, 7)
-                start = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+                start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
                 params["start_time"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
             if after_date:
                 params["start_time"] = after_date + "T00:00:00Z"

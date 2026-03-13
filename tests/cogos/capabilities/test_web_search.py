@@ -104,6 +104,13 @@ class TestSearchGithub:
         url = mock_http.call_args[0][0]
         assert "/repositories?" in url
 
+    def test_non_default_search_type_in_url(self, cap):
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value={"items": []}) as mock_http:
+            cap.search_github("query", search_type="issues")
+        url = mock_http.call_args[0][0]
+        assert "/issues?" in url
+
     def test_returns_error_on_exception(self, cap):
         with patch.object(cap, "_get_secret", side_effect=Exception("boom")):
             result = cap.search_github("query")
