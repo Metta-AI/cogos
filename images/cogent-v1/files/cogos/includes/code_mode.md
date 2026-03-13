@@ -16,7 +16,7 @@ Always search before using a capability you haven't used yet.
 
 ## run_code(code)
 
-Execute Python in the sandbox. Capability objects are pre-injected as top-level variables. Use `print()` to see results — stdout is returned as the tool result.
+Execute Python in the sandbox. Capability objects are pre-injected as top-level variables. `json` is also pre-loaded. Use `print()` to see results — stdout is returned as the tool result. Do NOT use `import` — it is not available.
 
 ## Tips
 

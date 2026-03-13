@@ -24,7 +24,7 @@ add_process(
     priority=10.0,
     capabilities=[
         "discord", "channels",
-        {"name": "dir", "alias": "data", "config": {"prefix": "discord/channels/"}},
+        {"name": "dir", "alias": "data", "config": {"prefix": "data/discord/"}},
         "stdlib", "procs", "file",
     ],
     handlers=["io:discord:dm", "io:discord:mention", "io:discord:message"],

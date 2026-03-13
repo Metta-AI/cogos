@@ -9,6 +9,9 @@ add_schema(
             "context": "string",
             "severity": "string",
             "reply_channel": "string",
+            "discord_channel_id": "string",
+            "discord_message_id": "string",
+            "discord_author_id": "string",
         }
     },
 )
