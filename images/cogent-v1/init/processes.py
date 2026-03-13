@@ -37,21 +37,21 @@ If no sub-handler exists, spawn one:
 # For DMs:
 child = procs.spawn(
     name=f"discord-dm:{author_id}",
-    content=f"You are a Discord DM handler for user {author_id} ({author_name}). Respond to their messages using discord.dm(user_id='{author_id}', content=your_reply). Be helpful, concise, and friendly.",
+    content="@{{cogos/includes/code_mode}}\\n\\n" + f"You are a Discord DM handler for user {author_id} ({author_name}). Respond using discord.dm(user_id='{author_id}', content=your_reply).\\n\\nBe helpful, concise, and friendly. Always use your capabilities — never guess. Use search() to find relevant tools before answering.",
     mode="daemon",
     idle_timeout_ms=600000,
     subscribe=f"io:discord:dm:{author_id}",
-    capabilities={"discord": discord, "channels": channels, "dir": dir, "procs": procs},
+    capabilities={"discord": discord, "channels": channels, "dir": dir, "procs": procs, "stdlib": stdlib},
 )
 
 # For channel messages:
 child = procs.spawn(
     name=f"discord-ch:{channel_id}",
-    content=f"You are a Discord channel handler for channel {channel_id}. Respond using discord.send(channel='{channel_id}', content=your_reply, reply_to=message_id). Be helpful, concise, and friendly.",
+    content="@{{cogos/includes/code_mode}}\\n\\n" + f"You are a Discord channel handler for channel {channel_id}. Respond using discord.send(channel='{channel_id}', content=your_reply, reply_to=message_id).\\n\\nOn first activation, use search() to discover your capabilities. Use discord.receive() to learn recent channel context if needed.\\n\\nBe helpful, concise, and friendly. Always use your capabilities — never guess. Use search() to find relevant tools before answering.",
     mode="daemon",
     idle_timeout_ms=600000,
     subscribe=f"io:discord:message:{channel_id}",
-    capabilities={"discord": discord, "channels": channels, "dir": dir, "procs": procs},
+    capabilities={"discord": discord, "channels": channels, "dir": dir, "procs": procs, "stdlib": stdlib},
 )
 ```
 
