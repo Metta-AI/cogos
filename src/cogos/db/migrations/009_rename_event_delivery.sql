@@ -1,9 +1,16 @@
 -- Rename event_delivery table and event column to match channels model
 ALTER TABLE IF EXISTS cogos_event_delivery RENAME TO cogos_delivery;
-ALTER TABLE IF EXISTS cogos_delivery RENAME COLUMN event TO message;
+
+DO $$ BEGIN
+    ALTER TABLE cogos_delivery RENAME COLUMN event TO message;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 
 -- Also rename event column on cogos_run to message
-ALTER TABLE IF EXISTS cogos_run RENAME COLUMN event TO message;
+DO $$ BEGIN
+    ALTER TABLE cogos_run RENAME COLUMN event TO message;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 
 -- Drop event_pattern from handler if it still exists
 ALTER TABLE IF EXISTS cogos_handler DROP COLUMN IF EXISTS event_pattern;
