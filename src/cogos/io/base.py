@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 
-class ChannelMode(str, enum.Enum):
+class IOMode(str, enum.Enum):
     LIVE = "live"
     POLL = "poll"
     ON_DEMAND = "on_demand"
@@ -15,7 +15,7 @@ class ChannelMode(str, enum.Enum):
 
 @dataclass
 class InboundEvent:
-    channel: str
+    source: str
     event_type: str
     payload: dict[str, Any] = field(default_factory=dict)
     raw_content: str = ""
@@ -25,8 +25,8 @@ class InboundEvent:
     external_url: str | None = None
 
 
-class Channel(ABC):
-    mode: ChannelMode
+class IOAdapter(ABC):
+    mode: IOMode
     name: str
 
     def __init__(self, name: str):

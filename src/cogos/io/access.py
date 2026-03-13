@@ -1,4 +1,4 @@
-"""Channel token access: fetches tokens from AWS Secrets Manager with env var fallback."""
+"""IO token access: fetches tokens from AWS Secrets Manager with env var fallback."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def _get_secrets_client(region: str | None = None):
     return boto3.client("secretsmanager", region_name=region)
 
 
-def get_channel_token(channel: str) -> str | None:
+def get_io_token(channel: str) -> str | None:
     """Get a channel's access token.
 
     Checks env var <CHANNEL>_BOT_TOKEN first, then Secrets Manager.
@@ -44,7 +44,7 @@ def get_channel_token(channel: str) -> str | None:
         return None
 
 
-def get_channel_secret(channel: str) -> dict[str, Any] | None:
+def get_io_secret(channel: str) -> dict[str, Any] | None:
     """Get the full secret dict for a channel."""
     cogent_name = os.environ.get("COGENT_NAME")
     if not cogent_name:

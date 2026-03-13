@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 
-from cogos.io.base import Channel, ChannelMode, InboundEvent
+from cogos.io.base import IOAdapter, IOMode, InboundEvent
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,8 @@ class AsanaClient:
         return data.get("data", {})
 
 
-class AsanaChannel(Channel):
-    mode = ChannelMode.POLL
+class AsanaIO(IOAdapter):
+    mode = IOMode.POLL
 
     def __init__(self, name: str = "asana", client: AsanaClient | None = None,
                  workspace_id: str | None = None, assignee_gid: str | None = None):

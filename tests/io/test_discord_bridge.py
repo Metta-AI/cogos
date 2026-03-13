@@ -67,7 +67,7 @@ def _make_message(
         guild.id = guild_id
         msg.guild = guild
 
-    msg.channel = ch
+    msg.source = ch
     return msg
 
 

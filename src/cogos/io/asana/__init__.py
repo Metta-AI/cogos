@@ -1,3 +1,3 @@
-from cogos.io.asana.poller import AsanaChannel, AsanaClient
+from cogos.io.asana.poller import AsanaIO, AsanaClient
 
-__all__ = ["AsanaChannel", "AsanaClient"]
+__all__ = ["AsanaIO", "AsanaClient"]

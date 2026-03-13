@@ -1,3 +1,3 @@
-from cogos.io.github.webhook import GitHubChannel
+from cogos.io.github.webhook import GitHubIO
 
-__all__ = ["GitHubChannel"]
+__all__ = ["GitHubIO"]

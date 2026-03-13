@@ -1,14 +1,14 @@
-from cogos.io.base import ChannelMode, InboundEvent
-from cogos.io.asana import AsanaChannel
+from cogos.io.base import IOMode, InboundEvent
+from cogos.io.asana import AsanaIO
 
 
-class TestAsanaChannel:
+class TestAsanaIO:
     def test_mode_is_poll(self):
-        ch = AsanaChannel(name="asana")
-        assert ch.mode == ChannelMode.POLL
+        ch = AsanaIO(name="asana")
+        assert ch.mode == IOMode.POLL
 
     async def test_poll_returns_queued_events(self):
-        ch = AsanaChannel(name="asana")
+        ch = AsanaIO(name="asana")
         event = InboundEvent(
             channel="asana", event_type="task.assigned",
             payload={"gid": "12345"}, raw_content="Build the thing",
@@ -20,6 +20,6 @@ class TestAsanaChannel:
         assert events[0].author == "human"
 
     async def test_poll_without_client_returns_empty(self):
-        ch = AsanaChannel(name="asana")
+        ch = AsanaIO(name="asana")
         events = await ch.poll()
         assert len(events) == 0

@@ -7,7 +7,7 @@ import logging
 
 from aiohttp import web
 
-from cogos.io.base import Channel, ChannelMode, InboundEvent
+from cogos.io.base import IOAdapter, IOMode, InboundEvent
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     return hmac_mod.compare_digest(signature[7:], expected)
 
 
-class GitHubChannel(Channel):
-    mode = ChannelMode.ON_DEMAND
+class GitHubIO(IOAdapter):
+    mode = IOMode.ON_DEMAND
 
     def __init__(self, name="github", webhook_secret=None, watched_repos=None):
         super().__init__(name)

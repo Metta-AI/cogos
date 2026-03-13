@@ -17,7 +17,7 @@ import aiohttp
 import boto3
 import discord
 
-from cogos.io.access import get_channel_token
+from cogos.io.access import get_io_token
 from cogos.io.discord.chunking import chunk_message
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class DiscordBridge:
         token = os.environ.get("DISCORD_BOT_TOKEN")
         if token:
             return token
-        token = get_channel_token("discord")
+        token = get_io_token("discord")
         if not token:
             raise RuntimeError(
                 f"No Discord token found for {self.cogent_name}. "

@@ -1,8 +1,8 @@
 import hashlib
 import hmac
 
-from cogos.io.base import ChannelMode, InboundEvent
-from cogos.io.github import GitHubChannel
+from cogos.io.base import IOMode, InboundEvent
+from cogos.io.github import GitHubIO
 from cogos.io.github.webhook import verify_signature
 
 
@@ -22,13 +22,13 @@ class TestGitHubSignature:
         assert verify_signature(b"payload", "invalid", "secret") is False
 
 
-class TestGitHubChannel:
+class TestGitHubIO:
     def test_mode_is_on_demand(self):
-        ch = GitHubChannel(name="github")
-        assert ch.mode == ChannelMode.ON_DEMAND
+        ch = GitHubIO(name="github")
+        assert ch.mode == IOMode.ON_DEMAND
 
     async def test_poll_returns_queued_events(self):
-        ch = GitHubChannel(name="github")
+        ch = GitHubIO(name="github")
         event = InboundEvent(channel="github", event_type="push", payload={})
         ch.add_event(event)
         events = await ch.poll()
@@ -36,7 +36,7 @@ class TestGitHubChannel:
         assert events[0].event_type == "push"
 
     async def test_poll_drains_queue(self):
-        ch = GitHubChannel(name="github")
+        ch = GitHubIO(name="github")
         for i in range(3):
             ch.add_event(
                 InboundEvent(
@@ -49,7 +49,7 @@ class TestGitHubChannel:
         assert len(events) == 0
 
     def test_ingest_issue_assigned(self):
-        ch = GitHubChannel(name="github")
+        ch = GitHubIO(name="github")
         event = ch.ingest_webhook(
             "issues",
             "assigned",
@@ -68,7 +68,7 @@ class TestGitHubChannel:
         assert event.external_id == "github:issue:org/repo:42"
 
     def test_ingest_ci_failure(self):
-        ch = GitHubChannel(name="github")
+        ch = GitHubIO(name="github")
         event = ch.ingest_webhook(
             "check_suite",
             "completed",
@@ -81,7 +81,7 @@ class TestGitHubChannel:
         assert event.event_type == "ci.failure"
 
     def test_ingest_unknown_event(self):
-        ch = GitHubChannel(name="github")
+        ch = GitHubIO(name="github")
         event = ch.ingest_webhook(
             "unknown_event",
             "triggered",

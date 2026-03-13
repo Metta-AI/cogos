@@ -1,4 +1,4 @@
-from cogos.io.base import Channel, ChannelMode, InboundEvent
+from cogos.io.base import IOAdapter, IOMode, InboundEvent
 from datetime import datetime, timezone
 import pytest
 
@@ -28,11 +28,11 @@ class TestInboundEvent:
         assert event.external_id == "github:push:123"
 
 
-class TestChannelMode:
+class TestIOMode:
     def test_modes_exist(self):
-        assert ChannelMode.LIVE.value == "live"
-        assert ChannelMode.POLL.value == "poll"
-        assert ChannelMode.ON_DEMAND.value == "on_demand"
+        assert IOMode.LIVE.value == "live"
+        assert IOMode.POLL.value == "poll"
+        assert IOMode.ON_DEMAND.value == "on_demand"
 
 
 class TestChannelABC:
