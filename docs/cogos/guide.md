@@ -9,7 +9,7 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 - AWS credentials configured (profile `softmax-org`)
 - Python with `uv` for dependency management
 - Environment variables for DB: `DB_RESOURCE_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `AWS_REGION`
-- For local dev: set `USE_LOCAL_DB=1` to use LocalRepository (JSON file at `~/.cogent/local/data.json`)
+- For local dev: set `USE_LOCAL_DB=1` to use LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`)
 
 ### Boot a Cogent
 
@@ -506,11 +506,21 @@ The dashboard provides a web UI for monitoring and managing CogOS. It runs as a 
 ### Starting Locally
 
 ```bash
-# Backend (port 8100)
-uv run uvicorn dashboard.app:app --host 0.0.0.0 --port 8100 --reload
+# One command: backend + frontend against the local JSON repo
+cogent local dashboard serve --db local
 
-# Frontend (port 5174)
+# Manual alternative:
+# Backend (port 8100 by default)
+USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port 8100 --reload
+
+# Frontend (port 5200 by default)
 cd dashboard/frontend && npm run dev
+```
+
+The dashboard reads from the same local repo as `cogent local cogos ...`, so boot local state first:
+
+```bash
+cogent local cogos image boot cogent-v1 --clean
 ```
 
 ### Panels

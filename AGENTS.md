@@ -52,7 +52,7 @@ polis/shared/{key}         # Org-wide shared keys (e.g., polis/shared/jwt-signin
 
 ## Running a Cogent Locally vs on AWS
 
-`-c local` means run on this machine using LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`). Any other `-c` value (e.g., `-c dr.alpha`) targets the named cogent's AWS infrastructure (RDS, Lambda, ECS).
+`cogent local ...` (or `cogos -c local ...`) means run on this machine using LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`). Any other cogent name (for example `dr.alpha`) targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
 
 ### Local: Run CogOS on this machine
 
@@ -92,7 +92,7 @@ All of the following have been tested and work with `cogent local`:
 | Inspect capability | `cogent local cogos capability get <name>` |
 | List/read/create files | `cogent local cogos file list`, `file get`, `file create` |
 | List handlers | `cogent local cogos handler list` |
-| Emit channel message | `cogent local cogos event emit <channel> --payload '{...}'` |
+| Emit channel message | `cogent local cogos channel send <channel> --payload '{...}'` |
 | Run executor tick | `cogent local cogos run-local --once` |
 | Run process directly | `cogent local cogos process run <name> --local` |
 | Disable process | `cogent local cogos process disable <name>` |
@@ -120,7 +120,7 @@ In production (Docker), both are served on a single port (8100) — Next.js is s
 
 ```bash
 # All-in-one (starts both backend + frontend, opens browser):
-cogent dr.alpha dashboard serve --db local     # local DB
+cogent local dashboard serve --db local        # local JSON DB
 cogent dr.alpha dashboard serve --db prod      # live polis DB
 
 # Manual (two terminals):
@@ -186,14 +186,14 @@ Start the dashboard backend and frontend:
 # Terminal 1: Backend (FastAPI on port 8100)
 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port 8100 --reload
 
-# Terminal 2: Frontend (Next.js on port 5174)
+# Terminal 2: Frontend (Next.js on port 5200 by default)
 cd dashboard/frontend && npm run dev
 ```
 
 ### Quick Start
 
 ```bash
-npx agent-browser open http://localhost:5174 && npx agent-browser wait --load networkidle && npx agent-browser snapshot -i
+npx agent-browser open http://localhost:5200 && npx agent-browser wait --load networkidle && npx agent-browser snapshot -i
 ```
 
 ### Dashboard Panels to Test
@@ -215,7 +215,7 @@ The dashboard uses CogOS routers. Key tabs:
 
 ```bash
 # Open dashboard and orient
-npx agent-browser open http://localhost:5174
+npx agent-browser open http://localhost:5200
 npx agent-browser wait --load networkidle
 npx agent-browser snapshot -i
 
@@ -240,7 +240,7 @@ npx agent-browser screenshot --annotate ./test-output/dashboard.png
 For a full QA pass, use the `dogfood` skill:
 
 ```
-/dogfood http://localhost:5174
+/dogfood http://localhost:5200
 ```
 
 This will systematically explore the dashboard, document issues with screenshots and repro videos, and produce a structured report.
@@ -277,13 +277,13 @@ The backend serves REST API under `/api/cogents/{name}/`:
 ### Architecture
 
 - **Backend**: FastAPI + RDS Data API, port 8100
-- **Frontend**: Next.js 15 + React 19 + Tailwind v4, port 5174
+- **Frontend**: Next.js 15 + React 19 + Tailwind v4, port 5200 by default
 - **Real-time**: WebSocket via PostgreSQL LISTEN/NOTIFY
 - **Auth**: API key in `x-api-key` header (SHA-256 hashed, stored in Secrets Manager)
 
 ### Database Connection
 
-Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). Set `USE_LOCAL_DB=1` to use LocalRepository (JSON file at `~/.cogent/local/data.json`) for local dev without AWS.
+Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). Set `USE_LOCAL_DB=1` to use LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`) for local dev without AWS.
 
 ## Development
 
