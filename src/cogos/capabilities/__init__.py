@@ -752,4 +752,78 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    {
+        "name": "asana",
+        "description": "Create and manage Asana tasks.",
+        "handler": "cogos.capabilities.asana_cap.AsanaCapability",
+        "instructions": (
+            "Use asana to manage tasks in Asana.\n"
+            "- asana.create_task(project, name, notes?, assignee?, due_on?) — create a task\n"
+            "- asana.update_task(task_id, **fields) — update a task\n"
+            "- asana.list_tasks(project, limit=50) — list tasks in a project\n"
+            "- asana.add_comment(task_id, text) — add a comment to a task\n"
+            "API key is managed internally. Uses Asana PAT for authentication."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "projects": {"type": "array", "items": {"type": "string"}, "description": "Allowed project GIDs"},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["create_task", "update_task", "list_tasks", "add_comment"]}},
+                },
+            },
+            "create_task": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "project": {"type": "string"}, "name": {"type": "string"},
+                        "notes": {"type": "string", "default": ""},
+                        "assignee": {"type": "string"}, "due_on": {"type": "string"},
+                    },
+                    "required": ["project", "name"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "project": {"type": "string"}, "url": {"type": "string"}},
+                },
+            },
+            "update_task": {
+                "input": {
+                    "type": "object",
+                    "properties": {"task_id": {"type": "string"}},
+                    "required": ["task_id"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "url": {"type": "string"}},
+                },
+            },
+            "list_tasks": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "project": {"type": "string"}, "limit": {"type": "integer", "default": 50},
+                    },
+                    "required": ["project"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "assignee": {"type": "string"}, "due_on": {"type": "string"}, "completed": {"type": "boolean"}},
+                    },
+                },
+            },
+            "add_comment": {
+                "input": {
+                    "type": "object",
+                    "properties": {"task_id": {"type": "string"}, "text": {"type": "string"}},
+                    "required": ["task_id", "text"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "task_id": {"type": "string"}},
+                },
+            },
+        },
+    },
 ]
