@@ -258,6 +258,8 @@ class TestBridgeInbound:
         msg = _make_message(content="@bot hey")
         await bridge._relay_to_db(msg)
 
+        # Mentions should only write to the catch-all channel, not a fine-grained one
+        assert repo.append_channel_message.call_count == 1
         channel_msg = repo.append_channel_message.call_args.args[0]
         assert channel_msg.payload["message_type"] == "discord:mention"
 

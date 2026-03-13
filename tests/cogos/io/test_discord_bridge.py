@@ -56,7 +56,21 @@ async def test_relay_to_db_recreates_missing_system_channel():
     bridge._get_repo = MagicMock(return_value=repo)
 
     created_channel = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
-    repo.get_channel_by_name.side_effect = [None, created_channel]
+    fine_channel = Channel(name="io:discord:dm:456", channel_type=ChannelType.NAMED)
+
+    call_count = {"dm": 0, "fine": 0}
+
+    def _get_channel(name):
+        if name == "io:discord:dm":
+            call_count["dm"] += 1
+            # First call returns None (missing), second returns created channel
+            return None if call_count["dm"] == 1 else created_channel
+        if name == "io:discord:dm:456":
+            call_count["fine"] += 1
+            return None if call_count["fine"] == 1 else fine_channel
+        return None
+
+    repo.get_channel_by_name.side_effect = _get_channel
 
     msg = MagicMock(spec=discord.Message)
     msg.id = 123
@@ -73,14 +87,16 @@ async def test_relay_to_db_recreates_missing_system_channel():
 
     await bridge._relay_to_db(msg)
 
-    repo.upsert_channel.assert_called_once()
-    upserted_channel = repo.upsert_channel.call_args.args[0]
-    assert upserted_channel.name == "io:discord:dm"
+    # Catch-all channel should have been upserted (and fine-grained too)
+    upsert_names = [c.args[0].name for c in repo.upsert_channel.call_args_list]
+    assert "io:discord:dm" in upsert_names
+    upserted_channel = next(c.args[0] for c in repo.upsert_channel.call_args_list if c.args[0].name == "io:discord:dm")
     assert upserted_channel.owner_process is None
     assert upserted_channel.channel_type == ChannelType.NAMED
 
-    repo.append_channel_message.assert_called_once()
-    channel_message = repo.append_channel_message.call_args.args[0]
+    # 2 writes: catch-all + fine-grained channel
+    assert repo.append_channel_message.call_count == 2
+    channel_message = repo.append_channel_message.call_args_list[0].args[0]
     assert channel_message.channel == created_channel.id
     assert channel_message.sender_process is None
     assert channel_message.payload["message_type"] == "discord:dm"
