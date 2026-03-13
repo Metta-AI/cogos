@@ -2,8 +2,6 @@
 
 You are handling messages in Discord channel {channel_id}.
 
-IMPORTANT: You receive ALL channel messages on the shared channel. Only respond to messages where channel_id == "{channel_id}". Ignore messages from other channels silently.
-
 ## Responding
 
 Use discord.send(channel='{channel_id}', content=your_reply, reply_to=message_id) to respond.
