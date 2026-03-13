@@ -826,4 +826,80 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    {
+        "name": "github",
+        "description": "Read GitHub user profiles, repositories, and contributions.",
+        "handler": "cogos.capabilities.github_cap.GitHubCapability",
+        "instructions": (
+            "Use github to read GitHub data (read-only).\n"
+            "- github.search_repos(query, limit=10) — search repositories\n"
+            "- github.get_user(username) — get a user profile\n"
+            "- github.list_contributions(username, limit=30) — list recent activity\n"
+            "- github.get_repo(owner, name) — get repo details with readme excerpt\n"
+            "API key is managed internally. All operations are read-only."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "orgs": {"type": "array", "items": {"type": "string"}, "description": "Allowed organizations"},
+                    "query_budget": {"type": "integer", "description": "Max API queries allowed"},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["search_repos", "get_user", "list_contributions", "get_repo"]}},
+                },
+            },
+            "search_repos": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"}, "limit": {"type": "integer", "default": 10},
+                    },
+                    "required": ["query"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"full_name": {"type": "string"}, "description": {"type": "string"}, "stars": {"type": "integer"}, "language": {"type": "string"}, "url": {"type": "string"}},
+                    },
+                },
+            },
+            "get_user": {
+                "input": {
+                    "type": "object",
+                    "properties": {"username": {"type": "string"}},
+                    "required": ["username"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {"login": {"type": "string"}, "name": {"type": "string"}, "bio": {"type": "string"}, "company": {"type": "string"}, "location": {"type": "string"}, "public_repos": {"type": "integer"}, "followers": {"type": "integer"}, "url": {"type": "string"}},
+                },
+            },
+            "list_contributions": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "username": {"type": "string"}, "limit": {"type": "integer", "default": 30},
+                    },
+                    "required": ["username"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"repo": {"type": "string"}, "type": {"type": "string"}, "title": {"type": "string"}, "date": {"type": "string"}, "url": {"type": "string"}},
+                    },
+                },
+            },
+            "get_repo": {
+                "input": {
+                    "type": "object",
+                    "properties": {"owner": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["owner", "name"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {"full_name": {"type": "string"}, "description": {"type": "string"}, "stars": {"type": "integer"}, "forks": {"type": "integer"}, "language": {"type": "string"}, "topics": {"type": "array"}, "readme_excerpt": {"type": "string"}, "url": {"type": "string"}},
+                },
+            },
+        },
+    },
 ]
