@@ -341,74 +341,25 @@ def process_run(name: str, local: bool):
         return
 
     if local:
-        from cogos.executor.handler import execute_process, get_config, Run, RunStatus
-        from cogos.db.models import ProcessStatus
-        import time
+        from cogos.executor.handler import get_config
+        from cogos.runtime.local import run_and_complete
+        from cogos.db.models import ProcessStatus, Run, RunStatus
 
         config = get_config()
-
-        # Mark as running
         repo.update_process_status(p.id, ProcessStatus.RUNNING)
 
         run = Run(process=p.id, status=RunStatus.RUNNING)
-        run_id = repo.create_run(run)
-        click.echo(f"Starting local run {run_id} for {name}...")
+        repo.create_run(run)
+        click.echo(f"Starting local run {run.id} for {name}...")
 
-        start = time.time()
         bedrock = _bedrock_client()
-        try:
-            run = execute_process(p, {}, run, config, repo, bedrock_client=bedrock)
-            duration_ms = int((time.time() - start) * 1000)
-            repo.complete_run(
-                run.id, status=RunStatus.COMPLETED,
-                tokens_in=run.tokens_in, tokens_out=run.tokens_out,
-                cost_usd=run.cost_usd, duration_ms=duration_ms,
-                result=run.result, scope_log=run.scope_log,
-            )
+        run = run_and_complete(p, {}, run, config, repo, bedrock_client=bedrock)
 
-            # Publish completion message on process channel
-            _publish_process_event(repo, p, {
-                "status": "success", "run_id": str(run.id),
-                "process_name": name, "duration_ms": duration_ms,
-            })
-
-            # Transition process state: daemons go back to runnable, one-shots complete
-            if p.mode.value == "daemon":
-                repo.update_process_status(p.id, ProcessStatus.RUNNABLE)
-            else:
-                repo.update_process_status(p.id, ProcessStatus.COMPLETED)
-
-            click.echo(f"Run completed in {duration_ms}ms")
+        if run.status == RunStatus.COMPLETED:
+            click.echo(f"Run completed in {run.duration_ms or 0}ms")
             click.echo(f"  Tokens: {run.tokens_in} in, {run.tokens_out} out")
-        except Exception as e:
-            duration_ms = int((time.time() - start) * 1000)
-            repo.complete_run(
-                run.id, status=RunStatus.FAILED,
-                duration_ms=duration_ms, error=str(e)[:4000],
-            )
-
-            # Publish failure message on process channel
-            _publish_process_event(repo, p, {
-                "status": "failed", "run_id": str(run.id),
-                "error": str(e)[:1000],
-            })
-
-            # Daemons stay active after a failed turn so one bad event
-            # does not take down the whole process.
-            if p.mode.value == "daemon":
-                next_status = (
-                    ProcessStatus.RUNNABLE
-                    if repo.has_pending_deliveries(p.id)
-                    else ProcessStatus.WAITING
-                )
-                repo.update_process_status(p.id, next_status)
-            elif p.retry_count < p.max_retries:
-                repo.increment_retry(p.id)
-                repo.update_process_status(p.id, ProcessStatus.RUNNABLE)
-            else:
-                repo.update_process_status(p.id, ProcessStatus.DISABLED)
-
-            click.echo(f"Run failed in {duration_ms}ms: {e}")
+        else:
+            click.echo(f"Run failed: {run.error}")
     else:
         # Mark as runnable for scheduler to pick up
         from cogos.db.models import ProcessStatus
