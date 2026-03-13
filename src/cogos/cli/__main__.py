@@ -393,8 +393,16 @@ def process_run(name: str, local: bool):
                 "error": str(e)[:1000],
             })
 
-            # Retry or disable
-            if p.retry_count < p.max_retries:
+            # Daemons stay active after a failed turn so one bad event
+            # does not take down the whole process.
+            if p.mode.value == "daemon":
+                next_status = (
+                    ProcessStatus.RUNNABLE
+                    if repo.has_pending_deliveries(p.id)
+                    else ProcessStatus.WAITING
+                )
+                repo.update_process_status(p.id, next_status)
+            elif p.retry_count < p.max_retries:
                 repo.increment_retry(p.id)
                 repo.update_process_status(p.id, ProcessStatus.RUNNABLE)
             else:

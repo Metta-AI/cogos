@@ -79,3 +79,144 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
     assert repo.get_run(run.id).status == RunStatus.COMPLETED
     assert repo._event_deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
+
+
+def test_daemon_failure_returns_to_waiting_without_pending_deliveries(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="discord-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor_handler, "execute_process", _fail)
+
+    result = executor_handler.handler(
+        {"process_id": str(process.id)},
+        None,
+    )
+
+    assert result["statusCode"] == 500
+    runs = repo.list_runs(process_id=process.id)
+    assert len(runs) == 1
+    assert runs[0].status == RunStatus.FAILED
+    assert repo.get_process(process.id).status == ProcessStatus.WAITING
+
+
+def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="discord-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    handler = Handler(process=process.id, event_pattern="discord:dm")
+    repo.create_handler(handler)
+    current_event = Event(event_type="discord:dm", source="discord", payload={"content": "hello"})
+    queued_event = Event(event_type="discord:dm", source="discord", payload={"content": "next"})
+    repo.append_event(current_event)
+    repo.append_event(queued_event)
+    current_delivery_id, _ = repo.create_event_delivery(EventDelivery(event=current_event.id, handler=handler.id))
+    queued_delivery_id, _ = repo.create_event_delivery(EventDelivery(event=queued_event.id, handler=handler.id))
+
+    run = Run(process=process.id, event=current_event.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+    repo.mark_queued(current_delivery_id, run.id)
+
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor_handler, "execute_process", _fail)
+
+    result = executor_handler.handler(
+        {"process_id": str(process.id), "event_id": str(current_event.id), "run_id": str(run.id)},
+        None,
+    )
+
+    assert result["statusCode"] == 500
+    assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
+    assert repo.get_run(run.id).status == RunStatus.FAILED
+    assert repo._event_deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
+    assert repo._event_deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
+
+
+def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="discord-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Handle the incoming Discord message.",
+    )
+    run = Run(process=process.id, status=RunStatus.RUNNING)
+    config = executor_handler.ExecutorConfig(max_turns=3)
+
+    class FakeBedrock:
+        def __init__(self):
+            self.calls = []
+            self.responses = [
+                {
+                    "output": {
+                        "message": {
+                            "role": "assistant",
+                            "content": [{
+                                "toolUse": {
+                                    "toolUseId": "tool-1",
+                                    "name": "bad tool",
+                                    "input": {},
+                                }
+                            }],
+                        }
+                    },
+                    "usage": {"inputTokens": 11, "outputTokens": 7},
+                    "stopReason": "tool_use",
+                },
+                {
+                    "output": {
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"text": "done"}],
+                        }
+                    },
+                    "usage": {"inputTokens": 13, "outputTokens": 5},
+                    "stopReason": "end_turn",
+                },
+            ]
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return self.responses.pop(0)
+
+    fake_bedrock = FakeBedrock()
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    result = executor_handler.execute_process(
+        process,
+        {"event_type": "discord:dm", "payload": {"content": "hello"}},
+        run,
+        config,
+        repo,
+        bedrock_client=fake_bedrock,
+    )
+
+    assert result.tokens_in == 24
+    assert result.tokens_out == 12
+    assert len(fake_bedrock.calls) == 2
+    second_messages = fake_bedrock.calls[1]["messages"]
+    assert second_messages[1]["content"][0]["toolUse"]["name"] == "search"
+    assert second_messages[2]["content"][0]["toolResult"]["toolUseId"] == "tool-1"
+    assert "invalid tool name 'bad tool'" in second_messages[2]["content"][0]["toolResult"]["content"][0]["text"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -94,6 +95,13 @@ TOOL_CONFIG = {"tools": [
         }},
     }},
 ]}
+
+VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+SUPPORTED_TOOL_NAMES = {
+    tool["toolSpec"]["name"]
+    for tool in TOOL_CONFIG["tools"]
+}
+TOOL_NAME_PLACEHOLDER = "search"
 
 
 def handler(event: dict, context: Any = None) -> dict:
@@ -217,6 +225,19 @@ def handler(event: dict, context: Any = None) -> dict:
         current = repo.get_process(process.id)
         if current and current.status in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
             pass  # someone disabled/suspended it while running
+        elif process.mode.value == "daemon":
+            next_status = (
+                ProcessStatus.RUNNABLE
+                if repo.has_pending_deliveries(process.id)
+                else ProcessStatus.WAITING
+            )
+            repo.update_process_status(process.id, next_status)
+            logger.warning(
+                "Daemon process %s failed run %s but remains %s",
+                process.name,
+                run.id,
+                next_status.value,
+            )
         elif process.retry_count < process.max_retries:
             repo.increment_retry(process.id)
             repo.update_process_status(process.id, ProcessStatus.RUNNABLE)
@@ -282,6 +303,7 @@ def execute_process(
     turns_executed = 0
     tool_turns = 0
     tool_calls = 0
+    invalid_tool_calls = 0
     bedrock_total_ms = 0
     tool_total_ms = 0
     tool_latency_by_name: dict[str, int] = defaultdict(int)
@@ -301,7 +323,12 @@ def execute_process(
         bedrock_latency_ms = int((time.monotonic() - bedrock_started) * 1000)
         turns_executed += 1
         bedrock_total_ms += bedrock_latency_ms
-        output_message = response["output"]["message"]
+        output_message, invalid_tool_names = _sanitize_tool_use_message(
+            response["output"]["message"],
+            run_id=run.id,
+            process_name=process.name,
+            turn_number=turn_number,
+        )
         messages.append(output_message)
 
         usage = response.get("usage", {})
@@ -329,8 +356,25 @@ def execute_process(
                 if "toolUse" not in block:
                     continue
                 tool_use = block["toolUse"]
+                tool_use_id = tool_use.get("toolUseId", "")
                 tool_name = tool_use.get("name", "")
                 tool_input = tool_use.get("input", {})
+                invalid_tool_name = invalid_tool_names.get(tool_use_id)
+                if invalid_tool_name is not None:
+                    invalid_tool_calls += 1
+                    tool_calls += 1
+                    tool_results.append({
+                        "toolResult": {
+                            "toolUseId": tool_use_id,
+                            "content": [{
+                                "text": (
+                                    f"Error: invalid tool name '{invalid_tool_name}'. "
+                                    f"Valid tools: {', '.join(sorted(SUPPORTED_TOOL_NAMES))}."
+                                ),
+                            }],
+                        }
+                    })
+                    continue
                 tool_started = time.monotonic()
 
                 if tool_name == "search":
@@ -367,7 +411,8 @@ def execute_process(
     run.scope_log = sandbox.scope_log
     logger.info(
         "CogOS execution breakdown run=%s process=%s model=%s turns=%s final_stop_reason=%s "
-        "bedrock_calls=%s tool_turns=%s tool_calls=%s bedrock_total_ms=%s tool_total_ms=%s "
+        "bedrock_calls=%s tool_turns=%s tool_calls=%s invalid_tool_calls=%s "
+        "bedrock_total_ms=%s tool_total_ms=%s "
         "search_ms=%s run_code_ms=%s tokens_in=%s tokens_out=%s",
         run.id,
         process.name,
@@ -377,6 +422,7 @@ def execute_process(
         turns_executed,
         tool_turns,
         tool_calls,
+        invalid_tool_calls,
         bedrock_total_ms,
         tool_total_ms,
         tool_latency_by_name.get("search", 0),
@@ -385,6 +431,70 @@ def execute_process(
         total_output_tokens,
     )
     return run
+
+
+def _sanitize_tool_use_message(
+    output_message: dict[str, Any],
+    *,
+    run_id: UUID,
+    process_name: str,
+    turn_number: int,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    content = output_message.get("content", [])
+    if not isinstance(content, list):
+        return output_message, {}
+
+    invalid_tool_names: dict[str, str] = {}
+    sanitized_content: list[dict[str, Any]] = []
+
+    for idx, block in enumerate(content):
+        if not isinstance(block, dict):
+            sanitized_content.append(block)
+            continue
+        tool_use = block.get("toolUse")
+        if not isinstance(tool_use, dict):
+            sanitized_content.append(block)
+            continue
+
+        tool_name = tool_use.get("name")
+        if _is_supported_tool_name(tool_name):
+            sanitized_content.append(block)
+            continue
+
+        raw_tool_use_id = tool_use.get("toolUseId")
+        tool_use_id = raw_tool_use_id if isinstance(raw_tool_use_id, str) and raw_tool_use_id else f"invalid-tool-{turn_number}-{idx}"
+        invalid_tool_name = str(tool_name) if tool_name is not None else "<missing>"
+        invalid_tool_names[tool_use_id] = invalid_tool_name
+        logger.warning(
+            "CogOS suppressed invalid tool request run=%s process=%s turn=%s tool=%r tool_use_id=%r",
+            run_id,
+            process_name,
+            turn_number,
+            tool_name,
+            raw_tool_use_id,
+        )
+        sanitized_content.append({
+            "toolUse": {
+                "toolUseId": tool_use_id,
+                "name": TOOL_NAME_PLACEHOLDER,
+                "input": {"query": f"invalid tool placeholder for {invalid_tool_name}"},
+            }
+        })
+
+    if not invalid_tool_names:
+        return output_message, {}
+
+    sanitized_message = dict(output_message)
+    sanitized_message["content"] = sanitized_content
+    return sanitized_message, invalid_tool_names
+
+
+def _is_supported_tool_name(name: object) -> bool:
+    return (
+        isinstance(name, str)
+        and VALID_TOOL_NAME_RE.fullmatch(name) is not None
+        and name in SUPPORTED_TOOL_NAMES
+    )
 
 
 def _load_includes(repo: Repository) -> str:
