@@ -48,36 +48,55 @@ The important boundary is:
 The `_sessions` directory is partitioned by `session_path`:
 
 ```text
-session_path = "{mode}-{hash}"
+session_path = "{namespace}-{hash}"
 ```
 
 Where:
 
-- `mode` comes from `process.metadata["session"]["mode"]`
+- `namespace` is derived from `process.metadata["session"]`
 - `hash` is the first 16 hex chars of `sha256(logical_session_key)`
 
 The hash is there so file keys do not embed raw user text or arbitrary payload strings.
 
-### Modes
+### Session Config
 
-| Mode | Meaning |
+The cleaner session config shape is:
+
+```json
+{"resume": false, "scope": "process"}
+{"resume": true, "scope": "process"}
+{"resume": true, "scope": "keyed", "key_field": "session_key"}
+```
+
+Where:
+
+- `resume` controls whether the executor should load `checkpoint.json`
+- `scope` controls how runs are grouped under `_sessions/`
+- `key_field` is only used for `scope: "keyed"`
+
+Legacy `{"mode": "off" | "process" | "keyed"}` values are still accepted as a compatibility fallback.
+
+### Namespace Labels
+
+| Namespace | Meaning |
 |---|---|
-| `off` | Resume is off. The executor still writes run artifacts, but it never loads a checkpoint. |
-| `process` | One rolling resumable session per process. The executor may load `checkpoint.json` if it is valid. |
-| `keyed` | Intended for event-keyed sessions. The logical key comes from an event payload field. In the current implementation, this mode is parsed but resume is not yet enabled. |
+| `log-only` | Process-scoped artifacts with resume disabled. |
+| `process` | Process-scoped artifacts with resume enabled. The executor may load `checkpoint.json` if it is valid. |
+| `keyed` | Intended for event-keyed artifacts with resume enabled. The logical key comes from an event payload field. In the current implementation, keyed resume is still not enabled. |
+| `keyed-log-only` | Event-keyed artifacts with resume disabled. |
 
 So a path like:
 
 ```text
-/proc/{process_id}/_sessions/off-37a8eec1ce19687d/
+/proc/{process_id}/_sessions/log-only-37a8eec1ce19687d/
 ```
 
 means:
 
-- `off`: this session namespace is logging-only, not resumable
+- `log-only`: artifacts are being written, but resume is intentionally disabled
 - `37a8eec1ce19687d`: stable hash of the logical session key
 
-For both `off` and `process`, the default logical session key is currently `"default"` unless a keyed mode is used later.
+For both `log-only` and `process`, the default logical session key is currently `"default"` unless a keyed scope is used.
 
 ## Session Artifact Files
 
@@ -85,7 +104,7 @@ Within one session namespace:
 
 | File | Mutable | Meaning |
 |---|---|---|
-| `manifest.json` | yes | Small session-level index: latest run, latest final artifact, checkpoint pointer, mode metadata |
+| `manifest.json` | yes | Small session-level index: latest run, latest final artifact, checkpoint pointer, scope metadata |
 | `checkpoint.json` | yes | Resumable Bedrock message state for the active session |
 | `runs/{run_id}/trigger.json` | no | The incoming event payload plus the synthesized user message for that run |
 | `runs/{run_id}/steps/{seq}.json` | no | Ordered executor state transitions for the run |
@@ -110,7 +129,7 @@ If you are trying to understand one run, start here:
 
 ## Operator Notes
 
-- Seeing `off-...` in `_sessions` does not mean the session system is broken. It means artifacts are being written, but resume is intentionally disabled for that process.
+- Seeing `log-only-...` in `_sessions` does not mean the session system is broken. It means artifacts are being written, but resume is intentionally disabled for that process.
 - The dashboard run-log foldout reads these executor-owned artifacts directly.
 - Raw Python logger output from the executor is separate from these files. In AWS it goes to CloudWatch. In local `run-local`, it goes to the local process stdout/stderr unless captured elsewhere.
 - Processes should treat `_sessions` as executor-owned state, not as a general-purpose scratch area.

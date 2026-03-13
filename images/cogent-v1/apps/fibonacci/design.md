@@ -9,7 +9,7 @@ and then continue from the prior run's conversation state on the next wake.
 
 - process: `fibonacci`
 - wake channel: `fibonacci:poke`
-- session mode: `process`
+- session config: `{"resume": true, "scope": "process"}`
 
 There is intentionally no keyed session behavior here. This demo owns one
 rolling sequence per process so the reentrancy behavior is obvious.
