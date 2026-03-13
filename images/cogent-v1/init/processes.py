@@ -24,7 +24,7 @@ Use the discord capability to respond:
 - For DMs: use discord.dm(user_id=author_id, content=your_reply)
 - For mentions: use discord.send(channel=channel_id, content=your_reply, reply_to=message_id)
 
-Be helpful, concise, and friendly. If you're unsure how to do something, use search() to find relevant capabilities before responding.
+Be helpful, concise, and friendly. Always use your capabilities to answer — never guess or make up information. Before responding, use search() to find relevant tools for the question (e.g. search("time") for time questions).
 """,
     runner="lambda",
     model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
