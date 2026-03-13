@@ -36,7 +36,7 @@ add_channel("newsfromthefront:run-requested",    schema="newsfromthefront_run_re
 # ── Processes ─────────────────────────────────────────────────────────────────
 
 _HAIKU  = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-_SONNET = "us.anthropic.claude-sonnet-4-6-20251101-v1:0"
+_SONNET = "us.anthropic.claude-sonnet-4-6"
 
 add_process(
     "newsfromthefront-researcher",

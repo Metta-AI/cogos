@@ -17,7 +17,7 @@ AWS credentials with Bedrock access are required for the local executor to make 
 
 ### 2. Load an Image
 
-`cogent local ...` uses the JSON-backed `LocalRepository` instead of AWS-backed RDS/Lambda state. Data persists to `~/.cogent/local/cogos_data.json`.
+`cogent local ...` uses the JSON-backed `LocalRepository` instead of AWS-backed RDS/Lambda state. Data persists to `.local/cogos/cogos_data.json` under the current checkout (override with `COGENT_LOCAL_DATA`).
 
 Images live in `images/`. The main image is `cogent-v1`. App-specific images are under `images/apps/` (e.g., `apps/newsfromthefront`).
 

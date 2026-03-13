@@ -75,10 +75,10 @@ src/polis/cli.py                        # polis dashboard deploy/destroy
 | `DB_CLUSTER_ARN` | Aurora cluster ARN (Data API) |
 | `DB_SECRET_ARN` | Secrets Manager ARN for DB auth |
 | `DB_NAME` | Database name (`cogent`) |
-| `USE_LOCAL_DB` | Set to `1` to use LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`) instead of RDS Data API. For local dev only. |
+| `USE_LOCAL_DB` | Set to `1` to use LocalRepository (JSON file at `.local/cogos/cogos_data.json` under the checkout, override with `COGENT_LOCAL_DATA`) instead of RDS Data API. For local dev only. |
 
 ## Database Connection
 
 The dashboard **requires** RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). If these are missing, the app will fail to start rather than silently returning empty data.
 
-For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository which persists to `~/.cogent/local/cogos_data.json`. Populate it with `cogent local cogos image boot cogent-v1 --clean`.
+For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository which persists to `.local/cogos/cogos_data.json` under the checkout. Populate it with `cogent local cogos image boot cogent-v1 --clean`.
