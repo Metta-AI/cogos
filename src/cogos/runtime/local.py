@@ -166,6 +166,9 @@ def run_local_tick(
     # Backstop: ensure all channel messages have deliveries
     scheduler.match_messages()
 
+    # Reap idle daemon processes
+    scheduler.reap_idle_processes()
+
     executed = 0
     while True:
         selection = scheduler.select_processes(slots=1)

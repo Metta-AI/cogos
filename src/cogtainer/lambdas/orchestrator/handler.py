@@ -276,6 +276,9 @@ def _cogos_scheduler_tick(config) -> None:
         if match_result.deliveries_created > 0:
             logger.info(f"CogOS: matched {match_result.deliveries_created} deliveries")
 
+        # Reap idle daemon processes
+        scheduler.reap_idle_processes()
+
         # Select and dispatch runnable processes
         select_result = scheduler.select_processes(slots=5)
         if not select_result.selected:
