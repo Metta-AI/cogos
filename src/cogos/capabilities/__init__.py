@@ -663,39 +663,21 @@ BUILTIN_CAPABILITIES: list[dict] = [
     },
     {
         "name": "web_search",
-        "description": "Search the web via Tavily API.",
+        "description": "Multi-backend web search: Perplexity (general web), GitHub (repos/issues/code), Twitter/X (tweets).",
         "handler": "cogos.capabilities.web_search.WebSearchCapability",
         "instructions": (
-            "Use web_search to search the web.\n"
-            "- web_search.search(query, limit=5) — search and return results\n"
-            "Returns a list of SearchResult(title, url, snippet, score) or SearchError.\n"
-            "API key is managed internally. Never log or expose it."
+            "Use web_search to research topics across multiple sources.\n"
+            "- web_search.search(query, recency?, after_date?, before_date?) — general web search via Perplexity; recency: 'day'|'week'|'month'\n"
+            "- web_search.search_github(query, search_type?, after_date?, before_date?) — GitHub search; search_type: 'repositories'|'issues'|'discussions'|'code'\n"
+            "- web_search.search_twitter(query, recency?, after_date?, before_date?) — Twitter/X tweet search via X API v2\n"
+            "Use recency='day' for latest news. Use after_date/before_date (ISO date strings) for backfill."
         ),
         "schema": {
             "scope": {
                 "properties": {
-                    "domains": {"type": "array", "items": {"type": "string"}, "description": "Domain allowlist"},
-                    "query_budget": {"type": "integer", "description": "Max queries allowed"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["search"]}},
-                },
-            },
-            "search": {
-                "input": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Search query"},
-                        "limit": {"type": "integer", "default": 5, "description": "Max results"},
-                    },
-                    "required": ["query"],
-                },
-                "output": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"}, "url": {"type": "string"},
-                            "snippet": {"type": "string"}, "score": {"type": "number"},
-                        },
+                    "ops": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["search", "search_github", "search_twitter"]},
                     },
                 },
             },
