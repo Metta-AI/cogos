@@ -40,6 +40,7 @@ class Process(BaseModel):
     model: str | None = None
     model_constraints: dict[str, Any] = Field(default_factory=dict)
     return_schema: dict[str, Any] | None = None
+    idle_timeout_ms: int | None = None
     max_duration_ms: int | None = None
     max_retries: int = 0
     retry_count: int = 0

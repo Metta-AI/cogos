@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS cogos_process (
     model               TEXT,
     model_constraints   JSONB NOT NULL DEFAULT '{}',
     return_schema       JSONB,
+    idle_timeout_ms     BIGINT,
     max_duration_ms     INT,
     max_retries         INT NOT NULL DEFAULT 0,
     retry_count         INT NOT NULL DEFAULT 0,

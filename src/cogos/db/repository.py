@@ -184,12 +184,12 @@ class Repository:
                    (id, name, mode, content, priority, resources, runner,
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
-                    max_duration_ms, max_retries, retry_count, retry_backoff_ms,
+                    idle_timeout_ms, max_duration_ms, max_retries, retry_count, retry_backoff_ms,
                     clear_context, metadata)
                VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :runner,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
-                       :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
+                       :idle_timeout_ms, :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
                        :clear_context, :metadata::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content,
@@ -197,6 +197,7 @@ class Repository:
                    preemptible = EXCLUDED.preemptible, model = EXCLUDED.model,
                    model_constraints = EXCLUDED.model_constraints,
                    return_schema = EXCLUDED.return_schema,
+                   idle_timeout_ms = EXCLUDED.idle_timeout_ms,
                    max_duration_ms = EXCLUDED.max_duration_ms,
                    max_retries = EXCLUDED.max_retries,
                    retry_backoff_ms = EXCLUDED.retry_backoff_ms,
@@ -219,6 +220,7 @@ class Repository:
                 self._param("model", p.model),
                 self._param("model_constraints", p.model_constraints),
                 self._param("return_schema", p.return_schema),
+                self._param("idle_timeout_ms", p.idle_timeout_ms),
                 self._param("max_duration_ms", p.max_duration_ms),
                 self._param("max_retries", p.max_retries),
                 self._param("retry_count", p.retry_count),
@@ -311,6 +313,7 @@ class Repository:
             model=row.get("model"),
             model_constraints=self._json_field(row, "model_constraints", {}),
             return_schema=self._json_field(row, "return_schema"),
+            idle_timeout_ms=row.get("idle_timeout_ms"),
             max_duration_ms=row.get("max_duration_ms"),
             max_retries=row.get("max_retries", 0),
             retry_count=row.get("retry_count", 0),
