@@ -28,6 +28,10 @@ function headers(): Record<string, string> {
   return key ? { "x-api-key": key } : {};
 }
 
+function encodeFileKey(key: string): string {
+  return encodeURIComponent(key);
+}
+
 async function fetchJSON<T>(path: string): Promise<T> {
   const resp = await fetch(path, { headers: headers() });
   if (resp.status === 401) throw new Error("unauthorized");
@@ -183,7 +187,7 @@ export async function getFileDetail(
   name: string,
   key: string,
 ): Promise<{ file: CogosFile; versions: CogosFileVersion[] }> {
-  return fetchJSON(`/api/cogents/${name}/files/${key}`);
+  return fetchJSON(`/api/cogents/${name}/files/${encodeFileKey(key)}`);
 }
 
 export async function createFile(
@@ -204,7 +208,7 @@ export async function updateFile(
   key: string,
   body: { content: string; source?: string; read_only?: boolean },
 ): Promise<CogosFileVersion> {
-  const resp = await fetch(`/api/cogents/${name}/files/${key}`, {
+  const resp = await fetch(`/api/cogents/${name}/files/${encodeFileKey(key)}`, {
     method: "PUT",
     headers: { "content-type": "application/json", ...headers() },
     body: JSON.stringify(body),
@@ -219,7 +223,7 @@ export async function activateFileVersion(
   version: number,
 ): Promise<void> {
   const resp = await fetch(
-    `/api/cogents/${name}/files/${key}/versions/${version}/activate`,
+    `/api/cogents/${name}/files/${encodeFileKey(key)}/versions/${version}/activate`,
     { method: "POST", headers: headers() },
   );
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
@@ -232,7 +236,7 @@ export async function updateFileVersionContent(
   content: string,
 ): Promise<CogosFileVersion> {
   const resp = await fetch(
-    `/api/cogents/${name}/files/${key}/versions/${version}/content`,
+    `/api/cogents/${name}/files/${encodeFileKey(key)}/versions/${version}/content`,
     {
       method: "PUT",
       headers: { "content-type": "application/json", ...headers() },
@@ -249,14 +253,14 @@ export async function deleteFileVersion(
   version: number,
 ): Promise<void> {
   const resp = await fetch(
-    `/api/cogents/${name}/files/${key}/versions/${version}`,
+    `/api/cogents/${name}/files/${encodeFileKey(key)}/versions/${version}`,
     { method: "DELETE", headers: headers() },
   );
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }
 
 export async function deleteFile(name: string, key: string): Promise<void> {
-  const resp = await fetch(`/api/cogents/${name}/files/${key}`, {
+  const resp = await fetch(`/api/cogents/${name}/files/${encodeFileKey(key)}`, {
     method: "DELETE",
     headers: headers(),
   });
