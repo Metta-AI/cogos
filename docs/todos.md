@@ -6,13 +6,13 @@ Missing capabilities and infrastructure needed for the recruiter app (and genera
 
 ### P0 — Required for recruiter MVP
 
-- [ ] **WebSearchCapability** — search the web via API (e.g., Brave Search, Tavily, or SerpAPI). Methods: `search(query, limit) -> list[SearchResult]`. Scopeable by domain allowlist or query budget.
+- [x] **WebSearchCapability** — search the web via Tavily API. Methods: `search(query, limit) -> list[SearchResult]`. Scopeable by domain allowlist or query budget.
 
-- [ ] **WebFetchCapability** — fetch and extract content from URLs. Methods: `fetch(url) -> PageContent`, `extract_text(url) -> str`. Needed for reading GitHub profiles, Substack posts, Twitter threads. Scopeable by domain allowlist.
+- [x] **WebFetchCapability** — fetch and extract content from URLs. Methods: `fetch(url) -> PageContent`, `extract_text(url) -> TextContent`. Scopeable by domain allowlist.
 
-- [ ] **AsanaCapability** — create and manage Asana tasks. Methods: `create_task(project, name, notes, ...) -> Task`, `update_task(task_id, ...) -> Task`, `list_tasks(project, ...) -> list[Task]`, `add_comment(task_id, text)`. Scopeable by project/workspace. Uses PAT from secrets.
+- [x] **AsanaCapability** — create and manage Asana tasks. Methods: `create_task`, `update_task`, `list_tasks`, `add_comment`. Scopeable by project/ops. Uses PAT from secrets.
 
-- [ ] **GitHubCapability** — read GitHub data. Methods: `search_repos(query) -> list[Repo]`, `get_user(username) -> UserProfile`, `list_contributions(username) -> list[Contribution]`, `get_repo(owner, name) -> RepoDetail`. Read-only, scopeable by org/query budget.
+- [x] **GitHubCapability** — read GitHub data. Methods: `search_repos`, `get_user`, `list_contributions`, `get_repo`. Read-only, scopeable by org/query budget.
 
 ### P1 — Required for full recruiter experience
 
