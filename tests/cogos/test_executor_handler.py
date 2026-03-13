@@ -368,7 +368,11 @@ def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tm
     assert final_artifact["status"] == RunStatus.COMPLETED.value
     assert final_artifact["final_stop_reason"] == "end_turn"
     assert final_artifact["resume_skipped_reason"] is None
+    assert final_artifact["session_scope"] == "process"
+    assert final_artifact["session_path"].startswith("log-only-")
     assert manifest["latest_run_id"] == str(run.id)
+    assert manifest["session_scope"] == "process"
+    assert manifest["session_path"].startswith("log-only-")
     assert len(step_files) == 3
 
 
@@ -380,7 +384,7 @@ def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
         status=ProcessStatus.RUNNING,
         runner="local",
         content="Continue the conversation.",
-        metadata={"session": {"mode": "process"}},
+        metadata={"session": {"resume": True, "scope": "process"}},
     )
     repo.upsert_process(process)
 
@@ -422,6 +426,49 @@ def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
     assert stored_run.snapshot["resume_skipped_reason"] is None
 
 
+def test_legacy_session_mode_process_still_resumes(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="legacy-reentrant-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="Continue the conversation.",
+        metadata={"session": {"mode": "process"}},
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    first_run = _make_run(repo, process)
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello-1"}},
+        first_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=_FakeBedrock([_text_response("first-response")]),
+    )
+
+    second_run = _make_run(repo, process)
+    second_bedrock = _FakeBedrock([_text_response("second-response")])
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello-2"}},
+        second_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=second_bedrock,
+    )
+
+    second_call_messages = second_bedrock.calls[0]["messages"]
+    assert len(second_call_messages) == 3
+    assert second_call_messages[1]["content"][0]["text"] == "first-response"
+
+    stored_run = repo.get_run(second_run.id)
+    assert stored_run.snapshot["resumed"] is True
+
+
 def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path):
     repo = _repo(tmp_path)
     process = Process(
@@ -431,7 +478,7 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
         runner="local",
         content="Use tools when needed.",
         max_retries=1,
-        metadata={"session": {"mode": "process"}},
+        metadata={"session": {"resume": True, "scope": "process"}},
     )
     repo.upsert_process(process)
 
@@ -506,7 +553,7 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
         status=ProcessStatus.RUNNING,
         runner="local",
         content="Original instructions.",
-        metadata={"session": {"mode": "process"}},
+        metadata={"session": {"resume": True, "scope": "process"}},
     )
     repo.upsert_process(process)
 

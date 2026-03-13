@@ -16,7 +16,7 @@ def test_cogent_v1_fibonacci_loads():
     assert fibonacci["content"] == "@{apps/fibonacci/fibonacci.md}"
     assert fibonacci["capabilities"] == ["dir"]
     assert fibonacci["handlers"] == ["fibonacci:poke"]
-    assert fibonacci["metadata"] == {"session": {"mode": "process"}}
+    assert fibonacci["metadata"] == {"session": {"resume": True, "scope": "process"}}
 
 
 def test_cogent_v1_fibonacci_files_and_prompt():

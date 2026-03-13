@@ -14,5 +14,5 @@ add_process(
     priority=1.0,
     capabilities=["dir"],
     handlers=["fibonacci:poke"],
-    metadata={"session": {"mode": "process"}},
+    metadata={"session": {"resume": True, "scope": "process"}},
 )

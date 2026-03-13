@@ -65,6 +65,8 @@ interface ProcessForm {
   grants: CapGrant[];
   handlers: string[];
   output_events: string[];
+  metadata: Record<string, unknown>;
+  session_resume: boolean;
 }
 
 const EMPTY_FORM: ProcessForm = {
@@ -84,6 +86,8 @@ const EMPTY_FORM: ProcessForm = {
   grants: [],
   handlers: [],
   output_events: [],
+  metadata: {},
+  session_resume: false,
 };
 
 const DURATION_UNITS = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
@@ -109,6 +113,7 @@ function formFromProcess(
   grants?: CapGrant[],
   handlerPatterns?: string[],
 ): ProcessForm {
+  const sessionConfig = readSessionConfig(p.metadata);
   return {
     name: p.name,
     mode: p.mode,
@@ -125,7 +130,80 @@ function formFromProcess(
     grants: grants ?? [],
     handlers: handlerPatterns ?? [],
     output_events: p.output_events ?? [],
+    metadata: cloneJsonRecord(p.metadata),
+    session_resume: sessionConfig.resume,
   };
+}
+
+function cloneJsonRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function readSessionConfig(metadata: Record<string, unknown> | null | undefined): {
+  resume: boolean;
+  scope: "process" | "keyed";
+  keyField: string;
+  explicit: boolean;
+} {
+  const session = metadata?.session;
+  if (!session || typeof session !== "object" || Array.isArray(session)) {
+    return { resume: false, scope: "process", keyField: "session_key", explicit: false };
+  }
+
+  const sessionRecord = session as Record<string, unknown>;
+  const rawKeyField = typeof sessionRecord.key_field === "string" && sessionRecord.key_field.trim()
+    ? sessionRecord.key_field.trim()
+    : "session_key";
+
+  if ("resume" in sessionRecord || "scope" in sessionRecord) {
+    return {
+      resume: sessionRecord.resume === true,
+      scope: sessionRecord.scope === "keyed" ? "keyed" : "process",
+      keyField: rawKeyField,
+      explicit: true,
+    };
+  }
+
+  if (sessionRecord.mode === "process") {
+    return { resume: true, scope: "process", keyField: rawKeyField, explicit: true };
+  }
+  if (sessionRecord.mode === "keyed") {
+    return { resume: true, scope: "keyed", keyField: rawKeyField, explicit: true };
+  }
+  if (sessionRecord.mode === "off") {
+    return { resume: false, scope: "process", keyField: rawKeyField, explicit: true };
+  }
+
+  return { resume: false, scope: "process", keyField: rawKeyField, explicit: true };
+}
+
+function buildMetadataWithSessionResume(
+  metadata: Record<string, unknown>,
+  sessionResume: boolean,
+): Record<string, unknown> {
+  const next = cloneJsonRecord(metadata);
+  const sessionConfig = readSessionConfig(next);
+  const existingSession = next.session;
+  const sessionRecord = existingSession && typeof existingSession === "object" && !Array.isArray(existingSession)
+    ? cloneJsonRecord(existingSession as Record<string, unknown>)
+    : {};
+
+  if (!sessionResume && !sessionConfig.explicit) {
+    delete next.session;
+    return next;
+  }
+
+  sessionRecord.resume = sessionResume;
+  sessionRecord.scope = sessionConfig.scope;
+  if (sessionConfig.keyField && sessionConfig.keyField !== "session_key") {
+    sessionRecord.key_field = sessionConfig.keyField;
+  } else {
+    delete sessionRecord.key_field;
+  }
+  delete sessionRecord.mode;
+  next.session = sessionRecord;
+  return next;
 }
 
 function fmtDuration(ms: number | null): string {
@@ -1122,18 +1200,23 @@ function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogent
 
 function IconButtonGroup<T extends string>({
   label,
+  help,
   options,
   value,
   onChange,
 }: {
   label: string;
+  help?: React.ReactNode;
   options: { value: T; icon: string; title: string }[];
   value: T;
   onChange: (value: T) => void;
 }) {
   return (
     <div>
-      <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">{label}</label>
+      <div className="flex items-center gap-2 mb-1">
+        <label className="text-[10px] text-[var(--text-muted)] uppercase block">{label}</label>
+        {help}
+      </div>
       <div className="flex gap-1">
         {options.map((opt) => (
           <button
@@ -1621,12 +1704,41 @@ function ProcessFormEditor({
       {/* Toggles row: mode, runner, status, preemptible, clear context */}
       <div className="flex gap-4 items-end flex-wrap">
         <IconButtonGroup
-          label="Mode"
+          label="Process Mode"
+          help={(
+            <SectionHelp
+              title="Process Mode"
+              bullets={[
+                "One-shot runs once for a wake or delivery, then exits.",
+                "Daemon stays installed, wakes repeatedly, and returns to waiting between runs.",
+                "This is separate from session resume settings in process metadata.",
+              ]}
+            />
+          )}
           value={form.mode}
           onChange={(mode) => onChange({ ...form, mode })}
           options={[
-            { value: "one_shot" as const, icon: "→", title: "One-shot" },
-            { value: "daemon" as const, icon: "⟳", title: "Daemon" },
+            { value: "one_shot" as const, icon: "→", title: "One-shot: run once, then exit" },
+            { value: "daemon" as const, icon: "⟳", title: "Daemon: wake repeatedly and return to waiting" },
+          ]}
+        />
+        <IconButtonGroup
+          label="Session Resume"
+          help={(
+            <SectionHelp
+              title="Session Resume"
+              bullets={[
+                "Off: write session artifacts, but always start from a fresh prompt state.",
+                "On: resume from the latest checkpoint for this process before appending the new trigger.",
+                "This is separate from Process Mode. A daemon can still have session resume off, and a one-shot process can have it on.",
+              ]}
+            />
+          )}
+          value={form.session_resume ? "on" : "off"}
+          onChange={(value) => onChange({ ...form, session_resume: value === "on" })}
+          options={[
+            { value: "off" as const, icon: "off", title: "Do not load a checkpoint before each run" },
+            { value: "on" as const, icon: "on", title: "Resume from the latest process session checkpoint" },
           ]}
         />
         <IconButtonGroup
@@ -1935,6 +2047,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
           capability_name: g.capability_name,
           config: g.config,
         })),
+        metadata: buildMetadataWithSessionResume(form.metadata, form.session_resume),
         handlers: form.handlers,
         output_events: form.output_events,
       };
@@ -2144,6 +2257,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
           const isSelected = selectedId === proc.id;
           const isEditing = editingId === proc.id;
           const lastRun = lastRunByProcess[proc.id];
+          const sessionConfig = readSessionConfig(proc.metadata);
 
           return (
             <div key={proc.id}>
@@ -2240,6 +2354,10 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                       <span className="text-[var(--text-muted)]">max duration: <span className="text-[var(--text-secondary)]">{fmtDuration(proc.max_duration_ms)}</span></span>
                     )}
                     <span className="text-[var(--text-muted)]">clear ctx: <span className="text-[var(--text-secondary)]">{proc.clear_context ? "yes" : "no"}</span></span>
+                    <span className="text-[var(--text-muted)]">session resume: <span className="text-[var(--text-secondary)]">{sessionConfig.resume ? "on" : "off"}</span></span>
+                    {(sessionConfig.resume || sessionConfig.explicit) && (
+                      <span className="text-[var(--text-muted)]">session scope: <span className="text-[var(--text-secondary)]">{sessionConfig.scope}</span></span>
+                    )}
                   </div>
 
                   {/* Context — includes + prompt tree merged */}

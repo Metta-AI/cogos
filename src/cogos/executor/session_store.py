@@ -24,7 +24,7 @@ DEFAULT_CHECKPOINT_MAX_BYTES = 200_000
 class ResolvedSession:
     process_id: UUID
     run_id: UUID
-    mode: str
+    scope: str
     logical_key: str
     key_field: str | None
     session_path: str
@@ -89,39 +89,27 @@ class SessionStore:
 
     def resolve_session(self, process: Process, event_data: dict[str, Any], run_id: UUID) -> ResolvedSession:
         session_meta = process.metadata.get("session", {}) if isinstance(process.metadata, dict) else {}
-        mode = "off"
-        key_field: str | None = "session_key"
-        default_skip_reason = None
-
-        if isinstance(session_meta, dict):
-            raw_mode = session_meta.get("mode")
-            if raw_mode in {"off", "process", "keyed"}:
-                mode = raw_mode
-            elif isinstance(raw_mode, str) and raw_mode:
-                default_skip_reason = f"invalid_session_mode:{raw_mode}"
-
-            raw_key_field = session_meta.get("key_field")
-            if isinstance(raw_key_field, str) and raw_key_field.strip():
-                key_field = raw_key_field.strip()
+        resume_requested, scope, key_field, default_skip_reason = self._parse_session_meta(session_meta)
 
         logical_key = "default"
-        if mode == "keyed":
+        if scope == "keyed":
             logical_key = self._resolve_keyed_key(event_data, key_field)
-            default_skip_reason = "unsupported_session_mode:keyed"
+            if resume_requested:
+                default_skip_reason = "unsupported_session_scope:keyed"
 
         session_hash = hashlib.sha256(logical_key.encode("utf-8")).hexdigest()[:16]
-        session_path = f"{mode}-{session_hash}"
+        session_namespace = self._session_namespace_label(scope=scope, resume_requested=resume_requested)
+        session_path = f"{session_namespace}-{session_hash}"
         base_key = f"/proc/{process.id}/_sessions/{session_path}"
 
-        resume_requested = mode != "off"
-        resume_enabled = mode == "process"
+        resume_enabled = resume_requested and scope == "process"
         if not resume_enabled and resume_requested and default_skip_reason is None:
-            default_skip_reason = f"resume_disabled_for_mode:{mode}"
+            default_skip_reason = f"resume_disabled_for_scope:{scope}"
 
         return ResolvedSession(
             process_id=process.id,
             run_id=run_id,
-            mode=mode,
+            scope=scope,
             logical_key=logical_key,
             key_field=key_field,
             session_path=session_path,
@@ -242,7 +230,7 @@ class SessionStore:
         now = _utc_now()
         payload = {
             "process_id": str(session.process_id),
-            "session_mode": session.mode,
+            "session_scope": session.scope,
             "session_key": session.logical_key,
             "session_path": session.session_path,
             "resume_requested": session.resume_requested,
@@ -347,7 +335,7 @@ class SessionStore:
         final_payload = {
             "process_id": str(session.process_id),
             "run_id": str(session.run_id),
-            "session_mode": session.mode,
+            "session_scope": session.scope,
             "session_key": session.logical_key,
             "session_path": session.session_path,
             "status": status,
@@ -374,7 +362,7 @@ class SessionStore:
             checkpoint_key=checkpoint_key,
         )
         return {
-            "session_mode": session.mode,
+            "session_scope": session.scope,
             "session_key": session.logical_key,
             "session_path": session.session_path,
             "manifest_key": session.manifest_key,
@@ -394,6 +382,56 @@ class SessionStore:
             if value is not None:
                 return str(value)
         return f"missing:{key_field}"
+
+    def _parse_session_meta(
+        self,
+        session_meta: Any,
+    ) -> tuple[bool, str, str | None, str | None]:
+        resume_requested = False
+        scope = "process"
+        key_field: str | None = "session_key"
+        default_skip_reason = None
+
+        if not isinstance(session_meta, dict):
+            return resume_requested, scope, key_field, default_skip_reason
+
+        raw_key_field = session_meta.get("key_field")
+        if isinstance(raw_key_field, str) and raw_key_field.strip():
+            key_field = raw_key_field.strip()
+
+        has_new_shape = "resume" in session_meta or "scope" in session_meta
+        if has_new_shape:
+            raw_resume = session_meta.get("resume")
+            if isinstance(raw_resume, bool):
+                resume_requested = raw_resume
+            elif raw_resume is not None:
+                default_skip_reason = f"invalid_session_resume:{raw_resume}"
+
+            raw_scope = session_meta.get("scope")
+            if raw_scope in {"process", "keyed"}:
+                scope = raw_scope
+            elif isinstance(raw_scope, str) and raw_scope:
+                if default_skip_reason is None:
+                    default_skip_reason = f"invalid_session_scope:{raw_scope}"
+            return resume_requested, scope, key_field, default_skip_reason
+
+        raw_mode = session_meta.get("mode")
+        if raw_mode == "off":
+            return False, "process", key_field, default_skip_reason
+        if raw_mode == "process":
+            return True, "process", key_field, default_skip_reason
+        if raw_mode == "keyed":
+            return True, "keyed", key_field, default_skip_reason
+        if isinstance(raw_mode, str) and raw_mode:
+            default_skip_reason = f"invalid_session_mode:{raw_mode}"
+        return resume_requested, scope, key_field, default_skip_reason
+
+    def _session_namespace_label(self, *, scope: str, resume_requested: bool) -> str:
+        if resume_requested:
+            return scope
+        if scope == "process":
+            return "log-only"
+        return f"{scope}-log-only"
 
     def _checkpoint_bounds_reason(self, messages: list[dict[str, Any]]) -> str | None:
         if len(messages) > self._max_checkpoint_messages:
