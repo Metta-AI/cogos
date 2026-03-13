@@ -59,14 +59,19 @@ class TestCreateTask:
     def test_create_task_success(self, mock_secret, repo, pid):
         cap = AsanaCapability(repo, pid)
         mock_task = {
-            "gid": "12345",
-            "name": "Review candidate",
-            "permalink_url": "https://app.asana.com/0/12345",
+            "data": {
+                "gid": "12345",
+                "name": "Review candidate",
+                "permalink_url": "https://app.asana.com/0/12345",
+            }
         }
         with patch("cogos.capabilities.asana_cap.asana") as mock_asana:
-            mock_client = MagicMock()
-            mock_client.tasks.create_task.return_value = mock_task
-            mock_asana.Client.access_token.return_value = mock_client
+            mock_api_client = MagicMock()
+            mock_asana.Configuration.return_value = MagicMock()
+            mock_asana.ApiClient.return_value = mock_api_client
+            mock_tasks_api = MagicMock()
+            mock_tasks_api.create_task.return_value = mock_task
+            mock_asana.TasksApi.return_value = mock_tasks_api
 
             result = cap.create_task("proj-1", "Review candidate", notes="Good fit")
             assert isinstance(result, TaskResult)
@@ -89,9 +94,12 @@ class TestListTasks:
             {"gid": "2", "name": "Task 2", "completed": True, "assignee": None, "due_on": None},
         ]
         with patch("cogos.capabilities.asana_cap.asana") as mock_asana:
-            mock_client = MagicMock()
-            mock_client.tasks.get_tasks.return_value = mock_tasks
-            mock_asana.Client.access_token.return_value = mock_client
+            mock_api_client = MagicMock()
+            mock_asana.Configuration.return_value = MagicMock()
+            mock_asana.ApiClient.return_value = mock_api_client
+            mock_tasks_api = MagicMock()
+            mock_tasks_api.get_tasks_for_project.return_value = mock_tasks
+            mock_asana.TasksApi.return_value = mock_tasks_api
 
             results = cap.list_tasks("proj-1")
             assert len(results) == 2
@@ -104,11 +112,14 @@ class TestAddComment:
     @patch("cogos.capabilities.asana_cap.fetch_secret", return_value="test-pat")
     def test_add_comment_success(self, mock_secret, repo, pid):
         cap = AsanaCapability(repo, pid)
-        mock_story = {"gid": "story-1"}
+        mock_story = {"data": {"gid": "story-1"}}
         with patch("cogos.capabilities.asana_cap.asana") as mock_asana:
-            mock_client = MagicMock()
-            mock_client.stories.create_story_for_task.return_value = mock_story
-            mock_asana.Client.access_token.return_value = mock_client
+            mock_api_client = MagicMock()
+            mock_asana.Configuration.return_value = MagicMock()
+            mock_asana.ApiClient.return_value = mock_api_client
+            mock_stories_api = MagicMock()
+            mock_stories_api.create_story_for_task.return_value = mock_story
+            mock_asana.StoriesApi.return_value = mock_stories_api
 
             result = cap.add_comment("task-1", "Looks good")
             assert isinstance(result, CommentResult)

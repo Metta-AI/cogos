@@ -12,8 +12,9 @@ from cogos.capabilities.base import Capability
 logger = logging.getLogger(__name__)
 
 try:
-    from github import Github
+    from github import Auth, Github
 except ImportError:
+    Auth = None  # type: ignore[assignment,misc]
     Github = None  # type: ignore[assignment,misc]
 
 
@@ -76,7 +77,7 @@ _EVENT_TYPE_MAP = {
 
 # ── Capability ───────────────────────────────────────────────
 
-SECRET_KEY = "cogos/github-token"
+SECRET_KEY = "cogent/{cogent}/github"
 _README_EXCERPT_LEN = 500
 
 
@@ -98,8 +99,8 @@ class GitHubCapability(Capability):
 
     def _get_client(self):
         if self._api_key is None:
-            self._api_key = fetch_secret(SECRET_KEY)
-        return Github(self._api_key)
+            self._api_key = fetch_secret(SECRET_KEY, field="access_token")
+        return Github(auth=Auth.Token(self._api_key))
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}

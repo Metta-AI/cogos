@@ -33,7 +33,7 @@ class SearchError(BaseModel):
 
 # ── Capability ───────────────────────────────────────────────
 
-SECRET_KEY = "cogos/tavily-api-key"
+SECRET_KEY = "cogent/{cogent}/tavily"
 
 
 class WebSearchCapability(Capability):
@@ -51,7 +51,7 @@ class WebSearchCapability(Capability):
 
     def _get_api_key(self) -> str:
         if self._api_key is None:
-            self._api_key = fetch_secret(SECRET_KEY)
+            self._api_key = fetch_secret(SECRET_KEY, field="api_key")
         return self._api_key
 
     def _narrow(self, existing: dict, requested: dict) -> dict:

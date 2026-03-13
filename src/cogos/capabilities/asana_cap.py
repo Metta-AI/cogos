@@ -47,7 +47,7 @@ class AsanaError(BaseModel):
 
 # ── Capability ───────────────────────────────────────────────
 
-SECRET_KEY = "cogos/asana-pat"
+SECRET_KEY = "cogent/{cogent}/asana"
 
 
 class AsanaCapability(Capability):
@@ -63,11 +63,16 @@ class AsanaCapability(Capability):
     def __init__(self, repo, process_id) -> None:
         super().__init__(repo, process_id)
         self._api_key: str | None = None
+        self._client = None
 
     def _get_client(self):
-        if self._api_key is None:
-            self._api_key = fetch_secret(SECRET_KEY)
-        return asana.Client.access_token(self._api_key)
+        if self._client is None:
+            if self._api_key is None:
+                self._api_key = fetch_secret(SECRET_KEY, field="access_token")
+            config = asana.Configuration()
+            config.access_token = self._api_key
+            self._client = asana.ApiClient(config)
+        return self._client
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
@@ -108,20 +113,20 @@ class AsanaCapability(Capability):
         self._check("create_task", project=project)
         try:
             client = self._get_client()
-            params: dict = {"projects": [project], "name": name}
+            api = asana.TasksApi(client)
+            body = {"data": {"projects": [project], "name": name}}
             if notes:
-                params["notes"] = notes
+                body["data"]["notes"] = notes
             if assignee:
-                params["assignee"] = assignee
+                body["data"]["assignee"] = assignee
             if due_on:
-                params["due_on"] = due_on
-            task = client.tasks.create_task(params)
-            return TaskResult(
-                id=task["gid"],
-                name=task.get("name", name),
-                project=project,
-                url=task.get("permalink_url", ""),
-            )
+                body["data"]["due_on"] = due_on
+            task = api.create_task(body)
+            data = task.get("data", task) if isinstance(task, dict) else task
+            gid = data["gid"] if isinstance(data, dict) else data.gid
+            task_name = data.get("name", name) if isinstance(data, dict) else getattr(data, "name", name)
+            url = data.get("permalink_url", "") if isinstance(data, dict) else getattr(data, "permalink_url", "")
+            return TaskResult(id=str(gid), name=task_name, project=project, url=url)
         except Exception as exc:
             return AsanaError(error=str(exc))
 
@@ -130,12 +135,14 @@ class AsanaCapability(Capability):
         self._check("update_task")
         try:
             client = self._get_client()
-            task = client.tasks.update_task(task_id, fields)
-            return TaskResult(
-                id=task["gid"],
-                name=task.get("name", ""),
-                url=task.get("permalink_url", ""),
-            )
+            api = asana.TasksApi(client)
+            body = {"data": fields}
+            task = api.update_task(body, task_id)
+            data = task.get("data", task) if isinstance(task, dict) else task
+            gid = data["gid"] if isinstance(data, dict) else data.gid
+            name = data.get("name", "") if isinstance(data, dict) else getattr(data, "name", "")
+            url = data.get("permalink_url", "") if isinstance(data, dict) else getattr(data, "permalink_url", "")
+            return TaskResult(id=str(gid), name=name, url=url)
         except Exception as exc:
             return AsanaError(error=str(exc))
 
@@ -144,19 +151,33 @@ class AsanaCapability(Capability):
         self._check("list_tasks", project=project)
         try:
             client = self._get_client()
-            tasks = client.tasks.get_tasks(
-                {"project": project, "limit": limit, "opt_fields": "name,completed,assignee.name,due_on"}
-            )
-            return [
-                TaskSummary(
-                    id=t["gid"],
-                    name=t.get("name", ""),
-                    assignee=t.get("assignee", {}).get("name", "") if t.get("assignee") else "",
-                    due_on=t.get("due_on") or "",
-                    completed=t.get("completed", False),
-                )
-                for t in tasks
-            ]
+            api = asana.TasksApi(client)
+            opts = {"limit": limit, "opt_fields": "name,completed,assignee.name,due_on"}
+            tasks = api.get_tasks_for_project(project, opts)
+            result = []
+            items = tasks.get("data", tasks) if isinstance(tasks, dict) else tasks
+            for t in items:
+                if isinstance(t, dict):
+                    assignee_obj = t.get("assignee")
+                    assignee_name = assignee_obj.get("name", "") if isinstance(assignee_obj, dict) else ""
+                    result.append(TaskSummary(
+                        id=t["gid"],
+                        name=t.get("name", ""),
+                        assignee=assignee_name,
+                        due_on=t.get("due_on") or "",
+                        completed=t.get("completed", False),
+                    ))
+                else:
+                    assignee_obj = getattr(t, "assignee", None)
+                    assignee_name = getattr(assignee_obj, "name", "") if assignee_obj else ""
+                    result.append(TaskSummary(
+                        id=str(t.gid),
+                        name=getattr(t, "name", ""),
+                        assignee=assignee_name,
+                        due_on=getattr(t, "due_on", "") or "",
+                        completed=getattr(t, "completed", False),
+                    ))
+            return result
         except Exception as exc:
             return AsanaError(error=str(exc))
 
@@ -165,8 +186,12 @@ class AsanaCapability(Capability):
         self._check("add_comment")
         try:
             client = self._get_client()
-            story = client.stories.create_story_for_task(task_id, {"text": text})
-            return CommentResult(id=story["gid"], task_id=task_id)
+            api = asana.StoriesApi(client)
+            body = {"data": {"text": text}}
+            story = api.create_story_for_task(body, task_id)
+            data = story.get("data", story) if isinstance(story, dict) else story
+            gid = data["gid"] if isinstance(data, dict) else data.gid
+            return CommentResult(id=str(gid), task_id=task_id)
         except Exception as exc:
             return AsanaError(error=str(exc))
 
