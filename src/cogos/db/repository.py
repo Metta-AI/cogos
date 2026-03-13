@@ -593,7 +593,7 @@ class Repository:
     def upsert_cron(self, c: Cron) -> UUID:
         # Check for existing rule with same expression + channel name
         existing = self._first_row(self._execute(
-            "SELECT id FROM cron WHERE cron_expression = :expr AND event_pattern = :channel_name",
+            "SELECT id FROM cron WHERE cron_expression = :expr AND channel_name = :channel_name",
             [self._param("expr", c.expression), self._param("channel_name", c.channel_name)],
         ))
         if existing:
@@ -610,7 +610,7 @@ class Repository:
             return c.id
 
         response = self._execute(
-            """INSERT INTO cron (id, cron_expression, event_pattern, metadata, enabled)
+            """INSERT INTO cron (id, cron_expression, channel_name, metadata, enabled)
                VALUES (:id, :expression, :channel_name, :payload::jsonb, :enabled)
                RETURNING id, created_at""",
             [
@@ -636,7 +636,7 @@ class Repository:
             Cron(
                 id=UUID(r["id"]),
                 expression=r["cron_expression"],
-                channel_name=r["event_pattern"],
+                channel_name=r["channel_name"],
                 payload=self._json_field(r, "metadata", {}),
                 enabled=r.get("enabled", True),
                 created_at=self._ts(r, "created_at"),
@@ -905,17 +905,17 @@ class Repository:
     def create_run(self, run: Run) -> UUID:
         response = self._execute(
             """INSERT INTO cogos_run
-                   (id, process, event, conversation, status,
+                   (id, process, message, conversation, status,
                     tokens_in, tokens_out, cost_usd, duration_ms,
                     error, model_version, result, snapshot, scope_log)
-               VALUES (:id, :process, :event, :conversation, :status,
+               VALUES (:id, :process, :message, :conversation, :status,
                        :tokens_in, :tokens_out, :cost_usd::numeric, :duration_ms,
                        :error, :model_version, :result::jsonb, :snapshot::jsonb, :scope_log::jsonb)
                RETURNING id, created_at""",
             [
                 self._param("id", run.id),
                 self._param("process", run.process),
-                self._param("event", run.event),
+                self._param("message", run.message),
                 self._param("conversation", run.conversation),
                 self._param("status", run.status.value),
                 self._param("tokens_in", run.tokens_in),
@@ -997,7 +997,7 @@ class Repository:
         return Run(
             id=UUID(row["id"]),
             process=UUID(row["process"]),
-            event=UUID(row["event"]) if row.get("event") else None,
+            message=UUID(row["message"]) if row.get("message") else None,
             conversation=UUID(row["conversation"]) if row.get("conversation") else None,
             status=RunStatus(row["status"]),
             tokens_in=row.get("tokens_in", 0),
