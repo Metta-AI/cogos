@@ -97,10 +97,10 @@ class TestFullLifecycle:
 
 
 class TestPolisSync:
-    """Simulate what `mind update` does when syncing polis memories."""
+    """Simulate what `cogos file load` does when syncing polis memories."""
 
     def _sync_memory(self, store: MemoryStore, name: str, content: str):
-        """Replicate the polis sync logic from mind/cli.py."""
+        """Replicate the polis sync logic from cogos CLI."""
         existing = store.get(name)
         if existing is None:
             store.create(name, content, source="polis", read_only=True)
@@ -117,44 +117,44 @@ class TestPolisSync:
         return "updated"
 
     def test_new_memory_created_readonly(self, store):
-        result = self._sync_memory(store, "/mind/init", "base personality")
+        result = self._sync_memory(store, "/cogtainer/init", "base personality")
         assert result == "created"
-        mem = store.get("/mind/init")
+        mem = store.get("/cogtainer/init")
         assert mem.versions[1].source == "polis"
         assert mem.versions[1].read_only is True
 
     def test_user_override_skipped(self, store):
         # Create polis version first
-        store.create("/mind/init", "polis content", source="polis", read_only=True)
+        store.create("/cogtainer/init", "polis content", source="polis", read_only=True)
         # User overrides with new_version (bypasses read-only)
-        store.new_version("/mind/init", "user override", source="user:dave")
+        store.new_version("/cogtainer/init", "user override", source="user:dave")
         # Active version is now user's
-        mem = store.get("/mind/init")
+        mem = store.get("/cogtainer/init")
         assert mem.versions[mem.active_version].source == "user:dave"
 
         # Polis sync should skip
-        result = self._sync_memory(store, "/mind/init", "updated polis content")
+        result = self._sync_memory(store, "/cogtainer/init", "updated polis content")
         assert result == "skipped_user_override"
 
         # Content unchanged
-        mem = store.get("/mind/init")
+        mem = store.get("/cogtainer/init")
         assert mem.versions[mem.active_version].content == "user override"
 
     def test_unchanged_content_skipped(self, store):
-        self._sync_memory(store, "/mind/tools", "tool instructions")
-        result = self._sync_memory(store, "/mind/tools", "tool instructions")
+        self._sync_memory(store, "/cogtainer/tools", "tool instructions")
+        result = self._sync_memory(store, "/cogtainer/tools", "tool instructions")
         assert result == "unchanged"
 
         # Still only one version
-        history = store.history("/mind/tools")
+        history = store.history("/cogtainer/tools")
         assert len(history) == 1
 
     def test_changed_polis_content_creates_new_version(self, store):
-        self._sync_memory(store, "/mind/tools", "v1 tools")
-        result = self._sync_memory(store, "/mind/tools", "v2 tools")
+        self._sync_memory(store, "/cogtainer/tools", "v1 tools")
+        result = self._sync_memory(store, "/cogtainer/tools", "v2 tools")
         assert result == "updated"
 
-        mem = store.get("/mind/tools")
+        mem = store.get("/cogtainer/tools")
         assert mem.active_version == 2
         assert mem.versions[2].content == "v2 tools"
         assert mem.versions[2].source == "polis"
@@ -162,14 +162,14 @@ class TestPolisSync:
 
     def test_cogent_override_not_skipped(self, store):
         """Polis sync should update when active version is from cogent."""
-        store.create("/mind/init", "polis v1", source="polis", read_only=True)
-        store.new_version("/mind/init", "cogent modified", source="cogent")
+        store.create("/cogtainer/init", "polis v1", source="polis", read_only=True)
+        store.new_version("/cogtainer/init", "cogent modified", source="cogent")
 
         # Active is cogent, NOT user:* so sync should proceed
-        result = self._sync_memory(store, "/mind/init", "polis v2")
+        result = self._sync_memory(store, "/cogtainer/init", "polis v2")
         assert result == "updated"
 
-        mem = store.get("/mind/init")
+        mem = store.get("/cogtainer/init")
         assert mem.versions[mem.active_version].source == "polis"
 
 
@@ -304,9 +304,9 @@ class TestContextEngineIntegration:
 
         # Create program content as a memory with includes
         prog_mem = store.create("programs/test", "System prompt.")
-        store.update_includes("programs/test", ["/mind/tools"])
-        store.create("/mind/init", "You are a helpful assistant.")
-        store.create("/mind/tools/init", "Use these tools: hammer, wrench")
+        store.update_includes("programs/test", ["/cogtainer/tools"])
+        store.create("/cogtainer/init", "You are a helpful assistant.")
+        store.create("/cogtainer/tools/init", "Use these tools: hammer, wrench")
 
         engine = ContextEngine(store, total_budget=50_000)
         program = Program(
@@ -475,51 +475,3 @@ class TestCLI:
         assert mem.active_version == 2
 
 
-# ── 9. Memory loader integration ─────────────────────────────────
-
-# TODO: mind module removed; re-enable when cogos equivalent exists
-# class TestMemoryLoader:
-#     def test_load_markdown_with_frontmatter(self, tmp_path):
-#         from mind.memory_loader import load_memories_from_dir
-#
-#         mem_dir = tmp_path / "memories"
-#         mem_dir.mkdir()
-#         (mem_dir / "greeting.md").write_text(
-#             "---\nsource: polis\n---\nHello, world!"
-#         )
-#         (mem_dir / "custom.md").write_text(
-#             "---\nsource: user:dave\n---\nCustom content"
-#         )
-#
-#         loaded = load_memories_from_dir(mem_dir)
-#         assert len(loaded) == 2
-#
-#         by_name = {m.name: m for m in loaded}
-#         assert by_name["greeting"].source == "polis"
-#         assert by_name["greeting"].content == "Hello, world!"
-#         assert by_name["custom"].source == "user:dave"
-#         assert by_name["custom"].content == "Custom content"
-#
-#     def test_loaded_memories_sync_to_store(self, store, tmp_path):
-#         """Full flow: load from disk → sync to store."""
-#         from mind.memory_loader import load_memories_from_dir
-#
-#         mem_dir = tmp_path / "mem"
-#         mem_dir.mkdir()
-#         (mem_dir / "init.md").write_text("Base personality")
-#         sub = mem_dir / "tools"
-#         sub.mkdir()
-#         (sub / "init.md").write_text("Tool instructions")
-#
-#         loaded = load_memories_from_dir(mem_dir)
-#
-#         # Sync to store (mimicking polis sync)
-#         for lm in loaded:
-#             name = "/" + lm.name
-#             existing = store.get(name)
-#             if existing is None:
-#                 store.create(name, lm.content, source=lm.source, read_only=True)
-#
-#         assert store.get("/init") is not None
-#         assert store.get("/tools/init") is not None
-#         assert store.get("/init").versions[1].read_only is True

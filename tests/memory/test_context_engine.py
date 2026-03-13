@@ -52,20 +52,20 @@ class TestProgramContentOnly:
 
 class TestProgramWithIncludes:
     def test_memories_wrapped_in_tags(self, engine, memory_store):
-        prog, mem = _program("System prompt.", includes=["/mind/tools"])
+        prog, mem = _program("System prompt.", includes=["/cogtainer/tools"])
         memory_store.get_by_id.return_value = mem
         memory_store.resolve_includes.return_value = [
-            _mem("/mind/init", "base personality"),
-            _mem("/mind/tools/init", "tool instructions"),
+            _mem("/cogtainer/init", "base personality"),
+            _mem("/cogtainer/tools/init", "tool instructions"),
         ]
 
         blocks = engine.build_system_prompt(prog)
 
         assert len(blocks) == 2
         assert blocks[0]["text"] == "System prompt."
-        assert '<memory name="/mind/init">' in blocks[1]["text"]
+        assert '<memory name="/cogtainer/init">' in blocks[1]["text"]
         assert "base personality" in blocks[1]["text"]
-        assert '<memory name="/mind/tools/init">' in blocks[1]["text"]
+        assert '<memory name="/cogtainer/tools/init">' in blocks[1]["text"]
 
 
 class TestProgramWithEvent:
