@@ -57,9 +57,6 @@ def handler(event: dict, context) -> dict:
     # 1. Generate virtual system tick events (not written to event log)
     _apply_system_ticks(repo)
 
-    # 1.5. Auto-create per-user DM handler processes for new authors
-    _ensure_dm_handlers(repo)
-
     # 2. Match channel messages to handlers
     dispatched = 0
     match_result = scheduler.match_messages()
@@ -121,125 +118,6 @@ def _recover_stuck_daemons(repo) -> None:
                 logger.debug("Could not create alert for stuck daemon %s", proc.name)
 
 
-def _ensure_dm_handlers(repo) -> None:
-    """Auto-create per-user DM handler processes for new Discord DM authors.
-
-    Scans recent messages on io:discord:dm and creates a dedicated
-    discord-dm:{author_id} process for each new author, bound to a
-    fine-grained io:discord:dm:{author_id} channel.
-    """
-    from cogos.db.models import (
-        Channel, ChannelType, Handler, Process, ProcessCapability,
-        ProcessMode, ProcessStatus,
-    )
-    from cogos.db.models.channel_message import ChannelMessage
-
-    dm_channel = repo.get_channel_by_name("io:discord:dm")
-    if dm_channel is None:
-        return
-
-    # Get the discord-handle-message process as the "parent" template
-    parent = repo.get_process_by_name("discord-handle-message")
-    if parent is None:
-        return
-
-    # Scan recent DMs (last 50 — enough to catch new authors)
-    recent = repo.list_channel_messages(dm_channel.id, limit=50)
-    seen_authors: set[str] = set()
-
-    for msg in recent:
-        payload = msg.payload or {}
-        author_id = payload.get("author_id")
-        author_name = payload.get("author", "unknown")
-        if not author_id or author_id in seen_authors:
-            continue
-        seen_authors.add(author_id)
-
-        proc_name = f"discord-dm:{author_id}"
-        fine_ch_name = f"io:discord:dm:{author_id}"
-        existing = repo.get_process_by_name(proc_name)
-        if existing and existing.status not in (ProcessStatus.COMPLETED, ProcessStatus.DISABLED):
-            # Already exists and active — ensure it has a handler
-            fine_ch = repo.get_channel_by_name(fine_ch_name)
-            if fine_ch:
-                handlers = repo.list_handlers(process_id=existing.id)
-                has_fine = any(h.channel == fine_ch.id for h in handlers)
-                if not has_fine:
-                    repo.create_handler(Handler(process=existing.id, channel=fine_ch.id))
-                    logger.info("Bound existing %s to channel %s", proc_name, fine_ch_name)
-            continue
-
-        # Create the per-user DM process
-        content = (
-            "@{cogos/io/discord/handler.md}\n\n"
-            f"You are handling DMs with Discord user {author_id} ({author_name}).\n\n"
-            "## Responding\n\n"
-            f"Use discord.dm(user_id='{author_id}', content=your_reply) to respond.\n\n"
-            "## Escalation\n\n"
-            "If you cannot fulfill a request (e.g. sending email, accessing a service you don't have), "
-            "escalate to the supervisor. Use your DM channel as the reply_channel so you receive the response:\n\n"
-            "```python\n"
-            "channels.send(\"supervisor:help\", {\n"
-            f"    \"process_name\": \"{proc_name}\",\n"
-            "    \"description\": \"what the user asked for\",\n"
-            "    \"context\": \"relevant details\",\n"
-            "    \"severity\": \"info\",\n"
-            f"    \"reply_channel\": \"{fine_ch_name}\",\n"
-            "})\n"
-            "```\n\n"
-            "When you receive a supervisor reply (a message without `author_id`), relay the outcome to the user via DM.\n\n"
-            "## Context\n\n"
-            "On your first activation:\n"
-            "1. Use search() to discover all your capabilities\n"
-            "2. Use discord.receive(message_type=\"discord:dm\") to read recent DM history for context\n"
-        )
-
-        child = Process(
-            name=proc_name,
-            mode=ProcessMode.DAEMON,
-            content=content,
-            priority=5.0,
-            runner="lambda",
-            status=ProcessStatus.WAITING,
-            parent_process=parent.id,
-        )
-        child_id = repo.upsert_process(child)
-        repo.update_process_status(child_id, ProcessStatus.WAITING)
-
-        # Bind capabilities — same as parent discord-handle-message
-        parent_caps = repo.list_process_capabilities(parent.id)
-        for pc in parent_caps:
-            try:
-                repo.create_process_capability(ProcessCapability(
-                    process=child_id,
-                    capability=pc.capability,
-                    name=pc.name,
-                    config=pc.config,
-                ))
-            except Exception:
-                pass  # already bound
-
-        # Create fine-grained channel
-        fine_ch = repo.get_channel_by_name(fine_ch_name)
-        if fine_ch is None:
-            fine_ch = Channel(name=fine_ch_name, channel_type=ChannelType.NAMED)
-            repo.upsert_channel(fine_ch)
-            fine_ch = repo.get_channel_by_name(fine_ch_name)
-
-        # Bind handler to fine-grained channel
-        try:
-            repo.create_handler(Handler(process=child_id, channel=fine_ch.id))
-        except Exception:
-            pass  # already bound
-
-        # Copy the message to the fine-grained channel so it's picked up
-        repo.append_channel_message(ChannelMessage(
-            channel=fine_ch.id,
-            sender_process=None,
-            payload=msg.payload,
-        ))
-
-        logger.info("Created DM handler %s for author %s (%s)", proc_name, author_id, author_name)
 
 
 def _apply_system_ticks(repo, *, now: datetime | None = None) -> None:

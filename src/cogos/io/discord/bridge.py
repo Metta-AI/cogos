@@ -214,22 +214,6 @@ class DiscordBridge:
             ))
             logger.info("Wrote %s from %s to channel %s", message_type, message.author, channel_name)
 
-            # Write to fine-grained per-source channel for message and dm types
-            fine_channel_name = None
-            if message_type == "discord:message":
-                fine_channel_name = f"io:discord:message:{payload['channel_id']}"
-            elif message_type == "discord:dm":
-                fine_channel_name = f"io:discord:dm:{payload['author_id']}"
-
-            if fine_channel_name:
-                fine_ch = self._get_or_create_channel(repo, fine_channel_name)
-                if fine_ch:
-                    repo.append_channel_message(ChannelMessage(
-                        channel=fine_ch.id,
-                        sender_process=None,
-                        payload=payload,
-                    ))
-
             # Start typing indicator for DMs and mentions
             if message_type in ("discord:dm", "discord:mention"):
                 self._start_typing(message.channel)
@@ -287,6 +271,8 @@ class DiscordBridge:
                 for msg in response.get("Messages", []):
                     try:
                         await self._send_reply(msg)
+                    except discord.errors.NotFound:
+                        logger.error("Channel not found for reply %s, discarding", msg.get("MessageId"))
                     except Exception:
                         logger.exception("Failed to send reply: %s", msg.get("MessageId"))
                         continue
