@@ -127,6 +127,8 @@ files/cogos/docs/layout.md            -> key: "cogos/docs/layout"
 
 Files under `cogos/includes/` are automatically prepended to every process's system prompt by the executor.
 
+For the runtime `/proc/{process_id}/...` layout used by `me` and the executor, see [File Store and `/proc` Namespace](file-store.md).
+
 ### File References
 
 Files can reference other files inline with `@{...}`. The context engine resolves those references recursively, depth-first:

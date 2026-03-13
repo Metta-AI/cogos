@@ -166,6 +166,8 @@ FileVersion
 
 Files support prompt references via inline `@{file-key}` syntax. When a file is resolved into prompt context, the context engine recursively expands those references, depth-first, concatenating content with section headers. Circular references are detected and reported.
 
+For the runtime `/proc/{process_id}/...` namespace, including executor-owned session artifacts under `_sessions/`, see [File Store and `/proc` Namespace](file-store.md).
+
 ### Capability
 
 Defines what a process can do. Capabilities are Python classes with typed methods. At runtime, capabilities are instantiated per-process with a repository handle and the owning process ID, then injected into the sandbox as proxy objects.
