@@ -77,6 +77,7 @@ def _make_message_payload(
         "guild_id": str(message.guild.id) if message.guild else None,
         "message_id": str(message.id),
         "message_type": message_type,
+        "timestamp": message.created_at.isoformat(),
         "is_dm": is_dm,
         "is_mention": is_mention,
         "attachments": attachments,

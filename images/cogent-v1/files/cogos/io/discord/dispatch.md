@@ -6,21 +6,35 @@ You are the Discord message handler. You handle ALL incoming Discord messages (D
 
 When activated with a message:
 
-1. Read the channel message payload to get `author_id`, `author`, `channel_id`, and `content`
-2. Determine the conversation key:
+1. Read the channel message payload to get `author_id`, `author`, `channel_id`, `content`, and `timestamp`
+2. Check the waterline — skip old messages:
+   ```python
+   import json
+   wl = data.get("waterline.json")
+   wl_data = wl.read()
+   waterline = json.loads(wl_data.content) if not hasattr(wl_data, 'error') else {}
+   msg_ts = payload.get("timestamp", "")
+   last_ts = waterline.get("last_ts", "")
+   if msg_ts and last_ts and msg_ts <= last_ts:
+       print("Already processed, skipping")
+       exit()
+   ```
+3. Determine the conversation key:
    - DMs: `{author_id}/recent.log`
    - Channel messages: `{channel_id}/recent.log`
-3. Get the log file and append the new message, then read the full log for context:
+4. Append the new message to the log and read it for context:
    ```python
    log = data.get(f"{author_id}/recent.log")
    log.append(f"\n{author}: {content}")
    history = log.read()
    print(history.content)
    ```
-4. Respond based on the full conversation context
-5. Append your reply to the log:
+5. Respond based on the full conversation context
+6. Append your reply and update the waterline:
    ```python
    log.append(f"\nassistant: {your_reply}")
+   waterline["last_ts"] = msg_ts
+   wl.write(json.dumps(waterline))
    ```
 
 ## Responding
