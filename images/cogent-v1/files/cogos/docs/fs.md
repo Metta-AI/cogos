@@ -47,8 +47,8 @@ Files can reference other files inline with `@{file-key}`. The context engine re
 
 ```md
 # agents/my-agent
-@{whoami/index}
-@{cogos/includes/code_mode}
+@{whoami/index.md}
+@{cogos/includes/code_mode.md}
 ```
 
 When this file is used as a process prompt, the referenced files are expanded directly where they appear.
