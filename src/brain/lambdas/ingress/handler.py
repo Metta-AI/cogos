@@ -9,7 +9,7 @@ import boto3
 
 from brain.lambdas.shared.config import get_config
 from brain.lambdas.shared.logging import setup_logging
-from cogos.runtime.ingress import dispatch_ready_processes, drain_outbox
+from cogos.runtime.ingress import dispatch_ready_processes
 
 logger = setup_logging()
 
@@ -38,32 +38,24 @@ def handler(event: dict, context) -> dict:
     except Exception:
         pass
 
-    try:
-        result = drain_outbox(repo, scheduler, batch_size=25)
-    except Exception:
-        logger.exception("Failed to drain CogOS event outbox")
-        return {"statusCode": 200, "dispatched": 0, "outbox_rows": 0, "failures": 1}
-    if not result.outbox_rows:
-        return {"statusCode": 200, "dispatched": 0, "outbox_rows": 0}
+    # Select and dispatch any runnable processes (channel messages already
+    # create deliveries and mark processes RUNNABLE in append_channel_message)
+    select_result = scheduler.select_processes(slots=5)
+    if not select_result.selected:
+        return {"statusCode": 200, "dispatched": 0}
 
     dispatched = dispatch_ready_processes(
         repo,
         scheduler,
         lambda_client,
         executor_fn,
-        result.affected_processes,
+        {UUID(proc.id) for proc in select_result.selected},
     )
 
-    logger.info(
-        "Ingress drained %s outbox rows, created %s deliveries, dispatched %s",
-        result.outbox_rows,
-        result.deliveries_created,
-        dispatched,
-    )
+    if dispatched:
+        logger.info("Ingress dispatched %s processes", dispatched)
+
     return {
         "statusCode": 200,
-        "outbox_rows": result.outbox_rows,
-        "deliveries_created": result.deliveries_created,
         "dispatched": dispatched,
-        "failures": result.failures,
     }

@@ -295,7 +295,7 @@ def _cogos_scheduler_tick(config) -> None:
             event_payload = {}
             if dispatch_result.event_id:
                 rows = cogos_repo._rows_to_dicts(cogos_repo._execute(
-                    "SELECT payload FROM cogos_event WHERE id = :id",
+                    "SELECT payload FROM cogos_channel_message WHERE id = :id",
                     [cogos_repo._param("id", _UUID(dispatch_result.event_id))],
                 ))
                 if rows:

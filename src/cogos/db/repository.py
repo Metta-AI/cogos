@@ -1405,6 +1405,7 @@ class Repository:
 
         # Auto-create deliveries for handlers bound to this channel
         handlers = self.match_handlers_by_channel(msg.channel)
+        woke = False
         for handler in handlers:
             delivery = EventDelivery(event=msg_id, handler=handler.id)
             _delivery_id, inserted = self.create_event_delivery(delivery)
@@ -1412,6 +1413,10 @@ class Repository:
                 proc = self.get_process(handler.process)
                 if proc and proc.status == ProcessStatus.WAITING:
                     self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+                    woke = True
+
+        if woke:
+            self._wake_ingress(msg_id)
 
         return msg_id
 
