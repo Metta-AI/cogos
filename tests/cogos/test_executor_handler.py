@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import DeliveryStatus, Event, EventDelivery, Handler, Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.models import Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessMode, ProcessStatus, Run, RunStatus
 from cogos.executor import handler as executor_handler
 
 
@@ -50,16 +50,22 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     )
     repo.upsert_process(process)
 
-    handler = Handler(process=process.id, event_pattern="discord:dm")
-    repo.create_handler(handler)
-    current_event = Event(event_type="discord:dm", source="discord", payload={"content": "hello"})
-    queued_event = Event(event_type="discord:dm", source="discord", payload={"content": "next"})
-    repo.append_event(current_event)
-    repo.append_event(queued_event)
-    current_delivery_id, _ = repo.create_event_delivery(EventDelivery(event=current_event.id, handler=handler.id))
-    repo.create_event_delivery(EventDelivery(event=queued_event.id, handler=handler.id))
+    ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
+    repo.upsert_channel(ch)
+    ch = repo.get_channel_by_name("io:discord:dm")
 
-    run = Run(process=process.id, event=current_event.id, status=RunStatus.RUNNING)
+    handler = Handler(process=process.id, channel=ch.id)
+    repo.create_handler(handler)
+
+    current_msg = ChannelMessage(channel=ch.id, payload={"content": "hello"})
+    queued_msg = ChannelMessage(channel=ch.id, payload={"content": "next"})
+    repo.append_channel_message(current_msg)
+    repo.append_channel_message(queued_msg)
+
+    current_delivery_id, _ = repo.create_delivery(Delivery(message=current_msg.id, handler=handler.id))
+    repo.create_delivery(Delivery(message=queued_msg.id, handler=handler.id))
+
+    run = Run(process=process.id, message=current_msg.id, status=RunStatus.RUNNING)
     repo.create_run(run)
     repo.mark_queued(current_delivery_id, run.id)
 
@@ -71,14 +77,14 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     )
 
     result = executor_handler.handler(
-        {"process_id": str(process.id), "event_id": str(current_event.id), "run_id": str(run.id)},
+        {"process_id": str(process.id), "message_id": str(current_msg.id), "run_id": str(run.id)},
         None,
     )
 
     assert result["statusCode"] == 200
     assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
     assert repo.get_run(run.id).status == RunStatus.COMPLETED
-    assert repo._event_deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
+    assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
 
 
 def test_daemon_failure_returns_to_waiting_without_pending_deliveries(monkeypatch, tmp_path):
@@ -120,16 +126,22 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     )
     repo.upsert_process(process)
 
-    handler = Handler(process=process.id, event_pattern="discord:dm")
-    repo.create_handler(handler)
-    current_event = Event(event_type="discord:dm", source="discord", payload={"content": "hello"})
-    queued_event = Event(event_type="discord:dm", source="discord", payload={"content": "next"})
-    repo.append_event(current_event)
-    repo.append_event(queued_event)
-    current_delivery_id, _ = repo.create_event_delivery(EventDelivery(event=current_event.id, handler=handler.id))
-    queued_delivery_id, _ = repo.create_event_delivery(EventDelivery(event=queued_event.id, handler=handler.id))
+    ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
+    repo.upsert_channel(ch)
+    ch = repo.get_channel_by_name("io:discord:dm")
 
-    run = Run(process=process.id, event=current_event.id, status=RunStatus.RUNNING)
+    handler = Handler(process=process.id, channel=ch.id)
+    repo.create_handler(handler)
+
+    current_msg = ChannelMessage(channel=ch.id, payload={"content": "hello"})
+    queued_msg = ChannelMessage(channel=ch.id, payload={"content": "next"})
+    repo.append_channel_message(current_msg)
+    repo.append_channel_message(queued_msg)
+
+    current_delivery_id, _ = repo.create_delivery(Delivery(message=current_msg.id, handler=handler.id))
+    queued_delivery_id, _ = repo.create_delivery(Delivery(message=queued_msg.id, handler=handler.id))
+
+    run = Run(process=process.id, message=current_msg.id, status=RunStatus.RUNNING)
     repo.create_run(run)
     repo.mark_queued(current_delivery_id, run.id)
 
@@ -141,15 +153,15 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     monkeypatch.setattr(executor_handler, "execute_process", _fail)
 
     result = executor_handler.handler(
-        {"process_id": str(process.id), "event_id": str(current_event.id), "run_id": str(run.id)},
+        {"process_id": str(process.id), "message_id": str(current_msg.id), "run_id": str(run.id)},
         None,
     )
 
     assert result["statusCode"] == 500
     assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
     assert repo.get_run(run.id).status == RunStatus.FAILED
-    assert repo._event_deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
-    assert repo._event_deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
+    assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
+    assert repo._deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
 
 
 def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
@@ -206,7 +218,7 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
 
     result = executor_handler.execute_process(
         process,
-        {"event_type": "discord:dm", "payload": {"content": "hello"}},
+        {"payload": {"content": "hello"}},
         run,
         config,
         repo,

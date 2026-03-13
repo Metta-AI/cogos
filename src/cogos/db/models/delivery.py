@@ -1,4 +1,4 @@
-"""EventDelivery model — per-handler delivery tracking."""
+"""Delivery model — per-handler channel message delivery tracking."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ class DeliveryStatus(str, enum.Enum):
     SKIPPED = "skipped"
 
 
-class EventDelivery(BaseModel):
+class Delivery(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    event: UUID  # FK -> Event.id
+    message: UUID  # FK -> ChannelMessage.id
     handler: UUID  # FK -> Handler.id
     status: DeliveryStatus = DeliveryStatus.PENDING
     run: UUID | None = None  # FK -> Run.id (which run processed this)

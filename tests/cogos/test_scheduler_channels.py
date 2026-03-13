@@ -69,7 +69,7 @@ def test_match_channel_messages_backstop(tmp_path):
     repo.append_channel_message(msg)
 
     # Backstop should find no NEW undelivered messages (auto-delivery already handled it)
-    result = scheduler.match_channel_messages()
+    result = scheduler.match_messages()
     # The auto-delivery already created the delivery, so backstop finds 0 new
     assert result.deliveries_created == 0
 
@@ -115,7 +115,7 @@ def test_backstop_creates_missing_deliveries(tmp_path):
     repo.create_handler(handler)
 
     # Backstop should pick up the missed message
-    result = scheduler.match_channel_messages()
+    result = scheduler.match_messages()
     assert result.deliveries_created == 1
     assert result.deliveries[0].process_id == str(proc.id)
     assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE

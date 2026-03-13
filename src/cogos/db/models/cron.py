@@ -1,4 +1,4 @@
-"""Cron model — scheduled event emitter."""
+"""Cron model — scheduled channel message emitter."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class Cron(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     expression: str  # cron expression
-    event_type: str  # event to emit on each tick
+    channel_name: str  # channel to send cron messages to
     payload: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     created_at: datetime | None = None

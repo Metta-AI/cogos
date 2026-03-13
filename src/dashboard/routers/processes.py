@@ -196,8 +196,6 @@ def _sync_handlers(
         if h.channel:
             ch = repo.get_channel(h.channel)
             name = ch.name if ch else None
-        elif h.event_pattern:
-            name = h.event_pattern  # legacy
         if name:
             existing_by_name[name] = h
 
@@ -389,8 +387,6 @@ def get_process(name: str, process_id: str) -> dict:
         if h.channel:
             ch = repo.get_channel(h.channel)
             ch_name = ch.name if ch else str(h.channel)
-        elif h.event_pattern:
-            ch_name = h.event_pattern  # legacy
         handler_list.append({"id": str(h.id), "channel": ch_name, "enabled": h.enabled})
 
     return {

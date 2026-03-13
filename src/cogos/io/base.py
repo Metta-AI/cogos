@@ -16,7 +16,7 @@ class IOMode(str, enum.Enum):
 @dataclass
 class InboundEvent:
     source: str
-    event_type: str
+    message_type: str
     payload: dict[str, Any] = field(default_factory=dict)
     raw_content: str = ""
     author: str | None = None

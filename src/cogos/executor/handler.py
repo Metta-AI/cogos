@@ -69,7 +69,7 @@ TOOL_CONFIG = {"tools": [
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search keyword (e.g. 'files', 'events', 'procs')",
+                    "description": "Search keyword (e.g. 'files', 'channels', 'procs')",
                 },
             },
             "required": ["query"],
@@ -80,7 +80,7 @@ TOOL_CONFIG = {"tools": [
         "description": (
             "Execute Python code with access to capability proxy objects. "
             "Use search() first to discover available capabilities. "
-            "Capabilities are exposed as top-level objects: files, procs, events, resources. "
+            "Capabilities are exposed as top-level objects: files, procs, channels, resources. "
             "Print results to see them. Returns stdout output or error traceback."
         ),
         "inputSchema": {"json": {
@@ -110,7 +110,7 @@ def handler(event: dict, context: Any = None) -> dict:
     repo = get_repo(config)
 
     process_id = event.get("process_id")
-    event_id = event.get("event_id")
+    message_id = event.get("message_id")
     run_id_str = event.get("run_id")
 
     if not process_id:
@@ -135,7 +135,7 @@ def handler(event: dict, context: Any = None) -> dict:
             run = Run(
                 id=dispatch_run_id,
                 process=process.id,
-                event=UUID(event_id) if event_id else None,
+                message=UUID(message_id) if message_id else None,
                 status=RunStatus.RUNNING,
             )
             try:
@@ -144,13 +144,13 @@ def handler(event: dict, context: Any = None) -> dict:
                 logger.exception("Failed to recreate dispatch run %s; falling back to a new run", run_id_str)
                 run = repo.get_run(dispatch_run_id)
                 if run is None:
-                    run = Run(process=process.id, event=UUID(event_id) if event_id else None, status=RunStatus.RUNNING)
+                    run = Run(process=process.id, message=UUID(message_id) if message_id else None, status=RunStatus.RUNNING)
                     repo.create_run(run)
         run_id = run.id
     else:
         # Legacy: no run_id in payload — create one (and mark process running)
         repo.update_process_status(process.id, ProcessStatus.RUNNING)
-        run = Run(process=process.id, event=UUID(event_id) if event_id else None, status=RunStatus.RUNNING)
+        run = Run(process=process.id, message=UUID(message_id) if message_id else None, status=RunStatus.RUNNING)
         run_id = repo.create_run(run)
 
     repo.mark_run_deliveries_delivered(run.id)
@@ -281,10 +281,8 @@ def execute_process(
     user_text = ""
     if process.content:
         user_text += process.content + "\n\n"
-    if event_data.get("event_type"):
-        user_text += f"Event: {event_data.get('event_type', 'unknown')}\n"
-        if event_data.get("payload"):
-            user_text += f"Payload: {json.dumps(event_data['payload'], indent=2)}\n"
+    if event_data.get("payload"):
+        user_text += f"Message payload: {json.dumps(event_data['payload'], indent=2)}\n"
     if not user_text.strip():
         user_text = "Execute your task."
 

@@ -122,7 +122,7 @@ class AsanaIO(IOAdapter):
             if gid not in self._seen_task_gids:
                 self._seen_task_gids.add(gid)
                 event = InboundEvent(
-                    channel="asana", event_type="task.assigned", payload=task,
+                    channel="asana", message_type="task.assigned", payload=task,
                     raw_content=task.get("notes", ""),
                     author=task.get("created_by", {}).get("name", "human"),
                     external_id=f"asana:task:{gid}",

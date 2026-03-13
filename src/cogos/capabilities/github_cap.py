@@ -63,9 +63,9 @@ class GitHubError(BaseModel):
     error: str
 
 
-# ── Event type mapping ───────────────────────────────────────
+# ── GitHub activity type mapping ─────────────────────────────
 
-_EVENT_TYPE_MAP = {
+_ACTIVITY_TYPE_MAP = {
     "PushEvent": "commit",
     "PullRequestEvent": "pr",
     "IssuesEvent": "issue",
@@ -179,7 +179,7 @@ class GitHubCapability(Capability):
             return [
                 Contribution(
                     repo=e.repo.name,
-                    type=_EVENT_TYPE_MAP.get(e.type, e.type),
+                    type=_ACTIVITY_TYPE_MAP.get(e.type, e.type),
                     date=e.created_at.isoformat() if e.created_at else "",
                 )
                 for e in events

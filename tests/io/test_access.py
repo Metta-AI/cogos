@@ -12,7 +12,7 @@ class TestGetChannelToken:
 
     def test_returns_none_when_unavailable(self):
         with patch.dict(os.environ, {}, clear=True):
-            with patch("channels.access._get_secrets_client") as mock_sm:
+            with patch("cogos.io.access._get_secrets_client") as mock_sm:
                 mock_sm.return_value.get_secret_value.side_effect = Exception("not found")
                 token = get_io_token("discord")
                 assert token is None
@@ -25,13 +25,13 @@ class TestGetChannelSecret:
             "SecretString": '{"type": "static", "access_token": "abc"}'
         }
         with patch.dict(os.environ, {"COGENT_NAME": "test-cogent"}):
-            with patch("channels.access._get_secrets_client", return_value=mock_sm):
+            with patch("cogos.io.access._get_secrets_client", return_value=mock_sm):
                 secret = get_io_secret("discord")
                 assert secret == {"type": "static", "access_token": "abc"}
 
     def test_returns_none_on_error(self):
         mock_sm = MagicMock()
         mock_sm.get_secret_value.side_effect = Exception("boom")
-        with patch("channels.access._get_secrets_client", return_value=mock_sm):
+        with patch("cogos.io.access._get_secrets_client", return_value=mock_sm):
             secret = get_io_secret("discord")
             assert secret is None

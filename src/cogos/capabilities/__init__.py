@@ -324,12 +324,10 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "email",
         "description": "Send and receive emails via AWS SES.",
         "handler": "cogos.io.email.capability.EmailCapability",
-        "event_types": ["email:received", "email:sent"],
         "instructions": (
             "Use email to send and receive emails.\n"
             "- email.send(to, subject, body, reply_to?) — send an email\n"
-            "- email.receive(limit?) — read recent received emails from the event log\n"
-            "Received emails arrive as 'email:received' events. Use receive() to read them.\n"
+            "- email.receive(limit?) — read recent received emails\n"
             "Always include a clear subject. Be professional in tone."
         ),
         "schema": {
@@ -383,15 +381,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "discord",
         "description": "Send and receive Discord messages, reactions, threads, and DMs.",
         "handler": "cogos.io.discord.capability.DiscordCapability",
-        "event_types": ["discord:dm", "discord:mention", "discord:message"],
         "instructions": (
             "Use discord to interact with Discord channels.\n"
             "- discord.send(channel, content) — send a message to a channel\n"
             "- discord.react(channel, message_id, emoji) — add a reaction\n"
             "- discord.create_thread(channel, thread_name, content?) — create a thread\n"
             "- discord.dm(user_id, content) — send a direct message\n"
-            "- discord.receive(limit?, event_type?) — read recent Discord messages\n"
-            "Event types: discord:dm, discord:mention, discord:message.\n"
+            "- discord.receive(limit?, channel?) — read recent Discord messages\n"
             "Keep messages concise. Use threads for extended discussions."
         ),
         "schema": {
@@ -517,20 +513,19 @@ BUILTIN_CAPABILITIES: list[dict] = [
     },
     {
         "name": "scheduler",
-        "description": "Process scheduling — event matching, process selection, and dispatch.",
+        "description": "Process scheduling — message matching, process selection, and dispatch.",
         "handler": "cogos.capabilities.scheduler.SchedulerCapability",
-        "event_types": ["process:run:success", "process:run:failed", "process:status:runnable"],
         "instructions": (
             "The scheduler runs the CogOS tick loop. Only the scheduler daemon should use this.\n"
-            "- scheduler.match_events() — match undelivered events to handlers, create deliveries\n"
+            "- scheduler.match_messages() — match undelivered channel messages to handlers, create deliveries\n"
             "- scheduler.unblock_processes() — move BLOCKED processes to RUNNABLE if resources free\n"
             "- scheduler.select_processes(slots) — pick RUNNABLE processes by priority (softmax sampling)\n"
             "- scheduler.dispatch_process(process_id) — transition to RUNNING, create a Run record\n"
             "- scheduler.kill_process(process_id) — disable a process, fail its running run\n"
-            "Always run in order: match_events -> unblock_processes -> select_processes -> dispatch."
+            "Always run in order: match_messages -> unblock_processes -> select_processes -> dispatch."
         ),
         "schema": {
-            "match_events": {
+            "match_messages": {
                 "input": {
                     "type": "object",
                     "properties": {"limit": {"type": "integer", "default": 200}},

@@ -24,18 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Event detail builder
+# Message payload builder
 # ---------------------------------------------------------------------------
 
 
-def _make_event_payload(
+def _make_message_payload(
     message: discord.Message,
-    event_type: str,
+    message_type: str,
     *,
     is_dm: bool,
     is_mention: bool,
 ) -> dict:
-    """Build the cogos event payload from a Discord message."""
+    """Build the cogos message payload from a Discord message."""
     attachments = []
     for a in message.attachments:
         attachments.append(
@@ -76,7 +76,7 @@ def _make_event_payload(
         "channel_id": str(message.channel.id),
         "guild_id": str(message.guild.id) if message.guild else None,
         "message_id": str(message.id),
-        "event_type": event_type,
+        "message_type": message_type,
         "is_dm": is_dm,
         "is_mention": is_mention,
         "attachments": attachments,
@@ -173,23 +173,23 @@ class DiscordBridge:
     async def _relay_to_db(self, message: discord.Message):
         """Classify a Discord message and write it as a channel message."""
         if isinstance(message.channel, discord.DMChannel):
-            event_type = "discord:dm"
+            message_type = "discord:dm"
         elif self.client.user and self.client.user.mentioned_in(message):
-            event_type = "discord:mention"
+            message_type = "discord:mention"
         else:
-            event_type = "discord:message"
+            message_type = "discord:message"
 
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mention = bool(self.client.user and self.client.user.mentioned_in(message))
 
-        payload = _make_event_payload(message, event_type, is_dm=is_dm, is_mention=is_mention)
+        payload = _make_message_payload(message, message_type, is_dm=is_dm, is_mention=is_mention)
 
         try:
             from cogos.db.models import Channel, ChannelMessage, ChannelType
             repo = self._get_repo()
 
-            # Get or create the channel for this event type
-            channel_name = f"io:discord:{event_type.split(':')[1]}"  # io:discord:dm, io:discord:mention, io:discord:message
+            # Get or create the channel for this message type
+            channel_name = f"io:discord:{message_type.split(':')[1]}"  # io:discord:dm, io:discord:mention, io:discord:message
             ch = repo.get_channel_by_name(channel_name)
             if ch is None:
                 logger.warning(
@@ -211,10 +211,10 @@ class DiscordBridge:
                 sender_process=None,
                 payload=payload,
             ))
-            logger.info("Wrote %s from %s to channel %s", event_type, message.author, channel_name)
+            logger.info("Wrote %s from %s to channel %s", message_type, message.author, channel_name)
 
             # Start typing indicator for DMs and mentions
-            if event_type in ("discord:dm", "discord:mention"):
+            if message_type in ("discord:dm", "discord:mention"):
                 self._start_typing(message.channel)
         except Exception:
             logger.exception("Failed to write message %s to DB", message.id)

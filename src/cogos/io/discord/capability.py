@@ -36,7 +36,7 @@ class DiscordMessage(BaseModel):
     attachments: list[dict] | None = None
     thread_id: str | None = None
     reference_message_id: str | None = None
-    event_type: str | None = None
+    message_type: str | None = None
 
 
 class DiscordError(BaseModel):
@@ -226,19 +226,19 @@ class DiscordCapability(Capability):
         except Exception as e:
             return DiscordError(error=str(e))
 
-    def receive(self, limit: int = 10, event_type: str | None = None) -> list[DiscordMessage]:
+    def receive(self, limit: int = 10, message_type: str | None = None) -> list[DiscordMessage]:
         """Read recent Discord messages from channels.
 
         Args:
             limit: Max messages to return.
-            event_type: Filter by event type (discord:dm, discord:mention, discord:message).
-                        If None, returns messages from all discord channels.
+            message_type: Filter by message type (discord:dm, discord:mention, discord:message).
+                          If None, returns messages from all discord channels.
         """
         self._check("receive")
 
-        if event_type:
+        if message_type:
             # Single channel: io:discord:dm, io:discord:mention, io:discord:message
-            channel_names = [f"io:discord:{event_type.split(':')[1]}"]
+            channel_names = [f"io:discord:{message_type.split(':')[1]}"]
         else:
             channel_names = ["io:discord:dm", "io:discord:mention", "io:discord:message"]
 
@@ -272,7 +272,7 @@ def _message_from_event(e) -> DiscordMessage:
         attachments=p.get("attachments"),
         thread_id=p.get("thread_id"),
         reference_message_id=p.get("reference_message_id"),
-        event_type=p.get("event_type"),
+        message_type=p.get("message_type"),
     )
 
 
@@ -290,5 +290,5 @@ def _message_from_channel_message(msg) -> DiscordMessage:
         attachments=p.get("attachments"),
         thread_id=p.get("thread_id"),
         reference_message_id=p.get("reference_message_id"),
-        event_type=p.get("event_type"),
+        message_type=p.get("message_type"),
     )

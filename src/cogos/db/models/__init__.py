@@ -7,10 +7,7 @@ from cogos.db.models.budget import Budget, BudgetPeriod
 from cogos.db.models.capability import Capability
 from cogos.db.models.conversation import Conversation, ConversationStatus
 from cogos.db.models.cron import Cron
-from cogos.db.models.event import Event
-from cogos.db.models.event_delivery import DeliveryStatus, EventDelivery
-from cogos.db.models.event_outbox import EventOutbox, EventOutboxStatus
-from cogos.db.models.event_type import EventType
+from cogos.db.models.delivery import Delivery, DeliveryStatus
 from cogos.db.models.file import File, FileVersion
 from cogos.db.models.handler import Handler
 from cogos.db.models.process import Process, ProcessMode, ProcessStatus
@@ -32,12 +29,8 @@ __all__ = [
     "Conversation",
     "ConversationStatus",
     "Cron",
+    "Delivery",
     "DeliveryStatus",
-    "Event",
-    "EventDelivery",
-    "EventOutbox",
-    "EventOutboxStatus",
-    "EventType",
     "File",
     "FileVersion",
     "Handler",

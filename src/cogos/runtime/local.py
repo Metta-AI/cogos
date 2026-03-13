@@ -148,7 +148,7 @@ def run_local_tick(
     scheduler = SchedulerCapability(repo, process_id=_SENTINEL_UUID)
 
     # Backstop: ensure all channel messages have deliveries
-    scheduler.match_channel_messages()
+    scheduler.match_messages()
 
     executed = 0
     while True:
@@ -166,17 +166,17 @@ def run_local_tick(
         process = repo.get_process(UUID(dispatch.process_id))
         run = repo.get_run(UUID(dispatch.run_id))
 
-        # Build event payload from the channel message if available
-        event_payload: dict = {}
-        if dispatch.event_id:
-            event_uuid = UUID(dispatch.event_id)
-            cm = repo._channel_messages.get(event_uuid)
+        # Build payload from the channel message if available
+        message_payload: dict = {}
+        if dispatch.message_id:
+            msg_uuid = UUID(dispatch.message_id)
+            cm = repo._channel_messages.get(msg_uuid)
             if cm is not None:
-                event_payload = cm.payload if cm.payload else {}
+                message_payload = cm.payload if cm.payload else {}
 
         run_and_complete(
             process,
-            event_payload,
+            message_payload,
             run,
             config,
             repo,

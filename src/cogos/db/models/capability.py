@@ -24,6 +24,5 @@ class Capability(BaseModel):
     iam_role_arn: str | None = None
     enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
-    event_types: list[str] = Field(default_factory=list)  # event types related to this capability
     created_at: datetime | None = None
     updated_at: datetime | None = None

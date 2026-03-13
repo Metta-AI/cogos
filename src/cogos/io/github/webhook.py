@@ -11,7 +11,7 @@ from cogos.io.base import IOAdapter, IOMode, InboundEvent
 
 logger = logging.getLogger(__name__)
 
-GITHUB_EVENT_MAP = {
+GITHUB_MESSAGE_TYPE_MAP = {
     ("issues", "assigned"): "issue.assigned",
     ("issues", "opened"): "issue.opened",
     ("issues", "closed"): "issue.closed",
@@ -41,16 +41,16 @@ class GitHubIO(IOAdapter):
         super().__init__(name)
         self.webhook_secret = webhook_secret
         self.watched_repos = set(watched_repos) if watched_repos else set()
-        self._pending_events = []
+        self._pending_messages = []
 
     async def poll(self):
-        events = list(self._pending_events)
-        self._pending_events.clear()
+        events = list(self._pending_messages)
+        self._pending_messages.clear()
         return events
 
     def ingest_webhook(self, gh_event, action, payload):
-        """Convert raw GitHub webhook to InboundEvent and queue it."""
-        event_type = GITHUB_EVENT_MAP.get(
+        """Convert raw GitHub webhook to InboundEvent message and queue it."""
+        message_type = GITHUB_MESSAGE_TYPE_MAP.get(
             (gh_event, action), f"github.{gh_event}.{action}"
         )
         sender = payload.get("sender", {}).get("login", "unknown")
@@ -90,18 +90,18 @@ class GitHubIO(IOAdapter):
             conclusion = payload.get("conclusion", "")
             content = f"CI {gh_event}: {conclusion}"
             if conclusion == "failure":
-                event_type = "ci.failure"
+                message_type = "ci.failure"
 
         event = InboundEvent(
-            channel="github",
-            event_type=event_type,
+            source="github",
+            message_type=message_type,
             payload=payload,
             raw_content=content or "",
             author=sender,
             external_id=external_id,
             external_url=external_url,
         )
-        self._pending_events.append(event)
+        self._pending_messages.append(event)
         return event
 
     async def handle_webhook(self, request):
@@ -125,4 +125,4 @@ class GitHubIO(IOAdapter):
         return web.Response(text="ok")
 
     def add_event(self, event):
-        self._pending_events.append(event)
+        self._pending_messages.append(event)

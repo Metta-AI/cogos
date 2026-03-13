@@ -29,18 +29,18 @@ class TestGitHubIO:
 
     async def test_poll_returns_queued_events(self):
         ch = GitHubIO(name="github")
-        event = InboundEvent(channel="github", event_type="push", payload={})
+        event = InboundEvent(source="github", message_type="push", payload={})
         ch.add_event(event)
         events = await ch.poll()
         assert len(events) == 1
-        assert events[0].event_type == "push"
+        assert events[0].message_type == "push"
 
     async def test_poll_drains_queue(self):
         ch = GitHubIO(name="github")
         for i in range(3):
             ch.add_event(
                 InboundEvent(
-                    channel="github", event_type=f"event.{i}", payload={}
+                    source="github", message_type=f"event.{i}", payload={}
                 )
             )
         events = await ch.poll()
@@ -63,7 +63,7 @@ class TestGitHubIO:
                 },
             },
         )
-        assert event.event_type == "issue.assigned"
+        assert event.message_type == "issue.assigned"
         assert event.author == "testuser"
         assert event.external_id == "github:issue:org/repo:42"
 
@@ -78,7 +78,7 @@ class TestGitHubIO:
                 "conclusion": "failure",
             },
         )
-        assert event.event_type == "ci.failure"
+        assert event.message_type == "ci.failure"
 
     def test_ingest_unknown_event(self):
         ch = GitHubIO(name="github")
@@ -90,4 +90,4 @@ class TestGitHubIO:
                 "repository": {"full_name": "org/repo"},
             },
         )
-        assert event.event_type == "github.unknown_event.triggered"
+        assert event.message_type == "github.unknown_event.triggered"

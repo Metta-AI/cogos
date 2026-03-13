@@ -41,7 +41,6 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             schema=cap_dict.get("schema") or {},
             iam_role_arn=cap_dict.get("iam_role_arn"),
             metadata=cap_dict.get("metadata") or {},
-            event_types=cap_dict.get("event_types") or [],
         )
         repo.upsert_capability(cap)
         counts["capabilities"] += 1
@@ -121,7 +120,6 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
                 code_id = f.id
 
         mode = ProcessMode(proc_dict.get("mode", "one_shot"))
-        output_events = proc_dict.get("output_events") or []
         p = Process(
             name=proc_dict["name"],
             mode=mode,
@@ -132,7 +130,6 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             priority=float(proc_dict.get("priority", 0.0)),
             status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
             metadata=proc_dict.get("metadata") or {},
-            output_events=output_events,
         )
         pid = repo.upsert_process(p)
 

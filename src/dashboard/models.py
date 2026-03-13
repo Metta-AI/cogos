@@ -11,7 +11,6 @@ class StatusResponse(BaseModel):
     total_conversations: int = 0
     trigger_count: int = 0
     unresolved_alerts: int = 0
-    recent_events: int = 0
 
 
 class Execution(BaseModel):
@@ -73,31 +72,10 @@ class SessionsResponse(BaseModel):
     sessions: list[Session]
 
 
-class Event(BaseModel):
-    id: int | str
-    event_type: str | None = None
-    source: str | None = None
-    payload: Any = None
-    parent_event_id: int | str | None = None
-    created_at: str | None = None
-
-
-class EventsResponse(BaseModel):
-    cogent_name: str
-    count: int
-    events: list[Event]
-
-
-class EventTreeResponse(BaseModel):
-    root_event_id: int | str | None = None
-    count: int
-    events: list[Event]
-
-
 class Trigger(BaseModel):
     id: str
     name: str = ""
-    event_pattern: str | None = None
+    channel_pattern: str | None = None
     program_name: str | None = None
     priority: int | None = None
     enabled: bool = True
@@ -120,7 +98,7 @@ class TriggersResponse(BaseModel):
 
 class TriggerCreate(BaseModel):
     program_name: str
-    event_pattern: str
+    channel_pattern: str
     priority: int = 10
     enabled: bool = True
     metadata: dict[str, Any] = {}
@@ -130,7 +108,7 @@ class TriggerCreate(BaseModel):
 
 class TriggerUpdate(BaseModel):
     program_name: str | None = None
-    event_pattern: str | None = None
+    channel_pattern: str | None = None
     priority: int | None = None
     max_events: int | None = None
     throttle_window_seconds: int | None = None
@@ -288,7 +266,7 @@ class AlertsResponse(BaseModel):
 class CronItem(BaseModel):
     id: str
     cron_expression: str
-    event_pattern: str
+    channel_name: str
     enabled: bool = True
     metadata: dict[str, Any] = {}
     created_at: str | None = None
@@ -296,14 +274,14 @@ class CronItem(BaseModel):
 
 class CronCreate(BaseModel):
     cron_expression: str
-    event_pattern: str
+    channel_name: str
     enabled: bool = True
     metadata: dict[str, Any] = {}
 
 
 class CronUpdate(BaseModel):
     cron_expression: str | None = None
-    event_pattern: str | None = None
+    channel_name: str | None = None
     enabled: bool | None = None
     metadata: dict[str, Any] | None = None
 

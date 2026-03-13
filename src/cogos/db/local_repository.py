@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from fnmatch import fnmatchcase
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -18,12 +17,8 @@ from cogos.db.models import (
     ChannelMessage,
     ChannelType,
     Cron,
+    Delivery,
     DeliveryStatus,
-    Event,
-    EventDelivery,
-    EventOutbox,
-    EventOutboxStatus,
-    EventType,
     File,
     FileVersion,
     Handler,
@@ -62,13 +57,6 @@ class LocalRepository:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._file = self._data_dir / "cogos_data.json"
         self._file_mtime: float = 0.0
-        self._event_outbox_failed_retry_backoff_seconds = int(
-            os.environ.get("COGOS_EVENT_OUTBOX_FAILED_RETRY_BACKOFF_SECONDS", "60"),
-        )
-        self._event_outbox_failed_max_attempts = int(
-            os.environ.get("COGOS_EVENT_OUTBOX_FAILED_MAX_ATTEMPTS", "10"),
-        )
-
         self._processes: dict[UUID, Process] = {}
         self._capabilities: dict[UUID, Capability] = {}
         self._handlers: dict[UUID, Handler] = {}
@@ -77,11 +65,8 @@ class LocalRepository:
         self._process_capabilities: dict[UUID, ProcessCapability] = {}
         self._resources: dict[str, Resource] = {}  # keyed by name
         self._cron_rules: dict[UUID, Cron] = {}
-        self._events: list[Event] = []
-        self._event_deliveries: dict[UUID, EventDelivery] = {}
-        self._event_outbox: dict[UUID, EventOutbox] = {}
+        self._deliveries: dict[UUID, Delivery] = {}
         self._runs: dict[UUID, Run] = {}
-        self._event_types: dict[str, EventType] = {}  # keyed by name
         self._schemas: dict[UUID, Schema] = {}
         self._channels: dict[UUID, Channel] = {}
         self._channel_messages: dict[UUID, ChannelMessage] = {}
@@ -119,11 +104,8 @@ class LocalRepository:
         self._cron_rules.clear()
         self._files.clear()
         self._file_versions.clear()
-        self._events.clear()
-        self._event_deliveries.clear()
-        self._event_outbox.clear()
+        self._deliveries.clear()
         self._runs.clear()
-        self._event_types.clear()
         self._schemas.clear()
         self._channels.clear()
         self._channel_messages.clear()
@@ -153,20 +135,12 @@ class LocalRepository:
         for fv in data.get("file_versions", []):
             ver = FileVersion(**fv)
             self._file_versions.setdefault(ver.file_id, []).append(ver)
-        for e in data.get("events", []):
-            self._events.append(Event(**e))
-        for ed in data.get("event_deliveries", []):
-            delivery = EventDelivery(**ed)
-            self._event_deliveries[delivery.id] = delivery
-        for outbox in data.get("event_outbox", []):
-            item = EventOutbox(**outbox)
-            self._event_outbox[item.id] = item
+        for ed in data.get("deliveries", data.get("event_deliveries", [])):
+            delivery = Delivery(**ed)
+            self._deliveries[delivery.id] = delivery
         for r in data.get("runs", []):
             run = Run(**r)
             self._runs[run.id] = run
-        for et in data.get("event_types", []):
-            evt = EventType(**et)
-            self._event_types[evt.name] = evt
         for s in data.get("schemas", []):
             schema = Schema(**s)
             self._schemas[schema.id] = schema
@@ -179,9 +153,9 @@ class LocalRepository:
         self._meta.update(data.get("meta", {}))
 
         logger.info(
-            "Loaded cogos data: %d processes, %d capabilities, %d files, %d events, %d runs",
+            "Loaded cogos data: %d processes, %d capabilities, %d files, %d deliveries, %d runs",
             len(self._processes), len(self._capabilities), len(self._files),
-            len(self._events), len(self._runs),
+            len(self._deliveries), len(self._runs),
         )
 
     def _save(self) -> None:
@@ -198,11 +172,8 @@ class LocalRepository:
             ],
             "resources": [r.model_dump(mode="json") for r in self._resources.values()],
             "cron_rules": [c.model_dump(mode="json") for c in self._cron_rules.values()],
-            "events": [e.model_dump(mode="json") for e in self._events],
-            "event_deliveries": [ed.model_dump(mode="json") for ed in self._event_deliveries.values()],
-            "event_outbox": [item.model_dump(mode="json") for item in self._event_outbox.values()],
+            "deliveries": [ed.model_dump(mode="json") for ed in self._deliveries.values()],
             "runs": [r.model_dump(mode="json") for r in self._runs.values()],
-            "event_types": [et.model_dump(mode="json") for et in self._event_types.values()],
             "schemas": [s.model_dump(mode="json") for s in self._schemas.values()],
             "channels": [ch.model_dump(mode="json") for ch in self._channels.values()],
             "channel_messages": [m.model_dump(mode="json") for m in self._channel_messages.values()],
@@ -229,11 +200,8 @@ class LocalRepository:
         self._process_capabilities.clear()
         self._resources.clear()
         self._cron_rules.clear()
-        self._events.clear()
-        self._event_deliveries.clear()
-        self._event_outbox.clear()
+        self._deliveries.clear()
         self._runs.clear()
-        self._event_types.clear()
         self._schemas.clear()
         self._channels.clear()
         self._channel_messages.clear()
@@ -386,16 +354,10 @@ class LocalRepository:
     # ── Handlers ─────────────────────────────────────────────
 
     def create_handler(self, h: Handler) -> UUID:
-        # Upsert by (process, channel) when channel is set,
-        # otherwise by (process, event_pattern) to match RDS ON CONFLICT behavior
+        # Upsert by (process, channel)
         for existing in self._handlers.values():
             if h.channel is not None:
                 if existing.process == h.process and existing.channel == h.channel:
-                    existing.enabled = h.enabled
-                    self._save()
-                    return existing.id
-            elif h.event_pattern is not None:
-                if existing.process == h.process and existing.event_pattern == h.event_pattern:
                     existing.enabled = h.enabled
                     self._save()
                     return existing.id
@@ -411,7 +373,7 @@ class LocalRepository:
             handlers = [h for h in handlers if h.process == process_id]
         if enabled_only:
             handlers = [h for h in handlers if h.enabled]
-        handlers.sort(key=lambda h: h.event_pattern or "")
+        handlers.sort(key=lambda h: str(h.channel or ""))
         return handlers
 
     def delete_handler(self, handler_id: UUID) -> bool:
@@ -422,13 +384,8 @@ class LocalRepository:
         return False
 
     def match_handlers(self, event_type: str) -> list[Handler]:
-        self._maybe_reload()
-        handlers = [
-            h for h in self._handlers.values()
-            if h.enabled and h.event_pattern is not None and fnmatchcase(event_type, h.event_pattern)
-        ]
-        handlers.sort(key=lambda h: (str(h.process), h.event_pattern or ""))
-        return handlers
+        """Legacy stub -- returns empty list since event_pattern matching is removed."""
+        return []
 
     # ── Process Capabilities ────────────────────────────────
 
@@ -581,10 +538,10 @@ class LocalRepository:
 
     def upsert_cron(self, c: Cron) -> UUID:
         now = datetime.utcnow()
-        # Match by (expression, event_type)
+        # Match by (expression, channel_name)
         existing = None
         for ec in self._cron_rules.values():
-            if ec.expression == c.expression and ec.event_type == c.event_type:
+            if ec.expression == c.expression and ec.channel_name == c.channel_name:
                 existing = ec
                 break
         if existing:
@@ -604,59 +561,23 @@ class LocalRepository:
         rules.sort(key=lambda c: c.expression)
         return rules
 
-    # ── Events ───────────────────────────────────────────────
+    # ── Deliveries ───────────────────────────────────────────
 
-    def append_event(self, event: Event) -> UUID:
-        event.created_at = datetime.utcnow()
-        self._events.append(event)
-        outbox_item = EventOutbox(
-            event=event.id,
-            created_at=event.created_at,
-        )
-        self._event_outbox[outbox_item.id] = outbox_item
-        self._save()
-        return event.id
-
-    def get_event(self, event_id: UUID) -> Event | None:
+    def create_delivery(self, ed: Delivery) -> tuple[UUID, bool]:
         self._maybe_reload()
-        for event in self._events:
-            if event.id == event_id:
-                return event
-        return None
-
-    def get_events_by_ids(self, event_ids: list[UUID]) -> dict[UUID, Event]:
-        self._maybe_reload()
-        wanted = set(event_ids)
-        return {event.id: event for event in self._events if event.id in wanted}
-
-    def get_events(self, *, event_type: str | None = None, limit: int = 100) -> list[Event]:
-        self._maybe_reload()
-        events = list(reversed(self._events))
-        if event_type:
-            if "%" in event_type or "_" in event_type:
-                pattern = event_type.replace("%", "*").replace("_", "?")
-                events = [e for e in events if fnmatchcase(e.event_type, pattern)]
-            else:
-                events = [e for e in events if e.event_type == event_type]
-        return events[:limit]
-
-    # ── Event Deliveries / Outbox ───────────────────────────
-
-    def create_event_delivery(self, ed: EventDelivery) -> tuple[UUID, bool]:
-        self._maybe_reload()
-        for existing in self._event_deliveries.values():
-            if existing.event == ed.event and existing.handler == ed.handler:
+        for existing in self._deliveries.values():
+            if existing.message == ed.message and existing.handler == ed.handler:
                 return existing.id, False
         ed.created_at = datetime.utcnow()
-        self._event_deliveries[ed.id] = ed
+        self._deliveries[ed.id] = ed
         self._save()
         return ed.id, True
 
-    def get_pending_deliveries(self, process_id: UUID) -> list[EventDelivery]:
+    def get_pending_deliveries(self, process_id: UUID) -> list[Delivery]:
         self._maybe_reload()
         handler_ids = {h.id for h in self._handlers.values() if h.process == process_id}
         deliveries = [
-            delivery for delivery in self._event_deliveries.values()
+            delivery for delivery in self._deliveries.values()
             if delivery.handler in handler_ids and delivery.status == DeliveryStatus.PENDING
         ]
         deliveries.sort(key=lambda d: d.created_at or datetime.min)
@@ -666,7 +587,7 @@ class LocalRepository:
         return bool(self.get_pending_deliveries(process_id))
 
     def mark_delivered(self, delivery_id: UUID, run_id: UUID) -> bool:
-        delivery = self._event_deliveries.get(delivery_id)
+        delivery = self._deliveries.get(delivery_id)
         if delivery is None:
             return False
         delivery.status = DeliveryStatus.DELIVERED
@@ -675,7 +596,7 @@ class LocalRepository:
         return True
 
     def mark_queued(self, delivery_id: UUID, run_id: UUID) -> bool:
-        delivery = self._event_deliveries.get(delivery_id)
+        delivery = self._deliveries.get(delivery_id)
         if delivery is None:
             return False
         delivery.status = DeliveryStatus.QUEUED
@@ -684,7 +605,7 @@ class LocalRepository:
         return True
 
     def requeue_delivery(self, delivery_id: UUID) -> bool:
-        delivery = self._event_deliveries.get(delivery_id)
+        delivery = self._deliveries.get(delivery_id)
         if delivery is None:
             return False
         delivery.status = DeliveryStatus.PENDING
@@ -694,7 +615,7 @@ class LocalRepository:
 
     def mark_run_deliveries_delivered(self, run_id: UUID) -> int:
         updated = 0
-        for delivery in self._event_deliveries.values():
+        for delivery in self._deliveries.values():
             if delivery.run == run_id and delivery.status == DeliveryStatus.QUEUED:
                 delivery.status = DeliveryStatus.DELIVERED
                 updated += 1
@@ -716,59 +637,6 @@ class LocalRepository:
         current = self._processes.get(process_id)
         if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
             self.update_process_status(process_id, ProcessStatus.RUNNABLE)
-
-    def claim_event_outbox_batch(
-        self,
-        *,
-        limit: int = 25,
-        stale_after_seconds: int = 60,
-    ) -> list[EventOutbox]:
-        self._maybe_reload()
-        now = datetime.utcnow()
-        selected: list[EventOutbox] = []
-        for item in sorted(self._event_outbox.values(), key=lambda o: (o.created_at or datetime.min, str(o.id))):
-            stale = (
-                item.status == EventOutboxStatus.PROCESSING
-                and item.claimed_at is not None
-                and (now - item.claimed_at).total_seconds() > stale_after_seconds
-            )
-            failed_retry_ready = (
-                item.status == EventOutboxStatus.FAILED
-                and item.attempt_count < self._event_outbox_failed_max_attempts
-                and now - (item.claimed_at or item.created_at or now) >= timedelta(
-                    seconds=self._event_outbox_failed_retry_backoff_seconds * (2 ** max(item.attempt_count - 1, 0)),
-                )
-            )
-            if item.status == EventOutboxStatus.PENDING or stale or failed_retry_ready:
-                item.status = EventOutboxStatus.PROCESSING
-                item.claimed_at = now
-                item.attempt_count += 1
-                item.last_error = None
-                selected.append(item)
-            if len(selected) >= limit:
-                break
-        if selected:
-            self._save()
-        return selected
-
-    def mark_event_outbox_done(self, outbox_id: UUID) -> bool:
-        item = self._event_outbox.get(outbox_id)
-        if item is None:
-            return False
-        item.status = EventOutboxStatus.DONE
-        item.completed_at = datetime.utcnow()
-        item.last_error = None
-        self._save()
-        return True
-
-    def mark_event_outbox_failed(self, outbox_id: UUID, error: str) -> bool:
-        item = self._event_outbox.get(outbox_id)
-        if item is None:
-            return False
-        item.status = EventOutboxStatus.FAILED
-        item.last_error = error[:4000]
-        self._save()
-        return True
 
     # ── Runs ─────────────────────────────────────────────────
 
@@ -833,40 +701,6 @@ class LocalRepository:
     def get_meta(self, key: str) -> dict[str, str] | None:
         self._maybe_reload()
         return self._meta.get(key)
-
-    # ── Event Types ───────────────────────────────────────────
-
-    def list_event_types(self) -> list[EventType]:
-        self._maybe_reload()
-        items = list(self._event_types.values())
-        items.sort(key=lambda et: et.name)
-        return items
-
-    def upsert_event_type(self, et: EventType) -> None:
-        if et.name not in self._event_types:
-            et.created_at = datetime.utcnow()
-        self._event_types[et.name] = et
-        self._save()
-
-    def register_event_types(self, names: list[str], source: str = "") -> None:
-        changed = False
-        for name in names:
-            if "*" in name or "?" in name:
-                continue
-            if name not in self._event_types:
-                self._event_types[name] = EventType(
-                    name=name, source=source, created_at=datetime.utcnow(),
-                )
-                changed = True
-        if changed:
-            self._save()
-
-    def delete_event_type(self, name: str) -> bool:
-        if name in self._event_types:
-            del self._event_types[name]
-            self._save()
-            return True
-        return False
 
     # ── Schema CRUD ──────────────────────────────────────────
 
@@ -948,8 +782,8 @@ class LocalRepository:
         # Auto-create deliveries for handlers bound to this channel
         handlers = self.match_handlers_by_channel(msg.channel)
         for handler in handlers:
-            delivery = EventDelivery(event=msg.id, handler=handler.id)
-            _delivery_id, inserted = self.create_event_delivery(delivery)
+            delivery = Delivery(message=msg.id, handler=handler.id)
+            _delivery_id, inserted = self.create_delivery(delivery)
             if inserted:
                 proc = self.get_process(handler.process)
                 if proc and proc.status == ProcessStatus.WAITING:

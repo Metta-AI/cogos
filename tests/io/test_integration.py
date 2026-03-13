@@ -9,9 +9,9 @@ class TestAllChannelsImport:
     def test_github(self):
         ch = GitHubIO()
         assert ch.mode == IOMode.ON_DEMAND
-        assert isinstance(ch, Channel)
+        assert isinstance(ch, IOAdapter)
 
     def test_asana(self):
         ch = AsanaIO()
         assert ch.mode == IOMode.POLL
-        assert isinstance(ch, Channel)
+        assert isinstance(ch, IOAdapter)

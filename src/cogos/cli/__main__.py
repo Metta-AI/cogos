@@ -114,7 +114,7 @@ def _output_single(data: dict) -> None:
               help="Cogent name (default: dr.alpha)")
 @click.pass_context
 def cogos(ctx: click.Context, cogent: str):
-    """CogOS — management CLI for processes, files, capabilities, and events."""
+    """CogOS — management CLI for processes, files, capabilities, and channels."""
     ctx.ensure_object(dict)
     ctx.obj["cogent_name"] = cogent
     if cogent == "local":
@@ -391,7 +391,7 @@ def process_load(file_path: str):
 
     Each entry should have: name, mode, content, code_key, runner, model,
     priority, capabilities (list of capability names), handlers (list of
-    event patterns).
+    channel names).
     """
     from cogos.db.models import (
         Process as ProcessModel, ProcessMode, ProcessStatus,
@@ -512,8 +512,6 @@ def handler_list(process_name: str | None, use_json: bool):
         if h.channel:
             ch = repo.get_channel(h.channel)
             ch_name = ch.name if ch else str(h.channel)
-        elif h.event_pattern:
-            ch_name = h.event_pattern  # legacy
         data.append({
             "id": str(h.id),
             "process": proc_cache[pkey],
@@ -782,37 +780,24 @@ def capability_load(directory: str):
 
 
 # ═══════════════════════════════════════════════════════════
-# EVENT commands
+# CHANNEL MESSAGE commands
 # ═══════════════════════════════════════════════════════════
 
 @cogos.group()
-def event():
-    """Manage events."""
+def channel():
+    """Manage channels and messages."""
 
 
-@event.command("list")
-@click.option("--type", "event_type", default=None)
-@click.option("--limit", type=int, default=20)
-@click.option("--json", "use_json", is_flag=True)
-def event_list(event_type: str | None, limit: int, use_json: bool):
-    """List events."""
-    repo = _repo()
-    events = repo.get_events(event_type=event_type, limit=limit)
-    data = [{"id": str(e.id), "type": e.event_type, "source": e.source,
-             "created_at": str(e.created_at)} for e in events]
-    _output(data, use_json=use_json)
-
-
-@event.command("emit")
+@channel.command("send")
 @click.argument("channel_name")
 @click.option("--payload", default="{}")
-def event_emit(channel_name: str, payload: str):
-    """Send a message to a channel (replaces legacy event emit)."""
-    from cogos.db.models import Channel, ChannelType, ChannelMessage
+def channel_send(channel_name: str, payload: str):
+    """Send a message to a channel."""
+    from cogos.db.models import Channel as ChannelModel, ChannelType, ChannelMessage
     repo = _repo()
     ch = repo.get_channel_by_name(channel_name)
     if not ch:
-        ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
+        ch = ChannelModel(name=channel_name, channel_type=ChannelType.NAMED)
         repo.upsert_channel(ch)
     msg = ChannelMessage(channel=ch.id, sender_process=None, payload=json.loads(payload))
     mid = repo.append_channel_message(msg)
@@ -883,10 +868,11 @@ def status():
     caps = repo.list_capabilities()
     click.echo(f"Capabilities: {len(caps)}")
 
-    events = repo.get_events(limit=5)
-    click.echo(f"Recent events: {len(events)}")
-    for e in events:
-        click.echo(f"  {e.event_type} ({e.created_at})")
+    if hasattr(repo, "list_channels"):
+        channels = repo.list_channels()
+        click.echo(f"Channels: {len(channels)}")
+        for ch in channels:
+            click.echo(f"  {ch.name} ({ch.channel_type.value})")
 
 
 # ═══════════════════════════════════════════════════════════

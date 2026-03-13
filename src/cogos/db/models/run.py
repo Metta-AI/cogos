@@ -22,7 +22,7 @@ class RunStatus(str, enum.Enum):
 class Run(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     process: UUID  # FK -> Process.id
-    event: UUID | None = None  # FK -> Event.id (triggering event)
+    message: UUID | None = None  # FK -> ChannelMessage.id (triggering message)
     conversation: UUID | None = None  # FK -> Conversation.id
     status: RunStatus = RunStatus.RUNNING
     tokens_in: int = 0

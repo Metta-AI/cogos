@@ -23,13 +23,12 @@ def load_image(image_dir: Path) -> ImageSpec:
     spec = ImageSpec()
 
     def add_capability(name, *, handler, description="", instructions="",
-                       schema=None, iam_role_arn=None, metadata=None,
-                       event_types=None):
+                       schema=None, iam_role_arn=None, metadata=None):
         spec.capabilities.append({
             "name": name, "handler": handler, "description": description,
             "instructions": instructions, "schema": schema,
             "iam_role_arn": iam_role_arn,
-            "metadata": metadata, "event_types": event_types or [],
+            "metadata": metadata,
         })
 
     def add_resource(name, *, type, capacity, metadata=None):
@@ -40,13 +39,13 @@ def load_image(image_dir: Path) -> ImageSpec:
 
     def add_process(name, *, mode="one_shot", content="", code_key=None,
                     runner="lambda", model=None, priority=0.0,
-                    capabilities=None, handlers=None, output_events=None,
+                    capabilities=None, handlers=None,
                     metadata=None):
         spec.processes.append({
             "name": name, "mode": mode, "content": content,
             "code_key": code_key, "runner": runner, "model": model,
             "priority": priority, "capabilities": capabilities or [],
-            "handlers": handlers or [], "output_events": output_events or [],
+            "handlers": handlers or [],
             "metadata": metadata or {},
         })
 

@@ -2,16 +2,14 @@
 
 EventBridge fires this every 60s. Each invocation:
 1. Generates virtual system:tick:minute (and system:tick:hour on the hour)
-2. Matches real events to handlers
+2. Matches channel messages to handlers
 3. Selects runnable processes and dispatches executors
 
-Virtual tick events are NOT written to the event log — they match handlers
-directly and set processes to RUNNABLE.
+Virtual tick events match handlers directly and set processes to RUNNABLE.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -21,7 +19,7 @@ import boto3
 
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.logging import setup_logging
-from cogos.runtime.ingress import dispatch_ready_processes, drain_outbox
+from cogos.runtime.ingress import dispatch_ready_processes
 
 logger = setup_logging()
 
@@ -56,32 +54,11 @@ def handler(event: dict, context) -> dict:
     # 1. Generate virtual system tick events (not written to event log)
     _apply_system_ticks(repo)
 
-    # 2. Drain immediate-event outbox as the primary backstop path
-    try:
-        outbox_result = drain_outbox(repo, scheduler, batch_size=25)
-    except Exception:
-        logger.exception("Failed to drain CogOS event outbox")
-        from cogos.runtime.ingress import DrainResult
-        outbox_result = DrainResult()
+    # 2. Match channel messages to handlers
     dispatched = 0
-    if outbox_result.deliveries_created > 0:
-        logger.info(
-            "Dispatcher drained %s outbox rows and created %s deliveries",
-            outbox_result.outbox_rows,
-            outbox_result.deliveries_created,
-        )
-        dispatched += dispatch_ready_processes(
-            repo,
-            scheduler,
-            lambda_client,
-            executor_fn,
-            outbox_result.affected_processes,
-        )
-
-    # 3. Match remaining legacy/unreconciled events
-    match_result = scheduler.match_events(limit=50)
+    match_result = scheduler.match_messages()
     if match_result.deliveries_created > 0:
-        logger.info("Matched %s event deliveries", match_result.deliveries_created)
+        logger.info("Matched %s message deliveries", match_result.deliveries_created)
         dispatched += dispatch_ready_processes(
             repo,
             scheduler,

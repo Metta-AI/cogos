@@ -30,11 +30,7 @@ def test_run_migrations_executes_comment_prefixed_sql_blocks(monkeypatch):
         for stmt in repo.statements
     )
     assert any(
-        "CREATE TABLE IF NOT EXISTS cogos_event_outbox" in stmt
-        for stmt in repo.statements
-    )
-    assert any(
-        "CREATE TABLE IF NOT EXISTS cogos_ingress_wake" in stmt
+        "CREATE TABLE IF NOT EXISTS cogos_channel" in stmt
         for stmt in repo.statements
     )
 
@@ -42,7 +38,7 @@ def test_run_migrations_executes_comment_prefixed_sql_blocks(monkeypatch):
 def test_apply_cogos_sql_migrations_raises_unexpected_errors():
     class _BrokenRepo(_RecordingRepo):
         def execute(self, sql: str) -> int:
-            if "CREATE TABLE IF NOT EXISTS cogos_event_outbox" in sql:
+            if "CREATE TABLE IF NOT EXISTS cogos_channel" in sql:
                 raise RuntimeError("boom")
             return super().execute(sql)
 

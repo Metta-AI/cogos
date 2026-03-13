@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import boto3
 
@@ -25,12 +24,8 @@ from cogos.db.models import (
     Conversation,
     ConversationStatus,
     Cron,
+    Delivery,
     DeliveryStatus,
-    Event,
-    EventDelivery,
-    EventOutbox,
-    EventOutboxStatus,
-    EventType,
     File,
     FileVersion,
     Handler,
@@ -50,13 +45,6 @@ from cogos.db.models import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class _IngressWakeRequest:
-    token: str
-    enqueued_at: datetime
-    previous_enqueued_at: datetime | None
-
-
 class Repository:
     """Synchronous CogOS repository using RDS Data API."""
 
@@ -73,17 +61,6 @@ class Repository:
         self._secret_arn = secret_arn
         self._database = database
         self._region = region
-        self._ingress_queue_url = os.environ.get("COGOS_INGRESS_QUEUE_URL", "")
-        self._ingress_wake_cooldown_seconds = int(
-            os.environ.get("COGOS_INGRESS_WAKE_COOLDOWN_SECONDS", "1"),
-        )
-        self._event_outbox_failed_retry_backoff_seconds = int(
-            os.environ.get("COGOS_EVENT_OUTBOX_FAILED_RETRY_BACKOFF_SECONDS", "60"),
-        )
-        self._event_outbox_failed_max_attempts = int(
-            os.environ.get("COGOS_EVENT_OUTBOX_FAILED_MAX_ATTEMPTS", "10"),
-        )
-        self._sqs_client: Any | None = None
 
     @classmethod
     def create(
@@ -196,93 +173,6 @@ class Repository:
     def _ts(row: dict, key: str) -> datetime | None:
         v = row.get(key)
         return datetime.fromisoformat(v) if v else None
-
-    def _get_sqs_client(self) -> Any:
-        if self._sqs_client is None:
-            self._sqs_client = boto3.client("sqs", region_name=self._region)
-        return self._sqs_client
-
-    def _request_ingress_wake_state(self) -> _IngressWakeRequest | None:
-        row = self._first_row(self._execute(
-            """WITH prior AS (
-                   SELECT enqueued_at AS previous_enqueued_at
-                   FROM cogos_ingress_wake
-                   WHERE key = 'default'
-               ),
-               upserted AS (
-                   INSERT INTO cogos_ingress_wake (key, requested_at, enqueued_at, updated_at)
-                   VALUES ('default', now(), now(), now())
-                   ON CONFLICT (key) DO UPDATE SET
-                       requested_at = now(),
-                       enqueued_at = CASE
-                           WHEN cogos_ingress_wake.enqueued_at
-                                < now() - make_interval(secs => :cooldown_seconds)
-                           THEN now()
-                           ELSE cogos_ingress_wake.enqueued_at
-                       END,
-                       updated_at = now()
-                   RETURNING requested_at, enqueued_at
-               )
-               SELECT requested_at,
-                      enqueued_at,
-                      (SELECT previous_enqueued_at FROM prior) AS previous_enqueued_at
-               FROM upserted""",
-            [self._param("cooldown_seconds", self._ingress_wake_cooldown_seconds)],
-        ))
-        if not row:
-            return None
-        requested_at = self._ts(row, "requested_at")
-        enqueued_at = self._ts(row, "enqueued_at")
-        previous_enqueued_at = self._ts(row, "previous_enqueued_at")
-        if requested_at and enqueued_at and requested_at == enqueued_at:
-            return _IngressWakeRequest(
-                token=str(int(requested_at.timestamp())),
-                enqueued_at=enqueued_at,
-                previous_enqueued_at=previous_enqueued_at,
-            )
-        return None
-
-    def _request_ingress_wake(self) -> str | None:
-        request = self._request_ingress_wake_state()
-        return request.token if request else None
-
-    def _rollback_ingress_wake_request(self, request: _IngressWakeRequest) -> None:
-        previous_enqueued_at = request.previous_enqueued_at or (
-            request.enqueued_at - timedelta(seconds=self._ingress_wake_cooldown_seconds + 1)
-        )
-        self._execute(
-            """UPDATE cogos_ingress_wake
-               SET enqueued_at = :previous_enqueued_at,
-                   updated_at = now()
-               WHERE key = 'default'
-                 AND enqueued_at = :failed_enqueued_at""",
-            [
-                self._param("previous_enqueued_at", previous_enqueued_at),
-                self._param("failed_enqueued_at", request.enqueued_at),
-            ],
-        )
-
-    def _wake_ingress(self, event_id: UUID) -> None:
-        if not self._ingress_queue_url:
-            return
-        request = None
-        try:
-            request = self._request_ingress_wake_state()
-            if request is None:
-                return
-            self._get_sqs_client().send_message(
-                QueueUrl=self._ingress_queue_url,
-                MessageBody=json.dumps({"event_id": str(event_id), "wake_token": request.token}),
-                MessageGroupId="ingress",
-                MessageDeduplicationId=f"wake-{request.token}",
-            )
-        except Exception:
-            if request is not None:
-                try:
-                    self._rollback_ingress_wake_request(request)
-                except Exception:
-                    logger.exception("Failed to roll back CogOS ingress wake gate for event %s", event_id)
-            logger.exception("Failed to nudge CogOS ingress for event %s", event_id)
 
     # ═══════════════════════════════════════════════════════════
     # PROCESSES
@@ -588,50 +478,27 @@ class Repository:
         )
 
     # ═══════════════════════════════════════════════════════════
-    # EVENTS (deprecated — stubs for backwards compat)
+    # DELIVERIES
     # ═══════════════════════════════════════════════════════════
 
-    def append_event(self, event: Event) -> UUID:
-        """Deprecated: event table dropped. No-op that returns the event ID."""
-        logger.debug("append_event called (deprecated): %s", event.event_type)
-        return event.id
-
-    def get_event(self, event_id: UUID) -> Event | None:
-        """Deprecated: event table dropped."""
-        return None
-
-    def get_events_by_ids(self, event_ids: list[UUID]) -> dict[UUID, Event]:
-        """Deprecated: event table dropped."""
-        return {}
-
-    def get_events(
-        self, *, event_type: str | None = None, limit: int = 100,
-    ) -> list[Event]:
-        """Deprecated: event table dropped."""
-        return []
-
-    # ═══════════════════════════════════════════════════════════
-    # EVENT DELIVERY
-    # ═══════════════════════════════════════════════════════════
-
-    def create_event_delivery(self, ed: EventDelivery) -> tuple[UUID, bool]:
+    def create_delivery(self, ed: Delivery) -> tuple[UUID, bool]:
         response = self._execute(
             """WITH inserted AS (
-                   INSERT INTO cogos_event_delivery (id, event, handler, status, run)
-                   VALUES (:id, :event, :handler, :status, :run)
-                   ON CONFLICT (event, handler) DO NOTHING
+                   INSERT INTO cogos_delivery (id, message, handler, status, run)
+                   VALUES (:id, :message, :handler, :status, :run)
+                   ON CONFLICT (message, handler) DO NOTHING
                    RETURNING id, created_at, TRUE AS inserted
                )
                SELECT id, created_at, inserted FROM inserted
                UNION ALL
                SELECT id, created_at, FALSE AS inserted
-               FROM cogos_event_delivery
-               WHERE event = :event AND handler = :handler
+               FROM cogos_delivery
+               WHERE message = :message AND handler = :handler
                  AND NOT EXISTS (SELECT 1 FROM inserted)
                LIMIT 1""",
             [
                 self._param("id", ed.id),
-                self._param("event", ed.event),
+                self._param("message", ed.message),
                 self._param("handler", ed.handler),
                 self._param("status", ed.status.value),
                 self._param("run", ed.run),
@@ -643,18 +510,18 @@ class Repository:
             return UUID(row["id"]), bool(row.get("inserted", False))
         return ed.id, False
 
-    def get_pending_deliveries(self, process_id: UUID) -> list[EventDelivery]:
+    def get_pending_deliveries(self, process_id: UUID) -> list[Delivery]:
         response = self._execute(
-            """SELECT ed.* FROM cogos_event_delivery ed
+            """SELECT ed.* FROM cogos_delivery ed
                JOIN cogos_handler h ON h.id = ed.handler
                WHERE h.process = :process AND ed.status = 'pending'
                ORDER BY ed.created_at ASC""",
             [self._param("process", process_id)],
         )
         return [
-            EventDelivery(
+            Delivery(
                 id=UUID(r["id"]),
-                event=UUID(r["event"]),
+                message=UUID(r["message"]),
                 handler=UUID(r["handler"]),
                 status=DeliveryStatus(r["status"]),
                 run=UUID(r["run"]) if r.get("run") else None,
@@ -666,7 +533,7 @@ class Repository:
     def has_pending_deliveries(self, process_id: UUID) -> bool:
         row = self._first_row(self._execute(
             """SELECT 1
-               FROM cogos_event_delivery ed
+               FROM cogos_delivery ed
                JOIN cogos_handler h ON h.id = ed.handler
                WHERE h.process = :process AND ed.status = 'pending'
                LIMIT 1""",
@@ -676,28 +543,28 @@ class Repository:
 
     def mark_delivered(self, delivery_id: UUID, run_id: UUID) -> bool:
         response = self._execute(
-            "UPDATE cogos_event_delivery SET status = 'delivered', run = :run WHERE id = :id",
+            "UPDATE cogos_delivery SET status = 'delivered', run = :run WHERE id = :id",
             [self._param("id", delivery_id), self._param("run", run_id)],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def mark_queued(self, delivery_id: UUID, run_id: UUID) -> bool:
         response = self._execute(
-            "UPDATE cogos_event_delivery SET status = 'queued', run = :run WHERE id = :id",
+            "UPDATE cogos_delivery SET status = 'queued', run = :run WHERE id = :id",
             [self._param("id", delivery_id), self._param("run", run_id)],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def requeue_delivery(self, delivery_id: UUID) -> bool:
         response = self._execute(
-            "UPDATE cogos_event_delivery SET status = 'pending', run = NULL WHERE id = :id",
+            "UPDATE cogos_delivery SET status = 'pending', run = NULL WHERE id = :id",
             [self._param("id", delivery_id)],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
     def mark_run_deliveries_delivered(self, run_id: UUID) -> int:
         response = self._execute(
-            """UPDATE cogos_event_delivery
+            """UPDATE cogos_delivery
                SET status = 'delivered'
                WHERE run = :run AND status = 'queued'""",
             [self._param("run", run_id)],
@@ -719,39 +586,15 @@ class Repository:
         if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
             self.update_process_status(process_id, ProcessStatus.RUNNABLE)
 
-    def claim_event_outbox_batch(self, *, limit: int = 25, **kwargs) -> list:
-        """Deprecated: event outbox table dropped."""
-        return []
-
-    def mark_event_outbox_done(self, outbox_id: UUID) -> bool:
-        """Deprecated: event outbox table dropped."""
-        return False
-
-    def mark_event_outbox_failed(self, outbox_id: UUID, error: str) -> bool:
-        """Deprecated: event outbox table dropped."""
-        return False
-
-    def _event_outbox_from_row(self, row: dict) -> EventOutbox:
-        return EventOutbox(
-            id=UUID(row["id"]),
-            event=UUID(row["event"]),
-            status=EventOutboxStatus(row["status"]),
-            attempt_count=row.get("attempt_count", 0),
-            claimed_at=self._ts(row, "claimed_at"),
-            completed_at=self._ts(row, "completed_at"),
-            last_error=row.get("last_error"),
-            created_at=self._ts(row, "created_at"),
-        )
-
     # ═══════════════════════════════════════════════════════════
     # CRON RULES
     # ═══════════════════════════════════════════════════════════
 
     def upsert_cron(self, c: Cron) -> UUID:
-        # Check for existing rule with same expression + event pattern
+        # Check for existing rule with same expression + channel name
         existing = self._first_row(self._execute(
-            "SELECT id FROM cron WHERE cron_expression = :expr AND event_pattern = :evt",
-            [self._param("expr", c.expression), self._param("evt", c.event_type)],
+            "SELECT id FROM cron WHERE cron_expression = :expr AND event_pattern = :channel_name",
+            [self._param("expr", c.expression), self._param("channel_name", c.channel_name)],
         ))
         if existing:
             c.id = UUID(existing["id"])
@@ -768,12 +611,12 @@ class Repository:
 
         response = self._execute(
             """INSERT INTO cron (id, cron_expression, event_pattern, metadata, enabled)
-               VALUES (:id, :expression, :event_type, :payload::jsonb, :enabled)
+               VALUES (:id, :expression, :channel_name, :payload::jsonb, :enabled)
                RETURNING id, created_at""",
             [
                 self._param("id", c.id),
                 self._param("expression", c.expression),
-                self._param("event_type", c.event_type),
+                self._param("channel_name", c.channel_name),
                 self._param("payload", c.payload),
                 self._param("enabled", c.enabled),
             ],
@@ -793,7 +636,7 @@ class Repository:
             Cron(
                 id=UUID(r["id"]),
                 expression=r["cron_expression"],
-                event_type=r["event_pattern"],
+                channel_name=r["event_pattern"],
                 payload=self._json_field(r, "metadata", {}),
                 enabled=r.get("enabled", True),
                 created_at=self._ts(r, "created_at"),
@@ -962,10 +805,10 @@ class Repository:
         response = self._execute(
             """INSERT INTO cogos_capability
                    (id, name, description, instructions, handler,
-                    schema, iam_role_arn, enabled, metadata, event_types)
+                    schema, iam_role_arn, enabled, metadata)
                VALUES (:id, :name, :description, :instructions, :handler,
                        :schema::jsonb,
-                       :iam_role_arn, :enabled, :metadata::jsonb, :event_types::jsonb)
+                       :iam_role_arn, :enabled, :metadata::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    description = EXCLUDED.description,
                    instructions = EXCLUDED.instructions,
@@ -974,7 +817,6 @@ class Repository:
                    iam_role_arn = EXCLUDED.iam_role_arn,
                    enabled = EXCLUDED.enabled,
                    metadata = EXCLUDED.metadata,
-                   event_types = EXCLUDED.event_types,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
             [
@@ -987,14 +829,12 @@ class Repository:
                 self._param("iam_role_arn", cap.iam_role_arn),
                 self._param("enabled", cap.enabled),
                 self._param("metadata", cap.metadata),
-                self._param("event_types", cap.event_types),
             ],
         )
         row = self._first_row(response)
         if row:
             cap.created_at = self._ts(row, "created_at")
             cap.updated_at = self._ts(row, "updated_at")
-            self.register_event_types(cap.event_types, source="capability")
             return UUID(row["id"])
         raise RuntimeError("Failed to upsert capability")
 
@@ -1054,7 +894,6 @@ class Repository:
             iam_role_arn=row.get("iam_role_arn"),
             enabled=row.get("enabled", True),
             metadata=self._json_field(row, "metadata", {}),
-            event_types=self._json_field(row, "event_types", []),
             created_at=self._ts(row, "created_at"),
             updated_at=self._ts(row, "updated_at"),
         )
@@ -1223,26 +1062,6 @@ class Repository:
         }
 
     # ═══════════════════════════════════════════════════════════
-    # EVENT TYPES
-    # ═══════════════════════════════════════════════════════════
-
-    def list_event_types(self) -> list:
-        """Deprecated: event type table dropped."""
-        return []
-
-    def upsert_event_type(self, et) -> None:
-        """Deprecated: event type table dropped."""
-        pass
-
-    def register_event_types(self, names: list[str], source: str = "", description: str = "") -> None:
-        """Deprecated: event type table dropped."""
-        pass
-
-    def delete_event_type(self, name: str) -> bool:
-        """Deprecated: event type table dropped."""
-        return False
-
-    # ═══════════════════════════════════════════════════════════
     # SCHEMAS
     # ═══════════════════════════════════════════════════════════
 
@@ -1405,18 +1224,13 @@ class Repository:
 
         # Auto-create deliveries for handlers bound to this channel
         handlers = self.match_handlers_by_channel(msg.channel)
-        woke = False
         for handler in handlers:
-            delivery = EventDelivery(event=msg_id, handler=handler.id)
-            _delivery_id, inserted = self.create_event_delivery(delivery)
+            delivery = Delivery(message=msg_id, handler=handler.id)
+            _delivery_id, inserted = self.create_delivery(delivery)
             if inserted:
                 proc = self.get_process(handler.process)
                 if proc and proc.status == ProcessStatus.WAITING:
                     self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
-                    woke = True
-
-        if woke:
-            self._wake_ingress(msg_id)
 
         return msg_id
 

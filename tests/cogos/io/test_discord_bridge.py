@@ -81,6 +81,6 @@ async def test_relay_to_db_recreates_missing_system_channel():
     channel_message = repo.append_channel_message.call_args.args[0]
     assert channel_message.channel == created_channel.id
     assert channel_message.sender_process is None
-    assert channel_message.payload["event_type"] == "discord:dm"
+    assert channel_message.payload["message_type"] == "discord:dm"
 
     bridge._start_typing.assert_called_once_with(msg.channel)

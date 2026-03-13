@@ -22,7 +22,7 @@ def _cron_to_item(c: Cron) -> CronItem:
     return CronItem(
         id=str(c.id),
         cron_expression=c.expression,
-        event_pattern=c.event_type,
+        channel_name=c.event_type,
         enabled=c.enabled,
         metadata=c.payload or {},
         created_at=str(c.created_at) if c.created_at else None,
@@ -42,7 +42,7 @@ def create_cron(name: str, body: CronCreate) -> CronItem:
     repo = get_repo()
     cron = Cron(
         expression=body.cron_expression,
-        event_type=body.event_pattern,
+        event_type=body.channel_name,
         enabled=body.enabled,
         payload=body.metadata or {},
     )
@@ -66,12 +66,12 @@ def update_cron(name: str, cron_id: str, body: CronUpdate) -> CronItem:
         repo.update_cron_enabled(uid, body.enabled)
         cron.enabled = body.enabled
 
-    if body.cron_expression is not None or body.event_pattern is not None or body.metadata is not None:
+    if body.cron_expression is not None or body.channel_name is not None or body.metadata is not None:
         repo.delete_cron(uid)
         updated = Cron(
             id=uid,
             expression=body.cron_expression if body.cron_expression is not None else cron.expression,
-            event_type=body.event_pattern if body.event_pattern is not None else cron.event_type,
+            event_type=body.channel_name if body.channel_name is not None else cron.event_type,
             enabled=body.enabled if body.enabled is not None else cron.enabled,
             payload=body.metadata if body.metadata is not None else cron.payload,
         )

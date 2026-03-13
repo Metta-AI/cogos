@@ -272,7 +272,7 @@ def _cogos_scheduler_tick(config) -> None:
         scheduler = SchedulerCapability(cogos_repo, _UUID("00000000-0000-0000-0000-000000000000"))
 
         # Match events to handlers
-        match_result = scheduler.match_events(limit=50)
+        match_result = scheduler.match_messages()
         if match_result.deliveries_created > 0:
             logger.info(f"CogOS: matched {match_result.deliveries_created} deliveries")
 

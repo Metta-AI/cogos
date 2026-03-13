@@ -93,8 +93,6 @@ def _build_discord_setup(name: str) -> ChannelSetup:
             if h.channel:
                 ch = repo.get_channel(h.channel)
                 ch_name = ch.name if ch else None
-            elif h.event_pattern:
-                ch_name = h.event_pattern  # legacy
             if ch_name in ("io:discord:dm", "discord:dm"):
                 dm_handler_enabled = True
             elif ch_name in ("io:discord:mention", "discord:mention"):

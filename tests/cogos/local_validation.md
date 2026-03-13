@@ -65,10 +65,10 @@ cogent local cogos handler list
 - [ ] recruiter subscribed to `system:tick:hour` and `recruiter:feedback`
 - [ ] recruiter/present subscribed to `system:tick:hour`
 
-## Event Delivery (Discord DM)
+## Channel Delivery (Discord DM)
 
 ```bash
-cogent local cogos event emit io:discord:dm --payload '{"content": "hello", "author": "tester", "author_id": "1", "channel_id": "2", "event_type": "discord:dm", "is_dm": true, "is_mention": false, "attachments": [], "embeds": []}'
+cogent local cogos channel send io:discord:dm --payload '{"content": "hello", "author": "tester", "author_id": "1", "channel_id": "2", "message_type": "discord:dm", "is_dm": true, "is_mention": false, "attachments": [], "embeds": []}'
 ```
 
 - [ ] Message sent confirmation with ID
@@ -98,10 +98,10 @@ cogent local cogos status
 
 - [ ] discord-handle-message back to `waiting`
 
-## Event Delivery (Discord Mention)
+## Channel Delivery (Discord Mention)
 
 ```bash
-cogent local cogos event emit io:discord:mention --payload '{"content": "@bot hi", "author": "tester", "author_id": "1", "channel_id": "3", "guild_id": "4", "message_id": "5", "event_type": "discord:mention", "is_dm": false, "is_mention": true, "attachments": [], "embeds": []}'
+cogent local cogos channel send io:discord:mention --payload '{"content": "@bot hi", "author": "tester", "author_id": "1", "channel_id": "3", "guild_id": "4", "message_id": "5", "message_type": "discord:mention", "is_dm": false, "is_mention": true, "attachments": [], "embeds": []}'
 cogent local cogos run-local --once
 cogent local cogos run list --limit 1
 ```
@@ -128,7 +128,7 @@ cogent local cogos status
 - [ ] discord-handle-message shows `disabled`
 
 ```bash
-cogent local cogos event emit io:discord:dm --payload '{"content": "should not trigger", "author": "tester", "author_id": "1", "channel_id": "2", "event_type": "discord:dm", "is_dm": true, "is_mention": false, "attachments": [], "embeds": []}'
+cogent local cogos channel send io:discord:dm --payload '{"content": "should not trigger", "author": "tester", "author_id": "1", "channel_id": "2", "message_type": "discord:dm", "is_dm": true, "is_mention": false, "attachments": [], "embeds": []}'
 cogent local cogos run-local --once
 cogent local cogos run list --limit 1
 ```
@@ -138,8 +138,8 @@ cogent local cogos run list --limit 1
 ## Channels
 
 ```bash
-cogent local cogos event emit test:channel --payload '{"msg": "test message"}'
-cogent local cogos event emit test:channel --payload '{"msg": "second message"}'
+cogent local cogos channel send test:channel --payload '{"msg": "test message"}'
+cogent local cogos channel send test:channel --payload '{"msg": "second message"}'
 ```
 
 - [ ] Both messages sent successfully

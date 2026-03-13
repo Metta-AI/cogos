@@ -2,7 +2,7 @@
 
 import pathlib
 
-SCHEMA_PATH = pathlib.Path(__file__).resolve().parents[2] / "src" / "cogtainer" / "db" / "schema.sql"
+SCHEMA_PATH = pathlib.Path(__file__).resolve().parents[2] / "src" / "cogos" / "db" / "schema.sql"
 
 EXPECTED_TABLES = [
     "conversations",
@@ -14,7 +14,6 @@ EXPECTED_TABLES = [
     "runs",
     "tasks",
     "alerts",
-    "channels",
     "traces",
     "budget",
     "resources",

@@ -53,11 +53,11 @@ class ImageSpec:
 Config-only. An image contains:
 - Capabilities (name, handler, description, schemas)
 - Resources (pool definitions)
-- Processes (with capability bindings and handler patterns)
+- Processes (with capability bindings and channel handlers)
 - Cron rules
 - Files (active version content only)
 
-Not captured: events, runs, traces, conversations, file version history. These are runtime ephemera.
+Not captured: channel messages, runs, traces, conversations, file version history. These are runtime ephemera.
 
 ## CLI Commands
 
@@ -76,7 +76,7 @@ cogent dr.alpha cogos image list                     # list available images
 2. If `--clean`: truncate all cogos tables
 3. Upsert capabilities by name
 4. Upsert resources by name
-5. Upsert cron rules by (expression, event_type)
+5. Upsert cron rules by (expression, channel_name)
 6. Upsert files via FileStore (creates if new, new version if changed, skips if unchanged)
 7. Upsert processes by name, bind capabilities, create handlers
 

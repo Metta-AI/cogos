@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
-from cogos.io.discord.bridge import DiscordBridge, _make_event_detail
+from cogos.io.discord.bridge import DiscordBridge, _make_message_payload
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +66,7 @@ def _make_message(
         guild.id = guild_id
         msg.guild = guild
 
-    msg.source = ch
+    msg.channel = ch
     return msg
 
 
@@ -76,12 +75,11 @@ def _make_bridge():
     bridge = DiscordBridge.__new__(DiscordBridge)
     bridge.cogent_name = "test-bot"
     bridge.bot_token = "fake-token"
-    bridge.event_bus_name = "cogent-test-bot-bus"
     bridge.reply_queue_url = "https://sqs.us-east-1.amazonaws.com/123/test-queue"
     bridge.region = "us-east-1"
-    bridge._eb_client = MagicMock()
     bridge._sqs_client = MagicMock()
     bridge._typing_tasks = {}
+    bridge._repo = None
 
     # Minimal discord client mock
     bridge.client = MagicMock()
@@ -97,27 +95,25 @@ def _make_bridge():
 # ===========================================================================
 
 
-class TestMakeEventDetail:
+class TestMakeMessagePayload:
     def test_basic_fields(self):
         msg = _make_message(content="hi there", channel_id=100, guild_id=200, message_id=300)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["content"] == "hi there"
-        assert detail["payload"]["channel_id"] == "100"
-        assert detail["payload"]["guild_id"] == "200"
-        assert detail["payload"]["message_id"] == "300"
-        assert detail["payload"]["event_type"] == "discord:channel.message"
-        assert detail["payload"]["is_dm"] is False
-        assert detail["payload"]["is_mention"] is False
-        assert detail["source"] == "discord"
-        assert detail["event_id"] == "300"
+        assert detail["content"] == "hi there"
+        assert detail["channel_id"] == "100"
+        assert detail["guild_id"] == "200"
+        assert detail["message_id"] == "300"
+        assert detail["message_type"] == "discord:channel.message"
+        assert detail["is_dm"] is False
+        assert detail["is_mention"] is False
 
     def test_dm_fields(self):
         msg = _make_message(is_dm=True, channel_id=101, message_id=301)
-        detail = _make_event_detail(msg, "discord:dm", is_dm=True, is_mention=False)
+        detail = _make_message_payload(msg, "discord:dm", is_dm=True, is_mention=False)
 
-        assert detail["payload"]["guild_id"] is None
-        assert detail["payload"]["is_dm"] is True
+        assert detail["guild_id"] is None
+        assert detail["is_dm"] is True
 
     def test_attachment_metadata(self):
         att = MagicMock()
@@ -129,9 +125,9 @@ class TestMakeEventDetail:
         att.height = 600
 
         msg = _make_message(attachments=[att])
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        atts = detail["payload"]["attachments"]
+        atts = detail["attachments"]
         assert len(atts) == 1
         assert atts[0]["url"] == "https://cdn.discord.com/img.png"
         assert atts[0]["is_image"] is True
@@ -148,9 +144,9 @@ class TestMakeEventDetail:
         att.height = None
 
         msg = _make_message(attachments=[att])
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["attachments"][0]["is_image"] is False
+        assert detail["attachments"][0]["is_image"] is False
 
     def test_attachment_no_content_type(self):
         att = MagicMock()
@@ -162,16 +158,16 @@ class TestMakeEventDetail:
         att.height = None
 
         msg = _make_message(attachments=[att])
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["attachments"][0]["is_image"] is False
+        assert detail["attachments"][0]["is_image"] is False
 
     def test_thread_context(self):
         msg = _make_message(is_thread=True, channel_id=500, parent_channel_id=400)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["thread_id"] == "500"
-        assert detail["payload"]["parent_channel_id"] == "400"
+        assert detail["thread_id"] == "500"
+        assert detail["parent_channel_id"] == "400"
 
     def test_embed_metadata(self):
         embed = MagicMock(spec=discord.Embed)
@@ -183,9 +179,9 @@ class TestMakeEventDetail:
         embed.image.url = "https://example.com/img.png"
 
         msg = _make_message(embeds=[embed])
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        embeds = detail["payload"]["embeds"]
+        embeds = detail["embeds"]
         assert len(embeds) == 1
         assert embeds[0]["title"] == "Title"
         assert embeds[0]["image_url"] == "https://example.com/img.png"
@@ -195,28 +191,15 @@ class TestMakeEventDetail:
         ref.message_id = 12345
 
         msg = _make_message(reference=ref)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["reference_message_id"] == "12345"
+        assert detail["reference_message_id"] == "12345"
 
     def test_no_reference(self):
         msg = _make_message(reference=None)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
+        detail = _make_message_payload(msg, "discord:channel.message", is_dm=False, is_mention=False)
 
-        assert detail["payload"]["reference_message_id"] is None
-
-    def test_context_key(self):
-        msg = _make_message(channel_id=100)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
-
-        assert detail["context_key"] == "discord:100:42"
-
-    def test_created_at(self):
-        ts = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
-        msg = _make_message(created_at=ts)
-        detail = _make_event_detail(msg, "discord:channel.message", is_dm=False, is_mention=False)
-
-        assert detail["created_at"] == ts.isoformat()
+        assert detail["reference_message_id"] is None
 
 
 # ===========================================================================
@@ -227,68 +210,98 @@ class TestMakeEventDetail:
 class TestBridgeInbound:
     async def test_relay_channel_message(self):
         bridge = _make_bridge()
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(content="hi")
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
-        bridge._eb_client.put_events.assert_called_once()
-        entry = bridge._eb_client.put_events.call_args[1]["Entries"][0]
-        assert entry["DetailType"] == "discord:channel.message"
-        assert entry["EventBusName"] == "cogent-test-bot-bus"
-        assert entry["Source"] == "cogent.test-bot"
+        repo.append_channel_message.assert_called_once()
+        channel_msg = repo.append_channel_message.call_args.args[0]
+        assert channel_msg.payload["message_type"] == "discord:message"
 
     async def test_relay_dm(self):
         bridge = _make_bridge()
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
+        bridge._start_typing = MagicMock()
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(is_dm=True, content="secret")
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
-        entry = bridge._eb_client.put_events.call_args[1]["Entries"][0]
-        assert entry["DetailType"] == "discord:dm"
-        detail = json.loads(entry["Detail"])
-        assert detail["payload"]["is_dm"] is True
+        repo.append_channel_message.assert_called_once()
+        channel_msg = repo.append_channel_message.call_args.args[0]
+        assert channel_msg.payload["is_dm"] is True
+        assert channel_msg.payload["message_type"] == "discord:dm"
 
     async def test_relay_mention(self):
         bridge = _make_bridge()
         bridge.client.user.mentioned_in.return_value = True
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
+        bridge._start_typing = MagicMock()
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:mention", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(content="@bot hey")
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
-        entry = bridge._eb_client.put_events.call_args[1]["Entries"][0]
-        assert entry["DetailType"] == "discord:mention"
+        channel_msg = repo.append_channel_message.call_args.args[0]
+        assert channel_msg.payload["message_type"] == "discord:mention"
 
     async def test_relay_starts_typing_on_dm(self):
         bridge = _make_bridge()
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
         bridge._start_typing = MagicMock()
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(is_dm=True)
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
         bridge._start_typing.assert_called_once_with(msg.channel)
 
     async def test_relay_starts_typing_on_mention(self):
         bridge = _make_bridge()
         bridge.client.user.mentioned_in.return_value = True
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
         bridge._start_typing = MagicMock()
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:mention", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(content="@bot yo")
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
         bridge._start_typing.assert_called_once()
 
     async def test_relay_no_typing_on_channel_message(self):
         bridge = _make_bridge()
-        bridge._eb_client.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{}]}
         bridge._start_typing = MagicMock()
+        repo = MagicMock()
+        bridge._get_repo = MagicMock(return_value=repo)
+
+        from cogos.db.models import Channel, ChannelType
+        ch = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
+        repo.get_channel_by_name.return_value = ch
 
         msg = _make_message(content="just chatting")
-        await bridge._relay_to_eventbridge(msg)
+        await bridge._relay_to_db(msg)
 
         bridge._start_typing.assert_not_called()
 

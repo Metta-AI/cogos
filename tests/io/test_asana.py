@@ -10,7 +10,7 @@ class TestAsanaIO:
     async def test_poll_returns_queued_events(self):
         ch = AsanaIO(name="asana")
         event = InboundEvent(
-            channel="asana", event_type="task.assigned",
+            source="asana", message_type="task.assigned",
             payload={"gid": "12345"}, raw_content="Build the thing",
             author="human", external_id="asana:task:12345",
         )

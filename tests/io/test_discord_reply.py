@@ -18,7 +18,7 @@ def mock_sqs():
     """Mock SQS client and patch boto3 + STS."""
     sqs = MagicMock()
     with (
-        patch("channels.discord.reply.boto3") as mock_boto3,
+        patch("cogos.io.discord.reply.boto3") as mock_boto3,
     ):
         mock_boto3.client.side_effect = lambda service, **kw: (
             sqs if service == "sqs" else MagicMock(get_caller_identity=MagicMock(return_value={"Account": "123456789"}))

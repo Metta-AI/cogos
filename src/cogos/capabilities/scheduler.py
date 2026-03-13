@@ -1,4 +1,4 @@
-"""Scheduler capabilities — event matching, process selection, dispatch."""
+"""Scheduler capabilities — message matching, process selection, dispatch."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
-from cogos.db.models import EventDelivery, ProcessStatus, Run, RunStatus
+from cogos.db.models import Delivery, ProcessStatus, Run, RunStatus
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 class DeliveryInfo(BaseModel):
     delivery_id: str
-    event_id: str
-    event_type: str
+    message_id: str
+    channel: str
     handler_id: str
     process_id: str
 
@@ -48,7 +48,7 @@ class DispatchResult(BaseModel):
     process_id: str
     process_name: str
     runner: str
-    event_id: str | None = None
+    message_id: str | None = None
     delivery_id: str | None = None
 
 
@@ -77,57 +77,18 @@ class SchedulerError(BaseModel):
 
 
 class SchedulerCapability(Capability):
-    """Process scheduling and event dispatch.
+    """Process scheduling and message dispatch.
 
     Usage:
-        scheduler.match_events()
+        scheduler.match_messages()
         scheduler.select_processes(slots=2)
         scheduler.dispatch_process(process_id="...")
         scheduler.unblock_processes()
         scheduler.kill_process(process_id="...")
     """
 
-    def match_events(self, limit: int = 200) -> MatchResult:
-        events = self.repo.get_events(limit=limit)
-
-        created = []
-        for event in events:
-            created.extend(self.deliver_event(event))
-
-        # Also match channel messages to handlers
-        channel_result = self.match_channel_messages()
-        created.extend(channel_result.deliveries)
-
-        return MatchResult(deliveries_created=len(created), deliveries=created)
-
-    def deliver_event(self, event) -> list[DeliveryInfo]:
-        handlers = self.repo.match_handlers(event.event_type)
-        created: list[DeliveryInfo] = []
-
-        for handler in handlers:
-            delivery = EventDelivery(event=event.id, handler=handler.id)
-            delivery_id, inserted = self.repo.create_event_delivery(delivery)
-            if not inserted:
-                continue
-
-            self._log_event_to_delivery_latency(event, delivery)
-
-            proc = self.repo.get_process(handler.process)
-            if proc and proc.status == ProcessStatus.WAITING:
-                self.repo.update_process_status(handler.process, ProcessStatus.RUNNABLE)
-
-            created.append(DeliveryInfo(
-                delivery_id=str(delivery_id),
-                event_id=str(event.id),
-                event_type=event.event_type,
-                handler_id=str(handler.id),
-                process_id=str(handler.process),
-            ))
-
-        return created
-
-    def match_channel_messages(self) -> MatchResult:
-        """Backstop: find undelivered channel messages and create deliveries."""
+    def match_messages(self) -> MatchResult:
+        """Find undelivered channel messages and create deliveries."""
         all_handlers = self.repo.list_handlers(enabled_only=True)
         channel_handlers = [h for h in all_handlers if h.channel is not None]
 
@@ -135,8 +96,8 @@ class SchedulerCapability(Capability):
         for handler in channel_handlers:
             msgs = self.repo.list_channel_messages(handler.channel, limit=200)
             for msg in msgs:
-                delivery = EventDelivery(event=msg.id, handler=handler.id)
-                delivery_id, inserted = self.repo.create_event_delivery(delivery)
+                delivery = Delivery(message=msg.id, handler=handler.id)
+                delivery_id, inserted = self.repo.create_delivery(delivery)
                 if not inserted:
                     continue
 
@@ -146,8 +107,8 @@ class SchedulerCapability(Capability):
 
                 created.append(DeliveryInfo(
                     delivery_id=str(delivery_id),
-                    event_id=str(msg.id),
-                    event_type=f"channel:{handler.channel}",
+                    message_id=str(msg.id),
+                    channel=str(handler.channel),
                     handler_id=str(handler.id),
                     process_id=str(handler.process),
                 ))
@@ -211,10 +172,10 @@ class SchedulerCapability(Capability):
         self.repo.update_process_status(target_id, ProcessStatus.RUNNING)
 
         deliveries = self.repo.get_pending_deliveries(target_id)
-        event_id = deliveries[0].event if deliveries else None
+        message_id = deliveries[0].message if deliveries else None
         delivery_id = deliveries[0].id if deliveries else None
 
-        run = Run(process=target_id, event=event_id)
+        run = Run(process=target_id, message=message_id)
         run_id = self.repo.create_run(run)
 
         if delivery_id:
@@ -226,7 +187,7 @@ class SchedulerCapability(Capability):
             process_id=str(target_id),
             process_name=proc.name,
             runner=proc.runner,
-            event_id=str(event_id) if event_id else None,
+            message_id=str(message_id) if message_id else None,
             delivery_id=str(delivery_id) if delivery_id else None,
         )
 
@@ -299,28 +260,27 @@ class SchedulerCapability(Capability):
         return base
 
     @staticmethod
-    def _log_event_to_delivery_latency(event, delivery: EventDelivery) -> None:
-        if event.created_at and delivery.created_at:
-            latency_ms = int((delivery.created_at - event.created_at).total_seconds() * 1000)
+    def _log_message_to_delivery_latency(message, delivery: Delivery) -> None:
+        if message.created_at and delivery.created_at:
+            latency_ms = int((delivery.created_at - message.created_at).total_seconds() * 1000)
             logger.info(
-                "CogOS latency event->delivery=%sms event=%s handler=%s event_type=%s",
+                "CogOS latency message->delivery=%sms message=%s handler=%s",
                 latency_ms,
-                event.id,
+                message.id,
                 delivery.handler,
-                event.event_type,
             )
 
     @staticmethod
-    def _log_delivery_to_run_latency(delivery: EventDelivery, run: Run) -> None:
+    def _log_delivery_to_run_latency(delivery: Delivery, run: Run) -> None:
         if delivery.created_at and run.created_at:
             latency_ms = int((run.created_at - delivery.created_at).total_seconds() * 1000)
             logger.info(
-                "CogOS latency delivery->run=%sms delivery=%s run=%s event=%s",
+                "CogOS latency delivery->run=%sms delivery=%s run=%s message=%s",
                 latency_ms,
                 delivery.id,
                 run.id,
-                delivery.event,
+                delivery.message,
             )
 
     def __repr__(self) -> str:
-        return "<SchedulerCapability match_events() select_processes() dispatch_process() unblock_processes() kill_process()>"
+        return "<SchedulerCapability match_messages() select_processes() dispatch_process() unblock_processes() kill_process()>"
