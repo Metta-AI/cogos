@@ -78,11 +78,12 @@ interface TreeNodeRowProps<T> {
   expandedPaths: Set<string>;
   onSelect: (path: string) => void;
   onToggle: (path: string) => void;
+  renderNodeActions?: (node: TreeNode<T>) => ReactNode;
   renderExtra?: (node: TreeNode<T>, depth: number) => ReactNode;
 }
 
 function TreeNodeRow<T>({
-  node, depth, selectedPath, expandedPaths, onSelect, onToggle, renderExtra,
+  node, depth, selectedPath, expandedPaths, onSelect, onToggle, renderNodeActions, renderExtra,
 }: TreeNodeRowProps<T>) {
   const hasChildren = node.children.size > 0;
   const isExpanded = expandedPaths.has(node.path);
@@ -115,14 +116,22 @@ function TreeNodeRow<T>({
           <span className="w-3 flex-shrink-0" />
         )}
         <span
-          className="text-[12px] font-mono truncate"
+          className="text-[12px] font-mono truncate flex-1 min-w-0"
           style={{ color: isSelected ? "var(--accent)" : "var(--text-primary)" }}
         >
           {node.name}
         </span>
-        <span className="text-[10px] text-[var(--text-muted)] ml-auto flex-shrink-0">
+        <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums">
           {totalItems}
         </span>
+        {renderNodeActions && (
+          <div
+            className="flex items-center flex-shrink-0"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {renderNodeActions(node)}
+          </div>
+        )}
       </div>
       {isExpanded && renderExtra?.(node, depth)}
       {hasChildren && isExpanded && children.map((child) => (
@@ -134,6 +143,7 @@ function TreeNodeRow<T>({
           expandedPaths={expandedPaths}
           onSelect={onSelect}
           onToggle={onToggle}
+          renderNodeActions={renderNodeActions}
           renderExtra={renderExtra}
         />
       ))}
@@ -148,6 +158,7 @@ interface HierarchyPanelProps<T> {
   getGroup: (item: T) => string;
   selectedPath: string | null;
   onSelectPath: (path: string | null) => void;
+  renderNodeActions?: (node: TreeNode<T>) => ReactNode;
   /** Extra content rendered below an expanded group node (e.g. leaf items) */
   renderExtra?: (node: TreeNode<T>, depth: number) => ReactNode;
   /** Override for what counts as "selected" in the All row (e.g. programs also checks selectedProgram) */
@@ -155,7 +166,7 @@ interface HierarchyPanelProps<T> {
 }
 
 export function HierarchyPanel<T>({
-  items, getGroup, selectedPath, onSelectPath, renderExtra, isAllSelected,
+  items, getGroup, selectedPath, onSelectPath, renderNodeActions, renderExtra, isAllSelected,
 }: HierarchyPanelProps<T>) {
   const [collapsed, setCollapsed] = useState(false);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -187,7 +198,7 @@ export function HierarchyPanel<T>({
       <div className="flex items-center py-1 border-b" style={{ borderColor: "var(--border)" }}>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="text-[10px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer px-2 py-0.5 hover:text-[var(--text-primary)] transition-colors w-full text-left"
+          className="text-[10px] text-[var(--text-muted)] bg-transparent border-0 cursor-pointer px-2 py-0.5 hover:text-[var(--text-primary)] transition-colors text-left w-full"
           title={collapsed ? "Expand tree" : "Collapse tree"}
         >
           {collapsed ? "\u25B6" : "\u25C0"}
@@ -227,6 +238,7 @@ export function HierarchyPanel<T>({
               expandedPaths={expandedPaths}
               onSelect={(path) => onSelectPath(path)}
               onToggle={toggleExpanded}
+              renderNodeActions={renderNodeActions}
               renderExtra={renderExtra}
             />
           ))}

@@ -22,9 +22,51 @@ interface FilesPanelProps {
   onRefresh?: () => void;
 }
 
+const HIDDEN_GROUPS_STORAGE_KEY = "files-hidden-groups";
+const DEFAULT_HIDDEN_GROUPS = ["proc"];
+
 const getFileGroup = (item: CogosFile) => {
   const parts = item.key.split("/");
   return parts.length > 1 ? parts.slice(0, -1).join("/") : "(root)";
+};
+
+const getPathParts = (path: string) => path.split("/").filter(Boolean);
+
+const getAncestorPaths = (path: string) => {
+  const parts = getPathParts(path);
+  return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+};
+
+const getFileAncestorPaths = (file: CogosFile) => {
+  const group = getFileGroup(file);
+  if (group === "(root)") return [];
+  return getAncestorPaths(group);
+};
+
+const findCoveringHiddenPath = (path: string, hiddenPaths: Set<string>) => {
+  const ancestors = getAncestorPaths(path);
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    if (hiddenPaths.has(ancestors[index])) return ancestors[index];
+  }
+  return null;
+};
+
+const isFileHidden = (file: CogosFile, hiddenPaths: Set<string>) =>
+  getFileAncestorPaths(file).some((path) => hiddenPaths.has(path));
+
+const loadHiddenGroups = () => {
+  if (typeof window === "undefined") return new Set(DEFAULT_HIDDEN_GROUPS);
+  try {
+    const saved = window.localStorage.getItem(HIDDEN_GROUPS_STORAGE_KEY);
+    if (!saved) return new Set(DEFAULT_HIDDEN_GROUPS);
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.filter((value): value is string => typeof value === "string" && value.length > 0));
+    }
+  } catch {
+    // Ignore malformed persisted state and fall back to defaults.
+  }
+  return new Set(DEFAULT_HIDDEN_GROUPS);
 };
 
 const matchesFileSearch = (file: CogosFile, normalizedQuery: string) => {
@@ -378,10 +420,48 @@ const inputStyle = {
   color: "var(--text-primary)",
 };
 
+function EyeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12C4.6 7.8 8 5.5 12 5.5C16 5.5 19.4 7.8 22 12C19.4 16.2 16 18.5 12 18.5C8 18.5 4.6 16.2 2 12Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12C4.6 7.8 8 5.5 12 5.5C16 5.5 19.4 7.8 22 12C19.4 16.2 16 18.5 12 18.5C8 18.5 4.6 16.2 2 12Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M4 20L20 4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<CogosFile | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(() => loadHiddenGroups());
 
   // Create form state
   const [creating, setCreating] = useState(false);
@@ -390,17 +470,26 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const normalizedSearchQuery = deferredSearchQuery.trim().toLowerCase();
 
+  useEffect(() => {
+    window.localStorage.setItem(HIDDEN_GROUPS_STORAGE_KEY, JSON.stringify([...hiddenPaths].sort()));
+  }, [hiddenPaths]);
+
+  const searchedFiles = useMemo(() => {
+    if (!normalizedSearchQuery) return files;
+    return files.filter((file) => matchesFileSearch(file, normalizedSearchQuery));
+  }, [files, normalizedSearchQuery]);
+
+  const visibleFiles = useMemo(
+    () => searchedFiles.filter((file) => !isFileHidden(file, hiddenPaths)),
+    [searchedFiles, hiddenPaths],
+  );
+
   const fileSuggestions = useMemo(
     () => [...files.map((file) => file.key)].sort((a, b) => a.localeCompare(b)),
     [files],
   );
 
-  const filteredFiles = useMemo(() => {
-    if (!normalizedSearchQuery) return files;
-    return files.filter((file) => matchesFileSearch(file, normalizedSearchQuery));
-  }, [files, normalizedSearchQuery]);
-
-  const filteredTree = useMemo(() => buildTree(filteredFiles, getFileGroup), [filteredFiles]);
+  const filteredTree = useMemo(() => buildTree(searchedFiles, getFileGroup), [searchedFiles]);
 
   const selectedNode = useMemo(() => {
     if (!selectedPath) return null;
@@ -409,18 +498,24 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
 
   const visibleSelectedPath = selectedNode ? selectedPath : null;
 
-  const displayItems = useMemo(() => {
-    if (!selectedNode) return filteredFiles;
+  const scopedFiles = useMemo(() => {
+    if (!selectedNode) return searchedFiles;
     return getAllItems(selectedNode);
-  }, [filteredFiles, selectedNode]);
+  }, [searchedFiles, selectedNode]);
+
+  const displayItems = useMemo(
+    () => scopedFiles.filter((file) => !isFileHidden(file, hiddenPaths)),
+    [scopedFiles, hiddenPaths],
+  );
+  const hiddenDisplayCount = scopedFiles.length - displayItems.length;
 
   // Keep selectedFile in sync with refreshed data
   const activeSelectedFile = useMemo(() => {
     if (!selectedFile) return null;
-    const file = files.find((f) => f.id === selectedFile.id) ?? null;
+    const file = visibleFiles.find((f) => f.id === selectedFile.id) ?? null;
     if (!file) return null;
     return matchesFileSearch(file, normalizedSearchQuery) ? file : null;
-  }, [files, selectedFile, normalizedSearchQuery]);
+  }, [visibleFiles, selectedFile, normalizedSearchQuery]);
 
   const handleCreate = useCallback(async () => {
     if (!cogentName || !newKey.trim()) return;
@@ -435,6 +530,15 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   }, [cogentName, newKey, newContent, onRefresh]);
 
   const canMutate = !!cogentName && !!onRefresh;
+  const hiddenFileCount = searchedFiles.length - visibleFiles.length;
+  const toggleHiddenPath = useCallback((path: string) => {
+    setHiddenPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   return (
     <div style={{ paddingBottom: activeSelectedFile ? "45vh" : undefined }}>
@@ -442,9 +546,14 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-[var(--text-muted)]">
-            {filteredFiles.length}
-            {normalizedSearchQuery ? `/${files.length}` : ""} file{filteredFiles.length !== 1 ? "s" : ""}
+            {visibleFiles.length}
+            {normalizedSearchQuery || hiddenFileCount > 0 ? `/${searchedFiles.length}` : ""} file{visibleFiles.length !== 1 ? "s" : ""}
           </span>
+          {hiddenFileCount > 0 && (
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {hiddenFileCount} hidden
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -548,10 +657,43 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
         style={{ borderColor: "var(--border)", minHeight: "120px" }}
       >
         <HierarchyPanel
-          items={filteredFiles}
+          items={searchedFiles}
           getGroup={getFileGroup}
           selectedPath={visibleSelectedPath}
           onSelectPath={setSelectedPath}
+          renderNodeActions={(node) => {
+            const hiddenPath = findCoveringHiddenPath(node.path, hiddenPaths);
+            const isHidden = hiddenPath !== null;
+            const isBlockedByAncestor = hiddenPath !== null && hiddenPath !== node.path;
+            const label = isBlockedByAncestor
+              ? `Hidden via ${hiddenPath}`
+              : isHidden
+                ? `Show ${node.path}`
+                : `Hide ${node.path}`;
+
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isBlockedByAncestor) toggleHiddenPath(node.path);
+                }}
+                disabled={isBlockedByAncestor}
+                aria-label={label}
+                aria-pressed={isHidden}
+                title={label}
+                className="flex h-5 w-5 items-center justify-center rounded border transition-colors"
+                style={{
+                  borderColor: isHidden ? "var(--accent)" : "var(--border)",
+                  color: isHidden ? "var(--accent)" : "var(--text-muted)",
+                  background: isHidden ? "var(--bg-hover)" : "transparent",
+                  cursor: isBlockedByAncestor ? "default" : "pointer",
+                  opacity: isBlockedByAncestor ? 0.45 : 1,
+                }}
+              >
+                {isHidden ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            );
+          }}
         />
 
         {/* File list */}
@@ -577,7 +719,9 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
 
           {displayItems.length === 0 ? (
             <div className="text-[var(--text-muted)] text-[13px] py-8 text-center">
-              No files{visibleSelectedPath ? ` in ${visibleSelectedPath}` : normalizedSearchQuery ? " match the current search" : ""}
+              {hiddenDisplayCount > 0
+                ? `Files${visibleSelectedPath ? ` in ${visibleSelectedPath}` : ""} are hidden. Use the eye icons in the left sidebar to show them.`
+                : `No files${visibleSelectedPath ? ` in ${visibleSelectedPath}` : normalizedSearchQuery ? " match the current search" : ""}`}
             </div>
           ) : (
             <div>
