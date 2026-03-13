@@ -158,7 +158,10 @@ class ComputeConstruct(Construct):
         executor_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["ses:SendEmail", "ses:SendRawEmail"],
-                resources=[f"arn:aws:ses:*:*:identity/{config.domain}"],
+                resources=[
+                    f"arn:aws:ses:*:*:identity/{config.domain}",
+                    "arn:aws:ses:*:*:identity/*",
+                ],
             )
         )
 
