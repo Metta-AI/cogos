@@ -369,7 +369,10 @@ def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tm
     assert final_artifact["final_stop_reason"] == "end_turn"
     assert final_artifact["resume_skipped_reason"] is None
     assert manifest["latest_run_id"] == str(run.id)
-    assert len(step_files) == 3
+    step_types = [_read_json(store, file.key)["type"] for file in step_files]
+    assert step_types.count("trigger_loaded") == 1
+    assert step_types.count("assistant_message") == 1
+    assert step_types.count("final_stop") == 1
 
 
 def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):

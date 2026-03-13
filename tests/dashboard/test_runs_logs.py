@@ -6,9 +6,13 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from cogos.capabilities.scheduler import SchedulerCapability
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.models import Channel, ChannelMessage, ChannelType, Handler, Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.executor import handler as executor_handler
 from cogos.files.store import FileStore
+from cogos.runtime.ingress import dispatch_ready_processes
+from cogos.runtime.local import run_and_complete
 from dashboard.app import create_app
 
 
@@ -190,3 +194,152 @@ def test_run_logs_endpoint_without_session_artifacts_returns_empty(tmp_path):
         "entries": [],
         "error": None,
     }
+
+
+def test_run_logs_endpoint_returns_dispatch_failure_artifacts(tmp_path):
+    repo = LocalRepository(str(tmp_path))
+    process = Process(
+        id=uuid4(),
+        name="alpha.worker",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.WAITING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    channel = Channel(name="io:test", channel_type=ChannelType.NAMED)
+    repo.upsert_channel(channel)
+    channel = repo.get_channel_by_name("io:test")
+    repo.create_handler(Handler(process=process.id, channel=channel.id))
+    repo.append_channel_message(ChannelMessage(channel=channel.id, payload={"content": "hello"}))
+
+    scheduler = SchedulerCapability(repo, uuid4())
+
+    class _LambdaClient:
+        def invoke(self, **_kwargs):
+            raise RuntimeError("invoke throttled")
+
+    dispatched = dispatch_ready_processes(
+        repo,
+        scheduler,
+        _LambdaClient(),
+        "executor-fn",
+        {process.id},
+    )
+
+    assert dispatched == 0
+    run = repo.list_runs(process_id=process.id)[0]
+    assert run.snapshot is not None
+
+    app = create_app()
+    client = TestClient(app)
+
+    with patch("dashboard.routers.runs.get_repo", return_value=repo):
+        response = client.get(f"/api/cogents/test/runs/{run.id}/logs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["log_group"] == "CogOS session artifacts"
+    assert payload["log_stream"] is not None
+    assert len(payload["entries"]) == 4
+    assert "trigger" in payload["entries"][0]["message"]
+    assert "dispatch_failed" in payload["entries"][1]["message"]
+    assert "invoke throttled" in payload["entries"][1]["message"]
+    assert "final | status=failed | stop=dispatch_error" in payload["entries"][2]["message"]
+    assert "manifest | latest_run=" in payload["entries"][3]["message"]
+
+
+def test_run_logs_endpoint_returns_pre_turn_failure_artifacts(monkeypatch, tmp_path):
+    repo = LocalRepository(str(tmp_path))
+    process = Process(
+        id=uuid4(),
+        name="alpha.worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+    )
+    repo.upsert_process(process)
+
+    run = Run(id=uuid4(), process=process.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda _repo: (_ for _ in ()).throw(RuntimeError("include boom")))
+
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello"}},
+        run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=object(),
+    )
+
+    stored_run = repo.get_run(run.id)
+    assert stored_run is not None
+    assert stored_run.status == RunStatus.FAILED
+    assert stored_run.duration_ms is not None
+    assert stored_run.snapshot is not None
+
+    app = create_app()
+    client = TestClient(app)
+
+    with patch("dashboard.routers.runs.get_repo", return_value=repo):
+        response = client.get(f"/api/cogents/test/runs/{run.id}/logs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["log_group"] == "CogOS session artifacts"
+    assert payload["log_stream"] is not None
+    assert len(payload["entries"]) == 4
+    assert "trigger" in payload["entries"][0]["message"]
+    assert "final_stop | stop=exception" in payload["entries"][1]["message"]
+    assert "include boom" in payload["entries"][1]["message"]
+    assert "final | status=failed | stop=exception" in payload["entries"][2]["message"]
+    assert "manifest | latest_run=" in payload["entries"][3]["message"]
+
+
+def test_run_logs_endpoint_captures_executor_logger_output(monkeypatch, tmp_path):
+    repo = LocalRepository(str(tmp_path))
+    process = Process(
+        id=uuid4(),
+        name="secret-audit/scout/manual-1735000000",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="@{apps/secret-audit/config.json}\n@{apps/secret-audit/heuristics.md}",
+    )
+    repo.upsert_process(process)
+
+    run = Run(id=uuid4(), process=process.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda _repo: "")
+
+    class _Bedrock:
+        def converse(self, **_kwargs):
+            return {
+                "output": {"message": {"role": "assistant", "content": [{"text": "done"}]}},
+                "usage": {"inputTokens": 3, "outputTokens": 2},
+                "stopReason": "end_turn",
+            }
+
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello"}},
+        run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=_Bedrock(),
+    )
+
+    app = create_app()
+    client = TestClient(app)
+
+    with patch("dashboard.routers.runs.get_repo", return_value=repo):
+        response = client.get(f"/api/cogents/test/runs/{run.id}/logs?limit=100")
+
+    assert response.status_code == 200
+    payload = response.json()
+    messages = [entry["message"] for entry in payload["entries"]]
+    assert any("cannot read prompt reference apps/secret-audit/config.json" in message for message in messages)
+    assert any("cannot read prompt reference apps/secret-audit/heuristics.md" in message for message in messages)

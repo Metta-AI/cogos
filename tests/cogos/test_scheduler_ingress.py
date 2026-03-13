@@ -4,6 +4,7 @@ from uuid import UUID
 from cogos.capabilities.scheduler import SchedulerCapability
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import Channel, ChannelMessage, ChannelType, Cron, DeliveryStatus, Handler, Process, ProcessMode, ProcessStatus, RunStatus
+from cogos.files.store import FileStore
 from cogos.runtime.schedule import apply_scheduled_messages
 from cogtainer.lambdas.dispatcher.handler import _apply_system_ticks
 from cogos.runtime.ingress import dispatch_ready_processes
@@ -128,6 +129,12 @@ def test_dispatch_rolls_back_failed_invoke(tmp_path):
     runs = repo.list_runs(process_id=proc.id)
     assert len(runs) == 1
     assert runs[0].status == RunStatus.FAILED
+    assert runs[0].snapshot is not None
+    final_key = runs[0].snapshot["final_key"]
+    store = FileStore(repo)
+    final_payload = store.get_content(final_key)
+    assert final_payload is not None
+    assert "dispatch_error" in final_payload
     delivery = next(iter(repo._deliveries.values()))
     assert delivery.status == DeliveryStatus.PENDING
     assert delivery.run is None

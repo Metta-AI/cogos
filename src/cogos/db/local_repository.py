@@ -802,11 +802,17 @@ class LocalRepository:
         delivery_id: UUID | None = None,
         *,
         error: str | None = None,
+        snapshot: dict | None = None,
     ) -> None:
         with self._writing():
             if delivery_id is not None:
                 self.requeue_delivery(delivery_id)
-            self.complete_run(run_id, status=RunStatus.FAILED, error=(error or "executor invoke failed")[:4000])
+            self.complete_run(
+                run_id,
+                status=RunStatus.FAILED,
+                error=(error or "executor invoke failed")[:4000],
+                snapshot=snapshot,
+            )
             current = self._processes.get(process_id)
             if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
                 self.update_process_status(process_id, ProcessStatus.RUNNABLE)

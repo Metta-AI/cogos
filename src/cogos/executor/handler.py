@@ -20,6 +20,7 @@ from cogos.db.factory import create_repository
 from cogos.db.models import Process, ProcessStatus, Run, RunStatus
 from cogos.db.models.channel_message import ChannelMessage
 from cogos.db.repository import Repository
+from cogos.executor.log_capture import capture_executor_artifacts
 from cogos.executor.session_store import SessionStore, build_prompt_fingerprint
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
@@ -278,45 +279,11 @@ def execute_process(
     bedrock_client: Any | None = None,
 ) -> Run:
     """Execute process via Bedrock converse API with search + run_code tool loop."""
-    bedrock = bedrock_client or boto3.client(
-        "bedrock-runtime",
-        region_name=config.region,
-        config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
-    )
-
-    # Build system prompt using the shared ContextEngine
-    from cogos.files.context_engine import ContextEngine
-    from cogos.files.store import FileStore
-    file_store = FileStore(repo)
-    ctx = ContextEngine(file_store)
-    system_prompt = ctx.generate_full_prompt(process)
-
-    if not system_prompt:
-        system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
-
-    # Prepend includes — all files under "cogos/includes/" are auto-injected
-    includes_content = _load_includes(repo)
-    if includes_content:
-        system_prompt = includes_content + "\n\n" + system_prompt
-
-    system = [{"text": system_prompt}]
     model_id = process.model or config.default_model
     run.model_version = model_id
-    prompt_fingerprint = build_prompt_fingerprint(system_prompt, model_id, TOOL_CONFIG)
     session_store = SessionStore(repo)
     session = session_store.resolve_session(process, event_data, run.id)
-    loaded_checkpoint = session_store.load_checkpoint(
-        session,
-        prompt_fingerprint=prompt_fingerprint,
-        model_id=model_id,
-    )
     checkpoint_key = session.checkpoint_key if session.resume_enabled else None
-    resume_skipped_reason = loaded_checkpoint.resume_skipped_reason
-    session_store.write_manifest(
-        session,
-        latest_run_id=run.id,
-        checkpoint_key=checkpoint_key,
-    )
 
     # Build user message from the triggering event only. Process instructions
     # already live in the system prompt, including any `@{file-key}` refs.
@@ -326,15 +293,7 @@ def execute_process(
     if not user_text.strip():
         user_text = "Execute your task."
     user_message = {"role": "user", "content": [{"text": user_text}]}
-
-    messages = list(loaded_checkpoint.messages)
-    messages.append(user_message)
-    session_store.write_trigger(session, event_data=event_data, user_message=user_message)
-
-    # Set up sandbox with capability proxies
-    vt = VariableTable()
-    _setup_capability_proxies(vt, process, repo, run_id=run.id)
-    sandbox = SandboxExecutor(vt)
+    messages = [user_message]
 
     total_input_tokens = 0
     total_output_tokens = 0
@@ -347,6 +306,11 @@ def execute_process(
     tool_latency_by_name: dict[str, int] = defaultdict(int)
     final_stop_reason = "end_turn"
     step_seq = 0
+    prompt_fingerprint = ""
+    resumed = False
+    resumed_from_run_id: str | None = None
+    resume_skipped_reason: str | None = None
+    sandbox: SandboxExecutor | None = None
 
     def _record_step(step_type: str, payload: dict[str, Any], *, refresh_checkpoint: bool) -> None:
         nonlocal step_seq, checkpoint_key, resume_skipped_reason
@@ -366,189 +330,241 @@ def execute_process(
         if checkpoint_result.resume_disabled_reason is not None:
             resume_skipped_reason = checkpoint_result.resume_disabled_reason
 
-    _record_step(
-        "trigger_loaded",
-        {
-            "message": user_message,
-            "resumed": loaded_checkpoint.resumed,
-            "resumed_from_run_id": loaded_checkpoint.resumed_from_run_id,
-            "resume_skipped_reason": loaded_checkpoint.resume_skipped_reason,
-        },
-        refresh_checkpoint=True,
-    )
-
     try:
-        for _turn in range(config.max_turns):
-            turn_number = _turn + 1
-            kwargs: dict[str, Any] = {
-                "modelId": model_id,
-                "messages": messages,
-                "system": system,
-                "toolConfig": TOOL_CONFIG,
-            }
-
-            bedrock_started = time.monotonic()
-            response = bedrock.converse(**kwargs)
-            bedrock_latency_ms = int((time.monotonic() - bedrock_started) * 1000)
-            turns_executed += 1
-            bedrock_total_ms += bedrock_latency_ms
-            output_message, invalid_tool_names = _sanitize_tool_use_message(
-                response["output"]["message"],
-                run_id=run.id,
-                process_name=process.name,
-                turn_number=turn_number,
+        with capture_executor_artifacts(
+            lambda step_type, payload: _record_step(step_type, payload, refresh_checkpoint=False),
+        ):
+            session_store.write_manifest(
+                session,
+                latest_run_id=run.id,
+                checkpoint_key=checkpoint_key,
             )
-            messages.append(output_message)
+            session_store.write_trigger(session, event_data=event_data, user_message=user_message)
 
-            usage = response.get("usage", {})
-            total_input_tokens += usage.get("inputTokens", 0)
-            total_output_tokens += usage.get("outputTokens", 0)
-
-            stop_reason = response.get("stopReason", "end_turn")
-            final_stop_reason = stop_reason
-            logger.info(
-                "CogOS latency bedrock_turn=%sms run=%s process=%s turn=%s stop_reason=%s "
-                "input_tokens=%s output_tokens=%s",
-                bedrock_latency_ms,
-                run.id,
-                process.name,
-                turn_number,
-                stop_reason,
-                usage.get("inputTokens", 0),
-                usage.get("outputTokens", 0),
+            bedrock = bedrock_client or boto3.client(
+                "bedrock-runtime",
+                region_name=config.region,
+                config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
             )
+
+            # Build system prompt using the shared ContextEngine
+            from cogos.files.context_engine import ContextEngine
+            from cogos.files.store import FileStore
+
+            file_store = FileStore(repo)
+            ctx = ContextEngine(file_store)
+            system_prompt = ctx.generate_full_prompt(process)
+
+            if not system_prompt:
+                system_prompt = (
+                    "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
+                )
+
+            # Prepend includes — all files under "cogos/includes/" are auto-injected
+            includes_content = _load_includes(repo)
+            if includes_content:
+                system_prompt = includes_content + "\n\n" + system_prompt
+
+            system = [{"text": system_prompt}]
+            prompt_fingerprint = build_prompt_fingerprint(system_prompt, model_id, TOOL_CONFIG)
+            loaded_checkpoint = session_store.load_checkpoint(
+                session,
+                prompt_fingerprint=prompt_fingerprint,
+                model_id=model_id,
+            )
+            resumed = loaded_checkpoint.resumed
+            resumed_from_run_id = loaded_checkpoint.resumed_from_run_id
+            resume_skipped_reason = loaded_checkpoint.resume_skipped_reason
+            messages = list(loaded_checkpoint.messages)
+            messages.append(user_message)
+
+            # Set up sandbox with capability proxies
+            vt = VariableTable()
+            _setup_capability_proxies(vt, process, repo, run_id=run.id)
+            sandbox = SandboxExecutor(vt)
+
             _record_step(
-                "assistant_message",
+                "trigger_loaded",
                 {
-                    "turn_number": turn_number,
-                    "message": output_message,
-                    "stop_reason": stop_reason,
-                    "input_tokens": usage.get("inputTokens", 0),
-                    "output_tokens": usage.get("outputTokens", 0),
+                    "message": user_message,
+                    "resumed": resumed,
+                    "resumed_from_run_id": resumed_from_run_id,
+                    "resume_skipped_reason": resume_skipped_reason,
                 },
                 refresh_checkpoint=True,
             )
 
-            if stop_reason == "tool_use":
-                tool_turns += 1
-                tool_results = []
-                for block in output_message.get("content", []):
-                    if "toolUse" not in block:
-                        continue
-                    tool_use = block["toolUse"]
-                    tool_use_id = tool_use.get("toolUseId", "")
-                    tool_name = tool_use.get("name", "")
-                    tool_input = tool_use.get("input", {})
-                    invalid_tool_name = invalid_tool_names.get(tool_use_id)
-                    if invalid_tool_name is not None:
-                        invalid_tool_calls += 1
-                        tool_calls += 1
-                        tool_results.append({
-                            "toolResult": {
-                                "toolUseId": tool_use_id,
-                                "content": [{
-                                    "text": (
-                                        f"Error: invalid tool name '{invalid_tool_name}'. "
-                                        f"Valid tools: {', '.join(sorted(SUPPORTED_TOOL_NAMES))}."
-                                    ),
-                                }],
-                            }
-                        })
-                        continue
-                    tool_started = time.monotonic()
+            for _turn in range(config.max_turns):
+                turn_number = _turn + 1
+                kwargs: dict[str, Any] = {
+                    "modelId": model_id,
+                    "messages": messages,
+                    "system": system,
+                    "toolConfig": TOOL_CONFIG,
+                }
 
-                    if tool_name == "search":
-                        result = _handle_search(tool_input, process, repo)
-                    elif tool_name == "run_code":
-                        result = sandbox.execute(tool_input.get("code", ""))
-                    else:
-                        result = f"Unknown tool: {tool_name}"
+                bedrock_started = time.monotonic()
+                response = bedrock.converse(**kwargs)
+                bedrock_latency_ms = int((time.monotonic() - bedrock_started) * 1000)
+                turns_executed += 1
+                bedrock_total_ms += bedrock_latency_ms
+                output_message, invalid_tool_names = _sanitize_tool_use_message(
+                    response["output"]["message"],
+                    run_id=run.id,
+                    process_name=process.name,
+                    turn_number=turn_number,
+                )
+                messages.append(output_message)
 
-                    tool_latency_ms = int((time.monotonic() - tool_started) * 1000)
-                    tool_calls += 1
-                    tool_total_ms += tool_latency_ms
-                    tool_latency_by_name[tool_name] += tool_latency_ms
-                    logger.info(
-                        "CogOS latency tool=%sms run=%s process=%s turn=%s tool=%s",
-                        tool_latency_ms,
-                        run.id,
-                        process.name,
-                        turn_number,
-                        tool_name,
-                    )
-                    tool_results.append({
-                        "toolResult": {
-                            "toolUseId": tool_use["toolUseId"],
-                            "content": [{"text": result}],
-                        }
-                    })
-                tool_result_message = {"role": "user", "content": tool_results}
-                messages.append(tool_result_message)
+                usage = response.get("usage", {})
+                total_input_tokens += usage.get("inputTokens", 0)
+                total_output_tokens += usage.get("outputTokens", 0)
+
+                stop_reason = response.get("stopReason", "end_turn")
+                final_stop_reason = stop_reason
+                logger.info(
+                    "CogOS latency bedrock_turn=%sms run=%s process=%s turn=%s stop_reason=%s "
+                    "input_tokens=%s output_tokens=%s",
+                    bedrock_latency_ms,
+                    run.id,
+                    process.name,
+                    turn_number,
+                    stop_reason,
+                    usage.get("inputTokens", 0),
+                    usage.get("outputTokens", 0),
+                )
                 _record_step(
-                    "tool_results_appended",
+                    "assistant_message",
                     {
                         "turn_number": turn_number,
-                        "message": tool_result_message,
+                        "message": output_message,
+                        "stop_reason": stop_reason,
+                        "input_tokens": usage.get("inputTokens", 0),
+                        "output_tokens": usage.get("outputTokens", 0),
                     },
                     refresh_checkpoint=True,
                 )
-                continue
 
-            break
-        else:
-            final_stop_reason = "max_turns"
+                if stop_reason == "tool_use":
+                    tool_turns += 1
+                    tool_results = []
+                    for block in output_message.get("content", []):
+                        if "toolUse" not in block:
+                            continue
+                        tool_use = block["toolUse"]
+                        tool_use_id = tool_use.get("toolUseId", "")
+                        tool_name = tool_use.get("name", "")
+                        tool_input = tool_use.get("input", {})
+                        invalid_tool_name = invalid_tool_names.get(tool_use_id)
+                        if invalid_tool_name is not None:
+                            invalid_tool_calls += 1
+                            tool_calls += 1
+                            tool_results.append({
+                                "toolResult": {
+                                    "toolUseId": tool_use_id,
+                                    "content": [{
+                                        "text": (
+                                            f"Error: invalid tool name '{invalid_tool_name}'. "
+                                            f"Valid tools: {', '.join(sorted(SUPPORTED_TOOL_NAMES))}."
+                                        ),
+                                    }],
+                                }
+                            })
+                            continue
+                        tool_started = time.monotonic()
 
-        run.tokens_in = total_input_tokens
-        run.tokens_out = total_output_tokens
-        run.scope_log = sandbox.scope_log
-        _record_step(
-            "final_stop",
-            {
-                "status": RunStatus.COMPLETED.value,
-                "final_stop_reason": final_stop_reason,
-                "tokens_in": total_input_tokens,
-                "tokens_out": total_output_tokens,
-            },
-            refresh_checkpoint=True,
-        )
-        run.snapshot = session_store.finalize_run(
-            session,
-            status=RunStatus.COMPLETED.value,
-            resumed=loaded_checkpoint.resumed,
-            resumed_from_run_id=loaded_checkpoint.resumed_from_run_id,
-            resume_skipped_reason=resume_skipped_reason,
-            final_stop_reason=final_stop_reason,
-            error=None,
-            last_completed_step=step_seq,
-            message_count=len(messages),
-            checkpoint_key=checkpoint_key,
-        )
-        logger.info(
-            "CogOS execution breakdown run=%s process=%s model=%s turns=%s final_stop_reason=%s "
-            "bedrock_calls=%s tool_turns=%s tool_calls=%s invalid_tool_calls=%s "
-            "bedrock_total_ms=%s tool_total_ms=%s "
-            "search_ms=%s run_code_ms=%s tokens_in=%s tokens_out=%s",
-            run.id,
-            process.name,
-            model_id,
-            turns_executed,
-            final_stop_reason,
-            turns_executed,
-            tool_turns,
-            tool_calls,
-            invalid_tool_calls,
-            bedrock_total_ms,
-            tool_total_ms,
-            tool_latency_by_name.get("search", 0),
-            tool_latency_by_name.get("run_code", 0),
-            total_input_tokens,
-            total_output_tokens,
-        )
+                        if tool_name == "search":
+                            result = _handle_search(tool_input, process, repo)
+                        elif tool_name == "run_code":
+                            result = sandbox.execute(tool_input.get("code", ""))
+                        else:
+                            result = f"Unknown tool: {tool_name}"
+
+                        tool_latency_ms = int((time.monotonic() - tool_started) * 1000)
+                        tool_calls += 1
+                        tool_total_ms += tool_latency_ms
+                        tool_latency_by_name[tool_name] += tool_latency_ms
+                        logger.info(
+                            "CogOS latency tool=%sms run=%s process=%s turn=%s tool=%s",
+                            tool_latency_ms,
+                            run.id,
+                            process.name,
+                            turn_number,
+                            tool_name,
+                        )
+                        tool_results.append({
+                            "toolResult": {
+                                "toolUseId": tool_use["toolUseId"],
+                                "content": [{"text": result}],
+                            }
+                        })
+                    tool_result_message = {"role": "user", "content": tool_results}
+                    messages.append(tool_result_message)
+                    _record_step(
+                        "tool_results_appended",
+                        {
+                            "turn_number": turn_number,
+                            "message": tool_result_message,
+                        },
+                        refresh_checkpoint=True,
+                    )
+                    continue
+
+                break
+            else:
+                final_stop_reason = "max_turns"
+
+            run.tokens_in = total_input_tokens
+            run.tokens_out = total_output_tokens
+            run.scope_log = sandbox.scope_log
+            _record_step(
+                "final_stop",
+                {
+                    "status": RunStatus.COMPLETED.value,
+                    "final_stop_reason": final_stop_reason,
+                    "tokens_in": total_input_tokens,
+                    "tokens_out": total_output_tokens,
+                },
+                refresh_checkpoint=True,
+            )
+            run.snapshot = session_store.finalize_run(
+                session,
+                status=RunStatus.COMPLETED.value,
+                resumed=resumed,
+                resumed_from_run_id=resumed_from_run_id,
+                resume_skipped_reason=resume_skipped_reason,
+                final_stop_reason=final_stop_reason,
+                error=None,
+                last_completed_step=step_seq,
+                message_count=len(messages),
+                checkpoint_key=checkpoint_key,
+            )
+            logger.info(
+                "CogOS execution breakdown run=%s process=%s model=%s turns=%s final_stop_reason=%s "
+                "bedrock_calls=%s tool_turns=%s tool_calls=%s invalid_tool_calls=%s "
+                "bedrock_total_ms=%s tool_total_ms=%s "
+                "search_ms=%s run_code_ms=%s tokens_in=%s tokens_out=%s",
+                run.id,
+                process.name,
+                model_id,
+                turns_executed,
+                final_stop_reason,
+                turns_executed,
+                tool_turns,
+                tool_calls,
+                invalid_tool_calls,
+                bedrock_total_ms,
+                tool_total_ms,
+                tool_latency_by_name.get("search", 0),
+                tool_latency_by_name.get("run_code", 0),
+                total_input_tokens,
+                total_output_tokens,
+            )
         return run
     except Exception as exc:
         run.tokens_in = total_input_tokens
         run.tokens_out = total_output_tokens
-        run.scope_log = sandbox.scope_log
+        run.scope_log = sandbox.scope_log if sandbox is not None else []
         final_stop_reason = "exception"
         _record_step(
             "final_stop",
@@ -564,8 +580,8 @@ def execute_process(
         run.snapshot = session_store.finalize_run(
             session,
             status=RunStatus.FAILED.value,
-            resumed=loaded_checkpoint.resumed,
-            resumed_from_run_id=loaded_checkpoint.resumed_from_run_id,
+            resumed=resumed,
+            resumed_from_run_id=resumed_from_run_id,
             resume_skipped_reason=resume_skipped_reason,
             final_stop_reason=final_stop_reason,
             error=str(exc)[:4000],
