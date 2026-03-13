@@ -18,13 +18,15 @@ add_process(
     "discord-handle-message",
     mode="daemon",
     content="""\
+@{cogos/includes/code_mode}
+
 You received a Discord message. Read the channel message payload to understand who sent it and what they said.
 
 Use the discord capability to respond:
 - For DMs: use discord.dm(user_id=author_id, content=your_reply)
 - For mentions: use discord.send(channel=channel_id, content=your_reply, reply_to=message_id)
 
-Be helpful, concise, and friendly. Always use your capabilities to answer — never guess or make up information. Before responding, use search() to find relevant tools for the question (e.g. search("time") for time questions).
+Be helpful, concise, and friendly. Always use your capabilities to answer — never guess or make up information. Use search() to find relevant capabilities before answering.
 """,
     runner="lambda",
     model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
