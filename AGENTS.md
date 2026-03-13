@@ -80,6 +80,29 @@ cogent local cogos run list
 - `--poll-interval 5` — change polling frequency (default 2s)
 - `--once` — run one tick and exit (useful for testing)
 
+### Validated Local Operations
+
+All of the following have been tested and work with `cogent local`:
+
+| Operation | Command |
+|-----------|---------|
+| Boot image | `cogent local cogos image boot cogent-v1 --clean` |
+| Check status | `cogent local cogos status` |
+| List capabilities | `cogent local cogos capability list` |
+| Inspect capability | `cogent local cogos capability get <name>` |
+| List/read/create files | `cogent local cogos file list`, `file get`, `file create` |
+| List handlers | `cogent local cogos handler list` |
+| Emit channel message | `cogent local cogos event emit <channel> --payload '{...}'` |
+| Run executor tick | `cogent local cogos run-local --once` |
+| Run process directly | `cogent local cogos process run <name> --local` |
+| Disable process | `cogent local cogos process disable <name>` |
+| View run history | `cogent local cogos run list`, `run show <id>` |
+| Wipe all data | `cogent local cogos wipe -y` |
+| Reload from image | `cogent local cogos reload -i cogent-v1 -y` |
+| Discord IO help | `cogent local cogos io discord --help` |
+
+Validation checklist with step-by-step commands: `tests/cogos/local_validation.md`
+
 ## Dashboard Ports
 
 Ports are configured in the repo root `.env` file:
