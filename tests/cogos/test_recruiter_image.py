@@ -114,25 +114,25 @@ def test_cogent_v1_recruiter_loads():
 
     recruiter = next(p for p in spec.processes if p["name"] == "recruiter")
     assert recruiter["mode"] == "daemon"
-    assert recruiter["code_key"] == "recruiter/prompts/recruiter.md"
+    assert recruiter["code_key"] == "apps/recruiter/prompts/recruiter.md"
     assert "procs" in recruiter["capabilities"]
     assert "discord" in recruiter["capabilities"]
 
     present = next(p for p in spec.processes if p["name"] == "recruiter/present")
     assert present["mode"] == "daemon"
-    assert present["code_key"] == "recruiter/prompts/present.md"
+    assert present["code_key"] == "apps/recruiter/prompts/present.md"
 
 
 def test_cogent_v1_recruiter_files():
     """All recruiter files should be loaded with correct keys."""
     spec = load_image(Path("images/cogent-v1"))
-    recruiter_files = {k for k in spec.files if k.startswith("recruiter/")}
+    recruiter_files = {k for k in spec.files if k.startswith("apps/recruiter/")}
 
-    assert "recruiter/criteria.md" in recruiter_files
-    assert "recruiter/rubric.json" in recruiter_files
-    assert "recruiter/diagnosis.md" in recruiter_files
-    assert "recruiter/strategy.md" in recruiter_files
-    assert "recruiter/evolution.md" in recruiter_files
+    assert "apps/recruiter/criteria.md" in recruiter_files
+    assert "apps/recruiter/rubric.json" in recruiter_files
+    assert "apps/recruiter/diagnosis.md" in recruiter_files
+    assert "apps/recruiter/strategy.md" in recruiter_files
+    assert "apps/recruiter/evolution.md" in recruiter_files
 
     sourcer_files = {k for k in recruiter_files if "sourcer/" in k}
     assert len(sourcer_files) == 4
@@ -145,11 +145,11 @@ def test_cogent_v1_recruiter_includes():
     """Recruiter prompt files should have correct includes."""
     spec = load_image(Path("images/cogent-v1"))
 
-    assert spec.file_includes["recruiter/prompts/recruiter.md"] == [
-        "recruiter/criteria.md", "recruiter/strategy.md",
+    assert spec.file_includes["apps/recruiter/prompts/recruiter.md"] == [
+        "apps/recruiter/criteria.md", "apps/recruiter/strategy.md",
     ]
-    assert "recruiter/rubric.json" in spec.file_includes["recruiter/prompts/discover.md"]
-    assert "recruiter/diagnosis.md" in spec.file_includes["recruiter/prompts/evolve.md"]
+    assert "apps/recruiter/rubric.json" in spec.file_includes["apps/recruiter/prompts/discover.md"]
+    assert "apps/recruiter/diagnosis.md" in spec.file_includes["apps/recruiter/prompts/evolve.md"]
 
 
 def test_cogent_v1_recruiter_channel():

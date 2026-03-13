@@ -25,6 +25,11 @@ cogos/                      CogOS system files
     email.md                    email API
   lib/                        Process implementations
     scheduler.md                Scheduler daemon prompt
+
+apps/                       Installed applications
+  {app}/                      Each app gets its own namespace
+    prompts/                    Process prompt templates
+    ...                         App-specific files (config, data, etc.)
 ```
 
 ## How files work

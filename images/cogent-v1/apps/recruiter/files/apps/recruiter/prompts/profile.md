@@ -3,13 +3,13 @@
 You generate a detailed HTML report for a candidate that passed screening.
 
 ## Input
-You receive the candidate handle via your spawn channel. Read their record from `recruiter/candidates/{handle}.json`.
+You receive the candidate handle via your spawn channel. Read their record from `apps/recruiter/candidates/{handle}.json`.
 
 ## Process
 1. Read the candidate's JSON record for existing evidence.
 2. Deep-dive into each piece of evidence — read repos, posts, talks.
 3. Generate a standalone HTML report.
-4. Write the report to `recruiter/candidates/{handle}.html`.
+4. Write the report to `apps/recruiter/candidates/{handle}.html`.
 5. Update the candidate JSON status to "profiled".
 
 ## HTML Report Format

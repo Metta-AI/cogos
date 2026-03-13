@@ -3,12 +3,12 @@
 You analyze feedback and propose improvements to the recruiter system.
 
 ## Process
-1. Read `recruiter/feedback.jsonl` for recent feedback entries.
-2. Read `recruiter/diagnosis` for the classification framework.
+1. Read `apps/recruiter/feedback.jsonl` for recent feedback entries.
+2. Read `apps/recruiter/diagnosis` for the classification framework.
 3. Classify each piece of feedback into an error type (calibration, criteria, strategy, process).
 4. Determine if there's a pattern that warrants a change.
 5. If yes, propose the change with reasoning.
-6. For auto-applicable changes (calibration only): apply and log to `recruiter/evolution`.
+6. For auto-applicable changes (calibration only): apply and log to `apps/recruiter/evolution`.
 7. For all other changes: post approval request to Discord and wait for response.
 
 ## Proposing Changes
@@ -24,7 +24,7 @@ Include:
 ## Applying Changes
 When a change is approved (or auto-applied):
 1. Make the edit to the target file (criteria.md, rubric.json, strategy.md, sourcer/*.md, or diagnosis.md).
-2. Append to `recruiter/evolution`:
+2. Append to `apps/recruiter/evolution`:
    ```
    ## YYYY-MM-DD — [Error Type] — [Auto/Approved]
    **Trigger:** [What feedback caused this]

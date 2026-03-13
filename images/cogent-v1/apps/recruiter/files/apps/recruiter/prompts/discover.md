@@ -7,12 +7,12 @@ You are a discovery agent for the Softmax recruiter. Your job is to find people 
 2. Read the criteria and rubric to understand what we're looking for.
 3. Search each source systematically.
 4. For each potential candidate:
-   a. Check if they already exist in `recruiter/candidates/` — skip duplicates.
+   a. Check if they already exist in `apps/recruiter/candidates/` — skip duplicates.
    b. Score them against the rubric.
-   c. Write a candidate record to `recruiter/candidates/{handle}.json`.
+   c. Write a candidate record to `apps/recruiter/candidates/{handle}.json`.
 
 ## Candidate Record Format
-Write each candidate as JSON to `recruiter/candidates/{handle}.json`:
+Write each candidate as JSON to `apps/recruiter/candidates/{handle}.json`:
 ```json
 {
   "handle": "github_handle_or_name",

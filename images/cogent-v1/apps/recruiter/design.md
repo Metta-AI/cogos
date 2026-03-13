@@ -14,10 +14,10 @@ Five CogOS processes in a tree:
 
 ## File Structure
 
-All files live in the CogOS file store under `recruiter/`:
+All files live in the CogOS file store under `apps/recruiter/`:
 
 ```
-recruiter/
+apps/recruiter/
   criteria.md              # What we want: skills, background, values, red flags
   rubric.json              # Scoring weights: {"github_activity": 0.3, ...}
   diagnosis.md             # How to classify feedback gaps, escalation thresholds
