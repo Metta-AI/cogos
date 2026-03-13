@@ -26,9 +26,9 @@ def test_cogent_v1_fibonacci_files_and_prompt():
     assert fibonacci_files == {"apps/fibonacci/prompts/fibonacci.md"}
     prompt = spec.files["apps/fibonacci/prompts/fibonacci.md"]
     assert "fibonacci:poke" in prompt
-    assert "process-scoped session resume" in prompt
-    assert "Do not store Fibonacci state in the process filesystem." in prompt
-    assert "Do not send channel messages or any other events." in prompt
+    assert "If this is the first time, reply with `0`." in prompt
+    assert "look back at the prior conversation in this session" in prompt
+    assert "Reply with only the next Fibonacci number." in prompt
 
 
 def test_cogent_v1_fibonacci_channels():
