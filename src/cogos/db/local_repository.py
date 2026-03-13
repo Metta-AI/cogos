@@ -368,6 +368,21 @@ class LocalRepository:
         caps.sort(key=lambda c: c.name)
         return caps
 
+    def search_capabilities(self, query: str, *, process_id: UUID | None = None) -> list[Capability]:
+        """Search capabilities by name/description matching. Optionally scoped to a process."""
+        self._maybe_reload()
+        q = query.lower()
+        if process_id:
+            bound_cap_ids = {pc.capability for pc in self._process_capabilities.values() if pc.process == process_id}
+            caps = [c for c in self._capabilities.values()
+                    if c.enabled and c.id in bound_cap_ids
+                    and (q in c.name.lower() or q in (c.description or "").lower())]
+        else:
+            caps = [c for c in self._capabilities.values()
+                    if c.enabled and (q in c.name.lower() or q in (c.description or "").lower())]
+        caps.sort(key=lambda c: c.name)
+        return caps
+
     # ── Handlers ─────────────────────────────────────────────
 
     def create_handler(self, h: Handler) -> UUID:

@@ -50,6 +50,107 @@ cogent/{name}/{channel}    # Per-cogent channel creds (e.g., cogent/alpha/discor
 polis/shared/{key}         # Org-wide shared keys (e.g., polis/shared/jwt-signing-key)
 ```
 
+## Running a Cogent Locally vs on AWS
+
+`-c local` means run on this machine using LocalRepository (JSON file at `~/.cogent/local/cogos_data.json`). Any other `-c` value (e.g., `-c dr.alpha`) targets the named cogent's AWS infrastructure (RDS, Lambda, ECS).
+
+### Local: Run CogOS on this machine
+
+Requires AWS credentials for Bedrock (LLM calls). No Lambda, no RDS, no EventBridge.
+
+```bash
+# 1. Boot an image into local DB
+cogent local cogos image boot cogent-v1 --clean
+
+# 2. Start the local executor (daemon loop, replaces Lambda dispatch)
+cogent local cogos run-local
+
+# 3. (Optional) Start Discord bridge locally
+cogent local cogos io discord run-local
+
+# 4. Run a single process manually
+cogent local cogos process run <process-name> --local
+
+# 5. Check status
+cogent local cogos status
+cogent local cogos run list
+```
+
+`run-local` options:
+- `--poll-interval 5` — change polling frequency (default 2s)
+- `--once` — run one tick and exit (useful for testing)
+
+## Dashboard Ports
+
+Ports are configured in the repo root `.env` file:
+
+```
+DASHBOARD_BE_PORT=8100    # FastAPI backend
+DASHBOARD_FE_PORT=5200    # Next.js frontend dev server
+```
+
+In dev mode, the Next.js frontend proxies `/api/*` and `/ws/*` to the backend via `rewrites` in `next.config.ts`. You access the app at the **frontend port** (e.g., `http://localhost:5200`), and it forwards API calls to the backend port transparently.
+
+In production (Docker), both are served on a single port (8100) — Next.js is statically exported and served by FastAPI.
+
+### Starting the dashboard
+
+```bash
+# All-in-one (starts both backend + frontend, opens browser):
+cogent dr.alpha dashboard serve --db local     # local DB
+cogent dr.alpha dashboard serve --db prod      # live polis DB
+
+# Manual (two terminals):
+USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port 8100
+cd dashboard/frontend && npm run dev
+```
+
+`--db local` sets `USE_LOCAL_DB=1` (JSON file, no AWS needed). `--db prod` assumes into the polis account to get live RDS credentials.
+
+## Remote Deployment and Testing
+
+### Deploying the dashboard
+
+```bash
+cogent dr.alpha dashboard deploy              # Build frontend, push to ECR, restart ECS
+cogent dr.alpha dashboard deploy --docker     # Force Docker image rebuild
+```
+
+This builds the Next.js static export, packages it with the FastAPI backend into a Docker image, pushes to ECR (`901289084804.dkr.ecr.us-east-1.amazonaws.com/cogent`), and restarts the ECS Fargate service. The dashboard is served at `https://{safe-name}.softmax-cogents.com`.
+
+### Deploying brain (Lambda + DB migrations)
+
+```bash
+cogent dr.alpha brain update                  # Update Lambda code + run DB migrations
+cogent dr.alpha brain update stack            # Update CloudFormation stack (ALB rules, etc.)
+```
+
+### Managing the Discord bridge (remote)
+
+```bash
+cogent dr.alpha cogos io discord start     # Scale ECS service to 1 task
+cogent dr.alpha cogos io discord stop      # Scale to 0
+cogent dr.alpha cogos io discord restart   # Force new deployment
+cogent dr.alpha cogos io discord status    # Check running/desired counts
+```
+
+### Testing a deployed dashboard
+
+1. Create a PAT (Personal Access Token) for API access:
+
+```bash
+cogent dr.alpha dashboard create-pat
+cogent dr.alpha brain update stack            # Apply ALB bypass rule
+```
+
+2. Test with curl:
+
+```bash
+curl -H 'X-Api-Key: <pat>' https://dr-alpha.softmax-cogents.com/api/cogents/dr.alpha/status
+```
+
+3. Or use the `dashboard.test` skill which automates PAT-authenticated UI and API testing against the deployed dashboard.
+
 ## Dashboard Testing with agent-browser
 
 Use the `agent-browser` skill to test the Cogent Dashboard interactively.

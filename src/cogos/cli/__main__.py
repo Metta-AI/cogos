@@ -117,7 +117,10 @@ def cogos(ctx: click.Context, cogent: str):
     """CogOS — management CLI for processes, files, capabilities, and events."""
     ctx.ensure_object(dict)
     ctx.obj["cogent_name"] = cogent
-    _ensure_db_env(cogent)
+    if cogent == "local":
+        os.environ["USE_LOCAL_DB"] = "1"
+    else:
+        _ensure_db_env(cogent)
 
 
 _ALL_TABLES = [
@@ -961,8 +964,6 @@ def reload(ctx: click.Context, image: str, yes: bool):
 @click.pass_context
 def run_local(ctx: click.Context, poll_interval: float, once: bool):
     """Run the local executor loop (replaces Lambda dispatch)."""
-    os.environ["USE_LOCAL_DB"] = "1"
-
     from cogos.executor.handler import get_config
     from cogos.runtime.local import run_local_loop
 
@@ -986,10 +987,15 @@ def run_local(ctx: click.Context, poll_interval: float, once: bool):
 
 
 # ═══════════════════════════════════════════════════════════
-# DISCORD commands
+# IO commands
 # ═══════════════════════════════════════════════════════════
 
 @cogos.group()
+def io():
+    """Manage I/O integrations (Discord, email, etc.)."""
+
+
+@io.group()
 def discord():
     """Manage the Discord bridge (Fargate service)."""
 
