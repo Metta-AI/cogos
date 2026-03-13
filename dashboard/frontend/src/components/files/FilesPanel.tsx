@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import type { CogosFile, CogosFileVersion } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { HierarchyPanel, findNode, getAllItems, buildTree } from "@/components/shared/HierarchyPanel";
+import { PromptTextarea } from "@/components/shared/PromptTextarea";
 import { fmtTimestamp } from "@/lib/format";
 import {
   getFileDetail,
@@ -34,9 +35,10 @@ interface VersionPanelProps {
   canMutate: boolean;
   onRefresh?: () => void;
   onClose: () => void;
+  promptSuggestions: string[];
 }
 
-function VersionPanel({ file, cogentName, canMutate, onRefresh, onClose }: VersionPanelProps) {
+function VersionPanel({ file, cogentName, canMutate, onRefresh, onClose, promptSuggestions }: VersionPanelProps) {
   const [versions, setVersions] = useState<CogosFileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -308,13 +310,15 @@ function VersionPanel({ file, cogentName, canMutate, onRefresh, onClose }: Versi
             {currentVersion && (
               editing ? (
                 <div className="space-y-2">
-                  <textarea
+                  <PromptTextarea
                     value={editContent}
-                    onChange={(e) => { setEditContent(e.target.value); setSaveConfirm(null); }}
+                    onChange={(nextValue) => { setEditContent(nextValue); setSaveConfirm(null); }}
+                    suggestions={promptSuggestions}
                     rows={12}
                     className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
                     style={inputStyle}
                   />
+                  <div className="text-[10px] text-[var(--text-muted)]">{"Type '@{' to insert a file reference."}</div>
                   <div className="flex gap-1.5 items-center flex-wrap">
                     {saveConfirm === "update" ? (
                       <span className="flex items-center gap-1 text-[11px]">
@@ -375,6 +379,7 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newContent, setNewContent] = useState("");
+  const fileSuggestions = useMemo(() => files.map((file) => file.key), [files]);
 
   const displayItems = useMemo(() => {
     if (!selectedPath) return files;
@@ -458,14 +463,18 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
             <label className="block text-[10px] text-[var(--text-muted)] uppercase tracking-wide mb-1">
               Content
             </label>
-            <textarea
+            <PromptTextarea
               value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
+              onChange={setNewContent}
+              suggestions={fileSuggestions}
               placeholder="File content..."
               rows={5}
               className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
               style={inputStyle}
             />
+            <div className="text-[9px] text-[var(--text-muted)] mt-1">
+              {"Type '@{' to insert another file key."}
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -582,13 +591,14 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
             zIndex: 20,
           }}
         >
-          <VersionPanel
-            file={activeSelectedFile}
-            cogentName={cogentName}
-            canMutate={canMutate}
-            onRefresh={onRefresh}
-            onClose={() => setSelectedFile(null)}
-          />
+            <VersionPanel
+              file={activeSelectedFile}
+              cogentName={cogentName}
+              canMutate={canMutate}
+              onRefresh={onRefresh}
+              onClose={() => setSelectedFile(null)}
+              promptSuggestions={fileSuggestions}
+            />
         </div>
       )}
     </div>

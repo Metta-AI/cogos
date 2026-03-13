@@ -1,0 +1,13 @@
+[
+  {
+    "name": "filesystem-lab/smoke",
+    "mode": "one_shot",
+    "content": "",
+    "code_key": "apps/filesystem-lab/prompts/smoke.md",
+    "runner": "lambda",
+    "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "priority": 2.0,
+    "capabilities": ["dir", "me"],
+    "handlers": []
+  }
+]

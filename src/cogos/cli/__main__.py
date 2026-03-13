@@ -454,7 +454,7 @@ def process_load(file_path: str):
             if not cap:
                 click.echo(f"    Warning: capability '{cap_name}' not found")
                 continue
-            pc = ProcessCapability(process=pid, capability=cap.id)
+            pc = ProcessCapability(process=pid, capability=cap.id, name=cap_name)
             repo.create_process_capability(pc)
             click.echo(f"    Bound capability: {cap_name}")
 

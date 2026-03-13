@@ -1,199 +1,293 @@
-"""Context engine -- resolves file includes to build full prompt context.
-
-Files in CogOS can declare an ``includes`` list of other file keys. The
-context engine recursively resolves those includes, concatenates their
-content with section headers, and returns a single string suitable for
-injection into an LLM prompt.
-
-Circular includes are detected and reported as errors in the output.
-"""
+"""Capability-scoped prompt resolver for CogOS authored prompt sources."""
 
 from __future__ import annotations
 
-import logging
+import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from cogos.files.store import FileStore
 
 if TYPE_CHECKING:
-    from cogos.db.models import Process
+    from cogos.db.models import File, Process
+    from cogos.db.repository import Repository
 
-logger = logging.getLogger(__name__)
+
+INLINE_INCLUDE_RE = re.compile(r"@\{([^{}\n]+)\}")
+GLOBAL_INCLUDE_PREFIX = "cogos/includes/"
+CONTENT_KEY = "<content>"
+
+
+@dataclass
+class PromptResolution:
+    text: str
+    prompt_tree: list[dict]
+
+
+@dataclass
+class _PromptEntry:
+    key: str
+    content: str
+    is_direct: bool
+
+
+@dataclass
+class _ResolutionState:
+    root_keys: set[str]
+    bundle_entries: list[_PromptEntry] = field(default_factory=list)
+    emitted_bundle_keys: set[str] = field(default_factory=set)
+
+
+class _FileAccessView:
+    """Capability-scoped read view used during prompt assembly."""
+
+    def __init__(self, repo: Repository, process: Process | None) -> None:
+        self._repo = repo
+        self._allow_all = process is None
+        self._exact_keys: set[str] = set()
+        self._prefixes: list[str] = []
+        if process is not None:
+            self._load_process_rules(process)
+
+    def can_read(self, key: str) -> bool:
+        if self._allow_all:
+            return True
+        if key in self._exact_keys:
+            return True
+        return any(key.startswith(prefix) for prefix in self._prefixes)
+
+    def read(self, key: str) -> tuple[str | None, str]:
+        if not self.can_read(key):
+            return None, "access_denied"
+        file = self._repo.get_file_by_key(key)
+        if file is None:
+            return None, "not_found"
+        version = self._repo.get_active_file_version(file.id)
+        if version is None:
+            return None, "not_found"
+        return version.content or "", "ok"
+
+    def list_readable_files(self, *, prefix: str | None = None, limit: int = 10_000) -> list[File]:
+        files = self._repo.list_files(prefix=prefix, limit=limit)
+        return [file for file in files if self.can_read(file.key)]
+
+    def _load_process_rules(self, process: Process) -> None:
+        pcs = self._repo.list_process_capabilities(process.id)
+        for pc in pcs:
+            cap = self._repo.get_capability(pc.capability)
+            if cap is None or not cap.enabled:
+                continue
+
+            cap_name = cap.name.split("/", 1)[0]
+            if cap_name not in {"file", "dir", "files"}:
+                continue
+
+            config = pc.config or {}
+            ops_raw = config.get("ops")
+            if ops_raw is not None:
+                ops = {str(op) for op in ops_raw}
+                if "read" not in ops:
+                    continue
+
+            key = config.get("key")
+            prefix = config.get("prefix")
+
+            if key:
+                self._exact_keys.add(str(key))
+                continue
+            if prefix:
+                self._prefixes.append(str(prefix))
+                continue
+
+            # Unscoped file/dir/files grant implies unrestricted prompt reads.
+            self._allow_all = True
 
 
 class ContextEngine:
-    """Resolves file includes into a single concatenated context string."""
+    """Resolve authored prompt text into a final system prompt."""
 
-    def __init__(self, file_store: FileStore) -> None:
-        self._store = file_store
+    def __init__(self, repo: Repository) -> None:
+        self._repo = repo
+        self._store = FileStore(repo)
 
     def resolve(self, key: str) -> str:
-        """Resolve a file by *key*, recursively expanding includes.
-
-        Returns the fully assembled context string.
-        Raises ``ValueError`` if the root file is not found.
-        """
         file = self._store.get(key)
         if file is None:
             raise ValueError(f"File not found: {key}")
-        return self._resolve_key(key, visited=set())
+        access = _FileAccessView(self._repo, None)
+        state = _ResolutionState(root_keys={key})
+        rendered = self._render_file(file, access, state, stack=(key,))
+        return self._compose_prompt([rendered], state.bundle_entries)
 
     def resolve_by_id(self, file_id: UUID) -> str:
-        """Resolve a file by *file_id*, recursively expanding includes.
-
-        Returns the fully assembled context string.
-        Raises ``ValueError`` if the root file is not found.
-        """
         file = self._store.get_by_id(file_id)
         if file is None:
             raise ValueError(f"File not found: {file_id}")
-        return self._resolve_key(file.key, visited=set())
+        return self.resolve(file.key)
 
     def generate_full_prompt(self, process: Process) -> str:
-        """Build the complete prompt for a process.
-
-        Resolves all attached files (with their includes) and prepends
-        them before ``process.content``.  This is the single source of
-        truth used by both the executor and the dashboard.
-        """
-        sections: list[str] = []
-        visited: set[str] = set()
-
-        # Resolve each attached file (process.files)
-        for fid in process.files or []:
-            file = self._store.get_by_id(fid)
-            if not file or file.key in visited:
-                continue
-            visited.add(file.key)
-            sections.append(self._resolve_key(file.key, visited=set(visited)))
-
-        # Legacy: single code FK (only if no files list)
-        if process.code and not process.files:
-            file = self._store.get_by_id(process.code)
-            if file and file.key not in visited:
-                visited.add(file.key)
-                sections.append(self._resolve_key(file.key, visited=set(visited)))
-
-        # Append process.content last
-        if process.content:
-            sections.append(f"--- content ---\n{process.content}")
-
-        return "\n\n".join(sections) if sections else ""
+        return self.resolve_prompt(process).text
 
     def resolve_prompt_tree(self, process: Process) -> list[dict]:
-        """Build a structured dependency tree for the process prompt.
+        return self.resolve_prompt(process).prompt_tree
 
-        Returns a list of dicts in include-order (deepest deps first):
-        ``[{"key": str, "content": str, "is_direct": bool}, ...]``
+    def resolve_prompt(self, process: Process) -> PromptResolution:
+        access = _FileAccessView(self._repo, process)
 
-        Each file appears at most once.  ``is_direct`` is True for files
-        explicitly attached to the process (i.e. in ``process.files``).
-        The final entry (if ``process.content`` is set) has
-        ``key = "<content>"`` and ``is_direct = True``.
-        """
-        result: list[dict] = []
-        seen: set[str] = set()
-        direct_keys: set[str] = set()
+        direct_files = self._direct_prompt_files(process)
+        global_files = access.list_readable_files(prefix=GLOBAL_INCLUDE_PREFIX)
 
-        # Collect direct file keys
-        for fid in process.files or []:
-            file = self._store.get_by_id(fid)
-            if file:
-                direct_keys.add(file.key)
+        root_entries: list[_PromptEntry] = []
+        root_keys = {file.key for file in direct_files}
+        root_keys.update(file.key for file in global_files)
+        state = _ResolutionState(root_keys=root_keys)
 
-        # Legacy code FK
-        if process.code and not process.files:
-            file = self._store.get_by_id(process.code)
-            if file:
-                direct_keys.add(file.key)
+        for file in global_files:
+            rendered = self._render_file(file, access, state, stack=(file.key,))
+            root_entries.append(_PromptEntry(key=file.key, content=rendered, is_direct=False))
 
-        # Resolve each direct file and its includes
-        for fid in process.files or []:
-            file = self._store.get_by_id(fid)
-            if not file or file.key in seen:
-                continue
-            self._collect_tree(file.key, seen, result, direct_keys)
+        for file in direct_files:
+            rendered = self._render_file(file, access, state, stack=(file.key,))
+            root_entries.append(_PromptEntry(key=file.key, content=rendered, is_direct=True))
 
-        if process.code and not process.files:
-            file = self._store.get_by_id(process.code)
-            if file and file.key not in seen:
-                self._collect_tree(file.key, seen, result, direct_keys)
-
-        # Append process.content last
         if process.content:
-            result.append({
-                "key": "<content>",
-                "content": process.content,
-                "is_direct": True,
-            })
+            rendered_content = self._render_text(process.content, access, state, stack=())
+            root_entries.append(_PromptEntry(key=CONTENT_KEY, content=rendered_content, is_direct=True))
 
-        return result
+        prompt_text = self._compose_prompt(
+            [entry.content for entry in root_entries if entry.content],
+            state.bundle_entries,
+        )
+        prompt_tree = [
+            {
+                "key": entry.key,
+                "content": entry.content,
+                "is_direct": entry.is_direct,
+            }
+            for entry in [*root_entries, *state.bundle_entries]
+        ]
+        return PromptResolution(text=prompt_text, prompt_tree=prompt_tree)
 
-    def _collect_tree(
+    def list_global_includes(self, process: Process) -> list[dict]:
+        access = _FileAccessView(self._repo, process)
+        includes: list[dict] = []
+        for file in access.list_readable_files(prefix=GLOBAL_INCLUDE_PREFIX):
+            content, status = access.read(file.key)
+            if status == "ok":
+                includes.append({"key": file.key, "content": content or ""})
+        return includes
+
+    def _direct_prompt_files(self, process: Process) -> list[File]:
+        direct_files: list[File] = []
+        seen: set[str] = set()
+
+        for file_id in process.files or []:
+            file = self._store.get_by_id(file_id)
+            if file is None or file.key in seen:
+                continue
+            seen.add(file.key)
+            direct_files.append(file)
+
+        if process.code and not process.files:
+            file = self._store.get_by_id(process.code)
+            if file is not None and file.key not in seen:
+                direct_files.append(file)
+
+        return direct_files
+
+    def _render_file(
         self,
-        key: str,
-        seen: set[str],
-        result: list[dict],
-        direct_keys: set[str],
-    ) -> None:
-        """Recursively collect files in dependency order (deps first)."""
-        if key in seen:
-            return
-        seen.add(key)
-
-        file = self._store.get(key)
-        if file is None:
-            result.append({"key": key, "content": f"[not found: {key}]", "is_direct": key in direct_keys})
-            return
-
-        # Resolve includes first (depth-first)
-        for include_key in file.includes:
-            self._collect_tree(include_key, seen, result, direct_keys)
-
-        content = self._store.get_content(key) or ""
-        result.append({"key": key, "content": content, "is_direct": key in direct_keys})
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
-
-    def _resolve_key(self, key: str, *, visited: set[str]) -> str:
-        """Recursively resolve *key* and its includes.
-
-        *visited* tracks keys already seen on the current resolution path
-        to detect circular references.
-        """
-        if key in visited:
-            msg = f"[circular include: {key}]"
-            logger.warning("Circular include detected: %s", key)
-            return msg
-
-        visited.add(key)
-
-        file = self._store.get(key)
-        if file is None:
-            msg = f"[include not found: {key}]"
-            logger.warning("Included file not found: %s", key)
-            return msg
-
-        content = self._store.get_content(key) or ""
-
-        # Resolve includes depth-first, prepending them before main content.
+        file: File,
+        access: _FileAccessView,
+        state: _ResolutionState,
+        *,
+        stack: tuple[str, ...],
+    ) -> str:
         sections: list[str] = []
         for include_key in file.includes:
-            section = self._resolve_key(include_key, visited=set(visited))
-            sections.append(section)
+            marker = self._resolve_reference(include_key, access, state, stack=stack)
+            if marker:
+                sections.append(marker)
 
-        # Build the output with a header for the current file.
-        parts: list[str] = []
+        content, status = access.read(file.key)
+        if status == "not_found":
+            sections.append(self._not_found_marker(file.key))
+        else:
+            # Direct prompt files are explicit process configuration. They are still
+            # resolved recursively through scoped reads for nested dependencies.
+            file_content = content if status == "ok" else self._store.get_content(file.key) or ""
+            sections.append(self._render_text(file_content, access, state, stack=stack))
 
-        # Prepend resolved includes.
-        if sections:
-            parts.extend(sections)
+        return "\n\n".join(section for section in sections if section)
 
-        # Main content with a section header.
-        header = f"--- {key} ---"
-        parts.append(f"{header}\n{content}")
+    def _render_text(
+        self,
+        text: str,
+        access: _FileAccessView,
+        state: _ResolutionState,
+        *,
+        stack: tuple[str, ...],
+    ) -> str:
+        def replace(match: re.Match[str]) -> str:
+            return self._resolve_reference(match.group(1).strip(), access, state, stack=stack)
 
+        return INLINE_INCLUDE_RE.sub(replace, text)
+
+    def _resolve_reference(
+        self,
+        key: str,
+        access: _FileAccessView,
+        state: _ResolutionState,
+        *,
+        stack: tuple[str, ...],
+    ) -> str:
+        if not key:
+            return self._not_found_marker(key)
+        if key in stack:
+            return self._circular_marker(key)
+        if key in state.root_keys or key in state.emitted_bundle_keys:
+            return self._uses_marker(key)
+
+        content, status = access.read(key)
+        if status == "access_denied":
+            return self._access_denied_marker(key)
+        if status == "not_found":
+            return self._not_found_marker(key)
+
+        file = self._store.get(key)
+        if file is None:
+            return self._not_found_marker(key)
+
+        rendered = self._render_file(file, access, state, stack=(*stack, key))
+        state.bundle_entries.append(_PromptEntry(key=key, content=rendered, is_direct=False))
+        state.emitted_bundle_keys.add(key)
+        return self._uses_marker(key)
+
+    def _compose_prompt(self, sections: list[str], bundle_entries: list[_PromptEntry]) -> str:
+        bundle = [
+            f"{self._included_marker(entry.key)}\n{entry.content}"
+            for entry in bundle_entries
+        ]
+        parts = [part for part in [*sections, *bundle] if part]
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _uses_marker(key: str) -> str:
+        return f"<!-- uses: {key} -->"
+
+    @staticmethod
+    def _included_marker(key: str) -> str:
+        return f"<!-- included: {key} -->"
+
+    @staticmethod
+    def _not_found_marker(key: str) -> str:
+        return f"<!-- include error: not found {key} -->"
+
+    @staticmethod
+    def _circular_marker(key: str) -> str:
+        return f"<!-- include error: circular {key} -->"
+
+    @staticmethod
+    def _access_denied_marker(key: str) -> str:
+        return f"<!-- include error: access denied {key} -->"

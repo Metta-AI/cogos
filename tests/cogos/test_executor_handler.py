@@ -1,7 +1,22 @@
 from uuid import uuid4
 
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.models import (
+    Capability,
+    Channel,
+    ChannelMessage,
+    ChannelType,
+    Delivery,
+    DeliveryStatus,
+    Handler,
+    Process,
+    ProcessCapability,
+    ProcessMode,
+    ProcessStatus,
+    Run,
+    RunStatus,
+)
+from cogos.files.store import FileStore
 from cogos.executor import handler as executor_handler
 
 
@@ -228,7 +243,79 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
     assert result.tokens_in == 24
     assert result.tokens_out == 12
     assert len(fake_bedrock.calls) == 2
+    assert fake_bedrock.calls[0]["messages"][0]["content"][0]["text"] == (
+        "Payload: {\n"
+        '  "content": "hello"\n'
+        "}\n"
+    )
     second_messages = fake_bedrock.calls[1]["messages"]
     assert second_messages[1]["content"][0]["toolUse"]["name"] == "search"
     assert second_messages[2]["content"][0]["toolResult"]["toolUseId"] == "tool-1"
     assert "invalid tool name 'bad tool'" in second_messages[2]["content"][0]["toolResult"]["content"][0]["text"]
+
+
+def test_execute_process_resolves_authored_includes_into_system_prompt(tmp_path):
+    repo = _repo(tmp_path)
+    files = FileStore(repo)
+    files.create("whoami/index", "You are the worker profile.")
+
+    dir_cap = Capability(name="dir", handler="cogos.capabilities.files.FilesCapability")
+    repo.upsert_capability(dir_cap)
+    dir_cap = repo.get_capability_by_name("dir")
+
+    process = Process(
+        name="worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Handle the event.\n\n@{whoami/index}",
+    )
+    repo.upsert_process(process)
+    repo.create_process_capability(
+        ProcessCapability(
+            process=process.id,
+            capability=dir_cap.id,
+            name="dir",
+            config={"prefix": "whoami/", "ops": ["read"]},
+        )
+    )
+
+    run = Run(process=process.id, status=RunStatus.RUNNING)
+    config = executor_handler.ExecutorConfig(max_turns=1)
+
+    class FakeBedrock:
+        def __init__(self):
+            self.calls = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "output": {"message": {"role": "assistant", "content": [{"text": "done"}]}},
+                "usage": {"inputTokens": 3, "outputTokens": 2},
+                "stopReason": "end_turn",
+            }
+
+    fake_bedrock = FakeBedrock()
+
+    result = executor_handler.execute_process(
+        process,
+        {"event_type": "system:test", "payload": {"value": 1}},
+        run,
+        config,
+        repo,
+        bedrock_client=fake_bedrock,
+    )
+
+    assert result.tokens_in == 3
+    assert result.tokens_out == 2
+    assert len(fake_bedrock.calls) == 1
+    assert fake_bedrock.calls[0]["system"][0]["text"] == (
+        "Handle the event.\n\n"
+        "<!-- uses: whoami/index -->\n\n"
+        "<!-- included: whoami/index -->\n"
+        "You are the worker profile."
+    )
+    assert fake_bedrock.calls[0]["messages"][0]["content"][0]["text"] == (
+        "Event: system:test\n"
+        "Payload: {\n  \"value\": 1\n}\n"
+    )

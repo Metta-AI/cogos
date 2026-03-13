@@ -11,7 +11,6 @@ from cogos.db.models import Handler, Process, ProcessMode, ProcessStatus
 from cogos.db.models.file import File, FileVersion
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
-from cogos.files.store import FileStore
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
@@ -345,10 +344,9 @@ def get_process(name: str, process_id: str) -> dict:
         for r in runs
     ]
 
-    # Resolve full prompt: file content + includes
-    ctx = ContextEngine(FileStore(repo))
-    resolved_prompt = ctx.generate_full_prompt(p)
-    prompt_tree = ctx.resolve_prompt_tree(p)
+    # Resolve full prompt using the same capability-scoped path as the executor.
+    ctx = ContextEngine(repo)
+    prompt_resolution = ctx.resolve_prompt(p)
 
     # Capabilities granted to this process (named grants with scope config)
     pcs = repo.list_process_capabilities(p.id)
@@ -370,14 +368,7 @@ def get_process(name: str, process_id: str) -> dict:
         if f:
             file_keys.append(f.key)
 
-    # Includes — files under "includes/" prefix
-    file_store = FileStore(repo)
-    include_files = file_store.list_files(prefix="includes/")
-    includes = []
-    for f in sorted(include_files, key=lambda f: f.key):
-        fv = repo.get_active_file_version(f.id)
-        if fv and fv.content:
-            includes.append({"key": f.key, "content": fv.content})
+    includes = ctx.list_global_includes(p)
 
     # Channel subscriptions (handlers)
     handlers = repo.list_handlers(process_id=p.id)
@@ -392,8 +383,8 @@ def get_process(name: str, process_id: str) -> dict:
     return {
         "process": _detail(p).model_dump(),
         "runs": run_list,
-        "resolved_prompt": resolved_prompt,
-        "prompt_tree": prompt_tree,
+        "resolved_prompt": prompt_resolution.text,
+        "prompt_tree": prompt_resolution.prompt_tree,
         "capabilities": [g["grant_name"] for g in cap_grants],
         "capability_configs": {
             g["grant_name"]: g["config"] or {}

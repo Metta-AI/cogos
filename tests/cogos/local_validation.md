@@ -118,6 +118,39 @@ cogent local cogos process run discord-handle-message --local
 - [ ] Runs and completes (no event payload, just executes the process prompt)
 - [ ] Prints token counts and duration
 
+## Filesystem Lab
+
+Boot the standard image, then load the filesystem-lab process templates on demand:
+
+```bash
+cogent local cogos process load images/cogent-v1/apps/filesystem-lab/respond.json
+```
+
+- [ ] Creates `filesystem-lab/respond`
+
+```bash
+cogent local cogos file get apps/filesystem-lab/prompts/respond.md
+```
+
+- [ ] Shows prompt source with inline `@{...}` references
+
+```bash
+cogent local cogos channel send filesystem-lab:requests --payload '{"task_key": "apps/filesystem-lab/fixtures/sample-task.md", "goal": "verify prompt resolution and file writes"}'
+cogent local cogos run-local --once
+```
+
+- [ ] `filesystem-lab/respond` runs locally
+- [ ] A report is written to `apps/filesystem-lab/output/latest-report.md`
+
+```bash
+cogent local cogos process load images/cogent-v1/apps/filesystem-lab/smoke.json
+cogent local cogos process run filesystem-lab/smoke --local
+cogent local cogos file get apps/filesystem-lab/output/smoke-report.md
+```
+
+- [ ] `filesystem-lab/smoke` writes the smoke report
+- [ ] Output mentions exact file keys that were inspected or written
+
 ## Process Lifecycle
 
 ```bash

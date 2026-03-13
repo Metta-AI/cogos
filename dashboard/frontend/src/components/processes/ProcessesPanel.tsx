@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability, EventType } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { JsonViewer } from "@/components/shared/JsonViewer";
+import { PromptTextarea } from "@/components/shared/PromptTextarea";
 import type { CogosFileVersion } from "@/lib/types";
 import * as api from "@/lib/api";
 import { fmtTimestamp } from "@/lib/format";
@@ -144,6 +145,26 @@ function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
+}
+
+function grantAllowsPromptRead(grant: CapGrant, key: string): boolean {
+  if (!["file", "dir", "files"].includes(grant.capability_name)) return false;
+
+  const config = (grant.config || {}) as Record<string, unknown>;
+  const ops = config.ops;
+  if (Array.isArray(ops) && !ops.includes("read")) return false;
+
+  const scopedKey = typeof config.key === "string" ? config.key : "";
+  const prefix = typeof config.prefix === "string" ? config.prefix : "";
+  if (scopedKey) return key === scopedKey;
+  if (prefix) return key.startsWith(prefix);
+  return true;
+}
+
+function filterPromptSuggestions(allKeys: string[], grants: CapGrant[]): string[] {
+  const fileGrants = grants.filter((grant) => ["file", "dir", "files"].includes(grant.capability_name));
+  if (fileGrants.length === 0) return [];
+  return allKeys.filter((key) => fileGrants.some((grant) => grantAllowsPromptRead(grant, key)));
 }
 
 /* ── TagListEditor: editable list with typeahead ── */
@@ -1298,11 +1319,13 @@ function InlineFileEditor({
   cogentName,
   onRefresh,
   onClose,
+  promptSuggestions = [],
 }: {
   fileKey: string;
   cogentName: string;
   onRefresh?: () => void;
   onClose: () => void;
+  promptSuggestions?: string[];
 }) {
   const [versions, setVersions] = useState<CogosFileVersion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1450,13 +1473,15 @@ function InlineFileEditor({
       {currentVersion && (
         editing ? (
           <div className="px-2 py-1.5 space-y-1.5">
-            <textarea
+            <PromptTextarea
               value={editContent}
-              onChange={(e) => { setEditContent(e.target.value); setSaveConfirm(null); }}
+              onChange={(nextValue) => { setEditContent(nextValue); setSaveConfirm(null); }}
+              suggestions={promptSuggestions}
               rows={8}
               className="w-full px-2 py-1 text-[11px] rounded border font-mono resize-y"
               style={{ background: "var(--bg-base)", borderColor: "var(--border)", color: "var(--text-primary)" }}
             />
+            <div className="text-[9px] text-[var(--text-muted)]">{"Type '@{' to insert a file reference."}</div>
             <div className="flex gap-1.5 items-center flex-wrap">
               {saveConfirm === "update" ? (
                 <span className="flex items-center gap-1 text-[10px]">
@@ -1514,6 +1539,7 @@ function ProcessFormEditor({
   isNew,
   resourceSuggestions,
   fileSuggestions,
+  promptSuggestions,
   capabilitySuggestions,
   eventTypeSuggestions,
   cogentName,
@@ -1529,6 +1555,7 @@ function ProcessFormEditor({
   isNew: boolean;
   resourceSuggestions: string[];
   fileSuggestions: string[];
+  promptSuggestions: string[];
   capabilitySuggestions: string[];
   eventTypeSuggestions: string[];
   cogentName: string;
@@ -1642,10 +1669,10 @@ function ProcessFormEditor({
         </div>
       </div>
 
-      {/* Context (files) — collapsible rows with inline editing */}
+      {/* Prompt files — collapsible rows with inline editing */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <label className="text-[10px] text-[var(--text-muted)] uppercase">Context</label>
+          <label className="text-[10px] text-[var(--text-muted)] uppercase">Prompt Files</label>
         </div>
         {((includes && includes.length > 0) || form.files.length > 0) && (
           <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
@@ -1675,6 +1702,7 @@ function ProcessFormEditor({
                       cogentName={cogentName}
                       onRefresh={onRefresh}
                       onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(inc.key); return next; })}
+                      promptSuggestions={promptSuggestions}
                     />
                   )}
                 </div>
@@ -1764,6 +1792,7 @@ function ProcessFormEditor({
                       cogentName={cogentName}
                       onRefresh={onRefresh}
                       onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(fileKey); return next; })}
+                      promptSuggestions={promptSuggestions}
                     />
                   )}
                 </div>
@@ -1786,16 +1815,18 @@ function ProcessFormEditor({
         />
       </div>
 
-      {/* Content */}
+      {/* Prompt source */}
       <div>
-        <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Content (prompt)</label>
-        <textarea
+        <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Prompt Source</label>
+        <PromptTextarea
           className={INPUT_CLS}
           rows={4}
           value={form.content}
-          onChange={(e) => onChange({ ...form, content: e.target.value })}
+          onChange={(content) => onChange({ ...form, content })}
+          suggestions={promptSuggestions}
           style={{ resize: "vertical" }}
         />
+        <div className="text-[9px] text-[var(--text-muted)] mt-1">{"Type '@{' to insert a readable file reference."}</div>
       </div>
 
       {/* Files & Directories — quick-add for file/dir capabilities */}
@@ -1900,6 +1931,18 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const fileSuggestions = useMemo(() => files.map((f) => f.key), [files]);
   const capabilitySuggestions = useMemo(() => capabilities.map((c) => c.name), [capabilities]);
   const eventTypeSuggestions = useMemo(() => eventTypes.map((et) => et.name), [eventTypes]);
+  const formPromptSuggestions = useMemo(() => filterPromptSuggestions(fileSuggestions, form.grants), [fileSuggestions, form.grants]);
+  const detailPromptSuggestions = useMemo(
+    () => filterPromptSuggestions(
+      fileSuggestions,
+      detailCapGrants.map((grant) => ({
+        grant_name: grant.grant_name,
+        capability_name: grant.capability_name,
+        config: grant.config,
+      })),
+    ),
+    [fileSuggestions, detailCapGrants],
+  );
 
   // Build map of process_id -> latest run from the runs list
   const lastRunByProcess = useMemo(() => {
@@ -2092,6 +2135,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             isNew
             resourceSuggestions={resourceSuggestions}
             fileSuggestions={fileSuggestions}
+            promptSuggestions={formPromptSuggestions}
             capabilitySuggestions={capabilitySuggestions}
             eventTypeSuggestions={eventTypeSuggestions}
             cogentName={cogentName}
@@ -2290,6 +2334,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                                     cogentName={cogentName}
                                     onRefresh={async () => { onRefresh(); await fetchDetail(proc.id, { preserveExpanded: true }); }}
                                     onClose={() => setEditingFileKey(null)}
+                                    promptSuggestions={detailPromptSuggestions}
                                   />
                                 ) : (
                                   <div
@@ -2307,6 +2352,26 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     </div>
                     );
                   })()}
+
+                  {resolvedPrompt && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setShowResolved((current) => !current)}
+                        className="text-[10px] text-[var(--text-muted)] uppercase bg-transparent border-0 cursor-pointer p-0 mb-1 hover:text-[var(--accent)]"
+                      >
+                        {showResolved ? "Hide" : "Show"} Resolved Prompt
+                      </button>
+                      {showResolved && (
+                        <pre
+                          className="m-0 rounded px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-words"
+                          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                        >
+                          {resolvedPrompt}
+                        </pre>
+                      )}
+                    </div>
+                  )}
 
                   {/* Files & Directories */}
                   {(() => {
@@ -2523,6 +2588,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     isNew={false}
                     resourceSuggestions={resourceSuggestions}
                     fileSuggestions={fileSuggestions}
+                    promptSuggestions={formPromptSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
                     eventTypeSuggestions={eventTypeSuggestions}
                     cogentName={cogentName}
