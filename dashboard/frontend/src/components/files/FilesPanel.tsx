@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useDeferredValue } from "react";
 import type { CogosFile, CogosFileVersion } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { HierarchyPanel, findNode, getAllItems, buildTree } from "@/components/shared/HierarchyPanel";
@@ -25,6 +25,11 @@ interface FilesPanelProps {
 const getFileGroup = (item: CogosFile) => {
   const parts = item.key.split("/");
   return parts.length > 1 ? parts.slice(0, -1).join("/") : "(root)";
+};
+
+const matchesFileSearch = (file: CogosFile, normalizedQuery: string) => {
+  if (!normalizedQuery) return true;
+  return [file.key, ...file.includes].join("\n").toLowerCase().includes(normalizedQuery);
 };
 
 /* ── Version detail panel (inline below file list) ── */
@@ -376,29 +381,46 @@ const inputStyle = {
 export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<CogosFile | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Create form state
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newContent, setNewContent] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const normalizedSearchQuery = deferredSearchQuery.trim().toLowerCase();
 
   const fileSuggestions = useMemo(
     () => [...files.map((file) => file.key)].sort((a, b) => a.localeCompare(b)),
     [files],
   );
 
+  const filteredFiles = useMemo(() => {
+    if (!normalizedSearchQuery) return files;
+    return files.filter((file) => matchesFileSearch(file, normalizedSearchQuery));
+  }, [files, normalizedSearchQuery]);
+
+  const filteredTree = useMemo(() => buildTree(filteredFiles, getFileGroup), [filteredFiles]);
+
+  const selectedNode = useMemo(() => {
+    if (!selectedPath) return null;
+    return findNode(filteredTree, selectedPath);
+  }, [filteredTree, selectedPath]);
+
+  const visibleSelectedPath = selectedNode ? selectedPath : null;
+
   const displayItems = useMemo(() => {
-    if (!selectedPath) return files;
-    const tree = buildTree(files, getFileGroup);
-    const node = findNode(tree, selectedPath);
-    return node ? getAllItems(node) : files;
-  }, [files, selectedPath]);
+    if (!selectedNode) return filteredFiles;
+    return getAllItems(selectedNode);
+  }, [filteredFiles, selectedNode]);
 
   // Keep selectedFile in sync with refreshed data
   const activeSelectedFile = useMemo(() => {
     if (!selectedFile) return null;
-    return files.find((f) => f.id === selectedFile.id) ?? null;
-  }, [files, selectedFile]);
+    const file = files.find((f) => f.id === selectedFile.id) ?? null;
+    if (!file) return null;
+    return matchesFileSearch(file, normalizedSearchQuery) ? file : null;
+  }, [files, selectedFile, normalizedSearchQuery]);
 
   const handleCreate = useCallback(async () => {
     if (!cogentName || !newKey.trim()) return;
@@ -417,25 +439,37 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   return (
     <div style={{ paddingBottom: activeSelectedFile ? "45vh" : undefined }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-[var(--text-muted)]">
-            {files.length} file{files.length !== 1 ? "s" : ""}
+            {filteredFiles.length}
+            {normalizedSearchQuery ? `/${files.length}` : ""} file{filteredFiles.length !== 1 ? "s" : ""}
           </span>
         </div>
-        {canMutate && !creating && (
-          <button
-            onClick={() => setCreating(true)}
-            className="text-[11px] px-3 py-1 rounded border cursor-pointer transition-colors"
-            style={{
-              color: "var(--accent)",
-              borderColor: "var(--accent)",
-              background: "transparent",
-            }}
-          >
-            + New File
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search keys or includes"
+            aria-label="Search files"
+            className="w-[280px] max-w-full px-3 py-1.5 text-[12px] rounded border font-mono"
+            style={inputStyle}
+          />
+          {canMutate && !creating && (
+            <button
+              onClick={() => setCreating(true)}
+              className="text-[11px] px-3 py-1 rounded border cursor-pointer transition-colors"
+              style={{
+                color: "var(--accent)",
+                borderColor: "var(--accent)",
+                background: "transparent",
+              }}
+            >
+              + New File
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Create form */}
@@ -514,9 +548,9 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
         style={{ borderColor: "var(--border)", minHeight: "120px" }}
       >
         <HierarchyPanel
-          items={files}
+          items={filteredFiles}
           getGroup={getFileGroup}
-          selectedPath={selectedPath}
+          selectedPath={visibleSelectedPath}
           onSelectPath={setSelectedPath}
         />
 
@@ -534,7 +568,7 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
             }}
           >
             <span className="text-[12px] font-mono font-medium text-[var(--text-primary)]">
-              {selectedPath ?? "All"}
+              {visibleSelectedPath ?? "All"}
             </span>
             <span className="text-[10px] text-[var(--text-muted)]">
               {displayItems.length} file{displayItems.length !== 1 ? "s" : ""}
@@ -543,7 +577,7 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
 
           {displayItems.length === 0 ? (
             <div className="text-[var(--text-muted)] text-[13px] py-8 text-center">
-              No files{selectedPath ? ` in ${selectedPath}` : ""}
+              No files{visibleSelectedPath ? ` in ${visibleSelectedPath}` : normalizedSearchQuery ? " match the current search" : ""}
             </div>
           ) : (
             <div>
