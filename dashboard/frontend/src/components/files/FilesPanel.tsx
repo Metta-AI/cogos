@@ -665,6 +665,7 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
             const hiddenPath = findCoveringHiddenPath(node.path, hiddenPaths);
             const isHidden = hiddenPath !== null;
             const isBlockedByAncestor = hiddenPath !== null && hiddenPath !== node.path;
+            const isVisible = !isHidden;
             const label = isBlockedByAncestor
               ? `Hidden via ${hiddenPath}`
               : isHidden
@@ -683,9 +684,9 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
                 title={label}
                 className="flex h-5 w-5 items-center justify-center rounded border transition-colors"
                 style={{
-                  borderColor: isHidden ? "var(--accent)" : "var(--border)",
-                  color: isHidden ? "var(--accent)" : "var(--text-muted)",
-                  background: isHidden ? "var(--bg-hover)" : "transparent",
+                  borderColor: isVisible ? "var(--accent)" : "var(--border)",
+                  color: isVisible ? "var(--accent)" : "var(--text-muted)",
+                  background: isVisible ? "var(--bg-hover)" : "transparent",
                   cursor: isBlockedByAncestor ? "default" : "pointer",
                   opacity: isBlockedByAncestor ? 0.45 : 1,
                 }}
