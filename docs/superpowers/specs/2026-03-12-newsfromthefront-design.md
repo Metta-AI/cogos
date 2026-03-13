@@ -136,7 +136,9 @@ newsfromthefront/
 
 `src/cogos/capabilities/web_search.py` — registered in `BUILTIN_CAPABILITIES`.
 
-### Schema
+### Methods
+
+Three search backends, all on the same capability:
 
 ```
 web_search.search(
@@ -148,13 +150,35 @@ web_search.search(
   summary: string,
   sources: list[{title: string, url: string, snippet: string}]
 }
+
+web_search.search_github(
+  query:       string   — GitHub search query (supports qualifiers: org:, repo:, language:, etc.)
+  type:        string?  — "repositories" | "issues" | "discussions" | "code" (default: "repositories")
+  after_date:  string?  — ISO date, filter by updated_at
+  before_date: string?  — ISO date, filter by updated_at
+) → {
+  items: list[{title: string, url: string, description: string, stars: number?, updated_at: string}]
+}
+
+web_search.search_twitter(
+  query:       string   — X/Twitter search query (supports operators: from:, lang:, -filter:retweets, etc.)
+  recency:     string?  — "day" | "week" | "month" (approximate, maps to max_results + time window)
+  after_date:  string?  — ISO date (maps to X API start_time)
+  before_date: string?  — ISO date (maps to X API end_time)
+) → {
+  tweets: list[{id: string, text: string, author: string, url: string, created_at: string, likes: number, retweets: number}]
+}
 ```
 
 ### Implementation
 
-Calls Perplexity's `/chat/completions` endpoint with `model: "sonar"`. Reads API key from `secrets.get("cogent/perplexity_api_key")`. Maps `recency` to Perplexity's `search_recency_filter` param; maps `after_date`/`before_date` to Perplexity's date filter params.
+**`search`** — Calls Perplexity's `/chat/completions` endpoint with `model: "sonar"`. Reads API key from `secrets.get("cogent/perplexity_api_key")`. Maps `recency` to Perplexity's `search_recency_filter` param; maps `after_date`/`before_date` to Perplexity's date filter params.
 
-Default scoping: unrestricted. Future scoping may restrict to allowed query patterns.
+**`search_github`** — Calls GitHub's `/search/{type}` REST API. Reads token from `secrets.get("cogent/github_token")`. Constructs date qualifiers (`pushed:>YYYY-MM-DD`) from `after_date`/`before_date`. Returns up to 30 items per call.
+
+**`search_twitter`** — Calls X API v2 `/tweets/search/recent` (or `/tweets/search/all` for backfill with date ranges). Reads Bearer token from `secrets.get("cogent/twitter_bearer_token")`. Returns up to 100 tweets per call, sorted by recency.
+
+Default scoping: unrestricted. Scoping can restrict to allowed `ops` (which methods are permitted).
 
 ---
 
@@ -247,8 +271,9 @@ Use full fresh tests for tuning end-to-end output. Use analyst-only to iterate o
 
 | Key | Purpose |
 |---|---|
-| `cogent/perplexity_api_key` | Perplexity API access for `web_search` |
-| `cogent/github_token` | GitHub REST API for repo ingestion |
+| `cogent/perplexity_api_key` | Perplexity API — `web_search.search()` |
+| `cogent/github_token` | GitHub REST API — `web_search.search_github()` and repo ingestion |
+| `cogent/twitter_bearer_token` | X API v2 Bearer Token — `web_search.search_twitter()` |
 
 ---
 
