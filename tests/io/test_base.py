@@ -1,4 +1,4 @@
-from channels.base import Channel, ChannelMode, InboundEvent
+from cogos.io.base import Channel, ChannelMode, InboundEvent
 from datetime import datetime, timezone
 import pytest
 

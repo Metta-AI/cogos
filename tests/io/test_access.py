@@ -1,7 +1,7 @@
 import os
 from unittest.mock import MagicMock, patch
 
-from channels.access import get_channel_token, get_channel_secret
+from cogos.io.access import get_channel_token, get_channel_secret
 
 
 class TestGetChannelToken:

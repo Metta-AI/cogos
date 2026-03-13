@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from channels.discord.reply import (
+from cogos.io.discord.reply import (
     queue_reply,
     queue_reaction,
     queue_thread_create,

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from channels.discord.bridge import DiscordBridge, _make_event_detail
+from cogos.io.discord.bridge import DiscordBridge, _make_event_detail
 
 
 # ---------------------------------------------------------------------------

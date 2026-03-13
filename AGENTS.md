@@ -9,7 +9,7 @@ src/
   cogtainer/    # Persistent state, DB, infrastructure (firmware)
   cogos/        # Execution engine (operating system)
   memory/       # Persistent memory (PostgreSQL)
-  channels/     # External integrations (Discord, GitHub, Asana)
+  cogos/io/     # External IO (Discord, GitHub, Asana, email)
   cli/          # Main cogent CLI
   polis/        # Shared infrastructure hub (see docs/polis/)
   dashboard/    # Operational dashboard

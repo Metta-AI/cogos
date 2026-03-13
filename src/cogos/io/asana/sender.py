@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from channels.asana.poller import AsanaClient
+from cogos.io.asana.poller import AsanaClient
 
 
 class AsanaSender:

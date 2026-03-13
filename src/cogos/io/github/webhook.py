@@ -7,7 +7,7 @@ import logging
 
 from aiohttp import web
 
-from channels.base import Channel, ChannelMode, InboundEvent
+from cogos.io.base import Channel, ChannelMode, InboundEvent
 
 logger = logging.getLogger(__name__)
 

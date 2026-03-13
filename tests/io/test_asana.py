@@ -1,5 +1,5 @@
-from channels.base import ChannelMode, InboundEvent
-from channels.asana import AsanaChannel
+from cogos.io.base import ChannelMode, InboundEvent
+from cogos.io.asana import AsanaChannel
 
 
 class TestAsanaChannel:

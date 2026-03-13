@@ -1,8 +1,8 @@
 """Verify all channels can be imported and instantiated."""
 
-from channels.base import Channel, ChannelMode
-from channels.github import GitHubChannel
-from channels.asana import AsanaChannel
+from cogos.io.base import Channel, ChannelMode
+from cogos.io.github import GitHubChannel
+from cogos.io.asana import AsanaChannel
 
 
 class TestAllChannelsImport:

@@ -17,7 +17,7 @@ import aiohttp
 import boto3
 import discord
 
-from channels.access import get_channel_token
+from cogos.io.access import get_channel_token
 from cogos.io.discord.chunking import chunk_message
 
 logger = logging.getLogger(__name__)

@@ -1,9 +1,9 @@
 import hashlib
 import hmac
 
-from channels.base import ChannelMode, InboundEvent
-from channels.github import GitHubChannel
-from channels.github.webhook import verify_signature
+from cogos.io.base import ChannelMode, InboundEvent
+from cogos.io.github import GitHubChannel
+from cogos.io.github.webhook import verify_signature
 
 
 class TestGitHubSignature:
