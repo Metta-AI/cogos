@@ -40,15 +40,18 @@ class WebSearchCapability(Capability):
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict[str, Any] = {}
-        old_ops = set(existing.get("ops") or ALL_OPS)
-        new_ops = set(requested.get("ops") or ALL_OPS)
+        existing_ops = existing.get("ops")
+        requested_ops = requested.get("ops")
+        old_ops = set(existing_ops) if existing_ops is not None else ALL_OPS
+        new_ops = set(requested_ops) if requested_ops is not None else ALL_OPS
         result["ops"] = sorted(old_ops & new_ops)
         return result
 
     def _check(self, op: str, **context: object) -> None:
         if not self._scope:
             return
-        allowed_ops = set(self._scope.get("ops") or ALL_OPS)
+        scope_ops = self._scope.get("ops")
+        allowed_ops = set(scope_ops) if scope_ops is not None else ALL_OPS
         if op not in allowed_ops:
             raise PermissionError(
                 f"Operation '{op}' not allowed (allowed: {sorted(allowed_ops)})"
@@ -72,7 +75,8 @@ class WebSearchCapability(Capability):
         value = resp.get("SecretString", "")
         try:
             parsed = json.loads(value)
-            return parsed
+            result = parsed.get("value", value) if isinstance(parsed, dict) else value
+            return str(result)
         except (json.JSONDecodeError, AttributeError):
             return value
 
@@ -193,6 +197,12 @@ class WebSearchCapability(Capability):
                 "expansions": "author_id",
                 "user.fields": "username",
             }
+            # Map recency to start_time if no explicit after_date
+            if recency and not after_date:
+                import datetime
+                days = {"day": 1, "week": 7, "month": 30}.get(recency, 7)
+                start = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+                params["start_time"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
             if after_date:
                 params["start_time"] = after_date + "T00:00:00Z"
             if before_date:
