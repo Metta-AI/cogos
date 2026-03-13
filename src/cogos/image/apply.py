@@ -77,7 +77,8 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
     # 4. Files
     fs = FileStore(repo)
     for key, content in spec.files.items():
-        fs.upsert(key, content, source="image")
+        includes = spec.file_includes.get(key)
+        fs.upsert(key, content, source="image", includes=includes)
         counts["files"] += 1
 
     # 5. Schemas

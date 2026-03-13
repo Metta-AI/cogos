@@ -13,6 +13,7 @@ class ImageSpec:
     processes: list[dict] = field(default_factory=list)
     cron_rules: list[dict] = field(default_factory=list)
     files: dict[str, str] = field(default_factory=dict)
+    file_includes: dict[str, list[str]] = field(default_factory=dict)
     schemas: list[dict] = field(default_factory=list)
     channels: list[dict] = field(default_factory=list)
 
@@ -66,6 +67,11 @@ def load_image(image_dir: Path) -> ImageSpec:
             "auto_close": auto_close,
         })
 
+    def add_file(key, *, content="", includes=None):
+        spec.files[key] = content
+        if includes:
+            spec.file_includes[key] = includes
+
     builtins = {
         "__builtins__": __builtins__,
         "add_capability": add_capability,
@@ -74,8 +80,10 @@ def load_image(image_dir: Path) -> ImageSpec:
         "add_cron": add_cron,
         "add_schema": add_schema,
         "add_channel": add_channel,
+        "add_file": add_file,
     }
 
+    # Load top-level init scripts
     init_dir = image_dir / "init"
     if init_dir.is_dir():
         for py in sorted(init_dir.glob("*.py")):
@@ -83,11 +91,33 @@ def load_image(image_dir: Path) -> ImageSpec:
                 continue
             exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
 
+    # Load top-level files
     files_dir = image_dir / "files"
     if files_dir.is_dir():
         for f in sorted(files_dir.rglob("*")):
             if f.is_file():
                 key = str(f.relative_to(files_dir))
                 spec.files[key] = f.read_text()
+
+    # Load apps — each app is a sub-image with its own init/ and files/
+    apps_dir = image_dir / "apps"
+    if apps_dir.is_dir():
+        for app_dir in sorted(apps_dir.iterdir()):
+            if not app_dir.is_dir():
+                continue
+            # App init scripts
+            app_init = app_dir / "init"
+            if app_init.is_dir():
+                for py in sorted(app_init.glob("*.py")):
+                    if py.name.startswith("_"):
+                        continue
+                    exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
+            # App files
+            app_files = app_dir / "files"
+            if app_files.is_dir():
+                for f in sorted(app_files.rglob("*")):
+                    if f.is_file():
+                        key = str(f.relative_to(app_files))
+                        spec.files[key] = f.read_text()
 
     return spec
