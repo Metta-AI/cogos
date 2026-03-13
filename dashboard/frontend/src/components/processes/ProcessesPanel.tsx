@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability, EventType } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
+import { InfoTooltip } from "@/components/shared/InfoTooltip";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import { PromptTextarea } from "@/components/shared/PromptTextarea";
 import type { CogosFileVersion } from "@/lib/types";
@@ -167,6 +169,18 @@ function filterPromptSuggestions(allKeys: string[], grants: CapGrant[]): string[
   return allKeys.filter((key) => fileGrants.some((grant) => grantAllowsPromptRead(grant, key)));
 }
 
+function SectionHelp({ title, bullets }: { title: string; bullets: string[] }) {
+  return (
+    <InfoTooltip title={title}>
+      <ul className="m-0 pl-4 space-y-1">
+        {bullets.map((bullet) => (
+          <li key={bullet}>{bullet}</li>
+        ))}
+      </ul>
+    </InfoTooltip>
+  );
+}
+
 /* ── TagListEditor: editable list with typeahead ── */
 
 function TagListEditor({
@@ -296,10 +310,12 @@ function FileGrantEditor({
   grants,
   onChange,
   processName,
+  help,
 }: {
   grants: CapGrant[];
   onChange: (grants: CapGrant[]) => void;
   processName: string;
+  help?: ReactNode;
 }) {
   const [addType, setAddType] = useState<"file" | "dir" | null>(null);
   const [addName, setAddName] = useState("");
@@ -350,7 +366,10 @@ function FileGrantEditor({
 
   return (
     <div>
-      <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Files & Directories</label>
+      <div className="flex items-center gap-2 mb-1">
+        <label className="text-[10px] text-[var(--text-muted)] uppercase">Files & Directories</label>
+        {help}
+      </div>
       {fileGrants.length > 0 && (
         <div className="space-y-1 mb-1">
           {fileGrants.map((g) => {
@@ -1673,6 +1692,14 @@ function ProcessFormEditor({
       <div>
         <div className="flex items-center gap-2 mb-1">
           <label className="text-[10px] text-[var(--text-muted)] uppercase">Prompt Files</label>
+          <SectionHelp
+            title="1. Prompt Files"
+            bullets={[
+              "Whole files attached to the process as prompt roots.",
+              "Their contents become part of the system prompt.",
+              "Attached files are explicit roots; nested @{...} references still use readable file access.",
+            ]}
+          />
         </div>
         {((includes && includes.length > 0) || form.files.length > 0) && (
           <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
@@ -1817,7 +1844,17 @@ function ProcessFormEditor({
 
       {/* Prompt source */}
       <div>
-        <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Prompt Source</label>
+        <div className="flex items-center gap-2 mb-1">
+          <label className="text-[10px] text-[var(--text-muted)] uppercase">Prompt Source</label>
+          <SectionHelp
+            title="2. Prompt Source"
+            bullets={[
+              "Inline instructions stored on the process itself.",
+              "Also becomes part of the system prompt.",
+              "Can reference readable files with @{file-key}.",
+            ]}
+          />
+        </div>
         <PromptTextarea
           className={INPUT_CLS}
           rows={4}
@@ -1834,6 +1871,16 @@ function ProcessFormEditor({
         grants={form.grants}
         onChange={(grants) => onChange((prev) => ({ ...prev, grants }))}
         processName={form.name}
+        help={(
+          <SectionHelp
+            title="3. Files & Directories"
+            bullets={[
+              "Runtime file access grants, not prompt content.",
+              "Controls what the process can read or write through capabilities.",
+              "Also controls which files are valid for prompt-reference suggestions and nested includes.",
+            ]}
+          />
+        )}
       />
 
       {/* Other Capabilities (file/dir shown above) */}
