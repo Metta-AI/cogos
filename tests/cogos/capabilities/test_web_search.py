@@ -87,6 +87,15 @@ class TestSearchGithub:
             cap.search_github("my query", after_date="2025-01-01")
         url = mock_http.call_args[0][0]
         assert "2025-01-01" in url
+        assert "pushed" in url
+
+    def test_appends_before_date_qualifier(self, cap):
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value={"items": []}) as mock_http:
+            cap.search_github("my query", before_date="2025-12-31")
+        url = mock_http.call_args[0][0]
+        assert "2025-12-31" in url
+        assert "pushed" in url
 
     def test_defaults_to_repositories_type(self, cap):
         with patch.object(cap, "_get_secret", return_value="t"), \
@@ -141,6 +150,22 @@ class TestSearchTwitter:
             cap.search_twitter("my topic")
         url = mock_http.call_args[0][0]
         assert "-is%3Aretweet" in url or "-is:retweet" in url
+
+    def test_uses_all_endpoint_for_before_date(self, cap):
+        resp = {"data": [], "includes": {}}
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search_twitter("q", before_date="2025-12-31")
+        assert "/search/all" in mock_http.call_args[0][0]
+
+    def test_recency_sets_start_time(self, cap):
+        resp = {"data": [], "includes": {}}
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search_twitter("q", recency="day")
+        url = mock_http.call_args[0][0]
+        assert "start_time" in url
+        assert "/search/recent" in url  # recency alone doesn't trigger /all
 
     def test_returns_error_on_exception(self, cap):
         with patch.object(cap, "_get_secret", side_effect=Exception("x")):
