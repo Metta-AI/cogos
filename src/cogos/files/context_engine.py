@@ -14,6 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from cogos.files.references import extract_file_references
 from cogos.files.store import FileStore
 
 if TYPE_CHECKING:
@@ -54,26 +55,35 @@ class ContextEngine:
         """Build the complete prompt for a process.
 
         Resolves all attached files (with their includes) and prepends
-        them before ``process.content``.  This is the single source of
-        truth used by both the executor and the dashboard.
+        them before ``process.content``. References written inline as
+        ``@{file-key}`` are also resolved when the process has readable
+        access to that key. This is the single source of truth used by
+        both the executor and the dashboard.
         """
         sections: list[str] = []
-        visited: set[str] = set()
+        root_keys_seen: set[str] = set()
+        prompt_reference_keys = self._resolve_prompt_reference_keys(process)
 
         # Resolve each attached file (process.files)
         for fid in process.files or []:
             file = self._store.get_by_id(fid)
-            if not file or file.key in visited:
+            if not file or file.key in root_keys_seen:
                 continue
-            visited.add(file.key)
-            sections.append(self._resolve_key(file.key, visited=set(visited)))
+            root_keys_seen.add(file.key)
+            sections.append(self._resolve_key(file.key, visited=set()))
 
         # Legacy: single code FK (only if no files list)
         if process.code and not process.files:
             file = self._store.get_by_id(process.code)
-            if file and file.key not in visited:
-                visited.add(file.key)
-                sections.append(self._resolve_key(file.key, visited=set(visited)))
+            if file and file.key not in root_keys_seen:
+                root_keys_seen.add(file.key)
+                sections.append(self._resolve_key(file.key, visited=set()))
+
+        for key in prompt_reference_keys:
+            if key in root_keys_seen:
+                continue
+            root_keys_seen.add(key)
+            sections.append(self._resolve_key(key, visited=set()))
 
         # Append process.content last
         if process.content:
@@ -87,14 +97,16 @@ class ContextEngine:
         Returns a list of dicts in include-order (deepest deps first):
         ``[{"key": str, "content": str, "is_direct": bool}, ...]``
 
-        Each file appears at most once.  ``is_direct`` is True for files
-        explicitly attached to the process (i.e. in ``process.files``).
-        The final entry (if ``process.content`` is set) has
+        Each file appears at most once. ``is_direct`` is True for files
+        explicitly attached to the process or referenced directly from
+        ``process.content`` using ``@{file-key}``. The final entry (if
+        ``process.content`` is set) has
         ``key = "<content>"`` and ``is_direct = True``.
         """
         result: list[dict] = []
         seen: set[str] = set()
         direct_keys: set[str] = set()
+        prompt_reference_keys = self._resolve_prompt_reference_keys(process)
 
         # Collect direct file keys
         for fid in process.files or []:
@@ -108,6 +120,8 @@ class ContextEngine:
             if file:
                 direct_keys.add(file.key)
 
+        direct_keys.update(prompt_reference_keys)
+
         # Resolve each direct file and its includes
         for fid in process.files or []:
             file = self._store.get_by_id(fid)
@@ -119,6 +133,10 @@ class ContextEngine:
             file = self._store.get_by_id(process.code)
             if file and file.key not in seen:
                 self._collect_tree(file.key, seen, result, direct_keys)
+
+        for key in prompt_reference_keys:
+            if key not in seen:
+                self._collect_tree(key, seen, result, direct_keys)
 
         # Append process.content last
         if process.content:
@@ -157,6 +175,37 @@ class ContextEngine:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _resolve_prompt_reference_keys(self, process: Process) -> list[str]:
+        keys: list[str] = []
+        for key in extract_file_references(process.content or ""):
+            if self._can_process_read_key(process, key):
+                keys.append(key)
+            else:
+                logger.warning("Process %s cannot read prompt reference %s", process.name, key)
+        return keys
+
+    def _can_process_read_key(self, process: Process, key: str) -> bool:
+        repo = self._store.repo
+        for grant in repo.list_process_capabilities(process.id):
+            capability = repo.get_capability(grant.capability)
+            if not capability:
+                continue
+
+            cfg = grant.config or {}
+            ops = cfg.get("ops")
+            if isinstance(ops, list) and "read" not in ops:
+                continue
+
+            if capability.name == "file":
+                scoped_key = cfg.get("key")
+                if scoped_key is None or str(scoped_key) == key:
+                    return True
+            elif capability.name in {"dir", "files"}:
+                prefix = cfg.get("prefix")
+                if prefix is None or key.startswith(str(prefix)):
+                    return True
+        return False
 
     def _resolve_key(self, key: str, *, visited: set[str]) -> str:
         """Recursively resolve *key* and its includes.

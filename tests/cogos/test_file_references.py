@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from cogos.db.models import Capability, Process, ProcessCapability
 from cogos.db.local_repository import LocalRepository
+from cogos.files.context_engine import ContextEngine
 from cogos.files.references import extract_file_references, merge_file_references
 from cogos.files.store import FileStore
 
@@ -51,3 +53,59 @@ def test_new_version_updates_includes(tmp_path: Path) -> None:
     updated = repo.get_file_by_id(created.id)
     assert updated is not None
     assert updated.includes == ["shared/updated"]
+
+
+def test_process_prompt_references_include_readable_files(tmp_path: Path) -> None:
+    repo = LocalRepository(data_dir=str(tmp_path))
+    store = FileStore(repo)
+    store.create("secrets/reference", "classified")
+    store.create("private/blocked", "blocked")
+
+    proc = Process(name="agent", content="tell me @{secrets/reference} and @{private/blocked}")
+    repo.upsert_process(proc)
+
+    dir_cap = Capability(name="dir")
+    repo.upsert_capability(dir_cap)
+    repo.create_process_capability(
+        ProcessCapability(
+            process=proc.id,
+            capability=dir_cap.id,
+            name="read_secrets",
+            config={"prefix": "secrets/", "ops": ["read"]},
+        ),
+    )
+
+    engine = ContextEngine(store)
+    prompt = engine.generate_full_prompt(proc)
+    tree = engine.resolve_prompt_tree(proc)
+
+    assert "--- secrets/reference ---\nclassified" in prompt
+    assert "--- private/blocked ---" not in prompt
+    assert [entry["key"] for entry in tree] == ["secrets/reference", "<content>"]
+
+
+def test_process_prompt_references_ignore_non_readable_grants(tmp_path: Path) -> None:
+    repo = LocalRepository(data_dir=str(tmp_path))
+    store = FileStore(repo)
+    store.create("secrets/reference", "classified")
+
+    proc = Process(name="agent", content="tell me @{secrets/reference}")
+    repo.upsert_process(proc)
+
+    dir_cap = Capability(name="dir")
+    repo.upsert_capability(dir_cap)
+    repo.create_process_capability(
+        ProcessCapability(
+            process=proc.id,
+            capability=dir_cap.id,
+            name="write_only_secrets",
+            config={"prefix": "secrets/", "ops": ["write"]},
+        ),
+    )
+
+    engine = ContextEngine(store)
+    prompt = engine.generate_full_prompt(proc)
+    tree = engine.resolve_prompt_tree(proc)
+
+    assert "--- secrets/reference ---" not in prompt
+    assert [entry["key"] for entry in tree] == ["<content>"]

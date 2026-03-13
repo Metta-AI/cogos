@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability, EventType } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
+import { FileReferenceTextarea } from "@/components/shared/FileReferenceTextarea";
 import { InfoTooltip } from "@/components/shared/InfoTooltip";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import type { CogosFileVersion } from "@/lib/types";
@@ -158,6 +159,46 @@ function SectionHelp({ title, bullets }: { title: string; bullets: string[] }) {
       </ul>
     </InfoTooltip>
   );
+}
+
+function grantAllowsRead(config: Record<string, unknown> | null): boolean {
+  const ops = config?.ops;
+  return !Array.isArray(ops) || ops.includes("read");
+}
+
+function getPromptReferenceSuggestions(fileKeys: string[], grants: CapGrant[]): string[] {
+  const sortedKeys = [...fileKeys].sort((a, b) => a.localeCompare(b));
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (key: string) => {
+    if (!seen.has(key)) {
+      seen.add(key);
+      suggestions.push(key);
+    }
+  };
+
+  for (const grant of grants) {
+    if (!grantAllowsRead(grant.config)) continue;
+
+    const config = (grant.config || {}) as Record<string, unknown>;
+    if (grant.capability_name === "file") {
+      const key = typeof config.key === "string" ? config.key : "";
+      if (!key) return sortedKeys;
+      if (sortedKeys.includes(key)) add(key);
+      continue;
+    }
+
+    if (grant.capability_name === "dir" || grant.capability_name === "files") {
+      const prefix = typeof config.prefix === "string" ? config.prefix : "";
+      if (!prefix) return sortedKeys;
+      for (const key of sortedKeys) {
+        if (key.startsWith(prefix)) add(key);
+      }
+    }
+  }
+
+  return suggestions;
 }
 /* ── TagListEditor: editable list with typeahead ── */
 
@@ -1313,11 +1354,13 @@ function DurationUnitMenu({ value, onChange }: { value: DurationUnit; onChange: 
 
 function InlineFileEditor({
   fileKey,
+  fileSuggestions,
   cogentName,
   onRefresh,
   onClose,
 }: {
   fileKey: string;
+  fileSuggestions: string[];
   cogentName: string;
   onRefresh?: () => void;
   onClose: () => void;
@@ -1468,12 +1511,16 @@ function InlineFileEditor({
       {currentVersion && (
         editing ? (
           <div className="px-2 py-1.5 space-y-1.5">
-            <textarea
+            <FileReferenceTextarea
               value={editContent}
-              onChange={(e) => { setEditContent(e.target.value); setSaveConfirm(null); }}
+              onChange={(value) => { setEditContent(value); setSaveConfirm(null); }}
+              suggestions={fileSuggestions}
+              currentKey={fileKey}
+              placeholder="File content..."
               rows={8}
               className="w-full px-2 py-1 text-[11px] rounded border font-mono resize-y"
               style={{ background: "var(--bg-base)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+              helperText="Type @{ to reference another file."
             />
             <div className="flex gap-1.5 items-center flex-wrap">
               {saveConfirm === "update" ? (
@@ -1532,6 +1579,7 @@ function ProcessFormEditor({
   isNew,
   resourceSuggestions,
   fileSuggestions,
+  promptReferenceSuggestions,
   capabilitySuggestions,
   eventTypeSuggestions,
   cogentName,
@@ -1547,6 +1595,7 @@ function ProcessFormEditor({
   isNew: boolean;
   resourceSuggestions: string[];
   fileSuggestions: string[];
+  promptReferenceSuggestions: string[];
   capabilitySuggestions: string[];
   eventTypeSuggestions: string[];
   cogentName: string;
@@ -1698,6 +1747,7 @@ function ProcessFormEditor({
                   {isExpanded && (
                     <InlineFileEditor
                       fileKey={inc.key}
+                      fileSuggestions={fileSuggestions}
                       cogentName={cogentName}
                       onRefresh={onRefresh}
                       onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(inc.key); return next; })}
@@ -1787,6 +1837,7 @@ function ProcessFormEditor({
                   {isExpanded && (
                     <InlineFileEditor
                       fileKey={fileKey}
+                      fileSuggestions={fileSuggestions}
                       cogentName={cogentName}
                       onRefresh={onRefresh}
                       onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(fileKey); return next; })}
@@ -1825,11 +1876,14 @@ function ProcessFormEditor({
             ]}
           />
         </div>
-        <textarea
+        <FileReferenceTextarea
           className={INPUT_CLS}
           rows={4}
           value={form.content}
-          onChange={(e) => onChange({ ...form, content: e.target.value })}
+          onChange={(value) => onChange({ ...form, content: value })}
+          suggestions={promptReferenceSuggestions}
+          placeholder="Add process instructions..."
+          helperText="Type @{ to reference a readable file."
           style={{ resize: "vertical" }}
         />
       </div>
@@ -1944,6 +1998,10 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
   const fileSuggestions = useMemo(() => files.map((f) => f.key), [files]);
+  const promptReferenceSuggestions = useMemo(
+    () => getPromptReferenceSuggestions(fileSuggestions, form.grants),
+    [fileSuggestions, form.grants],
+  );
   const capabilitySuggestions = useMemo(() => capabilities.map((c) => c.name), [capabilities]);
   const eventTypeSuggestions = useMemo(() => eventTypes.map((et) => et.name), [eventTypes]);
 
@@ -2138,6 +2196,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             isNew
             resourceSuggestions={resourceSuggestions}
             fileSuggestions={fileSuggestions}
+            promptReferenceSuggestions={promptReferenceSuggestions}
             capabilitySuggestions={capabilitySuggestions}
             eventTypeSuggestions={eventTypeSuggestions}
             cogentName={cogentName}
@@ -2333,6 +2392,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                                 isFileEditing ? (
                                   <InlineFileEditor
                                     fileKey={entry.key}
+                                    fileSuggestions={fileSuggestions}
                                     cogentName={cogentName}
                                     onRefresh={async () => { onRefresh(); await fetchDetail(proc.id, { preserveExpanded: true }); }}
                                     onClose={() => setEditingFileKey(null)}
@@ -2569,6 +2629,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     isNew={false}
                     resourceSuggestions={resourceSuggestions}
                     fileSuggestions={fileSuggestions}
+                    promptReferenceSuggestions={promptReferenceSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
                     eventTypeSuggestions={eventTypeSuggestions}
                     cogentName={cogentName}
