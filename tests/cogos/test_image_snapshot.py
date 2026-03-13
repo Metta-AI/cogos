@@ -15,13 +15,13 @@ def test_snapshot_round_trips(tmp_path):
         ],
         resources=[],
         processes=[
-            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler}",
+            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler.md}",
              "runner": "lambda", "model": None,
              "priority": 100.0, "capabilities": ["dir"],
              "handlers": [], "metadata": {}},
         ],
         cron_rules=[],
-        files={"cogos/scheduler": "You are the scheduler."},
+        files={"cogos/scheduler.md": "You are the scheduler."},
     )
     apply_image(original, repo)
 
@@ -31,7 +31,7 @@ def test_snapshot_round_trips(tmp_path):
     # Verify files were generated
     assert (snapshot_dir / "init" / "capabilities.py").exists()
     assert (snapshot_dir / "init" / "processes.py").exists()
-    assert (snapshot_dir / "files" / "cogos" / "scheduler").exists()
+    assert (snapshot_dir / "files" / "cogos" / "scheduler.md").exists()
     assert (snapshot_dir / "README.md").exists()
 
     # Round-trip: load the snapshot and verify
@@ -40,7 +40,7 @@ def test_snapshot_round_trips(tmp_path):
     assert restored.capabilities[0]["name"] == "dir"
     assert len(restored.processes) == 1
     assert restored.processes[0]["name"] == "scheduler"
-    assert restored.processes[0]["content"] == "@{cogos/scheduler}"
+    assert restored.processes[0]["content"] == "@{cogos/scheduler.md}"
     assert "dir" in restored.processes[0]["capabilities"]
     assert restored.processes[0]["handlers"] == []
-    assert restored.files["cogos/scheduler"] == "You are the scheduler."
+    assert restored.files["cogos/scheduler.md"] == "You are the scheduler."

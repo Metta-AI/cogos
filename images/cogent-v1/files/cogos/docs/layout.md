@@ -45,14 +45,14 @@ You can read and write any file you have capability for. CogOS is designed for s
 
 ```python
 # Read your own docs
-layout = files.read("cogos/docs/layout")
+layout = files.read("cogos/docs/layout.md")
 print(layout.content)
 
 # Update a process prompt
-files.write("cogos/lib/scheduler", new_scheduler_prompt)
+files.write("cogos/lib/scheduler.md", new_scheduler_prompt)
 
 # Add a new include
-files.write("cogos/includes/my_tool", "# My Tool\n...")
+files.write("cogos/includes/my_tool.md", "# My Tool\n...")
 ```
 
 Every write creates a new version. Old versions are preserved and accessible via `file_version`.
