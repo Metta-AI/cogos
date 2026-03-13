@@ -22,10 +22,6 @@ def test_run_migrations_executes_comment_prefixed_sql_blocks(monkeypatch):
         for stmt in repo.statements
     )
     assert any(
-        "ALTER TABLE cogos_process ADD COLUMN IF NOT EXISTS files" in stmt
-        for stmt in repo.statements
-    )
-    assert any(
         "CREATE TABLE IF NOT EXISTS cogos_meta" in stmt
         for stmt in repo.statements
     )

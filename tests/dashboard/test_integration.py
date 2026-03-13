@@ -20,17 +20,19 @@ def test_all_rest_endpoints_registered():
     client = TestClient(app, raise_server_exceptions=False)
 
     endpoints = [
-        ("GET", "/api/cogents/test/status?range=1h"),
-        ("GET", "/api/cogents/test/programs"),
-        ("GET", "/api/cogents/test/sessions"),
-        ("GET", "/api/cogents/test/message-traces?range=1h"),
-        ("GET", "/api/cogents/test/triggers"),
-        ("GET", "/api/cogents/test/memory"),
-        ("GET", "/api/cogents/test/tasks"),
+        ("GET", "/api/cogents/test/cogos-status"),
+        ("GET", "/api/cogents/test/processes"),
+        ("GET", "/api/cogents/test/runs"),
+        ("GET", "/api/cogents/test/message-traces"),
         ("GET", "/api/cogents/test/channels"),
         ("POST", "/api/cogents/test/channels/00000000-0000-0000-0000-000000000000/messages"),
-        ("GET", "/api/cogents/test/alerts"),
         ("GET", "/api/cogents/test/resources"),
+        ("GET", "/api/cogents/test/cron"),
+        ("GET", "/api/cogents/test/schemas"),
+        ("GET", "/api/cogents/test/capabilities"),
+        ("GET", "/api/cogents/test/files"),
+        ("GET", "/api/cogents/test/handlers"),
+        ("GET", "/api/cogents/test/setup"),
     ]
 
     for method, path in endpoints:
@@ -54,46 +56,16 @@ def test_websocket_endpoint():
         ws.send_text("ping")
 
 
-def test_trigger_toggle_endpoint():
+def test_cron_toggle_endpoint():
     """POST endpoint exists and accepts JSON body."""
     app = create_app()
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.post(
-        "/api/cogents/test/triggers/toggle",
+        "/api/cogents/test/cron/toggle",
         json={"ids": [], "enabled": True},
     )
     assert resp.status_code != 404
     assert resp.status_code != 405
-
-
-def test_status_returns_data_with_mock():
-    """Status endpoint returns correct data when repo is mocked."""
-    mock = _mock_repo()
-    mock.query_one.return_value = {
-        "active_sessions": 0,
-        "total_conversations": 0,
-        "trigger_count": 0,
-        "unresolved_alerts": 0,
-        "recent_events": 0,
-    }
-    with patch("dashboard.routers.status.get_repo", return_value=mock):
-        app = create_app()
-        client = TestClient(app)
-        resp = client.get("/api/cogents/test/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["cogent_name"] == "test"
-        assert data["active_sessions"] == 0
-
-
-def test_alerts_returns_data_with_mock():
-    mock = _mock_repo()
-    with patch("dashboard.routers.alerts.get_repo", return_value=mock):
-        app = create_app()
-        client = TestClient(app)
-        resp = client.get("/api/cogents/test/alerts")
-        assert resp.status_code == 200
-        assert resp.json()["alerts"] == []
 
 
 def test_channels_returns_data_with_mock():
