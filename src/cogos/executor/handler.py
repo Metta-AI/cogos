@@ -260,29 +260,27 @@ def execute_process(
     """Execute process via Bedrock converse API with search + run_code tool loop."""
     bedrock = bedrock_client or boto3.client("bedrock-runtime", region_name=config.region)
 
-    # Build system prompt using the shared ContextEngine
+    # Build system prompt using the shared authored-prompt resolver.
     from cogos.files.context_engine import ContextEngine
-    from cogos.files.store import FileStore
-    file_store = FileStore(repo)
-    ctx = ContextEngine(file_store)
+    ctx = ContextEngine(repo)
     system_prompt = ctx.generate_full_prompt(process)
 
     if not system_prompt:
         system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
 
-    # Prepend includes — all files under "cogos/includes/" are auto-injected
-    includes_content = _load_includes(repo)
-    if includes_content:
-        system_prompt = includes_content + "\n\n" + system_prompt
-
     system = [{"text": system_prompt}]
 
-    # Build user message from process content + event
+    # Build user message from runtime event data only. Authored prompt sources
+    # are already resolved into the system prompt before inference.
     user_text = ""
-    if process.content:
-        user_text += process.content + "\n\n"
-    if event_data.get("payload"):
-        user_text += f"Message payload: {json.dumps(event_data['payload'], indent=2)}\n"
+    if event_data.get("event_type"):
+        user_text += f"Event: {event_data.get('event_type', 'unknown')}\n"
+
+    payload = event_data.get("payload")
+    if payload is None and event_data and not any(key in event_data for key in ("process_id", "message_id", "run_id")):
+        payload = event_data
+    if payload is not None:
+        user_text += f"Payload: {json.dumps(payload, indent=2)}\n"
     if not user_text.strip():
         user_text = "Execute your task."
 
