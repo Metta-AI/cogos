@@ -1,104 +1,148 @@
 """Tests for WebSearchCapability."""
-
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from cogos.capabilities.web_search import (
+    GithubSearchResult,
+    SearchError,
     SearchResult,
+    TwitterSearchResult,
     WebSearchCapability,
 )
 
 
 @pytest.fixture
-def repo():
-    return MagicMock()
-
-
-@pytest.fixture
-def pid():
-    return uuid4()
-
-
-class TestScoping:
-    def test_unscoped_allows_any_search(self, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        cap._check("search")  # should not raise
-
-    def test_scoped_ops_denies_unpermitted(self, repo, pid):
-        cap = WebSearchCapability(repo, pid).scope(ops=["search"])
-        with pytest.raises(PermissionError):
-            cap._check("other_op")
-
-    def test_narrow_intersects_ops(self, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        s1 = cap.scope(ops=["search"])
-        s2 = s1.scope(ops=["search"])
-        assert s2._scope["ops"] == ["search"]
-
-    def test_narrow_intersects_domains(self, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        s1 = cap.scope(domains=["github.com", "linkedin.com"])
-        s2 = s1.scope(domains=["github.com", "twitter.com"])
-        assert s2._scope["domains"] == ["github.com"]
-
-    def test_narrow_budget_takes_min(self, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        s1 = cap.scope(query_budget=100)
-        s2 = s1.scope(query_budget=50)
-        assert s2._scope["query_budget"] == 50
+def cap():
+    return WebSearchCapability(MagicMock(), uuid4())
 
 
 class TestSearch:
-    @patch("cogos.capabilities.web_search.fetch_secret", return_value="test-api-key")
-    def test_search_returns_results(self, mock_secret, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        mock_response = {
-            "results": [
-                {
-                    "title": "Result 1",
-                    "url": "https://example.com/1",
-                    "content": "Snippet 1",
-                    "score": 0.95,
-                },
-            ]
+    def test_returns_summary_and_sources(self, cap):
+        resp = {
+            "choices": [{"message": {"content": "Here is a summary."}}],
+            "citations": ["https://example.com"],
         }
-        with patch("cogos.capabilities.web_search.TavilyClient") as MockTavily:
-            mock_client = MagicMock()
-            mock_client.search.return_value = mock_response
-            MockTavily.return_value = mock_client
+        with patch.object(cap, "_get_secret", return_value="key"), \
+             patch.object(cap, "_http_json", return_value=resp):
+            result = cap.search("competitor analysis")
+        assert isinstance(result, SearchResult)
+        assert result.summary == "Here is a summary."
+        assert result.sources[0]["url"] == "https://example.com"
 
-            results = cap.search("test query", limit=5)
-            assert len(results) == 1
-            assert isinstance(results[0], SearchResult)
-            assert results[0].title == "Result 1"
-            mock_client.search.assert_called_once_with(
-                query="test query",
-                max_results=5,
-                include_domains=None,
-            )
+    def test_passes_recency_to_payload(self, cap):
+        resp = {"choices": [{"message": {"content": "s"}}], "citations": []}
+        with patch.object(cap, "_get_secret", return_value="k"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search("query", recency="day")
+        payload = mock_http.call_args[1]["payload"]
+        assert payload["search_recency_filter"] == "day"
 
-    @patch("cogos.capabilities.web_search.fetch_secret", return_value="test-api-key")
-    def test_search_with_domain_scope(self, mock_secret, repo, pid):
-        cap = WebSearchCapability(repo, pid).scope(domains=["github.com"])
-        with patch("cogos.capabilities.web_search.TavilyClient") as MockTavily:
-            mock_client = MagicMock()
-            mock_client.search.return_value = {"results": []}
-            MockTavily.return_value = mock_client
+    def test_passes_date_filter_for_backfill(self, cap):
+        resp = {"choices": [{"message": {"content": "s"}}], "citations": []}
+        with patch.object(cap, "_get_secret", return_value="k"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search("q", after_date="2025-01-01", before_date="2025-01-31")
+        payload = mock_http.call_args[1]["payload"]
+        assert payload["search_date_filter"] == {"after": "2025-01-01", "before": "2025-01-31"}
 
-            cap.search("test query")
-            mock_client.search.assert_called_once_with(
-                query="test query",
-                max_results=5,
-                include_domains=["github.com"],
-            )
-
-    @patch("cogos.capabilities.web_search.fetch_secret", side_effect=RuntimeError("no key"))
-    def test_search_returns_error_on_missing_key(self, mock_secret, repo, pid):
-        cap = WebSearchCapability(repo, pid)
-        result = cap.search("test")
-        assert hasattr(result, "error")
+    def test_returns_error_on_exception(self, cap):
+        with patch.object(cap, "_get_secret", side_effect=Exception("no key")):
+            result = cap.search("query")
+        assert isinstance(result, SearchError)
         assert "no key" in result.error
+
+    def test_scope_blocks_disallowed_op(self, cap):
+        scoped = cap.scope(ops=["search_github"])
+        with pytest.raises(PermissionError):
+            scoped._check("search")
+
+    def test_scope_allows_permitted_op(self, cap):
+        scoped = cap.scope(ops=["search", "search_github"])
+        scoped._check("search")  # should not raise
+
+
+class TestSearchGithub:
+    def test_returns_items(self, cap):
+        resp = {
+            "items": [{
+                "full_name": "org/repo",
+                "html_url": "https://github.com/org/repo",
+                "description": "A tool",
+                "stargazers_count": 42,
+                "updated_at": "2026-01-01",
+            }]
+        }
+        with patch.object(cap, "_get_secret", return_value="tok"), \
+             patch.object(cap, "_http_json", return_value=resp):
+            result = cap.search_github("competitive analysis tool")
+        assert isinstance(result, GithubSearchResult)
+        assert result.items[0]["title"] == "org/repo"
+        assert result.items[0]["stars"] == 42
+
+    def test_appends_after_date_qualifier(self, cap):
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value={"items": []}) as mock_http:
+            cap.search_github("my query", after_date="2025-01-01")
+        url = mock_http.call_args[0][0]
+        assert "2025-01-01" in url
+
+    def test_defaults_to_repositories_type(self, cap):
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value={"items": []}) as mock_http:
+            cap.search_github("query")
+        url = mock_http.call_args[0][0]
+        assert "/repositories?" in url
+
+    def test_returns_error_on_exception(self, cap):
+        with patch.object(cap, "_get_secret", side_effect=Exception("boom")):
+            result = cap.search_github("query")
+        assert isinstance(result, SearchError)
+
+
+class TestSearchTwitter:
+    def test_returns_tweets_with_author(self, cap):
+        resp = {
+            "data": [{
+                "id": "123",
+                "text": "hello world",
+                "author_id": "u1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "public_metrics": {"like_count": 5, "retweet_count": 2},
+            }],
+            "includes": {"users": [{"id": "u1", "username": "alice"}]},
+        }
+        with patch.object(cap, "_get_secret", return_value="bearer"), \
+             patch.object(cap, "_http_json", return_value=resp):
+            result = cap.search_twitter("competitive analysis")
+        assert isinstance(result, TwitterSearchResult)
+        assert result.tweets[0]["author"] == "alice"
+        assert result.tweets[0]["likes"] == 5
+
+    def test_uses_all_endpoint_for_date_range(self, cap):
+        resp = {"data": [], "includes": {}}
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search_twitter("q", after_date="2025-01-01")
+        assert "/search/all" in mock_http.call_args[0][0]
+
+    def test_uses_recent_endpoint_without_dates(self, cap):
+        resp = {"data": [], "includes": {}}
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search_twitter("q")
+        assert "/search/recent" in mock_http.call_args[0][0]
+
+    def test_excludes_retweets_from_query(self, cap):
+        resp = {"data": [], "includes": {}}
+        with patch.object(cap, "_get_secret", return_value="t"), \
+             patch.object(cap, "_http_json", return_value=resp) as mock_http:
+            cap.search_twitter("my topic")
+        url = mock_http.call_args[0][0]
+        assert "-is%3Aretweet" in url or "-is:retweet" in url
+
+    def test_returns_error_on_exception(self, cap):
+        with patch.object(cap, "_get_secret", side_effect=Exception("x")):
+            result = cap.search_twitter("q")
+        assert isinstance(result, SearchError)
