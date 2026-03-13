@@ -31,8 +31,8 @@ CogOS implements the levels below Human. The Human-Cogent boundary is the same p
 Three roles participate:
 
 - **Author**: Produces program templates in response to contexts. Learns from returned logs and memory. At different hierarchy levels this is a Human, Cogent, or Cog.
-- **Requester**: Has a context that needs a program. Sends context descriptions to Authors.
-- **Runtime**: Trusted substrate that executes program templates. Attaches capabilities it was given and runs the process. Has no authority of its own — it mechanically binds what the Author and Requester provide.
+- **Requester**: Has a context that needs a program. Sends context descriptions to Authors. The Requester is typically the level above the Author — the entity that owns the environment the child will run in. A Virtual Universe requests Cogs from a Cogent. A Cogent requests Coglets from a Cog. The Requester may also be the Author itself (self-commissioning). The Requester provides the interaction capabilities (the environment-side tools the child will need).
+- **Runtime**: Trusted substrate that executes program templates. Attaches capabilities it was given and runs the process. Has no authority of its own — it mechanically binds what the Author and Requester provide. The Runtime owns the child's execution lifecycle — start, pause, resume, kill. In CogOS, the Runtime is the dispatcher/executor infrastructure.
 
 ### Commissioning Phase
 
@@ -43,7 +43,7 @@ Three roles participate:
 2. Author responds with a **ProgramTemplate**:
    - `program`: byte string — the code/instructions for the child
    - `capability_spec`: list of capability requirements (type, name, config)
-3. The Author provides **cognitive capabilities** (memory, reflection, planning tools). The Requester or environment provides **interaction capabilities** (sensors, actuators, domain tools).
+3. The Author provides **cognitive capabilities** — tools for the child to think and plan (memory, internal scratch space, reflection prompts). The Requester provides **interaction capabilities** — tools for the child to observe and act in the environment (file access, API calls, domain-specific sensors and actuators). For example: a Cog authoring a Coglet for a code review Episode would provide cognitive capabilities (memory of past reviews, the review policy) while the Episode provides interaction capabilities (read access to the diff, ability to post comments).
 4. The Runtime receives the template, the concrete capabilities, and an identity. It mechanically creates the process, attaches the capabilities, and starts execution.
 
 ### Supervision Phase
@@ -61,7 +61,7 @@ The child runs, calls `log(msg)` which buffers. On termination, the Runtime retu
 The child runs, calls `log(msg)` which streams to the Author in real-time. The Author retains a **tendril** — a supervisor connection to the child's space:
 
 - **`search()`**: Discover what files, processes, and capabilities exist in the child's space. "What's going on in there?"
-- **`execute()`**: Run an arbitrary program in the child's space and get back what changed. "Change this and tell me what happened."
+- **`execute()`**: Run an arbitrary program in the child's space and get back what changed. "Change this and tell me what happened." The program runs as the Author (using the supervisor capability), not as the child — the Author is inspecting and modifying the child's space from outside.
 
 The child does not participate in search or execute — these operate on the child's space, not through the child. The child just runs its policy and calls `log()`.
 
@@ -145,12 +145,36 @@ These map to a new `SupervisorCapability` in CogOS, scoped to a specific child p
 
 ### Mode Selection
 
-The Author or Requester specifies the supervision mode at commissioning time. The Runtime configures the channel accordingly:
+The Requester specifies the supervision mode at commissioning time (it owns the environment and knows whether streaming is possible). The Runtime configures the channel accordingly:
 
 - Fire-and-forget: log channel created, no supervisor capability instantiated, memory state returned on completion
 - Streaming: log channel created with real-time delivery, supervisor capability instantiated and provided to Author, memory state returned on completion
 
 The child's program is identical in both modes.
+
+### Termination
+
+A child process terminates when:
+
+1. **Self-termination**: The child's program completes (returns or exits)
+2. **Runtime termination**: The Runtime kills the process (timeout via `max_duration_ms`, resource limits, or runtime shutdown)
+3. **Author termination** (streaming only): The Author uses `execute()` to halt the child's program
+
+In all cases, the Runtime is responsible for collecting the final memory state and delivering it (along with any buffered logs) to the Author. If the child crashes, the Runtime delivers whatever memory state and logs are available, plus an error indication.
+
+The protocol does not prescribe retry or error recovery — that is the Author's policy. The Author receives the result (success or failure) and decides whether to commission a new child, patch the template, or do nothing.
+
+### Memory State Return
+
+On termination, the Runtime serializes the child's memory state — the contents of all memory capabilities bound to the child process — and posts it to the Author's log channel as a completion message. This is a snapshot of the child's versioned memory at the moment of termination.
+
+In CogOS terms: the Runtime reads all `memory_version` rows associated with the child's memory capabilities, serializes them, and writes a `Completion(logs, memory_state, status)` message to the parent-child channel. The Author's Handler receives this like any other channel message.
+
+### Relationship to Existing CogOS Primitives
+
+- **ProgramTemplate.capability_spec** is a declarative manifest. At instantiation, each spec entry is resolved to a concrete `process_capability` row bound to the new child Process. The spec is the request; `process_capability` is the binding.
+- **SupervisorCapability** is a new capability type. It implements `_narrow()` by restricting which child process IDs can be supervised — an Author can only supervise children it authored. `_check()` verifies the target process ID is in scope. `search()` and `execute()` are its public methods. Delegation is possible: an Author could grant a narrower SupervisorCapability to a child, enabling supervision of grandchildren.
+- **`log()` uses the existing child-to-parent Channel** (the `spawn:responses` pattern in ProcsCapability). The authoring protocol does not replace bidirectional spawn channels — it uses the existing child-to-parent channel for logs.
 
 ## Key Invariants
 
