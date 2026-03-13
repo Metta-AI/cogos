@@ -36,15 +36,16 @@ Three roles participate:
 
 ### Commissioning Phase
 
-1. Requester sends a **Context** to the Author:
-   - `body`: byte string — describes the situation the child will run in
-   - `type`: byte string — what kind of thing the body is
-   - `source_id`: UUID — who is asking
-2. Author responds with a **ProgramTemplate**:
+1. Requester sends a **Request** to the Author:
+   - `context`: the Context (body, type, source_id) describing the situation the child will run in
+   - `interaction_capabilities`: concrete capability instances for the child to observe and act in the environment (file access, API calls, domain-specific sensors and actuators)
+2. Author responds with a **ProgramTemplate** that includes everything needed to produce a runnable child:
    - `program`: byte string — the code/instructions for the child
-   - `capability_spec`: list of capability requirements (type, name, config)
-3. The Author provides **cognitive capabilities** — tools for the child to think and plan (memory, internal scratch space, reflection prompts). The Requester provides **interaction capabilities** — tools for the child to observe and act in the environment (file access, API calls, domain-specific sensors and actuators). For example: a Cog authoring a Coglet for a code review Episode would provide cognitive capabilities (memory of past reviews, the review policy) while the Episode provides interaction capabilities (read access to the diff, ability to post comments).
-4. The Runtime receives the template, the concrete capabilities, and an identity. It mechanically creates the process, attaches the capabilities, and starts execution.
+   - `cognitive_capabilities`: concrete capability instances for the child to think and plan (memory of past work, internal scratch space, the policy itself)
+   - `capability_spec`: declarative manifest listing all capabilities by name, so the Runtime knows how to bind them
+
+   The response is a fully baked package — the Requester's interaction capabilities plus the Author's cognitive capabilities, combined with the program. For example: a Cog authoring a Coglet for a code review Episode receives interaction capabilities from the Episode (read access to the diff, ability to post comments) and bundles them with cognitive capabilities it provides (memory of past reviews, the review policy) into a complete template.
+3. The Runtime receives the template (which already contains all capabilities) and an identity. It mechanically creates the process, binds the capabilities, and starts execution.
 
 ### Supervision Phase
 
@@ -93,44 +94,38 @@ A `ProgramTemplate` is a new CogOS entity:
 ```
 ProgramTemplate:
     id: UUID
-    author_id: UUID          -- the Process that produced this template
-    program: bytes           -- the program code/instructions
-    capability_spec: [       -- declarative manifest of what the child needs
+    author_id: UUID              -- the Process that produced this template
+    program: bytes               -- the program code/instructions
+    capabilities: [              -- concrete capability instances, ready to bind
         {
-            capability: str  -- capability type name (e.g., "memory", "files")
-            name: str        -- alias for the child to use
-            config: dict     -- requested scoping
+            name: str            -- alias for the child to use
+            instance: Capability -- actual capability object
+            source: str          -- "author" or "requester" (provenance tracking)
         }
     ]
     created_at: timestamp
 ```
 
-The capability spec is a manifest — "this program needs a memory capability scoped to X and a files capability scoped to Y." The actual capability instances come from the Author (cognitive tools) and the environment (interaction tools).
+The template is a complete package. The Author receives interaction capabilities from the Requester, adds its own cognitive capabilities, and bundles everything together with the program. The Runtime just binds and runs.
 
 ### Instantiation
 
-When the Runtime instantiates a template, it receives:
+The ProgramTemplate arrives at the Runtime as a complete package — program code, cognitive capabilities (from Author), and interaction capabilities (from Requester), all bundled together. The Runtime just needs an identity to assign:
 
 ```
 Instantiation:
-    template: ProgramTemplate
-    capabilities: [              -- concrete instances from Author + environment
-        {
-            name: str            -- matches a name in the capability_spec
-            instance: Capability -- actual capability object
-        }
-    ]
-    identity: UUID
+    template: ProgramTemplate    -- contains program + all capabilities
+    identity: UUID               -- assigned by the Runtime
 ```
 
 The Runtime:
 1. Creates a new Process with the template's program code
-2. Binds each provided capability instance by name as `process_capability` rows
+2. Binds each capability instance (cognitive + interaction) by name as `process_capability` rows
 3. Assigns the identity
 4. Creates the supervision channel(s) back to the Author
 5. Starts the process
 
-The Runtime does not grant capabilities — it attaches capabilities it was given. It is trusted infrastructure.
+The Runtime does not grant or select capabilities — it binds what the template already contains. It is trusted infrastructure.
 
 ### Supervision in CogOS
 
