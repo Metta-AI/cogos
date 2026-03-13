@@ -277,10 +277,9 @@ def execute_process(
 
     system = [{"text": system_prompt}]
 
-    # Build user message from process content + event
+    # Build user message from the triggering event only. Process instructions
+    # already live in the system prompt, including any `@{file-key}` refs.
     user_text = ""
-    if process.content:
-        user_text += process.content + "\n\n"
     if event_data.get("payload"):
         user_text += f"Message payload: {json.dumps(event_data['payload'], indent=2)}\n"
     if not user_text.strip():

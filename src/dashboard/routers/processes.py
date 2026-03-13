@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from cogos.db.models import Handler, Process, ProcessMode, ProcessStatus
-from cogos.db.models.file import File, FileVersion
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore
@@ -42,8 +41,6 @@ class ProcessDetail(BaseModel):
     name: str
     mode: str
     content: str
-    code: str | None = None
-    files: list[str]
     priority: float
     resources: list[str]
     runner: str
@@ -75,7 +72,6 @@ class ProcessCreate(BaseModel):
     name: str
     mode: str = "one_shot"
     content: str = ""
-    files: list[str] | None = None  # file keys for prompt templates
     priority: float = 0.0
     runner: str = "lambda"
     status: str = "waiting"
@@ -98,7 +94,6 @@ class ProcessUpdate(BaseModel):
     name: str | None = None
     mode: str | None = None
     content: str | None = None
-    files: list[str] | None = None  # file keys for prompt templates
     priority: float | None = None
     runner: str | None = None
     status: str | None = None
@@ -157,8 +152,6 @@ def _detail(p: Process) -> ProcessDetail:
         name=p.name,
         mode=p.mode.value,
         content=p.content,
-        code=str(p.code) if p.code else None,
-        files=[str(f) for f in p.files],
         priority=p.priority,
         resources=[str(r) for r in p.resources],
         runner=p.runner,
@@ -213,32 +206,6 @@ def _sync_handlers(
     for name, h in existing_by_name.items():
         if name not in desired:
             repo.delete_handler(h.id)
-
-
-def _resolve_file_key(key: str, repo, *, create: bool = False) -> UUID | None:  # noqa: ANN001
-    """Resolve a file key to a UUID, or None. Optionally create if missing."""
-    if not key:
-        return None
-    f = repo.get_file_by_key(key)
-    if f:
-        return f.id
-    if create:
-        f = File(key=key)
-        repo.insert_file(f)
-        fv = FileVersion(file_id=f.id, version=1, content="", source="dashboard")
-        repo.insert_file_version(fv)
-        return f.id
-    return None
-
-
-def _resolve_file_keys(keys: list[str], repo, *, create: bool = False) -> list[UUID]:  # noqa: ANN001
-    """Resolve a list of file keys to UUIDs, optionally creating missing files."""
-    result: list[UUID] = []
-    for key in keys:
-        uid = _resolve_file_key(key, repo, create=create)
-        if uid:
-            result.append(uid)
-    return result
 
 
 def _sync_capabilities_from_grants(
@@ -363,16 +330,9 @@ def get_process(name: str, process_id: str) -> dict:
                 "config": pc.config,
             })
 
-    # File keys
-    file_keys: list[str] = []
-    for fid in p.files:
-        f = repo.get_file_by_id(fid)
-        if f:
-            file_keys.append(f.key)
-
-    # Includes — files under "includes/" prefix
+    # Global includes — files the executor prepends to every process prompt.
     file_store = FileStore(repo)
-    include_files = file_store.list_files(prefix="includes/")
+    include_files = file_store.list_files(prefix="cogos/includes/")
     includes = []
     for f in sorted(include_files, key=lambda f: f.key):
         fv = repo.get_active_file_version(f.id)
@@ -400,7 +360,6 @@ def get_process(name: str, process_id: str) -> dict:
             for g in cap_grants
         },
         "cap_grants": cap_grants,
-        "file_keys": file_keys,
         "includes": includes,
         "handlers": handler_list,
     }
@@ -414,7 +373,6 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         name=body.name,
         mode=ProcessMode(body.mode),
         content=body.content,
-        files=_resolve_file_keys(body.files or [], repo, create=True),
         priority=body.priority,
         runner=body.runner,
         status=ProcessStatus(body.status),
@@ -477,8 +435,6 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
         p.clear_context = body.clear_context
     if body.metadata is not None:
         p.metadata = body.metadata
-    if body.files is not None:
-        p.files = _resolve_file_keys(body.files, repo, create=True)
     if body.output_events is not None:
         p.output_events = body.output_events
 

@@ -28,9 +28,7 @@ Process
   id              UUID            PK
   name            str             unique
   mode            enum            daemon | one_shot
-  content         str             process-specific payload (argv)
-  code            UUID?           FK -> File (prompt template, legacy)
-  files           list[UUID]?     FK -> File (prompt files with includes)
+  content         str             system prompt source; supports `@{file-key}`
   priority        float           softmax scheduling weight
   resources       list[UUID]      FK -> Resource
   runner          enum            lambda | ecs
@@ -392,12 +390,13 @@ Code execution happens in a restricted namespace. The executor captures stdout a
 
 ### Context Engine
 
-The `ContextEngine` resolves file includes to build the complete prompt for a process:
+The `ContextEngine` resolves prompt context from inline references:
 
-1. For each file in `process.files` (or legacy `process.code`):
+1. Expand any `@{file-key}` references found in `process.content`
+2. For each referenced file:
    - Recursively resolve `file.includes` depth-first
+   - Recursively expand any nested `@{file-key}` references in file content
    - Concatenate with `--- key ---` section headers
-2. Append `process.content` last
 3. Prepend all files under `cogos/includes/` as global context
 
 This is used by both the Lambda executor (system prompt) and the dashboard (prompt preview).
@@ -410,7 +409,7 @@ Our executor controls the full Bedrock converse API loop:
 
 1. Load process from DB
 2. Build system prompt via ContextEngine (resolve includes, prepend global includes)
-3. Build user message from `process.content` + channel message payload
+3. Build user message from the triggering channel payload
 4. Inject `search` and `run_code` as Bedrock tool definitions
 5. Conversation loop (max N turns):
    - LLM returns tool_use for `search` or `run_code`
@@ -499,7 +498,7 @@ add_capability(name, *, handler, description="", instructions="", input_schema=N
 add_resource(name, *, type, capacity, metadata=None)
 add_schema(name, *, definition)
 add_channel(name, *, schema=None, channel_type="named")
-add_process(name, *, mode="one_shot", content="", code_key=None, runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, metadata=None)
+add_process(name, *, mode="one_shot", content="", runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, metadata=None)
 add_cron(expression, *, channel, payload=None, enabled=True)
 ```
 

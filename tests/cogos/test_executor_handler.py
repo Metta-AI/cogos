@@ -1,7 +1,8 @@
 from uuid import uuid4
 
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.models import Capability, Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessCapability, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.files.store import FileStore
 from cogos.executor import handler as executor_handler
 
 
@@ -232,3 +233,66 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
     assert second_messages[1]["content"][0]["toolUse"]["name"] == "search"
     assert second_messages[2]["content"][0]["toolResult"]["toolUseId"] == "tool-1"
     assert "invalid tool name 'bad tool'" in second_messages[2]["content"][0]["toolResult"]["content"][0]["text"]
+
+
+def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    store = FileStore(repo)
+    store.upsert("docs/shared.md", "Shared context", source="test")
+    store.upsert("prompt.md", "Prompt body", source="test", includes=["docs/shared.md"])
+
+    process = Process(
+        name="worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Intro\n@{prompt.md}",
+    )
+    repo.upsert_process(process)
+    dir_cap = Capability(name="dir")
+    repo.upsert_capability(dir_cap)
+    repo.create_process_capability(
+        ProcessCapability(
+            process=process.id,
+            capability=dir_cap.id,
+            name="read_all",
+            config={"ops": ["read"]},
+        ),
+    )
+    run = Run(process=process.id, status=RunStatus.RUNNING)
+    config = executor_handler.ExecutorConfig(max_turns=1)
+
+    class FakeBedrock:
+        def __init__(self):
+            self.calls = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "output": {"message": {"role": "assistant", "content": [{"text": "done"}]}},
+                "usage": {"inputTokens": 3, "outputTokens": 2},
+                "stopReason": "end_turn",
+            }
+
+    fake_bedrock = FakeBedrock()
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    executor_handler.execute_process(
+        process,
+        {},
+        run,
+        config,
+        repo,
+        bedrock_client=fake_bedrock,
+    )
+
+    first_call = fake_bedrock.calls[0]
+    assert first_call["messages"][0]["content"][0]["text"] == "Execute your task."
+    assert first_call["system"][0]["text"] == (
+        "Intro\n"
+        "--- docs/shared.md ---\n"
+        "Shared context\n\n"
+        "--- prompt.md ---\n"
+        "Prompt body"
+    )

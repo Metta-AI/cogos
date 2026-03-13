@@ -14,8 +14,6 @@ export interface CogosProcess {
   name: string;
   mode: "daemon" | "one_shot";
   content: string;
-  code: string | null;
-  files: string[];
   priority: number;
   resources: string[];
   runner: string;

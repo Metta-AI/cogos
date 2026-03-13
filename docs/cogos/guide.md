@@ -81,8 +81,7 @@ for cap in BUILTIN_CAPABILITIES:
 add_process(
     "scheduler",
     mode="daemon",
-    content="CogOS scheduler daemon",
-    code_key="cogos/scheduler",       # key in files/ directory
+    content="@{cogos/scheduler}",     # inline file include
     runner="lambda",
     priority=100.0,
     capabilities=["scheduler"],
@@ -133,9 +132,8 @@ Files under `cogos/includes/` are automatically prepended to every process's sys
 Files can reference other files using the `includes` field (set during file creation). The context engine resolves includes recursively, depth-first:
 
 ```python
-# In a process definition, code_key points to a file
-# That file's includes are resolved automatically
-add_process("my-agent", code_key="agents/my-agent", ...)
+# In a process definition, use @{...} to include a file
+add_process("my-agent", content="@{agents/my-agent}", ...)
 ```
 
 The file at `agents/my-agent` might have includes `["whoami/index", "cogos/includes/code_mode"]`, and those are prepended to its content when building the prompt.
@@ -183,7 +181,7 @@ Via image (preferred for stable configuration):
 add_process(
     "data-sync",
     mode="daemon",
-    code_key="agents/data-sync",
+    content="@{agents/data-sync}",
     runner="lambda",
     priority=5.0,
     capabilities=["files", "channels", "procs"],

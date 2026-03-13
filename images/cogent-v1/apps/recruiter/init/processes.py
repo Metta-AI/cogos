@@ -47,7 +47,7 @@ add_channel("recruiter:feedback", channel_type="named")
 add_process(
     "recruiter",
     mode="daemon",
-    code_key="apps/recruiter/prompts/recruiter.md",
+    content="@{apps/recruiter/prompts/recruiter.md}",
     runner="lambda",
     priority=5.0,
     capabilities=["me", "procs", "dir", "file", "discord", "channels", "secrets"],
@@ -60,7 +60,7 @@ add_process(
 add_process(
     "recruiter/present",
     mode="daemon",
-    code_key="apps/recruiter/prompts/present.md",
+    content="@{apps/recruiter/prompts/present.md}",
     runner="lambda",
     priority=3.0,
     capabilities=["me", "dir", "file", "discord", "channels"],

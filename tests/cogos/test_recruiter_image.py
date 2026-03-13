@@ -26,7 +26,7 @@ def _write_app_image(tmp: Path) -> Path:
     (app_init / "processes.py").write_text(
         'add_file("myapp/prompt.md", content="", includes=["myapp/config.md"])\n'
         'add_channel("myapp:events", channel_type="named")\n'
-        'add_process("myapp/worker", mode="daemon", code_key="myapp/prompt.md", '
+        'add_process("myapp/worker", mode="daemon", content="@{myapp/prompt.md}", '
         'capabilities=["dir"], handlers=["myapp:events"])\n'
     )
 
@@ -114,13 +114,13 @@ def test_cogent_v1_recruiter_loads():
 
     recruiter = next(p for p in spec.processes if p["name"] == "recruiter")
     assert recruiter["mode"] == "daemon"
-    assert recruiter["code_key"] == "apps/recruiter/prompts/recruiter.md"
+    assert recruiter["content"] == "@{apps/recruiter/prompts/recruiter.md}"
     assert "procs" in recruiter["capabilities"]
     assert "discord" in recruiter["capabilities"]
 
     present = next(p for p in spec.processes if p["name"] == "recruiter/present")
     assert present["mode"] == "daemon"
-    assert present["code_key"] == "apps/recruiter/prompts/present.md"
+    assert present["content"] == "@{apps/recruiter/prompts/present.md}"
 
 
 def test_cogent_v1_recruiter_files():

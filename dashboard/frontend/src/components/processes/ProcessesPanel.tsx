@@ -52,7 +52,6 @@ interface ProcessForm {
   name: string;
   mode: "daemon" | "one_shot";
   content: string;
-  files: string[]; // file keys
   priority: string;
   runner: string;
   status: string;
@@ -72,7 +71,6 @@ const EMPTY_FORM: ProcessForm = {
   name: "",
   mode: "one_shot",
   content: "",
-  files: [],
   priority: "0",
   runner: "lambda",
   status: "runnable",
@@ -108,7 +106,6 @@ function formDurationToMs(val: string, unit: DurationUnit): number | null {
 
 function formFromProcess(
   p: CogosProcess,
-  fileKeys?: string[],
   grants?: CapGrant[],
   handlerPatterns?: string[],
 ): ProcessForm {
@@ -116,7 +113,6 @@ function formFromProcess(
     name: p.name,
     mode: p.mode,
     content: p.content,
-    files: fileKeys ?? [],
     priority: String(p.priority),
     runner: p.runner,
     status: p.status,
@@ -1578,14 +1574,11 @@ function ProcessFormEditor({
   saving,
   isNew,
   resourceSuggestions,
-  fileSuggestions,
   promptReferenceSuggestions,
   capabilitySuggestions,
   eventTypeSuggestions,
   cogentName,
   capabilities,
-  onRefresh,
-  includes,
 }: {
   form: ProcessForm;
   onChange: React.Dispatch<React.SetStateAction<ProcessForm>>;
@@ -1594,18 +1587,12 @@ function ProcessFormEditor({
   saving: boolean;
   isNew: boolean;
   resourceSuggestions: string[];
-  fileSuggestions: string[];
   promptReferenceSuggestions: string[];
   capabilitySuggestions: string[];
   eventTypeSuggestions: string[];
   cogentName: string;
   capabilities: CogosCapability[];
-  onRefresh?: () => void;
-  includes?: Array<{ key: string; content: string }>;
 }) {
-  const [expandedEditFiles, setExpandedEditFiles] = useState<Set<string>>(new Set());
-  const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
-  const [deletingFile, setDeletingFile] = useState(false);
   return (
     <div className="space-y-3 p-4 rounded-md" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-2">
@@ -1709,170 +1696,16 @@ function ProcessFormEditor({
         </div>
       </div>
 
-      {/* Context (files) — collapsible rows with inline editing */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <label className="text-[10px] text-[var(--text-muted)] uppercase">Prompt Files</label>
-          <SectionHelp
-            title="1. Prompt Files"
-            bullets={[
-              "Whole files attached to the process as prompt roots.",
-              "Their contents become part of the system prompt.",
-              "Attached files are explicit roots; nested @{...} references still use readable file access.",
-            ]}
-          />
-        </div>
-        {((includes && includes.length > 0) || form.files.length > 0) && (
-          <div className="rounded overflow-hidden mb-1" style={{ border: "1px solid var(--border)" }}>
-            {(includes || []).filter((inc) => !form.files.includes(inc.key)).map((inc) => {
-              const isExpanded = expandedEditFiles.has(inc.key);
-              return (
-                <div key={`inc:${inc.key}`} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <div
-                    className="flex items-center gap-2 px-2 py-1 cursor-pointer text-[11px]"
-                    style={{ background: "var(--bg-elevated)" }}
-                    onClick={() => setExpandedEditFiles((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(inc.key)) next.delete(inc.key);
-                      else next.add(inc.key);
-                      return next;
-                    })}
-                  >
-                    <span className="text-[9px] text-[var(--text-muted)]" style={{ width: "10px" }}>
-                      {isExpanded ? "▾" : "▸"}
-                    </span>
-                    <span className="font-mono text-[var(--text-secondary)] flex-1 truncate">{inc.key}</span>
-                    <span className="text-[9px] text-[var(--text-muted)]">global</span>
-                  </div>
-                  {isExpanded && (
-                    <InlineFileEditor
-                      fileKey={inc.key}
-                      fileSuggestions={fileSuggestions}
-                      cogentName={cogentName}
-                      onRefresh={onRefresh}
-                      onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(inc.key); return next; })}
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {form.files.map((fileKey) => {
-              const isExpanded = expandedEditFiles.has(fileKey);
-              return (
-                <div key={fileKey} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <div
-                    className="flex items-center gap-2 px-2 py-1 cursor-pointer text-[11px]"
-                    style={{ background: "var(--bg-elevated)" }}
-                    onClick={() => setExpandedEditFiles((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(fileKey)) next.delete(fileKey);
-                      else next.add(fileKey);
-                      return next;
-                    })}
-                  >
-                    <span className="text-[9px] text-[var(--text-muted)]" style={{ width: "10px" }}>
-                      {isExpanded ? "▾" : "▸"}
-                    </span>
-                    <span className="font-mono text-[var(--text-secondary)] flex-1 truncate">{fileKey}</span>
-                    {confirmDeleteFile === fileKey ? (
-                      <span className="flex items-center gap-1 text-[9px]" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[var(--text-muted)]">Delete file?</span>
-                        <button
-                          onClick={async () => {
-                            setDeletingFile(true);
-                            try {
-                              await api.deleteFile(cogentName, fileKey);
-                              onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
-                              onRefresh?.();
-                            } finally {
-                              setDeletingFile(false);
-                              setConfirmDeleteFile(null);
-                            }
-                          }}
-                          disabled={deletingFile}
-                          className="text-[var(--error)] border-0 bg-transparent cursor-pointer text-[9px] font-semibold disabled:opacity-40"
-                        >
-                          {deletingFile ? "..." : "Yes"}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteFile(null)}
-                          className="text-[var(--text-muted)] border-0 bg-transparent cursor-pointer text-[9px]"
-                        >
-                          No
-                        </button>
-                      </span>
-                    ) : (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedEditFiles((prev) => new Set([...prev, fileKey]));
-                          }}
-                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--accent)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteFile(fileKey);
-                          }}
-                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onChange((prev) => ({ ...prev, files: prev.files.filter((f) => f !== fileKey) }));
-                          }}
-                          className="text-[9px] text-[var(--text-muted)] hover:text-[var(--error)] bg-transparent border-0 cursor-pointer p-0 leading-none"
-                          title="Remove from process"
-                        >
-                          ✕
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {isExpanded && (
-                    <InlineFileEditor
-                      fileKey={fileKey}
-                      fileSuggestions={fileSuggestions}
-                      cogentName={cogentName}
-                      onRefresh={onRefresh}
-                      onClose={() => setExpandedEditFiles((prev) => { const next = new Set(prev); next.delete(fileKey); return next; })}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <TagListEditor
-          label=""
-          items={[]}
-          onChange={(items) => {
-            if (items.length > 0) {
-              const newFile = items[items.length - 1];
-              if (!form.files.includes(newFile)) {
-                onChange((prev) => ({ ...prev, files: [...prev.files, newFile] }));
-              }
-            }
-          }}
-          suggestions={fileSuggestions.filter((s) => !form.files.includes(s))}
-        />
-      </div>
-
       {/* Content */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <label className="text-[10px] text-[var(--text-muted)] uppercase">Prompt Source</label>
           <SectionHelp
-            title="2. Prompt Source"
+            title="1. Prompt Source"
             bullets={[
               "Inline instructions stored on the process itself.",
-              "Also becomes part of the system prompt.",
-              "Can reference readable files with @{file-key}.",
+              "This is the full process prompt source.",
+              "Use @{file-key} to inline file content into the system prompt.",
             ]}
           />
         </div>
@@ -1895,11 +1728,11 @@ function ProcessFormEditor({
         processName={form.name}
         help={(
           <SectionHelp
-            title="3. Files & Directories"
+            title="2. Files & Directories"
             bullets={[
               "Runtime file access grants, not prompt content.",
               "Controls what the process can read or write through capabilities.",
-              "Also controls which files are valid for prompt-reference suggestions and nested includes.",
+              "Use @{file-key} in prompt source when you want static prompt includes.",
             ]}
           />
         )}
@@ -1988,10 +1821,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [showResolved, setShowResolved] = useState(false);
   const [promptTree, setPromptTree] = useState<Array<{ key: string; content: string; is_direct: boolean }>>([]);
   const [expandedPromptFiles, setExpandedPromptFiles] = useState<Set<string>>(new Set());
-  const [detailFileKeys, setDetailFileKeys] = useState<string[]>([]);
   const [detailCapGrants, setDetailCapGrants] = useState<Array<{ id: string; grant_name: string; capability_name: string; config: Record<string, unknown> | null }>>([]);
   const [detailIncludes, setDetailIncludes] = useState<Array<{ key: string; content: string }>>([]);
-  const [expandedIncludes, setExpandedIncludes] = useState<Set<string>>(new Set());
   const [detailHandlers, setDetailHandlers] = useState<Array<{ id: string; channel?: string; event_pattern?: string; enabled: boolean }>>([]);
   const [editingFileKey, setEditingFileKey] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -2023,10 +1854,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       const detail = await api.getProcessDetail(cogentName, id);
       setDetailRuns(detail.runs);
       setResolvedPrompt(detail.resolved_prompt || "");
-      setDetailFileKeys(detail.file_keys || []);
       setDetailCapGrants(detail.cap_grants || []);
       setDetailIncludes(detail.includes || []);
-      if (!opts?.preserveExpanded) setExpandedIncludes(new Set());
       setDetailHandlers(detail.handlers || []);
       setPromptTree(detail.prompt_tree || []);
       if (!opts?.preserveExpanded) {
@@ -2036,10 +1865,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
     } catch {
       setDetailRuns([]);
       setResolvedPrompt("");
-      setDetailFileKeys([]);
       setDetailCapGrants([]);
       setDetailIncludes([]);
-      setExpandedIncludes(new Set());
       setDetailHandlers([]);
       setPromptTree([]);
       setExpandedPromptFiles(new Set());
@@ -2054,7 +1881,6 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       setResolvedPrompt("");
       setShowResolved(false);
       setDetailIncludes([]);
-      setExpandedIncludes(new Set());
       setDetailHandlers([]);
       setPromptTree([]);
       setExpandedPromptFiles(new Set());
@@ -2079,8 +1905,8 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
       capability_name: g.capability_name,
       config: g.config,
     }));
-    setForm(formFromProcess(p, detailFileKeys, grants, handlerPatterns));
-  }, [detailFileKeys, detailCapGrants, detailHandlers]);
+    setForm(formFromProcess(p, grants, handlerPatterns));
+  }, [detailCapGrants, detailHandlers]);
 
   const handleCancel = useCallback(() => {
     setEditingId(null);
@@ -2094,7 +1920,6 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
         name: form.name.trim(),
         mode: form.mode,
         content: form.content,
-        files: form.files.filter((f) => f.trim()),
         priority: parseFloat(form.priority) || 0,
         runner: form.runner,
         status: form.status,
@@ -2195,13 +2020,11 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
             saving={saving}
             isNew
             resourceSuggestions={resourceSuggestions}
-            fileSuggestions={fileSuggestions}
             promptReferenceSuggestions={promptReferenceSuggestions}
             capabilitySuggestions={capabilitySuggestions}
             eventTypeSuggestions={eventTypeSuggestions}
             cogentName={cogentName}
             capabilities={capabilities}
-            onRefresh={onRefresh}
           />
         </div>
       )}
@@ -2628,14 +2451,11 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     saving={saving}
                     isNew={false}
                     resourceSuggestions={resourceSuggestions}
-                    fileSuggestions={fileSuggestions}
                     promptReferenceSuggestions={promptReferenceSuggestions}
                     capabilitySuggestions={capabilitySuggestions}
                     eventTypeSuggestions={eventTypeSuggestions}
                     cogentName={cogentName}
                     capabilities={capabilities}
-                    onRefresh={onRefresh}
-                    includes={detailIncludes}
                   />
                 </div>
               )}

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from cogos.db.local_repository import LocalRepository
 from cogos.image.spec import ImageSpec, load_image
 from cogos.image.apply import apply_image
@@ -17,8 +15,8 @@ def test_snapshot_round_trips(tmp_path):
         ],
         resources=[],
         processes=[
-            {"name": "scheduler", "mode": "daemon", "content": "scheduler daemon",
-             "code_key": "cogos/scheduler", "runner": "lambda", "model": None,
+            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler}",
+             "runner": "lambda", "model": None,
              "priority": 100.0, "capabilities": ["dir"],
              "handlers": [], "metadata": {}},
         ],
@@ -42,6 +40,7 @@ def test_snapshot_round_trips(tmp_path):
     assert restored.capabilities[0]["name"] == "dir"
     assert len(restored.processes) == 1
     assert restored.processes[0]["name"] == "scheduler"
+    assert restored.processes[0]["content"] == "@{cogos/scheduler}"
     assert "dir" in restored.processes[0]["capabilities"]
     assert restored.processes[0]["handlers"] == []
     assert restored.files["cogos/scheduler"] == "You are the scheduler."

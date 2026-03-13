@@ -55,8 +55,6 @@ CREATE TABLE IF NOT EXISTS cogos_process (
     name                TEXT NOT NULL UNIQUE,
     mode                TEXT NOT NULL DEFAULT 'one_shot' CHECK (mode IN ('daemon', 'one_shot')),
     content             TEXT NOT NULL DEFAULT '',
-    code                UUID REFERENCES cogos_file(id),
-    files               JSONB NOT NULL DEFAULT '[]',
     priority            DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     resources           JSONB NOT NULL DEFAULT '[]',
     runner              TEXT NOT NULL DEFAULT 'lambda',

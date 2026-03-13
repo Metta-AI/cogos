@@ -201,8 +201,14 @@ class LocalRepository:
     def _populate_from_data(self, data: dict[str, Any]) -> None:
         self._reset_state()
 
+        for f in data.get("files", []):
+            file = File(**f)
+            self._files[file.id] = file
+        for fv in data.get("file_versions", []):
+            version = FileVersion(**fv)
+            self._file_versions.setdefault(version.file_id, []).append(version)
         for p in data.get("processes", []):
-            proc = Process(**p)
+            proc = Process(**self._migrate_legacy_process_prompt(p))
             self._processes[proc.id] = proc
         for c in data.get("capabilities", []):
             cap = Capability(**c)
@@ -219,12 +225,6 @@ class LocalRepository:
         for cr in data.get("cron_rules", []):
             cron = Cron(**cr)
             self._cron_rules[cron.id] = cron
-        for f in data.get("files", []):
-            file = File(**f)
-            self._files[file.id] = file
-        for fv in data.get("file_versions", []):
-            version = FileVersion(**fv)
-            self._file_versions.setdefault(version.file_id, []).append(version)
         for ed in data.get("deliveries", data.get("event_deliveries", [])):
             delivery = Delivery(**ed)
             self._deliveries[delivery.id] = delivery
@@ -241,6 +241,35 @@ class LocalRepository:
             message = ChannelMessage(**cm)
             self._channel_messages[message.id] = message
         self._meta.update(data.get("meta", {}))
+
+    def _migrate_legacy_process_prompt(self, raw: dict[str, Any]) -> dict[str, Any]:
+        migrated = dict(raw)
+        refs: list[str] = []
+
+        raw_files = raw.get("files") or []
+        if not raw_files and raw.get("code"):
+            raw_files = [raw["code"]]
+
+        for file_id in raw_files:
+            try:
+                fid = UUID(str(file_id))
+            except (TypeError, ValueError):
+                continue
+            file = self._files.get(fid)
+            if file is None:
+                continue
+            refs.append(f"@{{{file.key}}}")
+
+        if not refs:
+            return migrated
+
+        content = raw.get("content", "") or ""
+        missing_refs = [ref for ref in refs if ref not in content]
+        if not missing_refs:
+            return migrated
+
+        migrated["content"] = "\n\n".join([*missing_refs, content] if content else missing_refs)
+        return migrated
 
     @contextmanager
     def _writing(self):

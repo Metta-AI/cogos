@@ -37,13 +37,13 @@ def load_image(image_dir: Path) -> ImageSpec:
             "metadata": metadata or {},
         })
 
-    def add_process(name, *, mode="one_shot", content="", code_key=None,
+    def add_process(name, *, mode="one_shot", content="",
                     runner="lambda", model=None, priority=0.0,
                     capabilities=None, handlers=None,
                     metadata=None):
         spec.processes.append({
             "name": name, "mode": mode, "content": content,
-            "code_key": code_key, "runner": runner, "model": model,
+            "runner": runner, "model": model,
             "priority": priority, "capabilities": capabilities or [],
             "handlers": handlers or [],
             "metadata": metadata or {},

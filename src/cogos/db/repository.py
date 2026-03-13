@@ -181,19 +181,18 @@ class Repository:
     def upsert_process(self, p: Process) -> UUID:
         response = self._execute(
             """INSERT INTO cogos_process
-                   (id, name, mode, content, code, files, priority, resources, runner,
+                   (id, name, mode, content, priority, resources, runner,
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     max_duration_ms, max_retries, retry_count, retry_backoff_ms,
                     clear_context, metadata)
-               VALUES (:id, :name, :mode, :content, :code, :files::jsonb, :priority, :resources::jsonb, :runner,
+               VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :runner,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
                        :clear_context, :metadata::jsonb)
                ON CONFLICT (name) DO UPDATE SET
-                   mode = EXCLUDED.mode, content = EXCLUDED.content, code = EXCLUDED.code,
-                   files = EXCLUDED.files,
+                   mode = EXCLUDED.mode, content = EXCLUDED.content,
                    resources = EXCLUDED.resources, runner = EXCLUDED.runner,
                    preemptible = EXCLUDED.preemptible, model = EXCLUDED.model,
                    model_constraints = EXCLUDED.model_constraints,
@@ -210,8 +209,6 @@ class Repository:
                 self._param("name", p.name),
                 self._param("mode", p.mode.value),
                 self._param("content", p.content),
-                self._param("code", p.code),
-                self._param("files", [str(f) for f in p.files]),
                 self._param("priority", p.priority),
                 self._param("resources", [str(r) for r in p.resources]),
                 self._param("runner", p.runner),
@@ -299,15 +296,11 @@ class Repository:
     def _process_from_row(self, row: dict) -> Process:
         resources_raw = self._json_field(row, "resources", [])
         resources = [UUID(r) for r in resources_raw] if resources_raw else []
-        files_raw = self._json_field(row, "files", [])
-        files = [UUID(f) for f in files_raw] if files_raw else []
         return Process(
             id=UUID(row["id"]),
             name=row["name"],
             mode=ProcessMode(row["mode"]),
             content=row.get("content", ""),
-            code=UUID(row["code"]) if row.get("code") else None,
-            files=files,
             priority=row.get("priority", 0.0),
             resources=resources,
             runner=row.get("runner", "lambda"),

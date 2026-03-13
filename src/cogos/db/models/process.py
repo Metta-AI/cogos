@@ -30,8 +30,6 @@ class Process(BaseModel):
     name: str
     mode: ProcessMode = ProcessMode.ONE_SHOT
     content: str = ""
-    code: UUID | None = None  # FK -> File.id (legacy, use files)
-    files: list[UUID] = Field(default_factory=list)  # FK -> File.id
     priority: float = 0.0
     resources: list[UUID] = Field(default_factory=list)  # FK -> Resource
     runner: str = "lambda"  # "lambda" | "ecs"

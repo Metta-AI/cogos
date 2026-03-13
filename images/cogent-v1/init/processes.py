@@ -1,8 +1,7 @@
 add_process(
     "scheduler",
     mode="daemon",
-    content="CogOS scheduler daemon",
-    code_key="cogos/lib/scheduler.md",
+    content="@{cogos/lib/scheduler.md}",
     runner="lambda",
     priority=100.0,
     capabilities=[

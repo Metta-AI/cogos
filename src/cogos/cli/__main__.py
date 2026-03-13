@@ -297,29 +297,19 @@ def process_get(name: str, use_json: bool):
 @click.argument("name")
 @click.option("--mode", type=click.Choice(["daemon", "one_shot"]), default="one_shot")
 @click.option("--content", default="")
-@click.option("--code-key", default=None, help="File key for prompt template")
 @click.option("--runner", type=click.Choice(["lambda", "ecs"]), default="lambda")
 @click.option("--model", default=None)
 @click.option("--priority", type=float, default=0.0)
-def process_create(name: str, mode: str, content: str, code_key: str | None,
+def process_create(name: str, mode: str, content: str,
                    runner: str, model: str | None, priority: float):
     """Create a new process."""
     from cogos.db.models import Process, ProcessMode, ProcessStatus
     repo = _repo()
 
-    code_id = None
-    if code_key:
-        f = repo.get_file_by_key(code_key)
-        if f:
-            code_id = f.id
-        else:
-            click.echo(f"Warning: file '{code_key}' not found, creating without code FK.")
-
     p = Process(
         name=name,
         mode=ProcessMode(mode),
         content=content,
-        code=code_id,
         runner=runner,
         model=model,
         priority=priority,
@@ -386,7 +376,7 @@ def process_disable(name: str):
 def process_load(file_path: str):
     """Load process definitions from a YAML or JSON file.
 
-    Each entry should have: name, mode, content, code_key, runner, model,
+    Each entry should have: name, mode, content, runner, model,
     priority, capabilities (list of capability names), handlers (list of
     channel names).
     """
@@ -424,22 +414,11 @@ def process_load(file_path: str):
             click.echo("  Skipping entry without name")
             continue
 
-        # Resolve code_key -> code FK
-        code_id = None
-        code_key = entry.get("code_key")
-        if code_key:
-            f = repo.get_file_by_key(code_key)
-            if f:
-                code_id = f.id
-            else:
-                click.echo(f"  Warning: file '{code_key}' not found for process '{name}'")
-
         mode = ProcessMode(entry.get("mode", "one_shot"))
         p = ProcessModel(
             name=name,
             mode=mode,
             content=entry.get("content", ""),
-            code=code_id,
             runner=entry.get("runner", "lambda"),
             model=entry.get("model"),
             priority=float(entry.get("priority", 0.0)),

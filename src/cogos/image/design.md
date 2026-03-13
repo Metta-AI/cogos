@@ -30,7 +30,7 @@ Builder functions injected into each init script:
 ```python
 add_capability(name, *, handler, description="", instructions="", input_schema=None, output_schema=None, iam_role_arn=None, metadata=None)
 add_resource(name, *, type, capacity, metadata=None)
-add_process(name, *, mode="one_shot", content="", code_key=None, runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, metadata=None)
+add_process(name, *, mode="one_shot", content="", runner="lambda", model=None, priority=0.0, capabilities=None, handlers=None, metadata=None)
 add_cron(expression, *, event_type, payload=None, enabled=True)
 ```
 

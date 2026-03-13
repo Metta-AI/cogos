@@ -96,22 +96,10 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         except (AttributeError, TypeError):
             pass
 
-        # Get code_key
-        code_key = None
-        if p.code:
-            try:
-                f = repo.get_file_by_id(p.code)
-                if f:
-                    code_key = f.key
-            except (AttributeError, TypeError):
-                pass
-
         parts = [f'add_process({_repr_val(p.name)}']
         parts.append(f'    mode={_repr_val(p.mode.value)}')
         if p.content:
             parts.append(f'    content={_repr_val(p.content)}')
-        if code_key:
-            parts.append(f'    code_key={_repr_val(code_key)}')
         parts.append(f'    runner={_repr_val(p.runner)}')
         if p.model:
             parts.append(f'    model={_repr_val(p.model)}')

@@ -14,8 +14,8 @@ def _make_spec() -> ImageSpec:
              "metadata": {"description": "Concurrent Lambda slots"}},
         ],
         processes=[
-            {"name": "scheduler", "mode": "daemon", "content": "scheduler daemon",
-             "code_key": "cogos/scheduler", "runner": "lambda", "model": None,
+            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler}",
+             "runner": "lambda", "model": None,
              "priority": 100.0, "capabilities": ["dir"],
              "handlers": [], "metadata": {}},
         ],

@@ -17,7 +17,7 @@ On each tick:
 ## Spawning Discover
 ```python
 child = procs.spawn("recruiter/discover",
-    content="Run a discovery batch. Search all sources, score candidates, write to apps/recruiter/candidates/.",
+    content="@{apps/recruiter/prompts/discover.md}",
     capabilities={
         "pool": dir.scope(prefix="apps/recruiter/candidates/", ops=["list", "read", "write", "create"]),
         "sources": dir.scope(prefix="apps/recruiter/sourcer/", ops=["read", "list"]),
@@ -31,7 +31,7 @@ child = procs.spawn("recruiter/discover",
 ## Spawning Evolve
 ```python
 child = procs.spawn("recruiter/evolve",
-    content="Analyze recent feedback and propose improvements.",
+    content="@{apps/recruiter/prompts/evolve.md}",
     capabilities={
         "config": dir.scope(prefix="apps/recruiter/", ops=["list", "read", "write"]),
         "feedback": file.scope(key="apps/recruiter/feedback.jsonl", ops=["read"]),

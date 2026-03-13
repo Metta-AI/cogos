@@ -116,18 +116,11 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
 
     # 7. Processes (with capability bindings and handlers)
     for proc_dict in spec.processes:
-        code_id = None
-        if proc_dict.get("code_key"):
-            f = repo.get_file_by_key(proc_dict["code_key"])
-            if f:
-                code_id = f.id
-
         mode = ProcessMode(proc_dict.get("mode", "one_shot"))
         p = Process(
             name=proc_dict["name"],
             mode=mode,
             content=proc_dict.get("content", ""),
-            code=code_id,
             runner=proc_dict.get("runner", "lambda"),
             model=proc_dict.get("model"),
             priority=float(proc_dict.get("priority", 0.0)),
