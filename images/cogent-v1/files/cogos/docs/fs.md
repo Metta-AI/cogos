@@ -7,28 +7,29 @@ CogOS uses a versioned, hierarchical key-value store for all persistent data. Fi
 Files are identified by string keys that look like paths:
 
 ```
-whoami/index
-cogos/docs/layout
-cogos/lib/scheduler
+whoami/index.md
+cogos/docs/layout.md
+cogos/lib/scheduler.md
 ```
 
 Keys are hierarchical — you can list files by prefix (`dir.list("cogos/docs/")`).
+Use the exact stored key, including suffixes such as `.md` and `.json`. Do not strip suffixes from `@{...}` references.
 
 ## Versioning
 
 Every write creates a new version. Old versions are never overwritten.
 
 ```python
-files.write("config/system", "v1 content")   # version 1
-files.write("config/system", "v2 content")   # version 2
-files.read("config/system")                   # returns version 2
+files.write("config/system.json", "v1 content")  # version 1
+files.write("config/system.json", "v2 content")  # version 2
+files.read("config/system.json")                 # returns version 2
 ```
 
 Use `file_version` capability to access history:
 
 ```python
-versions = file_version.list("config/system")  # all versions
-old = file_version.get("config/system", version=1)
+versions = file_version.list("config/system.json")  # all versions
+old = file_version.get("config/system.json", version=1)
 ```
 
 ## Three file capabilities
@@ -46,7 +47,7 @@ old = file_version.get("config/system", version=1)
 Files can reference other files inline with `@{file-key}`. The context engine resolves those references recursively, depth-first, and concatenates them into the prompt.
 
 ```md
-# agents/my-agent
+# agents/my-agent.md
 @{whoami/index.md}
 @{cogos/includes/code_mode.md}
 ```

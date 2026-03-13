@@ -148,7 +148,7 @@ A versioned entry in a hierarchical key-value store. Stores both code (prompt te
 ```
 File
   id              UUID            PK
-  key             str             hierarchical path (e.g. "cogos/scheduler")
+  key             str             hierarchical path (e.g. "cogos/scheduler.md")
   includes        list[str]       keys of other files to include in context
   created_at      datetime
   updated_at      datetime

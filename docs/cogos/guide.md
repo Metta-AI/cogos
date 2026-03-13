@@ -81,7 +81,7 @@ for cap in BUILTIN_CAPABILITIES:
 add_process(
     "scheduler",
     mode="daemon",
-    content="@{cogos/scheduler}",     # inline file reference
+    content="@{cogos/scheduler.md}",  # inline file reference
     runner="lambda",
     priority=100.0,
     capabilities=["scheduler"],
@@ -119,11 +119,13 @@ add_cron("* * * * *", channel="system:tick:minute")
 Every file under `files/` becomes a File entry in the store. The relative path from `files/` becomes the key:
 
 ```
-files/cogos/lib/scheduler.md          -> key: "cogos/lib/scheduler"
-files/whoami/index.md                 -> key: "whoami/index"
-files/cogos/includes/code_mode.md     -> key: "cogos/includes/code_mode"
-files/cogos/docs/layout.md            -> key: "cogos/docs/layout"
+files/cogos/lib/scheduler.md          -> key: "cogos/lib/scheduler.md"
+files/whoami/index.md                 -> key: "whoami/index.md"
+files/cogos/includes/code_mode.md     -> key: "cogos/includes/code_mode.md"
+files/cogos/docs/layout.md            -> key: "cogos/docs/layout.md"
 ```
+
+The key keeps the original filename suffix.
 
 Files under `cogos/includes/` are automatically prepended to every process's system prompt by the executor.
 
@@ -133,14 +135,14 @@ Files can reference other files inline with `@{...}`. The context engine resolve
 
 ```python
 # In a process definition, use @{...} to reference a file
-add_process("my-agent", content="@{agents/my-agent}", ...)
+add_process("my-agent", content="@{agents/my-agent.md}", ...)
 ```
 
-The file at `agents/my-agent` might contain:
+The file at `agents/my-agent.md` might contain:
 
 ```md
-@{whoami/index}
-@{cogos/includes/code_mode}
+@{whoami/index.md}
+@{cogos/includes/code_mode.md}
 ```
 
 Those references are expanded directly where they appear when building the prompt.
@@ -188,7 +190,7 @@ Via image (preferred for stable configuration):
 add_process(
     "data-sync",
     mode="daemon",
-    content="@{agents/data-sync}",
+    content="@{agents/data-sync.md}",
     runner="lambda",
     priority=5.0,
     capabilities=["files", "channels", "procs"],
@@ -580,7 +582,7 @@ All under `/api/cogents/{name}/`:
 Or update at runtime via capability:
 
 ```python
-files.write("agents/my-agent", "updated prompt content")
+files.write("agents/my-agent.md", "updated prompt content")
 ```
 
 ### Cost Control

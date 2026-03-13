@@ -14,13 +14,13 @@ def _make_spec() -> ImageSpec:
              "metadata": {"description": "Concurrent Lambda slots"}},
         ],
         processes=[
-            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler}",
+            {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler.md}",
              "runner": "lambda", "model": None,
              "priority": 100.0, "capabilities": ["dir"],
              "handlers": [], "metadata": {}},
         ],
         cron_rules=[],
-        files={"cogos/scheduler": "You are the scheduler."},
+        files={"cogos/scheduler.md": "You are the scheduler."},
     )
 
 
@@ -39,7 +39,7 @@ def test_apply_creates_files(tmp_path):
     spec = _make_spec()
     apply_image(spec, repo)
 
-    f = repo.get_file_by_key("cogos/scheduler")
+    f = repo.get_file_by_key("cogos/scheduler.md")
     assert f is not None
     fv = repo.get_active_file_version(f.id)
     assert fv.content == "You are the scheduler."
