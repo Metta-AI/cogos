@@ -975,6 +975,7 @@ class Repository:
         duration_ms: int | None = None,
         error: str | None = None,
         result: dict | None = None,
+        snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
     ) -> bool:
         response = self._execute(
@@ -982,6 +983,7 @@ class Repository:
                    status = :status, tokens_in = :tokens_in, tokens_out = :tokens_out,
                    cost_usd = :cost_usd::numeric, duration_ms = :duration_ms,
                    error = :error, result = :result::jsonb,
+                   snapshot = COALESCE(:snapshot::jsonb, snapshot),
                    scope_log = COALESCE(:scope_log::jsonb, scope_log),
                    completed_at = now()
                WHERE id = :id""",
@@ -994,6 +996,7 @@ class Repository:
                 self._param("duration_ms", duration_ms),
                 self._param("error", error),
                 self._param("result", result),
+                self._param("snapshot", snapshot),
                 self._param("scope_log", scope_log),
             ],
         )

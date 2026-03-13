@@ -830,6 +830,7 @@ class LocalRepository:
         duration_ms: int | None = None,
         error: str | None = None,
         result: dict | None = None,
+        snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
     ) -> bool:
         with self._writing():
@@ -844,6 +845,8 @@ class LocalRepository:
             run.error = error
             if result is not None:
                 run.result = result
+            if snapshot is not None:
+                run.snapshot = snapshot
             if scope_log is not None:
                 run.scope_log = scope_log
             run.completed_at = datetime.utcnow()

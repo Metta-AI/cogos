@@ -82,6 +82,7 @@ def run_and_complete(
             cost_usd=run.cost_usd,
             duration_ms=duration_ms,
             result=run.result,
+            snapshot=run.snapshot,
             scope_log=run.scope_log,
         )
 
@@ -117,6 +118,7 @@ def run_and_complete(
             cost_usd=run.cost_usd,
             duration_ms=duration_ms,
             error=str(e)[:4000],
+            snapshot=run.snapshot,
         )
 
         _emit_lifecycle(repo, process, {

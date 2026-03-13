@@ -1,13 +1,45 @@
+import json
 from uuid import uuid4
 
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import Capability, Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessCapability, ProcessMode, ProcessStatus, Run, RunStatus
 from cogos.files.store import FileStore
 from cogos.executor import handler as executor_handler
+from cogos.runtime.local import run_and_complete
 
 
 def _repo(tmp_path) -> LocalRepository:
     return LocalRepository(str(tmp_path))
+
+
+def _make_run(repo: LocalRepository, process: Process) -> Run:
+    run = Run(process=process.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+    return run
+
+
+def _read_json(store: FileStore, key: str) -> dict:
+    content = store.get_content(key)
+    assert content is not None
+    return json.loads(content)
+
+
+class _FakeBedrock:
+    def __init__(self, responses: list[dict]) -> None:
+        self.calls: list[dict] = []
+        self.responses = list(responses)
+
+    def converse(self, **kwargs):
+        self.calls.append(json.loads(json.dumps(kwargs)))
+        return self.responses.pop(0)
+
+
+def _text_response(text: str, *, input_tokens: int = 3, output_tokens: int = 2) -> dict:
+    return {
+        "output": {"message": {"role": "assistant", "content": [{"text": text}]}},
+        "usage": {"inputTokens": input_tokens, "outputTokens": output_tokens},
+        "stopReason": "end_turn",
+    }
 
 
 def test_executor_recreates_missing_dispatch_run(monkeypatch, tmp_path):
@@ -296,3 +328,218 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
         "--- docs/shared.md ---\n"
         "Shared context"
     )
+
+
+def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="stateless-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="Handle a single event.",
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    fake_bedrock = _FakeBedrock([_text_response("done")])
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello"}},
+        run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=fake_bedrock,
+    )
+
+    stored_run = repo.get_run(run.id)
+    assert stored_run.status == RunStatus.COMPLETED
+    assert stored_run.snapshot is not None
+    assert stored_run.snapshot["resumed"] is False
+    assert stored_run.snapshot["checkpoint_key"] is None
+
+    store = FileStore(repo)
+    final_artifact = _read_json(store, stored_run.snapshot["final_key"])
+    manifest = _read_json(store, stored_run.snapshot["manifest_key"])
+    step_files = store.list_files(prefix=final_artifact["steps_key"])
+
+    assert final_artifact["status"] == RunStatus.COMPLETED.value
+    assert final_artifact["final_stop_reason"] == "end_turn"
+    assert final_artifact["resume_skipped_reason"] is None
+    assert manifest["latest_run_id"] == str(run.id)
+    assert len(step_files) == 3
+
+
+def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="reentrant-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="Continue the conversation.",
+        metadata={"session": {"mode": "process"}},
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    first_run = _make_run(repo, process)
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello-1"}},
+        first_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=_FakeBedrock([_text_response("first-response")]),
+    )
+
+    second_run = _make_run(repo, process)
+    fake_bedrock = _FakeBedrock([_text_response("second-response")])
+    run_and_complete(
+        process,
+        {"payload": {"content": "hello-2"}},
+        second_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=fake_bedrock,
+    )
+
+    second_call_messages = fake_bedrock.calls[0]["messages"]
+    assert len(second_call_messages) == 3
+    assert second_call_messages[0]["role"] == "user"
+    assert "hello-1" in second_call_messages[0]["content"][0]["text"]
+    assert second_call_messages[1]["role"] == "assistant"
+    assert second_call_messages[1]["content"][0]["text"] == "first-response"
+    assert second_call_messages[2]["role"] == "user"
+    assert "hello-2" in second_call_messages[2]["content"][0]["text"]
+
+    stored_run = repo.get_run(second_run.id)
+    assert stored_run.snapshot["resumed"] is True
+    assert stored_run.snapshot["resumed_from_run_id"] == str(first_run.id)
+    assert stored_run.snapshot["resume_skipped_reason"] is None
+
+
+def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="tool-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="Use tools when needed.",
+        max_retries=1,
+        metadata={"session": {"mode": "process"}},
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    def _raise_on_execute(self, _code: str) -> str:
+        raise RuntimeError("tool boom")
+
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", _raise_on_execute)
+
+    first_run = _make_run(repo, process)
+    first_bedrock = _FakeBedrock([{
+        "output": {
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "toolUse": {
+                        "toolUseId": "tool-1",
+                        "name": "run_code",
+                        "input": {"code": "print('hello')"},
+                    }
+                }],
+            }
+        },
+        "usage": {"inputTokens": 7, "outputTokens": 5},
+        "stopReason": "tool_use",
+    }])
+
+    run_and_complete(
+        process,
+        {"payload": {"content": "first"}},
+        first_run,
+        executor_handler.ExecutorConfig(max_turns=2),
+        repo,
+        bedrock_client=first_bedrock,
+    )
+
+    failed_run = repo.get_run(first_run.id)
+    assert failed_run.status == RunStatus.FAILED
+
+    checkpoint = _read_json(FileStore(repo), failed_run.snapshot["checkpoint_key"])
+    assert checkpoint["messages"][1]["content"][0]["toolUse"]["name"] == "run_code"
+
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", lambda self, _code: "ok")
+
+    second_run = _make_run(repo, process)
+    second_bedrock = _FakeBedrock([_text_response("done")])
+    run_and_complete(
+        process,
+        {"payload": {"content": "second"}},
+        second_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=second_bedrock,
+    )
+
+    resumed_messages = second_bedrock.calls[0]["messages"]
+    assert len(resumed_messages) == 3
+    assert resumed_messages[1]["content"][0]["toolUse"]["name"] == "run_code"
+    assert "second" in resumed_messages[2]["content"][0]["text"]
+
+    stored_run = repo.get_run(second_run.id)
+    assert stored_run.snapshot["resumed"] is True
+    assert stored_run.snapshot["resumed_from_run_id"] == str(first_run.id)
+
+
+def test_prompt_change_skips_resume(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    process = Process(
+        name="drift-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="local",
+        content="Original instructions.",
+        metadata={"session": {"mode": "process"}},
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+
+    first_run = _make_run(repo, process)
+    run_and_complete(
+        process,
+        {"payload": {"content": "first"}},
+        first_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=_FakeBedrock([_text_response("done")]),
+    )
+
+    process.content = "Changed instructions."
+    repo.upsert_process(process)
+
+    second_run = _make_run(repo, process)
+    second_bedrock = _FakeBedrock([_text_response("done-again")])
+    run_and_complete(
+        process,
+        {"payload": {"content": "second"}},
+        second_run,
+        executor_handler.ExecutorConfig(max_turns=1),
+        repo,
+        bedrock_client=second_bedrock,
+    )
+
+    second_call_messages = second_bedrock.calls[0]["messages"]
+    assert len(second_call_messages) == 1
+    assert "second" in second_call_messages[0]["content"][0]["text"]
+
+    stored_run = repo.get_run(second_run.id)
+    assert stored_run.snapshot["resumed"] is False
+    assert stored_run.snapshot["resume_skipped_reason"] == "prompt_fingerprint_changed"
