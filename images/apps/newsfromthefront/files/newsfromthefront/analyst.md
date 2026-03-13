@@ -54,29 +54,25 @@ dir.write(report_key, report)
 
 ### 4. Post to Discord (production runs only)
 
-Skip this step if `payload["is_test"]` is True or `payload["is_backfill"]` is True.
-
 ```python
-state_file = dir.read("newsfromthefront/state.json")
-state = json.loads(state_file.content) if state_file else {"threads": {}}
+if not payload["is_test"] and not payload["is_backfill"]:
+    state_file = dir.read("newsfromthefront/state.json")
+    state = json.loads(state_file.content) if state_file else {"threads": {}}
 
-discord_channel_id = secrets.get("cogent/discord_channel_id").value
-# Use "TEST" prefix for test runs so they're easy to distinguish in Discord
-thread_title = (
-    f"Newsfromthefront TEST — {date}" if payload["is_test"]
-    else f"Newsfromthefront — {date}"
-)
-thread = discord.create_thread(discord_channel_id, thread_title)
-discord.send(thread.id, report)
+    discord_channel_id = secrets.get("cogent/discord_channel_id").value
+    thread = discord.create_thread(discord_channel_id, f"Newsfromthefront — {date}")
+    discord.send(thread.id, report)
 
-state["threads"][thread.id] = {"date": date, "report_key": report_key}
-dir.write("newsfromthefront/state.json", json.dumps(state, indent=2))
+    state["threads"][thread.id] = {"date": date, "report_key": report_key}
+    dir.write("newsfromthefront/state.json", json.dumps(state, indent=2))
 ```
 
-### 5. Update knowledge base (skip if is_test)
+### 5. Update knowledge base (skip if is_test or is_backfill)
+
+Backfill updates the KB directly in its own flow; do not double-write.
 
 ```python
-if not payload["is_test"]:
+if not payload["is_test"] and not payload["is_backfill"]:
     for f in new_findings:
         kb["findings"].append(f)
     kb["last_run"] = date
