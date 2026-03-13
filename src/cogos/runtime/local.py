@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Callable
+from uuid import UUID
 
+from cogos.capabilities.scheduler import SchedulerCapability, SchedulerError
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -13,6 +16,10 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
+
+logger = logging.getLogger(__name__)
+
+_SENTINEL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 def _emit_lifecycle(repo, process, payload: dict) -> None:
@@ -125,3 +132,82 @@ def run_and_complete(
             repo.update_process_status(process.id, ProcessStatus.DISABLED)
 
     return run
+
+
+def run_local_tick(
+    repo,
+    config,
+    *,
+    execute_fn: Callable | None = None,
+    bedrock_client: Any | None = None,
+) -> int:
+    """Run one tick of the local executor loop.
+
+    Returns the number of processes executed.
+    """
+    scheduler = SchedulerCapability(repo, process_id=_SENTINEL_UUID)
+
+    # Backstop: ensure all channel messages have deliveries
+    scheduler.match_channel_messages()
+
+    executed = 0
+    while True:
+        selection = scheduler.select_processes(slots=1)
+        if not selection.selected:
+            break
+
+        proc_info = selection.selected[0]
+        dispatch = scheduler.dispatch_process(proc_info.id)
+
+        if isinstance(dispatch, SchedulerError):
+            logger.warning("dispatch error for %s: %s", proc_info.id, dispatch.error)
+            break
+
+        process = repo.get_process(UUID(dispatch.process_id))
+        run = repo.get_run(UUID(dispatch.run_id))
+
+        # Build event payload from the channel message if available
+        event_payload: dict = {}
+        if dispatch.event_id:
+            event_uuid = UUID(dispatch.event_id)
+            cm = repo._channel_messages.get(event_uuid)
+            if cm is not None:
+                event_payload = cm.payload if cm.payload else {}
+
+        run_and_complete(
+            process,
+            event_payload,
+            run,
+            config,
+            repo,
+            execute_fn=execute_fn,
+            bedrock_client=bedrock_client,
+        )
+        executed += 1
+
+    return executed
+
+
+def run_local_loop(
+    repo,
+    config,
+    *,
+    poll_interval: float = 2.0,
+    once: bool = False,
+    bedrock_client: Any | None = None,
+) -> None:
+    """Simple daemon wrapper that repeatedly calls run_local_tick."""
+    logger.info("run_local_loop starting (poll_interval=%.1fs, once=%s)", poll_interval, once)
+
+    while True:
+        try:
+            executed = run_local_tick(repo, config, bedrock_client=bedrock_client)
+            if executed > 0:
+                logger.info("run_local_tick executed %d process(es)", executed)
+        except Exception:
+            logger.exception("run_local_tick error")
+
+        if once:
+            break
+
+        time.sleep(poll_interval)

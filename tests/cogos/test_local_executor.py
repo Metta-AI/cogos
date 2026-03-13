@@ -1,8 +1,18 @@
-"""Tests for cogos.runtime.local – run_and_complete helper."""
+"""Tests for cogos.runtime.local – run_and_complete and run_local_tick."""
 
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
-from cogos.runtime.local import run_and_complete
+from cogos.db.models import (
+    Channel,
+    ChannelMessage,
+    ChannelType,
+    Handler,
+    Process,
+    ProcessMode,
+    ProcessStatus,
+    Run,
+    RunStatus,
+)
+from cogos.runtime.local import run_and_complete, run_local_tick
 
 
 def _repo(tmp_path) -> LocalRepository:
@@ -96,3 +106,70 @@ def test_run_and_complete_returns_run_on_failure(tmp_path):
     assert result.id == run.id
     assert repo.get_run(run.id).status == RunStatus.FAILED
     assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
+
+
+# ---- run_local_tick tests ----
+
+
+def test_run_local_tick_executes_runnable_process(tmp_path):
+    """ONE_SHOT process with RUNNABLE status is executed and completed."""
+    repo = _repo(tmp_path)
+    p = Process(
+        name="tick-proc",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNABLE,
+        runner="local",
+    )
+    repo.upsert_process(p)
+
+    executed = run_local_tick(repo, None, execute_fn=_noop_execute)
+
+    assert executed == 1
+    assert repo.get_process(p.id).status == ProcessStatus.COMPLETED
+
+
+def test_run_local_tick_no_work(tmp_path):
+    """Empty repo -> run_local_tick returns 0."""
+    repo = _repo(tmp_path)
+
+    executed = run_local_tick(repo, None, execute_fn=_noop_execute)
+
+    assert executed == 0
+
+
+def test_run_local_tick_matches_channel_messages(tmp_path):
+    """DAEMON process in WAITING gets executed after channel message delivery."""
+    repo = _repo(tmp_path)
+    p = Process(
+        name="daemon-proc",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.WAITING,
+        runner="local",
+    )
+    repo.upsert_process(p)
+
+    ch = Channel(
+        name="test-channel",
+        owner_process=p.id,
+        channel_type=ChannelType.NAMED,
+    )
+    repo.upsert_channel(ch)
+
+    handler = Handler(
+        process=p.id,
+        channel=ch.id,
+        enabled=True,
+    )
+    repo.create_handler(handler)
+
+    msg = ChannelMessage(
+        channel=ch.id,
+        sender_process=p.id,
+        payload={"hello": "world"},
+    )
+    repo.append_channel_message(msg)
+
+    executed = run_local_tick(repo, None, execute_fn=_noop_execute)
+
+    assert executed == 1
+    assert repo.get_process(p.id).status == ProcessStatus.WAITING
