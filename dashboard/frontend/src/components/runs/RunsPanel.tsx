@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { CogosRun, CogosRunLogsResponse } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
@@ -36,26 +36,54 @@ const STATUS_ABBREV: Record<string, string> = {
   pending: "P",
 };
 
-function renderLogPreview(state: CogosRunLogsResponse | undefined, loading: boolean) {
+function renderLogPreview(
+  run: CogosRun,
+  state: CogosRunLogsResponse | undefined,
+  loading: boolean,
+  cogentName?: string,
+) {
   if (loading) {
     return <div className="text-[11px] text-[var(--text-muted)]">Loading run log preview...</div>;
   }
   if (!state) {
-    return <div className="text-[11px] text-[var(--text-muted)]">Expand to load run logs.</div>;
-  }
-  if (state.error) {
-    return <div className="text-[11px] text-red-400">{state.error}</div>;
-  }
-  if (state.entries.length === 0) {
-    return <div className="text-[11px] text-[var(--text-muted)]">No run logs found for this run.</div>;
+    return <div className="text-[11px] text-[var(--text-muted)]">Run logs are not loaded yet.</div>;
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--text-muted)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-muted)]">
+        <span className="inline-flex items-center gap-2">
+          <span>run:</span>
+          <code className="rounded bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
+            {run.id}
+          </code>
+          <button
+            type="button"
+            className="rounded border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            onClick={() => navigator.clipboard.writeText(run.id)}
+            title="Copy run ID"
+          >
+            Copy ID
+          </button>
+        </span>
         <span>group: {state.log_group}</span>
         {state.log_stream ? <span>stream: {state.log_stream}</span> : null}
+        {cogentName ? (
+          <a
+            href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, run.runner)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--accent)] hover:underline"
+          >
+            Open in CloudWatch
+          </a>
+        ) : null}
       </div>
+      {state.error ? (
+        <div className="text-[11px] text-red-400">{state.error}</div>
+      ) : state.entries.length === 0 ? (
+        <div className="text-[11px] text-[var(--text-muted)]">No run logs found for this run.</div>
+      ) : (
       <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)]">
         {state.entries.map((entry, index) => (
           <div
@@ -70,6 +98,7 @@ function renderLogPreview(state: CogosRunLogsResponse | undefined, loading: bool
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -188,7 +217,7 @@ export function RunsPanel({ runs, cogentName }: Props) {
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
   const [logPreviewByRun, setLogPreviewByRun] = useState<Record<string, CogosRunLogsResponse>>({});
   const [loadingRunIds, setLoadingRunIds] = useState<Set<string>>(new Set());
-  const columns = makeColumns(cogentName, expandedRunIds, async (runId) => {
+  const toggleRunLogs = useCallback(async (runId: string) => {
     if (!cogentName) return;
 
     if (expandedRunIds.has(runId)) {
@@ -220,7 +249,9 @@ export function RunsPanel({ runs, cogentName }: Props) {
         return next;
       });
     }
-  });
+  }, [cogentName, expandedRunIds, loadingRunIds]);
+
+  const columns = makeColumns(cogentName, expandedRunIds, toggleRunLogs);
   const rows = runs.map((r) => ({ ...r } as RunRow));
 
   return (
@@ -248,8 +279,11 @@ export function RunsPanel({ runs, cogentName }: Props) {
         rows={rows}
         emptyMessage="No runs"
         getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          void toggleRunLogs(row.id);
+        }}
         expandedRowIds={expandedRunIds}
-        renderExpandedRow={(row) => renderLogPreview(logPreviewByRun[row.id], loadingRunIds.has(row.id))}
+        renderExpandedRow={(row) => renderLogPreview(row, logPreviewByRun[row.id], loadingRunIds.has(row.id), cogentName)}
       />
     </div>
   );

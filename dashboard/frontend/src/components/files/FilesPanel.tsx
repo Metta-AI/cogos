@@ -22,8 +22,11 @@ interface FilesPanelProps {
   onRefresh?: () => void;
 }
 
-const HIDDEN_GROUPS_STORAGE_KEY = "files-hidden-groups";
+const HIDDEN_GROUPS_STORAGE_KEY_PREFIX = "files-hidden-groups-v2";
 const DEFAULT_HIDDEN_GROUPS = ["proc"];
+
+const getHiddenGroupsStorageKey = (cogentName?: string) =>
+  `${HIDDEN_GROUPS_STORAGE_KEY_PREFIX}:${cogentName || "default"}`;
 
 const getFileGroup = (item: CogosFile) => {
   const parts = item.key.split("/");
@@ -54,10 +57,10 @@ const findCoveringHiddenPath = (path: string, hiddenPaths: Set<string>) => {
 const isFileHidden = (file: CogosFile, hiddenPaths: Set<string>) =>
   getFileAncestorPaths(file).some((path) => hiddenPaths.has(path));
 
-const loadHiddenGroups = () => {
+const loadHiddenGroups = (storageKey: string) => {
   if (typeof window === "undefined") return new Set(DEFAULT_HIDDEN_GROUPS);
   try {
-    const saved = window.localStorage.getItem(HIDDEN_GROUPS_STORAGE_KEY);
+    const saved = window.localStorage.getItem(storageKey);
     if (!saved) return new Set(DEFAULT_HIDDEN_GROUPS);
     const parsed = JSON.parse(saved);
     if (Array.isArray(parsed)) {
@@ -458,10 +461,11 @@ function EyeOffIcon() {
 }
 
 export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
+  const hiddenGroupsStorageKey = getHiddenGroupsStorageKey(cogentName);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<CogosFile | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(() => loadHiddenGroups());
+  const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(() => loadHiddenGroups(hiddenGroupsStorageKey));
 
   // Create form state
   const [creating, setCreating] = useState(false);
@@ -471,8 +475,13 @@ export function FilesPanel({ files, cogentName, onRefresh }: FilesPanelProps) {
   const normalizedSearchQuery = deferredSearchQuery.trim().toLowerCase();
 
   useEffect(() => {
-    window.localStorage.setItem(HIDDEN_GROUPS_STORAGE_KEY, JSON.stringify([...hiddenPaths].sort()));
-  }, [hiddenPaths]);
+    setHiddenPaths(loadHiddenGroups(hiddenGroupsStorageKey));
+  }, [hiddenGroupsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(hiddenGroupsStorageKey, JSON.stringify([...hiddenPaths].sort()));
+  }, [hiddenPaths, hiddenGroupsStorageKey]);
 
   const searchedFiles = useMemo(() => {
     if (!normalizedSearchQuery) return files;
