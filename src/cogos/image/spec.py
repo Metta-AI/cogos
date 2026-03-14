@@ -92,13 +92,15 @@ def load_image(image_dir: Path) -> ImageSpec:
                 continue
             exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
 
-    # Load top-level files
-    files_dir = image_dir / "files"
-    if files_dir.is_dir():
-        for f in sorted(files_dir.rglob("*")):
-            if f.is_file():
-                key = str(f.relative_to(files_dir))
-                spec.files[key] = f.read_text()
+    # Load top-level files from known content directories.
+    # Directories named init/ and apps/ are structural — everything else is content.
+    _STRUCTURAL_DIRS = {"init", "apps"}
+    for child in sorted(image_dir.iterdir()):
+        if child.is_dir() and child.name not in _STRUCTURAL_DIRS:
+            for f in sorted(child.rglob("*")):
+                if f.is_file():
+                    key = str(f.relative_to(image_dir))
+                    spec.files[key] = f.read_text()
 
     # Load apps — each app has init/ for scripts and everything else is files
     apps_dir = image_dir / "apps"

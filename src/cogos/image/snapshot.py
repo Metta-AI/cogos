@@ -36,7 +36,6 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     """Read DB state and generate an image directory."""
     init_dir = output_dir / "init"
     init_dir.mkdir(parents=True, exist_ok=True)
-    files_dir = output_dir / "files"
 
     # -- Capabilities --
     caps = repo.list_capabilities()
@@ -175,7 +174,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     for f in file_list:
         fv = repo.get_active_file_version(f.id)
         if fv and fv.content:
-            out_path = files_dir / f.key
+            out_path = output_dir / f.key
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(fv.content)
 

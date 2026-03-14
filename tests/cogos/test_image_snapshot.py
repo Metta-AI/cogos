@@ -31,7 +31,7 @@ def test_snapshot_round_trips(tmp_path):
     # Verify files were generated
     assert (snapshot_dir / "init" / "capabilities.py").exists()
     assert (snapshot_dir / "init" / "processes.py").exists()
-    assert (snapshot_dir / "files" / "cogos" / "scheduler.md").exists()
+    assert (snapshot_dir / "cogos" / "scheduler.md").exists()
     assert (snapshot_dir / "README.md").exists()
 
     # Round-trip: load the snapshot and verify

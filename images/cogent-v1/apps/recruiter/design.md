@@ -14,22 +14,26 @@ Five CogOS processes in a tree:
 
 ## File Structure
 
-All files live in the CogOS file store under `apps/recruiter/`:
+Configuration and prompts live in `apps/recruiter/`. All persistent data lives in `data/recruiter/`:
 
 ```
-apps/recruiter/
+apps/recruiter/                # Configuration & prompts (read-mostly)
   criteria.md              # What we want: skills, background, values, red flags
   rubric.json              # Scoring weights: {"github_activity": 0.3, ...}
   diagnosis.md             # How to classify feedback gaps, escalation thresholds
   strategy.md              # Operational prompts: search priorities, presentation style
   evolution.md             # Changelog of self-modifications (audit trail)
-  feedback.jsonl           # Append-only log of all feedback with source/context
 
   sourcer/
     github.md              # How to search GitHub, what signals matter, queries
     twitter.md             # How to search Twitter/X, signal vs noise criteria
     web.md                 # Web search strategy: conferences, blogs, HN, podcasts
     substack.md            # Newsletter discovery, depth/consistency signals
+
+data/recruiter/                # Persistent storage (read-write, via `data` capability)
+  session.md               # Recent activity log (managed by compact/session memory policy)
+  summary.md               # Long-term learnings (managed by compact memory policy)
+  feedback.jsonl           # Append-only log of all feedback with source/context
 
   candidates/
     {handle}.json          # Per-candidate structured data: profiles, scores, status, feedback

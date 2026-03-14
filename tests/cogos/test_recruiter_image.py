@@ -15,10 +15,10 @@ def _write_app_image(tmp: Path) -> Path:
         'add_process("scheduler", mode="daemon", priority=100.0)\n'
     )
 
-    # Top-level files
-    files = tmp / "files" / "cogos"
-    files.mkdir(parents=True)
-    (files / "scheduler.md").write_text("You are the scheduler.")
+    # Top-level content
+    cogos = tmp / "cogos"
+    cogos.mkdir(parents=True)
+    (cogos / "scheduler.md").write_text("You are the scheduler.")
 
     # App init
     app_init = tmp / "apps" / "myapp" / "init"

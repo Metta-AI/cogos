@@ -63,6 +63,9 @@ add_process(
     content="@{apps/secret-audit/orchestrator.md}",
     runner="lambda",
     priority=4.0,
-    capabilities=["me", "procs", "dir", "file", "channels", "secrets", "stdlib"],
+    capabilities=[
+        "me", "procs", "dir", "file", "channels", "secrets", "stdlib",
+        {"name": "dir", "alias": "data", "config": {"prefix": "data/secret-audit/"}},
+    ],
     handlers=["secret-audit:requests", "secret-audit:events", "system:tick:hour"],
 )

@@ -229,8 +229,8 @@ I/O bridges write to well-known channels instead of emitting events.
 
 | Bridge | Channel | Schema file |
 |---|---|---|
-| Discord | `io:discord:<channel_name>` | `images/cogent-v1/files/cogos/io/discord/schema.md` |
-| Email | `io:email:inbound` | `images/cogent-v1/files/cogos/io/email/schema.md` |
+| Discord | `io:discord:<channel_name>` | `images/cogent-v1/cogos/io/discord/schema.md` |
+| Email | `io:email:inbound` | `images/cogent-v1/cogos/io/email/schema.md` |
 | Cron | Target process implicit channel or named channel | built-in `message` schema |
 | System lifecycle | `system:lifecycle` | built-in lifecycle schema |
 

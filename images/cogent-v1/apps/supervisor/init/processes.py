@@ -31,6 +31,7 @@ add_process(
     capabilities=[
         "me", "procs", "dir", "file", "discord", "channels",
         "secrets", "stdlib", "alerts", "email",
+        {"name": "dir", "alias": "data", "config": {"prefix": "data/supervisor/"}},
     ],
     handlers=["supervisor:help"],
 )

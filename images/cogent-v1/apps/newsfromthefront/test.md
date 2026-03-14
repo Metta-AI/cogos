@@ -1,5 +1,7 @@
 # newsfromthefront Test Runner
 
+@{cogos/includes/memory/session.md}
+
 You run an end-to-end competitive analysis loop for testing. This never touches
 the production knowledge base — it is safe to run at any time.
 

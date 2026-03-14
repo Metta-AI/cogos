@@ -114,15 +114,15 @@ add_resource("ecs-slots", type="pool", capacity=2)
 add_cron("* * * * *", channel="system:tick:minute")
 ```
 
-### Files Directory
+### Content Directories
 
-Every file under `files/` becomes a File entry in the store. The relative path from `files/` becomes the key:
+Every directory at the image root (except `init/` and `apps/`) is scanned for content files. The relative path from the image root becomes the key:
 
 ```
-files/cogos/lib/scheduler.md          -> key: "cogos/lib/scheduler.md"
-files/whoami/index.md                 -> key: "whoami/index.md"
-files/cogos/includes/code_mode.md     -> key: "cogos/includes/code_mode.md"
-files/cogos/docs/layout.md            -> key: "cogos/docs/layout.md"
+cogos/lib/scheduler.md          -> key: "cogos/lib/scheduler.md"
+whoami/index.md                 -> key: "whoami/index.md"
+cogos/includes/code_mode.md     -> key: "cogos/includes/code_mode.md"
+cogos/docs/layout.md            -> key: "cogos/docs/layout.md"
 ```
 
 The key keeps the original filename suffix.

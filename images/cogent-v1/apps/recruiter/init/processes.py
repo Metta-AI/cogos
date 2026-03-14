@@ -20,7 +20,10 @@ add_process(
     content="@{apps/recruiter/recruiter.md}",
     runner="lambda",
     priority=5.0,
-    capabilities=["me", "procs", "dir", "file", "discord", "channels", "secrets", "stdlib"],
+    capabilities=[
+        "me", "procs", "dir", "file", "discord", "channels", "secrets", "stdlib",
+        {"name": "dir", "alias": "data", "config": {"prefix": "data/recruiter/"}},
+    ],
     handlers=["system:tick:hour", "recruiter:feedback"],
 )
 

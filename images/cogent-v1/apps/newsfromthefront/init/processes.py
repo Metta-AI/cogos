@@ -38,6 +38,8 @@ add_channel("newsfromthefront:run-requested",    schema="newsfromthefront_run_re
 _HAIKU  = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _SONNET = "us.anthropic.claude-sonnet-4-6"
 
+_DATA = {"name": "dir", "alias": "data", "config": {"prefix": "data/newsfromthefront/"}}
+
 add_process(
     "newsfromthefront-researcher",
     mode="daemon",
@@ -45,7 +47,7 @@ add_process(
     runner="lambda",
     model=_SONNET,
     priority=15.0,
-    capabilities=["web_search", "dir", "channels", "secrets"],
+    capabilities=["web_search", "dir", "channels", "secrets", _DATA],
     handlers=["newsfromthefront:tick"],
 )
 
@@ -56,7 +58,7 @@ add_process(
     runner="lambda",
     model=_SONNET,
     priority=15.0,
-    capabilities=["dir", "channels", "discord", "secrets"],
+    capabilities=["dir", "channels", "discord", "secrets", _DATA],
     handlers=["newsfromthefront:findings-ready", "newsfromthefront:discord-feedback"],
 )
 
@@ -67,7 +69,7 @@ add_process(
     runner="lambda",
     model=_SONNET,
     priority=20.0,
-    capabilities=["web_search", "dir", "channels", "discord", "secrets"],
+    capabilities=["web_search", "dir", "channels", "discord", "secrets", _DATA],
     handlers=["newsfromthefront:run-requested"],
 )
 
@@ -78,6 +80,6 @@ add_process(
     runner="lambda",
     model=_HAIKU,
     priority=5.0,
-    capabilities=["web_search", "dir", "channels", "discord", "secrets"],
+    capabilities=["web_search", "dir", "channels", "discord", "secrets", _DATA],
     handlers=["newsfromthefront:run-requested"],
 )

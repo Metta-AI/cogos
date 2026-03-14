@@ -1,4 +1,5 @@
 @{cogos/includes/index.md}
+@{cogos/includes/memory/session.md}
 
 # Secret Audit Orchestrator
 

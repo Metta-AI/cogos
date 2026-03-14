@@ -22,9 +22,9 @@ def _write_image(tmp: Path) -> Path:
         '# No cron rules — system ticks are generated implicitly by the dispatcher.\n'
     )
 
-    files = tmp / "files" / "cogos"
-    files.mkdir(parents=True)
-    (files / "scheduler.md").write_text("You are the scheduler.")
+    cogos = tmp / "cogos"
+    cogos.mkdir(parents=True)
+    (cogos / "scheduler.md").write_text("You are the scheduler.")
 
     return tmp
 
