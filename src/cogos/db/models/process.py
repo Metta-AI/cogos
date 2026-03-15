@@ -33,6 +33,7 @@ class Process(BaseModel):
     priority: float = 0.0
     resources: list[UUID] = Field(default_factory=list)  # FK -> Resource
     runner: str = "lambda"  # "lambda" | "ecs"
+    executor: str = "llm"  # "llm" | "python"
     status: ProcessStatus = ProcessStatus.WAITING
     runnable_since: datetime | None = None
     parent_process: UUID | None = None  # FK -> Process.id
