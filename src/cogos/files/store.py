@@ -90,6 +90,27 @@ class FileStore:
             return self.create(key, content, source=source, read_only=read_only)
         return self.new_version(key, content, source=source, read_only=read_only)
 
+    def append(
+        self,
+        key: str,
+        content: str,
+        *,
+        source: str = "cogent",
+    ) -> File | FileVersion | None:
+        """Append content to a file's active version in-place. Creates the file if it doesn't exist."""
+        f = self._repo.get_file_by_key(key)
+        if f is None:
+            return self.create(key, content, source=source)
+        fv = self._repo.get_active_file_version(f.id)
+        if fv is None:
+            return self.create(key, content, source=source)
+        new_content = fv.content + content
+        self._repo.update_file_version_content(f.id, fv.version, new_content)
+        includes = extract_file_references(new_content, exclude_key=key)
+        if f.includes != includes:
+            self._repo.update_file_includes(f.id, includes)
+        return fv
+
     def update_includes(self, key: str, includes: list[str]) -> bool:
         f = self._repo.get_file_by_key(key)
         if f is None:

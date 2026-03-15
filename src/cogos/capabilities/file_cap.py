@@ -101,20 +101,28 @@ class FileCapability(Capability):
     def append(
         self, content: str, key: str | None = None, source: str = "agent"
     ) -> FileWriteResult | FileError:
-        """Append content to the file. Creates the file if it doesn't exist."""
+        """Append content to the file's active version in-place. Creates the file if it doesn't exist."""
         k = self._resolve_key(key)
         self._check("append", key=k)
 
         store = FileStore(self.repo)
-        existing = store.get(k)
-        if existing:
-            fv = self.repo.get_active_file_version(existing.id)
-            old_content = fv.content if fv else ""
-            new_content = old_content + content
-        else:
-            new_content = content
+        result = store.append(k, content, source=source)
 
-        return self._do_write(k, new_content, source)
+        if result is None:
+            return FileWriteResult(
+                id="", key=k, version=0, created=False, changed=False
+            )
+
+        from cogos.db.models import File
+
+        if isinstance(result, File):
+            return FileWriteResult(
+                id=str(result.id), key=k, version=1, created=True
+            )
+
+        return FileWriteResult(
+            id=str(result.file_id), key=k, version=result.version, created=False
+        )
 
     def _do_write(
         self, key: str, content: str, source: str
