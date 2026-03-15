@@ -268,6 +268,42 @@ def handler(event: dict, context: Any = None) -> dict:
         return {"statusCode": 500, "error": str(e)}
 
 
+def _execute_python_process(
+    process: Process,
+    event_data: dict,
+    run: Run,
+    config: ExecutorConfig,
+    repo: Repository,
+) -> Run:
+    """Execute process by running resolved content as Python in the sandbox."""
+    from cogos.files.context_engine import ContextEngine
+    from cogos.files.store import FileStore
+
+    file_store = FileStore(repo)
+    ctx = ContextEngine(file_store)
+    code = ctx.generate_full_prompt(process)
+
+    if not code:
+        run.result = "(no content to execute)"
+        return run
+
+    # Set up sandbox with capability proxies — same as LLM path
+    vt = VariableTable()
+    _setup_capability_proxies(vt, process, repo, run_id=run.id)
+
+    # Inject event payload as a variable
+    vt.set("event", event_data)
+
+    sandbox = SandboxExecutor(vt)
+    result = sandbox.execute(code)
+
+    run.result = result
+    run.tokens_in = 0
+    run.tokens_out = 0
+    run.scope_log = sandbox.scope_log
+    return run
+
+
 def execute_process(
     process: Process,
     event_data: dict,
@@ -278,6 +314,9 @@ def execute_process(
     bedrock_client: Any | None = None,
 ) -> Run:
     """Execute process via Bedrock converse API with search + run_code tool loop."""
+    if process.executor == "python":
+        return _execute_python_process(process, event_data, run, config, repo)
+
     bedrock = bedrock_client or boto3.client(
         "bedrock-runtime",
         region_name=config.region,
