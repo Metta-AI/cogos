@@ -59,6 +59,21 @@ def test_load_image_no_init_dir():
     assert spec.files == {}
 
 
+def test_image_python_executor_process(tmp_path):
+    """add_process with executor='python' creates a process with executor set."""
+    img_dir = tmp_path / "test_image"
+    init_dir = img_dir / "init"
+    init_dir.mkdir(parents=True)
+    (init_dir / "processes.py").write_text(
+        'add_process("my-py", executor="python", content="print(1)")'
+    )
+
+    spec = load_image(img_dir)
+    assert len(spec.processes) == 1
+    assert spec.processes[0]["executor"] == "python"
+    assert spec.processes[0]["content"] == "print(1)"
+
+
 def test_load_image_no_files_dir():
     with tempfile.TemporaryDirectory() as td:
         init = Path(td) / "init"
