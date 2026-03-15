@@ -33,53 +33,24 @@ add_channel("newsfromthefront:findings-ready",   schema="newsfromthefront_findin
 add_channel("newsfromthefront:discord-feedback", schema="newsfromthefront_discord_feedback")
 add_channel("newsfromthefront:run-requested",    schema="newsfromthefront_run_requested")
 
-# ── Processes ─────────────────────────────────────────────────────────────────
-
-_HAIKU  = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-_SONNET = "us.anthropic.claude-sonnet-4-6"
-
-_DATA = {"name": "dir", "alias": "data", "config": {"prefix": "data/newsfromthefront/"}}
+# ── Root orchestrator ────────────────────────────────────────────────────────
+# Single daemon that spawns researcher, analyst, backfill, and test as children.
 
 add_process(
-    "newsfromthefront-researcher",
+    "newsfromthefront",
     mode="daemon",
-    content="@{apps/newsfromthefront/researcher.md}",
+    content="@{apps/newsfromthefront/newsfromthefront.md}",
     runner="lambda",
-    model=_SONNET,
     priority=15.0,
-    capabilities=["web_search", "dir", "channels", "secrets", _DATA],
-    handlers=["newsfromthefront:tick"],
-)
-
-add_process(
-    "newsfromthefront-analyst",
-    mode="daemon",
-    content="@{apps/newsfromthefront/analyst.md}",
-    runner="lambda",
-    model=_SONNET,
-    priority=15.0,
-    capabilities=["dir", "channels", "discord", "secrets", _DATA],
-    handlers=["newsfromthefront:findings-ready", "newsfromthefront:discord-feedback"],
-)
-
-add_process(
-    "newsfromthefront-test",
-    mode="daemon",
-    content="@{apps/newsfromthefront/test.md}",
-    runner="lambda",
-    model=_SONNET,
-    priority=20.0,
-    capabilities=["web_search", "dir", "channels", "discord", "secrets", _DATA],
-    handlers=["newsfromthefront:run-requested"],
-)
-
-add_process(
-    "newsfromthefront-backfill",
-    mode="daemon",
-    content="@{apps/newsfromthefront/backfill.md}",
-    runner="lambda",
-    model=_HAIKU,
-    priority=5.0,
-    capabilities=["web_search", "dir", "channels", "discord", "secrets", _DATA],
-    handlers=["newsfromthefront:run-requested"],
+    capabilities=[
+        "me", "procs", "dir", "file", "channels", "discord",
+        "web_search", "secrets", "stdlib",
+        {"name": "dir", "alias": "data", "config": {"prefix": "data/newsfromthefront/"}},
+    ],
+    handlers=[
+        "newsfromthefront:tick",
+        "newsfromthefront:findings-ready",
+        "newsfromthefront:discord-feedback",
+        "newsfromthefront:run-requested",
+    ],
 )
