@@ -674,3 +674,27 @@ def test_python_executor_resolves_file_refs(monkeypatch, tmp_path):
     )
 
     assert result_run.result == "world"
+
+
+def test_python_executor_error_captured_in_run(monkeypatch, tmp_path):
+    """Python executor errors are captured as traceback in run result."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="py-err",
+        mode=ProcessMode.ONE_SHOT,
+        executor="python",
+        content="raise ValueError('boom')",
+        status=ProcessStatus.RUNNING,
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig()
+
+    result_run = executor_handler.execute_process(
+        process,
+        {"process_id": str(process.id)},
+        run, config, repo,
+    )
+
+    assert "ValueError" in result_run.result
+    assert "boom" in result_run.result
