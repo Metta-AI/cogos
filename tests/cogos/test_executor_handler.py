@@ -590,3 +590,28 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
     stored_run = repo.get_run(second_run.id)
     assert stored_run.snapshot["resumed"] is False
     assert stored_run.snapshot["resume_skipped_reason"] == "prompt_fingerprint_changed"
+
+
+def test_python_executor_runs_code_directly(monkeypatch, tmp_path):
+    """Python executor resolves content and runs it in sandbox — no Bedrock."""
+    repo = _repo(tmp_path)
+
+    process = Process(
+        name="py-proc",
+        mode=ProcessMode.ONE_SHOT,
+        executor="python",
+        content="print('hello from python')",
+        status=ProcessStatus.RUNNING,
+    )
+    repo.upsert_process(process)
+
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig()
+
+    result_run = executor_handler.execute_process(
+        process, {"process_id": str(process.id)}, run, config, repo,
+    )
+
+    assert result_run.result == "hello from python"
+    assert result_run.tokens_in == 0
+    assert result_run.tokens_out == 0
