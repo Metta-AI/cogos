@@ -304,12 +304,25 @@ def _execute_python_process(
     trace_id: UUID | None = None,
 ) -> Run:
     """Execute process by running resolved content as Python in the sandbox."""
-    from cogos.files.context_engine import ContextEngine
     from cogos.files.store import FileStore
+    from cogos.files.references import extract_file_references
 
     file_store = FileStore(repo)
-    ctx = ContextEngine(file_store)
-    code = ctx.generate_full_prompt(process)
+
+    # For Python executor, resolve @{file-key} references by reading raw content
+    # (no headers/decoration like the LLM context engine adds).
+    content = process.content or ""
+    refs = extract_file_references(content)
+    if len(refs) == 1 and content.strip() == f"@{{{refs[0]}}}":
+        # Entire content is a single file reference — use raw file content
+        code = file_store.get_content(refs[0])
+    else:
+        # Inline refs — expand them in place
+        import re
+        def _replace(match):
+            key = match.group(1).strip()
+            return file_store.get_content(key) or f"# [not found: {key}]"
+        code = re.sub(r"@\{([^{}\n]+)\}", _replace, content)
 
     if not code:
         run.result = "(no content to execute)"

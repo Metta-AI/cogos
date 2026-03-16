@@ -612,7 +612,7 @@ def test_python_executor_runs_code_directly(monkeypatch, tmp_path):
         process, {"process_id": str(process.id)}, run, config, repo,
     )
 
-    assert result_run.result == "hello from python"
+    assert result_run.result == {"output": "hello from python"}
     assert result_run.tokens_in == 0
     assert result_run.tokens_out == 0
 
@@ -637,7 +637,7 @@ def test_python_executor_receives_event_payload(monkeypatch, tmp_path):
         run, config, repo,
     )
 
-    assert result_run.result == "hi"
+    assert result_run.result == {"output": "hi"}
 
 
 def test_python_executor_resolves_file_refs(monkeypatch, tmp_path):
@@ -673,7 +673,7 @@ def test_python_executor_resolves_file_refs(monkeypatch, tmp_path):
         run, config, repo,
     )
 
-    assert result_run.result == "world"
+    assert result_run.result == {"output": "world"}
 
 
 def test_python_executor_error_captured_in_run(monkeypatch, tmp_path):
@@ -696,5 +696,5 @@ def test_python_executor_error_captured_in_run(monkeypatch, tmp_path):
         run, config, repo,
     )
 
-    assert "ValueError" in result_run.result
-    assert "boom" in result_run.result
+    assert "ValueError" in result_run.result["output"]
+    assert "boom" in result_run.result["output"]
