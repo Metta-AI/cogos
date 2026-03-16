@@ -63,15 +63,21 @@ TOOL_CONFIG = {"tools": [
     {"toolSpec": {
         "name": "search",
         "description": (
-            "Search available capabilities by keyword. Returns names, descriptions, "
-            "and schemas. Use this to discover what capabilities are available."
+            "Search available capabilities by keyword. Returns names and descriptions. "
+            "Your capabilities are already injected as top-level objects — use "
+            "dir(obj) or obj.help() to see methods. Only use search to discover "
+            "capabilities you haven't used yet."
         ),
         "inputSchema": {"json": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search keyword (e.g. 'files', 'channels', 'procs')",
+                    "description": "Search keyword (e.g. 'discord', 'files', 'channels', 'procs', 'data')",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results to return (default 5)",
                 },
             },
             "required": ["query"],
@@ -80,9 +86,14 @@ TOOL_CONFIG = {"tools": [
     {"toolSpec": {
         "name": "run_code",
         "description": (
-            "Execute Python code with access to capability proxy objects. "
-            "Use search() first to discover available capabilities. "
-            "Capabilities are exposed as top-level objects: files, procs, channels, resources. "
+            "Execute Python code in a sandboxed environment. "
+            "Variables persist between calls — define a variable in one call, use it in the next. "
+            "Capability proxies are pre-injected as top-level objects (e.g. discord, channels, file, procs, data). "
+            "Use obj.help() or dir(obj) to see available methods on any capability. "
+            "Available builtins: print, len, range, enumerate, zip, sorted, min, max, sum, "
+            "str, int, float, list, dict, set, tuple, bool, isinstance, hasattr, getattr, "
+            "setattr, dir, type, vars, map, filter, any, all, repr, json (pre-loaded). "
+            "No import statements — use stdlib.time, stdlib.os, etc. for standard library access. "
             "Print results to see them. Returns stdout output or error traceback."
         ),
         "inputSchema": {"json": {
@@ -782,18 +793,25 @@ def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -
 
 def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:
     """Search capabilities available to this process."""
-    query = tool_input.get("query", "").lower()
+    query = tool_input.get("query", "").lower().strip()
+    if not query:
+        return (
+            "Error: query is required. Provide a keyword like 'discord', 'files', "
+            "'channels', 'procs', 'data', 'email', 'web'. "
+            "Your capabilities are already available as top-level objects — "
+            "use help() on them (e.g. discord.help()) or dir() to see their methods."
+        )
     caps = repo.search_capabilities(query, process_id=process.id)
     if not caps:
-        # Fallback: search all capabilities
         caps = repo.search_capabilities(query)
+    limit = min(tool_input.get("limit", 5), 20)
+    caps = caps[:limit]
     results = []
     for cap in caps:
         results.append({
             "name": cap.name,
             "description": cap.description,
             "instructions": cap.instructions,
-            "schema": cap.schema,
         })
     return json.dumps(results, indent=2) if results else "No capabilities found matching query."
 

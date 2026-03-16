@@ -247,7 +247,7 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
 
     fake_bedrock = FakeBedrock()
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     result = executor_handler.execute_process(
         process,
@@ -308,7 +308,7 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
 
     fake_bedrock = FakeBedrock()
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     executor_handler.execute_process(
         process,
@@ -343,7 +343,7 @@ def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tm
     run = _make_run(repo, process)
     fake_bedrock = _FakeBedrock([_text_response("done")])
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     run_and_complete(
         process,
@@ -388,7 +388,7 @@ def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
     )
     repo.upsert_process(process)
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     first_run = _make_run(repo, process)
     run_and_complete(
@@ -438,7 +438,7 @@ def test_legacy_session_mode_process_still_resumes(monkeypatch, tmp_path):
     )
     repo.upsert_process(process)
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     first_run = _make_run(repo, process)
     run_and_complete(
@@ -482,7 +482,7 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
     )
     repo.upsert_process(process)
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     def _raise_on_execute(self, _code: str) -> str:
         raise RuntimeError("tool boom")
@@ -557,7 +557,7 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
     )
     repo.upsert_process(process)
 
-    monkeypatch.setattr(executor_handler, "_load_includes", lambda repo: "")
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
 
     first_run = _make_run(repo, process)
     run_and_complete(

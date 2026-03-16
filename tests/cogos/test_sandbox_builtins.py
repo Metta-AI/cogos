@@ -52,9 +52,38 @@ def test_safe_builtins_blocks_dunder_import():
     assert "Error" in result or "error" in result.lower()
 
 
-def test_safe_builtins_blocks_hasattr():
-    result = _run("print(hasattr([], '__class__'))")
-    assert "Error" in result or "error" in result.lower()
+def test_safe_builtins_allows_hasattr():
+    result = _run("print(hasattr([], 'append'))")
+    assert "True" in result
+
+
+def test_safe_builtins_allows_getattr():
+    result = _run("print(getattr('hello', 'upper')())")
+    assert "HELLO" in result
+
+
+def test_safe_builtins_allows_dir():
+    result = _run("print(type(dir([])))")
+    assert "list" in result
+
+
+def test_state_persists_between_executions():
+    """Variables defined in one run_code call are available in the next."""
+    vt = VariableTable()
+    executor = SandboxExecutor(vt)
+    executor.execute("x = 42")
+    result = executor.execute("print(x)")
+    assert "42" in result
+
+
+def test_state_does_not_clobber_capabilities():
+    """User variables cannot overwrite capability proxies."""
+    vt = VariableTable()
+    vt.set("discord", "real_capability")
+    executor = SandboxExecutor(vt)
+    executor.execute("discord = 'fake'")
+    result = executor.execute("print(discord)")
+    assert "real_capability" in result
 
 
 def test_scope_not_accessible_from_sandbox():

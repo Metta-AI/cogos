@@ -17,15 +17,29 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 _SAFE_BUILTINS: dict[str, Any] = {
+    # Output
     "print": print,
+    "repr": repr,
+    "format": format,
+    # Collections & iteration
     "len": len,
     "range": range,
     "enumerate": enumerate,
     "zip": zip,
     "sorted": sorted,
+    "reversed": reversed,
+    "map": map,
+    "filter": filter,
+    "iter": iter,
+    "next": next,
     "min": min,
     "max": max,
     "sum": sum,
+    "any": any,
+    "all": all,
+    "abs": abs,
+    "round": round,
+    # Types & constructors
     "str": str,
     "int": int,
     "float": float,
@@ -34,18 +48,34 @@ _SAFE_BUILTINS: dict[str, Any] = {
     "set": set,
     "tuple": tuple,
     "bool": bool,
+    "bytes": bytes,
+    "bytearray": bytearray,
+    "object": object,
+    "slice": slice,
+    "type": type,
+    # Introspection
     "isinstance": isinstance,
-    "map": map,
-    "filter": filter,
-    "any": any,
-    "all": all,
-    "abs": abs,
-    "round": round,
-    "reversed": reversed,
-    "repr": repr,
+    "issubclass": issubclass,
+    "hasattr": hasattr,
+    "getattr": getattr,
+    "setattr": setattr,
+    "dir": dir,
+    "vars": vars,
+    "id": id,
+    "callable": callable,
+    # Numeric
+    "chr": chr,
+    "ord": ord,
+    "hex": hex,
+    "oct": oct,
+    "bin": bin,
+    "pow": pow,
+    "divmod": divmod,
+    # Constants
     "None": None,
     "True": True,
     "False": False,
+    # Exceptions
     "Exception": Exception,
     "ValueError": ValueError,
     "TypeError": TypeError,
@@ -54,6 +84,10 @@ _SAFE_BUILTINS: dict[str, Any] = {
     "AttributeError": AttributeError,
     "RuntimeError": RuntimeError,
     "StopIteration": StopIteration,
+    "NotImplementedError": NotImplementedError,
+    "FileNotFoundError": FileNotFoundError,
+    "PermissionError": PermissionError,
+    "OSError": OSError,
 }
 
 
@@ -103,11 +137,17 @@ class VariableTable:
 
 
 class SandboxExecutor:
-    """Executes Python code in a restricted namespace with proxy objects."""
+    """Executes Python code in a restricted namespace with proxy objects.
+
+    State persists between execute() calls — variables defined in one
+    run_code block are available in the next.  Capability proxies and
+    builtins are always re-injected so they can't be overwritten.
+    """
 
     def __init__(self, variable_table: VariableTable) -> None:
         self.vt = variable_table
         self._scope_log: list[dict] = []
+        self._user_state: dict[str, Any] = {}
 
     @property
     def scope_log(self) -> list[dict]:
@@ -120,6 +160,11 @@ class SandboxExecutor:
         """
         namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
         namespace["json"] = json
+
+        # Carry forward user-defined state from previous executions
+        namespace.update(self._user_state)
+
+        # Re-inject capability proxies (always override user state)
         namespace.update(self.vt.as_dict())
 
         stdout_buf = io.StringIO()
@@ -131,6 +176,14 @@ class SandboxExecutor:
         except Exception:
             error = traceback.format_exc()
             stderr_buf.write(error)
+
+        # Persist user-defined variables for the next call.
+        # Exclude builtins, capability proxies, and internal keys.
+        proxy_keys = set(self.vt.as_dict().keys()) | {"__builtins__", "json"}
+        for key, value in namespace.items():
+            if key.startswith("_") or key in proxy_keys:
+                continue
+            self._user_state[key] = value
 
         output = stdout_buf.getvalue()
         errors = stderr_buf.getvalue()
