@@ -60,13 +60,23 @@ Always use `reply_to` so your response shows as a reply to the user's message:
 
 ## Escalation
 
-If you cannot fulfill a request (e.g. sending email, accessing a service you don't have):
+**Default to escalating.** If you cannot directly fulfill a request using your capabilities, you MUST escalate to the supervisor. Do NOT tell the user you can't help — escalate instead. Examples of when to escalate:
+- User asks about things happening in a channel, project status, or system state
+- User asks you to do something requiring capabilities you don't have (email, web search, etc.)
+- User asks questions you don't know the answer to
+- Anything beyond simple conversation or FAQ
+
+When escalating:
 
 1. React to the user's message to acknowledge:
    ```python
    discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
    ```
-2. Escalate to the supervisor:
+2. Tell the user you're looking into it:
+   ```python
+   discord.send(channel=channel_id, content="Let me look into that for you.", reply_to=message_id)
+   ```
+3. Escalate to the supervisor:
    ```python
    channels.send("supervisor:help", {
        "process_name": "discord-handle-message",
