@@ -1,4 +1,4 @@
-"""Shell builtins — help, clear, exit."""
+"""Shell builtins — help, clear, exit, history."""
 
 from __future__ import annotations
 
@@ -30,6 +30,26 @@ def register(reg: CommandRegistry) -> None:
     def clear(state: ShellState, args: list[str]) -> str:
         os.system("clear" if os.name != "nt" else "cls")
         return ""
+
+    @reg.register("history", help="Show command history [N]")
+    def history_cmd(state: ShellState, args: list[str]) -> str:
+        from cogos.files.store import FileStore
+        fs = FileStore(state.repo)
+        content = fs.get_content("home/root/.shell_history")
+        if not content:
+            return "(no history)"
+        entries = [l for l in content.splitlines() if l]
+        limit = 50
+        if args:
+            try:
+                limit = int(args[0])
+            except ValueError:
+                pass
+        entries = entries[-limit:]
+        lines = []
+        for i, entry in enumerate(entries, 1):
+            lines.append(f"  {i:4d}  {entry}")
+        return "\n".join(lines)
 
     @reg.register("exit", aliases=["quit"], help="Exit the shell")
     def exit_cmd(state: ShellState, args: list[str]) -> str | None:

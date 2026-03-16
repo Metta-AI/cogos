@@ -29,3 +29,20 @@ def test_exit_returns_none(tmp_path):
     state, reg = _setup(tmp_path)
     result = reg.dispatch(state, "exit")
     assert result is None
+
+
+def test_history_empty(tmp_path):
+    state, reg = _setup(tmp_path)
+    output = reg.dispatch(state, "history")
+    assert "no history" in output.lower()
+
+
+def test_history_shows_entries(tmp_path):
+    from cogos.files.store import FileStore
+    state, reg = _setup(tmp_path)
+    fs = FileStore(state.repo)
+    fs.create("home/root/.shell_history", "ls\nps\ncat foo.md\n")
+    output = reg.dispatch(state, "history")
+    assert "ls" in output
+    assert "ps" in output
+    assert "cat foo.md" in output

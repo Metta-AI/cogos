@@ -16,6 +16,7 @@ class CogentShell:
         from cogos.shell.completer import ShellCompleter
         from prompt_toolkit import PromptSession
         from prompt_toolkit.formatted_text import HTML
+        from prompt_toolkit.history import FileHistory
 
         repo = create_repository()
         state = ShellState(cogent_name=self.cogent_name, repo=repo, cwd="")
@@ -28,6 +29,10 @@ class CogentShell:
 
         registry = build_registry()
         completer = ShellCompleter(state, registry)
+
+        # Persistent history backed by CogOS file store
+        from cogos.shell.history import CogOSHistory
+        history = CogOSHistory(repo)
 
         def _bottom_toolbar():
             try:
@@ -45,9 +50,11 @@ class CogentShell:
                 return ""
 
         session: PromptSession = PromptSession(
+            history=history,
             completer=completer,
             bottom_toolbar=_bottom_toolbar,
             complete_while_typing=False,
+            enable_history_search=True,
         )
 
         print(f"CogOS shell for \033[1;36m{self.cogent_name}\033[0m (type 'help' for commands, 'exit' to quit)")
