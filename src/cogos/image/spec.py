@@ -21,7 +21,7 @@ class ImageSpec:
 
 def image_file_prefixes(image_dir: Path) -> list[str]:
     """Return the top-level directory prefixes that an image owns as file keys."""
-    _STRUCTURAL_DIRS = {"init"}
+    _STRUCTURAL_DIRS = {"init", "apps"}
     prefixes: list[str] = []
     for child in sorted(image_dir.iterdir()):
         if child.is_dir() and child.name not in _STRUCTURAL_DIRS:

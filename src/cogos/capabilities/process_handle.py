@@ -17,7 +17,7 @@ class MessageInfo(BaseModel):
 
 
 class ProcessHandle:
-    """Handle to a process with send/recv/kill/status/wait."""
+    """Handle to a process with send/recv/kill/status/wait/wait_any/wait_all/schema."""
 
     def __init__(
         self,

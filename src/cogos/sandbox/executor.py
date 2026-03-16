@@ -155,7 +155,8 @@ class SandboxExecutor:
     def execute(self, code: str) -> str:
         """Execute Python code with proxy objects injected.
 
-        Returns stdout+stderr output or error traceback.
+        Returns stdout+stderr output, error traceback, or "(no output)" when
+        the code produces no output and raises no exception.
         """
         namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
         namespace["json"] = json

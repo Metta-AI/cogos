@@ -3,7 +3,7 @@
 EventBridge fires this every 60s. Each invocation:
 1. Generates virtual system:tick:minute (and system:tick:hour on the hour)
 2. Matches channel messages to handlers
-3. Selects runnable processes and dispatches executors
+3. Selects any remaining runnable processes and dispatches executors
 
 Virtual tick events are emitted as channel messages and wake handlers via deliveries.
 """
@@ -70,12 +70,12 @@ def handler(event: dict, context) -> dict:
             {UUID(info.process_id) for info in match_result.deliveries},
         )
 
-    # 4. Select any remaining runnable processes
+    # 3. Select any remaining runnable processes
     select_result = scheduler.select_processes(slots=5)
     if not select_result.selected:
         return {"statusCode": 200, "dispatched": dispatched}
 
-    # 5. Dispatch each selected process
+    # 4. Dispatch each selected process
     for proc in select_result.selected:
         try:
             dispatched += dispatch_ready_processes(

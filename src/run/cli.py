@@ -95,7 +95,7 @@ def list_cmd(ctx: click.Context):
 
 
 def _get_ecs_config(name: str) -> dict:
-    """Get ECS config from the cogtainer's orchestrator Lambda environment."""
+    """Build ECS configuration dict (including live AWS clients) from the cogtainer's orchestrator Lambda environment."""
     from polis.aws import get_polis_session, set_org_profile
 
     set_org_profile()
@@ -119,7 +119,7 @@ def _get_ecs_config(name: str) -> dict:
 
 
 def _launch_shell_task(cfg: dict) -> None:
-    """Launch a bare ECS task (no program) for interactive shell access."""
+    """Launch an ECS task configured for interactive shell access (SHELL_CMD=claude)."""
     click.echo("Launching shell task...")
     cfg["ecs_client"].run_task(
         cluster=cfg["cluster"],
@@ -146,7 +146,7 @@ def _launch_shell_task(cfg: dict) -> None:
 
 
 def _wait_for_task(ecs_client, cluster: str, family: str = "", timeout: int = 180) -> dict | None:
-    """Poll for a new task with SSM agent ready, showing inline status."""
+    """Poll ECS tasks until one has its SSM agent ready, showing inline status."""
     last_status = ""
     deadline = time.time() + timeout
     while time.time() < deadline:

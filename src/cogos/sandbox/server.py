@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 def _build_capability_proxies(repo: Repository, process_id: UUID, *, run_id: UUID | None = None) -> dict[str, object]:
     """Load capabilities bound to a process and build proxy objects.
 
-    Each capability class is instantiated with (repo, process_id) and
+    Each capability class is instantiated with (repo, process_id) — or
+    (repo, process_id, run_id=run_id) for MeCapability subclasses — and
     injected into the sandbox namespace under its grant name (e.g. 'email_me').
     If scope config exists on the grant, the instance is scoped accordingly.
     """

@@ -1,4 +1,4 @@
-"""Executor Lambda handler — runs programs via Bedrock converse API with Code Mode."""
+"""Executor Lambda handler — runs programs via Bedrock converse API (Code Mode) or delegates to CogOS."""
 
 from __future__ import annotations
 

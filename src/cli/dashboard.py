@@ -39,7 +39,7 @@ def _frontend_next_bin() -> Path:
 
 
 def _ensure_frontend_ready() -> None:
-    """Fail fast if the local frontend dependencies are missing."""
+    """Fail fast if the frontend directory exists but its dependencies are not installed."""
     if not _FRONTEND_DIR.exists():
         return
 

@@ -138,10 +138,10 @@ class WebSearchCapability(Capability):
         after_date: str | None = None,
         before_date: str | None = None,
     ) -> GithubSearchResult | SearchError:
-        """Search GitHub. search_type: 'repositories'|'issues'|'discussions'|'code'."""
+        """Search GitHub. search_type: 'repositories'|'issues'|'code'."""
         self._check("search_github")
         try:
-            token = fetch_secret("cogent/{cogent}/github", field="token")
+            token = fetch_secret("cogent/{cogent}/github", field="access_token")
             full_query = query
             if after_date:
                 full_query += f" pushed:>{after_date}"

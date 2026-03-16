@@ -29,7 +29,7 @@ class AlertsCapability(Capability):
         return self._emit("warning", alert_type, message, metadata)
 
     def error(self, alert_type: str, message: str, **metadata) -> AlertResult | AlertError:
-        """Emit an error (critical) alert."""
+        """Emit a critical-severity alert."""
         return self._emit("critical", alert_type, message, metadata)
 
     def _emit(self, severity: str, alert_type: str, message: str, metadata: dict) -> AlertResult | AlertError:

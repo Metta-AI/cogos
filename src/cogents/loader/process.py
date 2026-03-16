@@ -99,6 +99,8 @@ def _sync_inline_handlers(proc: Process, repo: Repository) -> int:
 
     Current CogOS handlers subscribe processes to channels. New code should use
     the image/apply flow or the channel-based CLI in ``src/cogos/cli/__main__.py``.
+
+    Returns the number of newly created handlers.
     """
     patterns = proc.metadata.get("handlers", [])
     if not patterns:

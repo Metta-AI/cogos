@@ -131,7 +131,7 @@ class CogtainerStack(Stack):
             value=self.to_json_string(self._status_manifest(config, safe_name)),
         )
 
-    def _status_manifest(self, config: BrainConfig, safe_name: str) -> dict[str, Any]:
+    def _status_manifest(self, config: CogtainerConfig, safe_name: str) -> dict[str, Any]:
         """Return the canonical status manifest for watcher/runtime resolution."""
         assert self.discord_service is not None
         manifest: dict[str, Any] = {
@@ -158,7 +158,7 @@ class CogtainerStack(Stack):
             }
         return manifest
 
-    def _create_discord_bridge(self, config: BrainConfig, safe_name: str) -> None:
+    def _create_discord_bridge(self, config: CogtainerConfig, safe_name: str) -> None:
         """Create the Discord bridge SQS queue + Fargate service."""
         vpc = ec2.Vpc.from_lookup(self, "DiscordVpc", is_default=True)
         cluster = ecs.Cluster.from_cluster_attributes(
@@ -266,7 +266,7 @@ class CogtainerStack(Stack):
         CfnOutput(self, "DiscordReplyQueueUrl", value=self.discord_reply_queue.queue_url)
 
     def _create_dashboard(
-        self, config: BrainConfig, safe_name: str, certificate_arn: str
+        self, config: CogtainerConfig, safe_name: str, certificate_arn: str
     ) -> None:
         """Create the dashboard ALB + Fargate service."""
         vpc = ec2.Vpc.from_lookup(self, "DashVpc", is_default=True)

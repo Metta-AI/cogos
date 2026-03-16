@@ -191,7 +191,7 @@ class Repository:
             self.execute(f"DELETE FROM {table}")
 
     def clear_config(self) -> None:
-        """Clear config/process/message tables, preserving files and channels."""
+        """Clear config/process/run/message tables, preserving file and channel definitions."""
         for table in self._CONFIG_TABLES:
             self.execute(f"DELETE FROM {table}")
         # Nullify FK references from channels before deleting processes

@@ -75,7 +75,7 @@ def event_send(tool_name: str, tool_input: dict, config) -> str:
     )
 
     repo = get_repo()
-    repo.insert_event(event)
+    repo.append_event(event)
     put_event(event, config.event_bus_name)
 
     return json.dumps({

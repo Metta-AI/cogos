@@ -57,11 +57,9 @@ class CogletRuntimeCapability(Capability):
     Usage:
         run = coglet_runtime.run(coglet, capability_overrides={...})
         child = run.process()
-        coglet_runtime.list()
-        coglet_runtime.stop(run)
     """
 
-    ALL_OPS = {"run", "list", "stop"}
+    ALL_OPS = {"run"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result = {}
@@ -129,4 +127,4 @@ class CogletRuntimeCapability(Capability):
         return CogletRun(handle)
 
     def __repr__(self) -> str:
-        return "<CogletRuntimeCapability run() list() stop()>"
+        return "<CogletRuntimeCapability run()>"

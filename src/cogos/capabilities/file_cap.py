@@ -29,7 +29,7 @@ class FileCapability(Capability):
         f.append(text)   -> FileWriteResult
     """
 
-    ALL_OPS = {"read", "write", "append", "delete", "get_metadata"}
+    ALL_OPS = {"read", "write", "append"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         merged = {**existing, **requested}
@@ -164,7 +164,7 @@ class FileVersionCapability(Capability):
         file_version.list("/config/system")
     """
 
-    ALL_OPS = {"add", "list", "get", "update"}
+    ALL_OPS = {"add", "list"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         merged = {**existing, **requested}

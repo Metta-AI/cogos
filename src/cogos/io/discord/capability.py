@@ -242,7 +242,8 @@ class DiscordCapability(Capability):
 
         Args:
             limit: Max messages to return.
-            message_type: Filter by message type (discord:dm, discord:mention, discord:message).
+            message_type: Filter by message type using "discord:<type>" format
+                          (e.g. "discord:dm", "discord:mention", "discord:message").
                           If None, returns messages from all discord channels.
         """
         self._check("receive")
@@ -261,7 +262,7 @@ class DiscordCapability(Capability):
             for msg in self.repo.list_channel_messages(ch.id, limit=limit):
                 messages.append(_message_from_channel_message(msg))
 
-        # Sort by created_at and apply limit across all channels
+        # Sort by message_id and apply limit across all channels
         messages.sort(key=lambda m: m.message_id or "")
         return messages[:limit]
 

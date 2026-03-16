@@ -475,7 +475,11 @@ def secret():
 @click.argument("key")
 @click.option("--manager", type=click.Choice(["ssm", "secretsmanager"]), default="ssm")
 def secret_get(key: str, manager: str):
-    """Retrieve a secret from the key manager."""
+    """Retrieve a secret from the key manager.
+
+    Note: --manager is accepted but currently ignored; SecretsCapability
+    always uses SSM Parameter Store.
+    """
     from cogos.capabilities.secrets import SecretsCapability, SecretError
     from uuid import uuid4
     cap = SecretsCapability(repo=None, process_id=uuid4())

@@ -120,7 +120,10 @@ def apply_cogos_sql_migrations(
     *,
     on_error: Callable[[str, Exception], None] | None = None,
 ) -> int:
-    """Apply raw CogOS SQL migrations using the repository's execute method."""
+    """Apply raw CogOS SQL migrations using the repository's execute method.
+
+    Returns the number of SQL statements successfully applied (not migration files).
+    """
     if not COGOS_MIGRATIONS_DIR.is_dir():
         return 0
 

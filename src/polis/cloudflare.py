@@ -65,6 +65,7 @@ def ensure_access(store: SecretStore, domain: str = "softmax-cogents.com") -> di
     Sets up a wildcard self-hosted app for *.softmax-cogents.com with:
       - Policy: allow @softmax.com emails
       - Policy: allow any valid service token (PAT bypass)
+      - Policy: bypass CF Access entirely (dashboard has its own API key auth)
 
     Returns the Access Application dict.
     """
@@ -110,7 +111,7 @@ def ensure_access(store: SecretStore, domain: str = "softmax-cogents.com") -> di
 
 
 def _ensure_policies(account_id: str, app_id: str, api_token: str) -> None:
-    """Ensure the two required policies exist on the Access Application."""
+    """Ensure the three required policies exist on the Access Application."""
     existing = _list_access_policies(account_id, app_id, api_token)
     existing_names = {p["name"] for p in existing}
 

@@ -389,7 +389,7 @@ def execute_process(
     bedrock_client: Any | None = None,
     trace_id: UUID | None = None,
 ) -> Run:
-    """Execute process via Bedrock converse API with search + run_code tool loop."""
+    """Execute a process run — via Bedrock converse loop (LLM) or direct Python sandbox."""
     if process.executor == "python":
         return _execute_python_process(process, event_data, run, config, repo, trace_id=trace_id)
 

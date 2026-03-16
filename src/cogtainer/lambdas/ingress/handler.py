@@ -1,4 +1,4 @@
-"""Immediate CogOS ingress: drain the event outbox and dispatch runnable work."""
+"""Immediate CogOS ingress: select and dispatch runnable processes."""
 
 from __future__ import annotations
 

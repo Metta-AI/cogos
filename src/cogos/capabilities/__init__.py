@@ -5,21 +5,20 @@ from __future__ import annotations
 BUILTIN_CAPABILITIES: list[dict] = [
     {
         "name": "file",
-        "description": "Single-file access — read, write, delete, and get metadata for a specific key.",
+        "description": "Single-file access — read, write, and search for a specific key.",
         "handler": "cogos.capabilities.files.FilesCapability",
         "instructions": (
             "Use file to access a single file by key.\n"
             "- file.read(key) — read a file by key\n"
             "- file.write(key, content) — create or update a file\n"
-            "- file.delete(key) — delete a file\n"
-            "- file.get_metadata(key) — get file metadata (versions, timestamps)\n"
+            "- file.search(prefix) — search files by key prefix\n"
             "Files are versioned. Every write creates a new version."
         ),
         "schema": {
             "scope": {
                 "properties": {
                     "key": {"type": "string", "description": "Restrict to a single file key"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["read", "write", "delete", "get_metadata"]}},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["read", "write", "search"]}},
                 },
             },
             "read": {
@@ -58,27 +57,12 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     },
                 },
             },
-            "delete": {
+            "search": {
                 "input": {
                     "type": "object",
-                    "properties": {"key": {"type": "string", "description": "File key to delete"}},
-                    "required": ["key"],
+                    "properties": {"prefix": {"type": "string", "description": "Key prefix to search"}},
                 },
-                "output": {"type": "object", "properties": {"deleted": {"type": "boolean"}}},
-            },
-            "get_metadata": {
-                "input": {
-                    "type": "object",
-                    "properties": {"key": {"type": "string", "description": "File key"}},
-                    "required": ["key"],
-                },
-                "output": {
-                    "type": "object",
-                    "properties": {
-                        "key": {"type": "string"}, "versions": {"type": "integer"},
-                        "created_at": {"type": "string"}, "updated_at": {"type": "string"},
-                    },
-                },
+                "output": {"type": "array", "items": {"type": "object"}},
             },
         },
     },
@@ -139,7 +123,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "schema": {
             "scope": {
                 "properties": {
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["list", "get", "spawn"]}},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["list", "get", "spawn", "detach"]}},
                 },
             },
             "list": {
@@ -185,7 +169,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "properties": {
                         "name": {"type": "string", "description": "Name for the new process"},
                         "content": {"type": "string", "default": "", "description": "Prompt/instructions"},
-                        "code": {"type": "string", "description": "File UUID for prompt template"},
+                        "schema": {"type": "string", "description": "JSON schema for structured output"},
                         "priority": {"type": "number", "default": 0.0},
                         "runner": {"type": "string", "enum": ["lambda", "ecs"], "default": "lambda"},
                         "model": {"type": "string", "description": "Model override"},

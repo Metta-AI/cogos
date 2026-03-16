@@ -1,4 +1,4 @@
-"""CloudWatch monitoring constructs."""
+"""CloudWatch monitoring constructs (alarms only)."""
 
 from __future__ import annotations
 

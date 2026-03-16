@@ -18,8 +18,9 @@ def convert_markdown(content: str) -> str:
     """Convert standard markdown to Discord-flavored markdown.
 
     Preserves content inside code blocks (``` ... ```) unchanged.
+    Code blocks containing backtick characters may not be detected correctly.
     """
-    parts = re.split(r"(```[^`]*```)", content, flags=re.DOTALL)
+    parts = re.split(r"(```[\s\S]*?```)", content)
     result_parts = []
     for i, part in enumerate(parts):
         if i % 2 == 1:

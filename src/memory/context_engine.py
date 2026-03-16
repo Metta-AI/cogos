@@ -51,7 +51,7 @@ class ContextEngine:
 
         Layers (descending priority):
           90: Program content (never truncated)
-          80: Declared memories from program.memory_keys
+          80: Included memories resolved from the program's linked memory
           70: Event context
         """
         layers: list[ContextLayer] = []
@@ -105,6 +105,7 @@ class ContextEngine:
         """Resolve program content from linked memory.
 
         Returns (content, memory_name). memory_name is used for includes resolution.
+        Returns ("", "") if the program has no linked memory or the memory/version is not found.
         """
         if not program.memory_id:
             logger.warning("Program %s has no linked memory", program.name)

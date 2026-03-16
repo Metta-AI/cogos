@@ -1,7 +1,7 @@
-"""Proxy object generation from capability schema.
+"""Proxy helpers for capability namespaces.
 
-Generates Python classes with methods that route to capability handlers.
-For MVP, we use simple callable wrappers rather than full schema-driven generation.
+Provides CapabilityProxy (a dynamic attribute/method wrapper) and
+make_namespace_proxy (a simple name-assignment wrapper used for MVP).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ class CapabilityProxy:
     """Base proxy object returned by capability calls.
 
     Attributes are set dynamically from the result content.
-    Methods are bound to capability handlers.
+    Methods are stored in a dict and returned via __getattr__.
     """
 
     def __init__(self, content: dict[str, Any] | None = None, methods: dict[str, Callable] | None = None) -> None:
@@ -33,12 +33,10 @@ class CapabilityProxy:
 
 
 def make_namespace_proxy(name: str, handler: Callable) -> Callable:
-    """Create a simple callable proxy for a capability namespace.
+    """Attach *name* to *handler* and return it as-is.
 
-    For the MVP, capabilities are exposed as simple callables:
-    files.read(key) -> content
-    procs.list() -> [...]
-    events.emit(type, payload) -> event_id
+    For the MVP, capabilities are exposed as simple callables rather than
+    namespace objects with multiple methods.
     """
     proxy = handler
     proxy.__name__ = name

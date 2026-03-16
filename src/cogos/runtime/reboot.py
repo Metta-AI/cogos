@@ -15,7 +15,7 @@ def reboot(repo) -> dict:
     """Kill all processes, clear process state, create fresh init process.
 
     Preserves: files, coglets, channels, schemas, resources, cron.
-    Clears: processes, runs, deliveries, handlers, process_capabilities.
+    Clears: processes, runs, deliveries, handlers, process_capabilities, traces (SQL only).
     """
     # 1. Find and kill init (cascade kills everything)
     init = repo.get_process_by_name("init")

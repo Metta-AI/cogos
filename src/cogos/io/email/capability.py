@@ -80,7 +80,7 @@ class EmailCapability(Capability):
 
     Usage:
         email.send(to="user@example.com", subject="Hi", body="Hello")
-        emails = email.receive(limit=5)
+        emails = email.receive(limit=10)
     """
 
     ALL_OPS = {"send", "receive"}

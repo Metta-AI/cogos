@@ -39,7 +39,7 @@ def _build_namespace(tools_map: dict[str, callable]) -> dict[str, types.SimpleNa
 
     Given {"cogtainer/task/create": fn, "io/discord/send": fn2} returns:
         {"cogtainer": SimpleNamespace(task=SimpleNamespace(create=fn)),
-         "channels": SimpleNamespace(discord=SimpleNamespace(send=fn2))}
+         "io": SimpleNamespace(discord=SimpleNamespace(send=fn2))}
     """
     root: dict[str, Any] = {}
 

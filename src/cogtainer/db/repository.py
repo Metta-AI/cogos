@@ -1,4 +1,4 @@
-"""Synchronous PostgreSQL repository using RDS Data API: CRUD for all 12 tables."""
+"""Synchronous PostgreSQL repository using RDS Data API: CRUD for all 15 tables."""
 
 from __future__ import annotations
 

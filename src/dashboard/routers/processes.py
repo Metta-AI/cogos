@@ -257,33 +257,6 @@ def list_processes(
     ps = ProcessStatus(status) if status else None
     procs = repo.list_processes(status=ps)
 
-    # Annotate with run counts
-    all_runs = repo.list_runs(limit=10000)
-    from datetime import datetime, timedelta
-
-    now = datetime.utcnow()
-    windows = {
-        "1m": timedelta(minutes=1),
-        "5m": timedelta(minutes=5),
-        "1h": timedelta(hours=1),
-        "24h": timedelta(hours=24),
-        "7d": timedelta(days=7),
-    }
-    run_counts: dict[str, dict[str, dict[str, int]]] = {}
-    for r in all_runs:
-        pid = str(r.process)
-        if pid not in run_counts:
-            run_counts[pid] = {k: {"runs": 0, "failed": 0} for k in windows}
-        run_time = r.created_at or r.completed_at
-        is_failed = r.status and r.status.value in ("failed", "timeout")
-        if run_time:
-            age = now - run_time
-            for label, window in windows.items():
-                if age <= window:
-                    run_counts[pid][label]["runs"] += 1
-                    if is_failed:
-                        run_counts[pid][label]["failed"] += 1
-
     details = [_detail(p) for p in procs]
 
     return ProcessesResponse(cogent_name=name, count=len(details), processes=details)

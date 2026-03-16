@@ -6,7 +6,7 @@ import click
 
 
 def get_cogent_name(ctx: click.Context) -> str:
-    """Return the cogent name from the root context."""
+    """Return the cogent identifier from the root context."""
     obj = ctx.find_root().obj
     name = obj.get("cogent_id") if obj else None
     if not name:

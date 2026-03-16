@@ -373,7 +373,7 @@ class LocalRepository:
             self._reset_state()
 
     def clear_config(self) -> None:
-        """Clear config, process, and message data, preserving files only."""
+        """Clear config, process, and message data, preserving files, channels, and Discord metadata."""
         with self._writing(force=True):
             self._runs.clear()
             self._deliveries.clear()
