@@ -933,7 +933,7 @@ def reload(ctx: click.Context, image: str, yes: bool, full: bool):
             "cogos_trace",
             "cogos_delivery",
             "cogos_run",
-            "cogos_handler", "cogos_process_capability",
+            "cogos_process_capability",
             "cogos_cron", "cogos_resource",
         ]
         # Null out FK refs to cogos_process from tables we want to keep.

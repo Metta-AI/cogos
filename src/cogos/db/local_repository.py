@@ -358,18 +358,20 @@ class LocalRepository:
             self._reset_state()
 
     def clear_config(self) -> None:
-        """Clear config and process-related data, preserving files and channel messages."""
+        """Clear config and process-related data, preserving files and channel messages.
+
+        Channels and handlers are NOT cleared because upsert preserves their IDs,
+        and deliveries / channel_messages hold foreign keys to them.
+        """
         with self._writing(force=True):
             self._runs.clear()
             self._deliveries.clear()
             self._processes.clear()
             self._capabilities.clear()
-            self._handlers.clear()
             self._process_capabilities.clear()
             self._resources.clear()
             self._cron_rules.clear()
             self._schemas.clear()
-            self._channels.clear()
 
     def delete_files_by_prefixes(self, prefixes: list[str]) -> int:
         """Delete all files whose key starts with any of the given prefixes. Returns count deleted."""
