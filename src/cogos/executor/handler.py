@@ -241,6 +241,9 @@ def handler(event: dict, context: Any = None) -> dict:
         except Exception:
             logger.debug("Could not create alert for failed run %s", run.id)
 
+        # Notify parent process via spawn channel so it can handle the failure
+        _notify_parent_on_failure(repo, process, run, str(e))
+
         # Retry logic — respect out-of-band status changes
         current = repo.get_process(process.id)
         if current and current.status in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
@@ -690,6 +693,38 @@ def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -
         process_name,
         duration_ms,
     )
+
+
+def _notify_parent_on_failure(
+    repo: Repository, process: Process, run: Run, error: str,
+) -> None:
+    """If the process has a parent, send a failure message on the spawn channel."""
+    if not process.parent_process:
+        return
+    try:
+        ch_name = f"spawn:{process.id}\u2192{process.parent_process}"
+        ch = repo.get_channel_by_name(ch_name)
+        if ch:
+            repo.append_channel_message(ChannelMessage(
+                channel=ch.id,
+                sender_process=process.id,
+                payload={
+                    "type": "child:failed",
+                    "process_name": process.name,
+                    "process_id": str(process.id),
+                    "run_id": str(run.id),
+                    "error": error[:1000],
+                },
+            ))
+            logger.info(
+                "Notified parent %s of child %s failure",
+                process.parent_process, process.name,
+            )
+    except Exception:
+        logger.warning(
+            "Failed to notify parent of child %s failure",
+            process.name, exc_info=True,
+        )
 
 
 def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -> None:
