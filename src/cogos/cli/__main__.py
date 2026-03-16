@@ -927,20 +927,37 @@ def reload(ctx: click.Context, image: str, yes: bool, full: bool):
                     pass
         click.echo("All tables cleared.")
     else:
-        # Selective wipe — clear config tables, delete only image-owned files.
+        # Selective wipe — clear config/process tables, preserve files and channel messages.
         # Order matters: children before parents due to FK constraints.
-        # cogos_run references cogos_process without CASCADE, so clear it too.
         _CONFIG_TABLES = [
-            "cogos_trace", "cogos_event_delivery",
+            "cogos_trace",
+            "cogos_delivery",
             "cogos_run",
             "cogos_handler", "cogos_process_capability",
             "cogos_cron", "cogos_resource",
+        ]
+        # Null out FK refs to cogos_process from tables we want to keep.
+        _NULLIFY_PROCESS_REFS = [
+            "UPDATE cogos_channel SET owner_process = NULL WHERE owner_process IS NOT NULL",
+            "UPDATE cogos_channel_message SET sender_process = NULL WHERE sender_process IS NOT NULL",
+        ]
+        _CONFIG_TABLES_FINAL = [
             "cogos_process", "cogos_capability",
         ]
         if hasattr(repo, "clear_config"):
             repo.clear_config()
         else:
             for table in _CONFIG_TABLES:
+                try:
+                    repo.execute(f"DELETE FROM {table}")
+                except Exception:
+                    pass
+            for stmt in _NULLIFY_PROCESS_REFS:
+                try:
+                    repo.execute(stmt)
+                except Exception:
+                    pass
+            for table in _CONFIG_TABLES_FINAL:
                 try:
                     repo.execute(f"DELETE FROM {table}")
                 except Exception:
