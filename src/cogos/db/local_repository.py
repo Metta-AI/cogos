@@ -455,7 +455,23 @@ class LocalRepository:
             else:
                 process.runnable_since = None
             process.updated_at = datetime.utcnow()
+            # Cascade: if disabling, recursively disable all children
+            if status == ProcessStatus.DISABLED:
+                self._cascade_disable(process_id)
             return True
+
+    def _cascade_disable(self, parent_id: UUID) -> None:
+        """Recursively disable all child processes.
+
+        Must be called inside a _writing() block.
+        """
+        children = [p for p in self._processes.values() if p.parent_process == parent_id]
+        for child in children:
+            if child.status not in (ProcessStatus.DISABLED, ProcessStatus.COMPLETED):
+                child.status = ProcessStatus.DISABLED
+                child.runnable_since = None
+                child.updated_at = datetime.utcnow()
+                self._cascade_disable(child.id)
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         self._maybe_reload()

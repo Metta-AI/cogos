@@ -61,7 +61,7 @@ class ProcsCapability(Capability):
         procs.spawn(name="subtask", content="do something")
     """
 
-    ALL_OPS = {"list", "get", "spawn"}
+    ALL_OPS = {"list", "get", "spawn", "detach"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         old_ops = set(existing.get("ops") or self.ALL_OPS)
@@ -120,6 +120,10 @@ class ProcsCapability(Capability):
             recv_channel=recv_ch,
         )
 
+    def _init_process_id(self) -> UUID | None:
+        init = self.repo.get_process_by_name("init")
+        return init.id if init else None
+
     def spawn(
         self,
         name: str,
@@ -132,6 +136,7 @@ class ProcsCapability(Capability):
         subscribe: str | None = None,
         mode: str = "one_shot",
         idle_timeout_ms: int | None = None,
+        detached: bool = False,
     ) -> ProcessHandle | ProcessError:
         """Spawn a child process. Capabilities are NOT inherited — pass them explicitly.
 
@@ -144,6 +149,12 @@ class ProcsCapability(Capability):
 
         self._check("spawn")
 
+        if detached:
+            init_id = self._init_process_id()
+            parent_id = init_id if init_id else self.process_id
+        else:
+            parent_id = self.process_id
+
         child = Process(
             name=name,
             mode=ProcessMode(mode),
@@ -151,7 +162,7 @@ class ProcsCapability(Capability):
             priority=priority,
             runner=runner,
             status=ProcessStatus.RUNNABLE,
-            parent_process=self.process_id,
+            parent_process=parent_id,
             model=model,
             idle_timeout_ms=idle_timeout_ms,
         )
@@ -257,5 +268,22 @@ class ProcsCapability(Capability):
             recv_channel=recv_ch,
         )
 
+    def detach(self, process_id: str) -> ProcessDetail | ProcessError:
+        """Reparent a child process to init (survives parent kill)."""
+        self._check("detach")
+        target = self.repo.get_process(UUID(process_id))
+        if target is None:
+            return ProcessError(error="process not found")
+        init_id = self._init_process_id()
+        if init_id is None:
+            return ProcessError(error="init process not found")
+        target.parent_process = init_id
+        self.repo.upsert_process(target)
+        return ProcessDetail(
+            id=str(target.id), name=target.name, mode=target.mode.value,
+            status=target.status.value, priority=target.priority, runner=target.runner,
+            parent_process=str(init_id),
+        )
+
     def __repr__(self) -> str:
-        return "<ProcsCapability list() get() spawn()>"
+        return "<ProcsCapability list() get() spawn() detach()>"
