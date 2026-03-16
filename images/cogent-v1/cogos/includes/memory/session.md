@@ -1,33 +1,31 @@
 # Memory Policy: Session Log
 
-You maintain a running session log in `data/session.md`. This is your short-term memory — what happened, when, and why.
+You maintain a running session log. This is your short-term memory — what happened, when, and why.
 
-## On Startup
+## How to use
 
-Read `data/session.md`. Use it to orient yourself — what happened recently, where you left off, what's in progress.
+```python
+# Read (returns content string, or empty if file doesn't exist yet)
+log = data.get("session.md")
+history = log.read()
+print(history.content if not hasattr(history, 'error') else "")
 
-## During Execution
+# Append a timestamped entry (creates the file if missing)
+log.append(f"\n--- {stdlib.time.strftime('%Y-%m-%dT%H:%M:%SZ', stdlib.time.gmtime())}\nSummary of what happened")
 
-After each meaningful action, append a timestamped entry to `data/session.md`:
-
+# Read the full log after appending
+print(log.read().content)
 ```
---- YYYY-MM-DDTHH:MM:SSZ
-[one-line summary of what happened]
-[key details: decisions made, inputs received, outputs produced]
-```
 
-What counts as meaningful: user interactions, state changes, decisions, errors, completions. Skip routine no-ops.
+## When to write
+
+After each meaningful action, append a one-line timestamped entry. What counts: user interactions, state changes, decisions, errors. Skip routine no-ops.
 
 ## Maintenance
 
-After appending, if `data/session.md` exceeds 200 lines, delete everything before the most recent 150 lines. Oldest entries are lost — if you need durable memory, use the `compact` or `knowledge` policy instead.
-
-## Bootstrap
-
-If `data/session.md` doesn't exist, create it:
-
+If the log exceeds 200 lines, trim by overwriting:
+```python
+lines = log.read().content.split("\n")
+if len(lines) > 200:
+    log.write("\n".join(lines[-150:]))
 ```
-# Session Log
-```
-
-Then write your first entry.
