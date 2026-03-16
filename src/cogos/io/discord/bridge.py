@@ -130,6 +130,7 @@ class DiscordBridge:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.dm_messages = True
+        intents.guilds = True
         self.client = discord.Client(intents=intents)
         self._setup_handlers()
 
@@ -156,11 +157,63 @@ class DiscordBridge:
     # Discord event handlers
     # ------------------------------------------------------------------
 
+    async def _sync_guild(self, guild) -> None:
+        """Sync a guild and its channels to the DB."""
+        from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
+
+        repo = self._get_repo()
+        repo.upsert_discord_guild(DiscordGuild(
+            guild_id=str(guild.id),
+            cogent_name=self.cogent_name,
+            name=guild.name,
+            icon_url=guild.icon.url if guild.icon else None,
+            member_count=guild.member_count,
+        ))
+
+        for ch in guild.channels:
+            repo.upsert_discord_channel(DiscordChannel(
+                channel_id=str(ch.id),
+                guild_id=str(guild.id),
+                name=ch.name,
+                topic=getattr(ch, "topic", None),
+                category=ch.category.name if ch.category else None,
+                channel_type=ch.type.name,
+                position=ch.position,
+            ))
+        logger.info("Synced guild %s: %d channels", guild.name, len(guild.channels))
+
+    def _on_channel_delete(self, channel) -> None:
+        repo = self._get_repo()
+        repo.delete_discord_channel(str(channel.id))
+
     def _setup_handlers(self):
         @self.client.event
         async def on_ready():
             logger.info("Discord bridge connected as %s", self.client.user)
+            for guild in self.client.guilds:
+                await self._sync_guild(guild)
             self.client.loop.create_task(self._poll_replies())
+
+        @self.client.event
+        async def on_guild_channel_create(channel):
+            await self._sync_guild(channel.guild)
+
+        @self.client.event
+        async def on_guild_channel_update(before, after):
+            await self._sync_guild(after.guild)
+
+        @self.client.event
+        async def on_guild_channel_delete(channel):
+            self._on_channel_delete(channel)
+
+        @self.client.event
+        async def on_guild_join(guild):
+            await self._sync_guild(guild)
+
+        @self.client.event
+        async def on_guild_remove(guild):
+            repo = self._get_repo()
+            repo.delete_discord_guild(str(guild.id))
 
         @self.client.event
         async def on_message(message: discord.Message):
