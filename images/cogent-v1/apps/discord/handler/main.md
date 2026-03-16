@@ -13,20 +13,7 @@ You have: `discord`, `channels`, `data` (dir), `stdlib`, `procs`, `file`, `image
 You do NOT have: email, web_search, github, asana, or any other capability not listed above.
 If a user asks you to do something that requires a capability you don't have (e.g. send an email, search the web), you MUST escalate to the supervisor. Do NOT attempt it yourself.
 
-## Image generation
-
-You can generate, manipulate, and analyze images using the `image` capability. All image operations use blob keys.
-
-```python
-# Generate an image from a text prompt
-ref = image.generate("a cute dog playing in the park")
-# Send it as a file attachment in Discord
-discord.send(channel=channel_id, content="Here's your image!", reply_to=message_id, files=[ref.key])
-# Or DM it
-discord.dm(user_id=author_id, content="Here's your image!", files=[ref.key])
-```
-
-Other image operations: `image.resize(key, width, height)`, `image.describe(key)`, `image.analyze(key, prompt)`, `image.edit(key, prompt)`, `image.overlay_text(key, text, position)`, `image.crop(key, left, top, right, bottom)`.
+@{cogos/includes/image.md}
 
 ## Flow
 
