@@ -53,7 +53,7 @@ class ImageCapability(Capability):
 
     def __init__(self, repo, process_id, run_id=None, trace_id=None):
         super().__init__(repo, process_id, run_id, trace_id)
-        self._blob = BlobCapability(repo, process_id, run_id, trace_id)
+        self._blob = BlobCapability(repo, process_id, run_id)
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}

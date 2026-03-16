@@ -7,10 +7,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_gemini_client():
-    """Return a configured google.genai.Client using the cogent's Gemini API key."""
+    """Return a configured google.genai.Client using the cogent's Gemini API key.
+
+    Checks GOOGLE_API_KEY env var first (for local dev), then falls back
+    to fetching from cogent/{cogent}/gemini via secrets manager.
+    """
+    import os
+
     from google import genai
 
-    from cogos.capabilities._secrets_helper import fetch_secret
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        from cogos.capabilities._secrets_helper import fetch_secret
 
-    api_key = fetch_secret("cogent/{cogent}/gemini")
+        api_key = fetch_secret("cogent/{cogent}/gemini")
     return genai.Client(api_key=api_key)

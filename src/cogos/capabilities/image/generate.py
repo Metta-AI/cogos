@@ -5,17 +5,17 @@ import logging
 
 from cogos.capabilities.blob import BlobRef, BlobError
 from cogos.capabilities.image import ImageError
+from google.genai import types
+
 from cogos.capabilities.image._gemini_helper import get_gemini_client
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gemini-2.0-flash-exp"
+MODEL = "gemini-2.5-flash-image"
 
 
 def _image_to_part(img_bytes: bytes, mime_type: str = "image/png"):
     """Convert raw image bytes into a Gemini inline_data Part."""
-    from google.genai import types
-
     return types.Part(inline_data=types.Blob(data=img_bytes, mime_type=mime_type))
 
 
@@ -44,7 +44,7 @@ def generate(cap, prompt: str, size: str | None = None, style: str | None = None
     response = client.models.generate_content(
         model=MODEL,
         contents=full_prompt,
-        config={"response_modalities": ["IMAGE", "TEXT"]},
+        config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
     )
 
     img_bytes = _extract_image_from_response(response)
@@ -78,7 +78,7 @@ def edit(cap, key: str, prompt: str) -> BlobRef | ImageError:
     response = client.models.generate_content(
         model=MODEL,
         contents=[prompt, image_part],
-        config={"response_modalities": ["IMAGE", "TEXT"]},
+        config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
     )
 
     result_bytes = _extract_image_from_response(response)
@@ -115,7 +115,7 @@ def variations(cap, key: str, count: int = 2) -> list[BlobRef] | ImageError:
         response = client.models.generate_content(
             model=MODEL,
             contents=[prompt, image_part],
-            config={"response_modalities": ["IMAGE", "TEXT"]},
+            config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
         )
         result_bytes = _extract_image_from_response(response)
         if result_bytes is None:
