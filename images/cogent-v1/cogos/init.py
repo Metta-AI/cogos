@@ -9,6 +9,9 @@ for ch_name in [
 ]:
     channels.create(ch_name)
 
+# ── Web request channel (created at boot so handlers can subscribe) ──
+channels.create("io:web:request")
+
 # ── Infrastructure ───────────────────────────────────────────
 
 scheduler_data = file.read("cogos/lib/scheduler.md")

@@ -233,7 +233,15 @@ def handler(event: dict, context: Any = None) -> dict:
                 repo.update_process_status(process.id, ProcessStatus.COMPLETED)
 
         logger.info(f"Run {run_id} completed in {duration_ms}ms")
-        return {"statusCode": 200, "run_id": str(run_id)}
+        result = {"statusCode": 200, "run_id": str(run_id)}
+
+        web_request_id = event.get("web_request_id")
+        if web_request_id:
+            from cogos.io.web.capability import get_pending_response
+            web_response = get_pending_response(web_request_id)
+            result["web_response"] = web_response or {"status": 204, "headers": {}, "body": ""}
+
+        return result
 
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -301,7 +309,11 @@ def handler(event: dict, context: Any = None) -> dict:
             repo.update_process_status(process.id, ProcessStatus.DISABLED)
 
         logger.error(f"Run {run_id} failed: {e}")
-        return {"statusCode": 500, "error": str(e)}
+        result = {"statusCode": 500, "error": str(e)}
+        web_request_id = event.get("web_request_id")
+        if web_request_id:
+            result["web_response"] = {"status": 502, "headers": {}, "body": json.dumps({"error": str(e)[:1000]})}
+        return result
 
 
 def _execute_python_process(
