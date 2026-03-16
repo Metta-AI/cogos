@@ -19,6 +19,7 @@ import discord
 
 from cogos.io.access import get_io_token
 from cogos.io.discord.chunking import chunk_message
+from cogos.io.discord.markdown import convert_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -434,6 +435,8 @@ class DiscordBridge:
 
     async def _handle_message(self, body: dict, channel):
         content = body.get("content", "")
+        if content:
+            content = convert_markdown(content)
         file_specs = body.get("files") or []
         thread_id = body.get("thread_id")
         reply_to = body.get("reply_to")

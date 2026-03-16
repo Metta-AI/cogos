@@ -512,3 +512,19 @@ class TestBridgeOutbound:
         _, kwargs = channel.send.call_args
         assert "files" in kwargs
         assert len(kwargs["files"]) == 1
+
+    async def test_handle_message_converts_markdown(self):
+        bridge = _make_bridge()
+        channel = AsyncMock()
+        channel.id = 100
+
+        await bridge._handle_message(
+            {"content": "# Hello\n\n[link](https://example.com)"},
+            channel,
+        )
+
+        args, kwargs = channel.send.call_args
+        sent = args[0]
+        assert "**Hello**" in sent
+        assert "link (<https://example.com>)" in sent
+        assert "# Hello" not in sent
