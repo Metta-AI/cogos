@@ -12,6 +12,7 @@ import boto3
 from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
+from cogos.db.models.discord_metadata import DiscordChannel as DiscordChannelInfo, DiscordGuild as DiscordGuildInfo
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class DiscordCapability(Capability):
         messages = discord.receive(limit=10)
     """
 
-    ALL_OPS = {"send", "react", "create_thread", "dm", "receive"}
+    ALL_OPS = {"send", "react", "create_thread", "dm", "receive", "list_channels", "list_guilds"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
@@ -254,8 +255,22 @@ class DiscordCapability(Capability):
         messages.sort(key=lambda m: m.message_id or "")
         return messages[:limit]
 
+    def list_guilds(self) -> list[DiscordGuildInfo]:
+        """List guilds the bot is connected to."""
+        self._check("list_guilds")
+        return self.repo.list_discord_guilds()
+
+    def list_channels(self, guild_id: str | None = None) -> list[DiscordChannelInfo]:
+        """List available Discord channels. Optionally filter by guild."""
+        self._check("list_channels")
+        channels = self.repo.list_discord_channels(guild_id=guild_id)
+        allowed = self._scope.get("channels")
+        if allowed is not None:
+            channels = [ch for ch in channels if ch.channel_id in allowed]
+        return channels
+
     def __repr__(self) -> str:
-        return "<DiscordCapability send() react() create_thread() dm() receive()>"
+        return "<DiscordCapability send() react() create_thread() dm() receive() list_channels() list_guilds()>"
 
 
 def _message_from_event(e) -> DiscordMessage:

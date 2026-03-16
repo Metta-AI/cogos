@@ -345,7 +345,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "scope": {
                 "properties": {
                     "channels": {"type": "array", "items": {"type": "string"}, "description": "Allowed channel IDs"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["send", "react", "create_thread", "dm", "receive"]}},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["send", "react", "create_thread", "dm", "receive", "list_channels", "list_guilds"]}},
                 },
             },
             "send": {
@@ -417,6 +417,39 @@ BUILTIN_CAPABILITIES: list[dict] = [
                             "author_id": {"type": "string"}, "channel_id": {"type": "string"},
                             "message_id": {"type": "string"}, "is_dm": {"type": "boolean"},
                             "is_mention": {"type": "boolean"}, "event_type": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            "list_guilds": {
+                "input": {"type": "object", "properties": {}},
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "guild_id": {"type": "string"}, "name": {"type": "string"},
+                            "icon_url": {"type": "string"}, "member_count": {"type": "integer"},
+                        },
+                    },
+                },
+            },
+            "list_channels": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "guild_id": {"type": "string", "description": "Filter by guild ID"},
+                    },
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {"type": "string"}, "guild_id": {"type": "string"},
+                            "name": {"type": "string"}, "topic": {"type": "string"},
+                            "category": {"type": "string"}, "channel_type": {"type": "string"},
+                            "position": {"type": "integer"},
                         },
                     },
                 },
