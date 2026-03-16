@@ -14,6 +14,8 @@ def _make_bridge() -> DiscordBridge:
     bridge = DiscordBridge.__new__(DiscordBridge)
     bridge.client = MagicMock()
     bridge._typing_tasks = {}
+    bridge._s3_client = None
+    bridge._blob_bucket = ""
     return bridge
 
 
