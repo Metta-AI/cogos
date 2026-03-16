@@ -162,6 +162,60 @@ class Repository:
         response = self._execute(sql, api_params)
         return response.get("numberOfRecordsUpdated", 0)
 
+    # ═══════════════════════════════════════════════════════════
+    # BULK CLEAR
+    # ═══════════════════════════════════════════════════════════
+
+    # Deletion order respects FK constraints: children before parents.
+    _ALL_TABLES = [
+        "cogos_trace", "cogos_delivery", "cogos_channel_message",
+        "cogos_run", "cogos_handler", "cogos_process_capability",
+        "cogos_schema", "cron", "alerts",
+        "cogos_file_version", "cogos_file",
+        "cogos_channel", "cogos_process", "cogos_capability",
+    ]
+
+    _CONFIG_TABLES = [
+        "cogos_trace", "cogos_delivery", "cogos_channel_message",
+        "cogos_run", "cogos_handler", "cogos_process_capability",
+        "cogos_schema", "cron",
+    ]
+
+    _CONFIG_TABLES_FINAL = ["cogos_process", "cogos_capability"]
+
+    def clear_all(self) -> None:
+        """Delete all rows from every CogOS table."""
+        for table in self._ALL_TABLES:
+            self.execute(f"DELETE FROM {table}")
+
+    def clear_config(self) -> None:
+        """Clear config/process/message tables, preserving files and channels."""
+        for table in self._CONFIG_TABLES:
+            self.execute(f"DELETE FROM {table}")
+        # Nullify FK references from channels before deleting processes
+        self.execute(
+            "UPDATE cogos_channel SET owner_process = NULL "
+            "WHERE owner_process IS NOT NULL"
+        )
+        for table in self._CONFIG_TABLES_FINAL:
+            self.execute(f"DELETE FROM {table}")
+
+    def delete_files_by_prefixes(self, prefixes: list[str]) -> int:
+        """Delete files whose key starts with any of the given prefixes."""
+        total = 0
+        for prefix in prefixes:
+            params = {"prefix": prefix + "%"}
+            self.execute(
+                "DELETE FROM cogos_file_version WHERE file_id IN "
+                "(SELECT id FROM cogos_file WHERE key LIKE :prefix)",
+                params,
+            )
+            total += self.execute(
+                "DELETE FROM cogos_file WHERE key LIKE :prefix",
+                params,
+            )
+        return total
+
     @staticmethod
     def _json_field(row: dict, key: str, default: Any = None) -> Any:
         val = row.get(key, default)

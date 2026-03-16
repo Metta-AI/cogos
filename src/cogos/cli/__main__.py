@@ -123,13 +123,6 @@ def cogos(ctx: click.Context, cogent: str):
         _ensure_db_env(cogent)
 
 
-_ALL_TABLES = [
-    "cogos_trace", "cogos_run", "cogos_event_delivery",
-    "cogos_event", "cogos_handler", "cogos_process_capability",
-    "cogos_cron", "cogos_resource",
-    "cogos_file_version", "cogos_file", "cogos_process", "cogos_capability",
-]
-
 # ═══════════════════════════════════════════════════════════
 # IMAGE commands
 # ═══════════════════════════════════════════════════════════
@@ -181,14 +174,7 @@ def boot(ctx: click.Context, name: str, clean: bool):
     _run_migrations(repo)
 
     if clean:
-        if hasattr(repo, "clear_all"):
-            repo.clear_all()
-        else:
-            for table in _ALL_TABLES:
-                try:
-                    repo.execute(f"DELETE FROM {table}")
-                except Exception:
-                    pass
+        repo.clear_all()
         click.echo("Tables cleaned.")
 
     spec = load_image(image_dir)
@@ -875,14 +861,7 @@ def wipe(yes: bool):
     if not yes:
         click.confirm("This will DELETE ALL data. Continue?", abort=True)
     repo = _repo()
-    if hasattr(repo, "clear_all"):
-        repo.clear_all()
-    else:
-        for table in _ALL_TABLES:
-            try:
-                repo.execute(f"DELETE FROM {table}")
-            except Exception:
-                pass
+    repo.clear_all()
     click.echo("All tables cleared.")
 
 
@@ -917,78 +896,18 @@ def reload(ctx: click.Context, image: str, yes: bool, full: bool):
 
     if full:
         # Full wipe — original behaviour
-        if hasattr(repo, "clear_all"):
-            repo.clear_all()
-        else:
-            for table in _ALL_TABLES:
-                try:
-                    repo.execute(f"DELETE FROM {table}")
-                except Exception:
-                    pass
+        repo.clear_all()
         click.echo("All tables cleared.")
     else:
         # Selective wipe — clear config/process/message tables, preserve files.
-        # Channel messages must be cleared too: otherwise fresh handlers (with
-        # no delivery history) cause match_messages() to re-deliver everything.
-        # Order matters: children before parents due to FK constraints.
-        _CONFIG_TABLES = [
-            "cogos_trace",
-            "cogos_delivery",
-            "cogos_channel_message",
-            "cogos_run",
-            "cogos_handler",
-            "cogos_process_capability",
-            "cogos_cron", "cogos_resource",
-        ]
-        _NULLIFY_PROCESS_REFS = [
-            "UPDATE cogos_channel SET owner_process = NULL WHERE owner_process IS NOT NULL",
-        ]
-        _CONFIG_TABLES_FINAL = [
-            "cogos_process", "cogos_capability",
-        ]
-        if hasattr(repo, "clear_config"):
-            repo.clear_config()
-        else:
-            for table in _CONFIG_TABLES:
-                try:
-                    repo.execute(f"DELETE FROM {table}")
-                except Exception:
-                    pass
-            for stmt in _NULLIFY_PROCESS_REFS:
-                try:
-                    repo.execute(stmt)
-                except Exception:
-                    pass
-            for table in _CONFIG_TABLES_FINAL:
-                try:
-                    repo.execute(f"DELETE FROM {table}")
-                except Exception:
-                    pass
+        repo.clear_config()
         click.echo("Config tables cleared.")
 
         # Delete only files owned by the image
         prefixes = image_file_prefixes(image_dir)
         if prefixes:
-            if hasattr(repo, "delete_files_by_prefixes"):
-                deleted = repo.delete_files_by_prefixes(prefixes)
-                click.echo(f"Deleted {deleted} image-owned files (prefixes: {', '.join(prefixes)})")
-            else:
-                # SQL fallback: delete files matching image prefixes
-                for prefix in prefixes:
-                    try:
-                        repo.execute(
-                            "DELETE fv FROM cogos_file_version fv "
-                            "JOIN cogos_file f ON fv.file_id = f.id "
-                            "WHERE f.key LIKE :prefix",
-                            {"prefix": prefix + "%"},
-                        )
-                        repo.execute(
-                            "DELETE FROM cogos_file WHERE key LIKE :prefix",
-                            {"prefix": prefix + "%"},
-                        )
-                    except Exception:
-                        pass
-                click.echo(f"Deleted image-owned files (prefixes: {', '.join(prefixes)})")
+            deleted = repo.delete_files_by_prefixes(prefixes)
+            click.echo(f"Deleted {deleted} image-owned files (prefixes: {', '.join(prefixes)})")
 
     # Load image
     spec = load_image(image_dir)
