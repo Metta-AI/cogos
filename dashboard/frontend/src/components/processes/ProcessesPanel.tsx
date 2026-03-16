@@ -1173,7 +1173,7 @@ function SessionLogInline({ cogentName, runId }: { cogentName: string; runId: st
   );
 }
 
-function SessionLogToggle({ cogentName, runId, onClick }: { cogentName: string; runId: string; onClick?: (e: React.MouseEvent) => void }) {
+function SessionLogToggle({ onClick }: { cogentName?: string; runId?: string; onClick?: (e: React.MouseEvent) => void }) {
   return (
     <button
       onClick={onClick}
