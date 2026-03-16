@@ -300,7 +300,7 @@ def _execute_python_process(
     sandbox = SandboxExecutor(vt)
     result = sandbox.execute(code)
 
-    run.result = result
+    run.result = {"output": result}
     run.tokens_in = 0
     run.tokens_out = 0
     run.scope_log = sandbox.scope_log
