@@ -53,10 +53,22 @@ When activated with a message:
 
 ## Responding
 
-Always use `reply_to` so your response shows as a reply to the user's message:
+**Prefer reactions over text replies** when a full reply isn't needed. A reaction is less noisy and often sufficient.
 
-- DMs: `discord.send(channel=channel_id, content=your_reply, reply_to=message_id)`
-- Channel messages / mentions: `discord.send(channel=channel_id, content=your_reply, reply_to=message_id)`
+Use a **reaction only** (no text) when:
+- Escalating to the supervisor — react with ⬆️
+- Spawning a background task — react with 🔄
+- Acknowledging something that doesn't need an answer (e.g. "thanks", "got it", status updates) — react with 👍
+
+Use a **text reply** when:
+- The user asked a question you can answer directly
+- You're delivering a result or information
+- The user is in a DM and expects a conversational response
+
+When sending a text reply, always use `reply_to`:
+```python
+discord.send(channel=channel_id, content=your_reply, reply_to=message_id)
+```
 
 ## Escalation
 
@@ -66,17 +78,13 @@ Always use `reply_to` so your response shows as a reply to the user's message:
 - User asks questions you don't know the answer to
 - Anything beyond simple conversation or FAQ
 
-When escalating:
+When escalating, **react only** — do not send a text message:
 
-1. React to the user's message to acknowledge:
+1. React to acknowledge:
    ```python
    discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
    ```
-2. Tell the user you're looking into it:
-   ```python
-   discord.send(channel=channel_id, content="Let me look into that for you.", reply_to=message_id)
-   ```
-3. Escalate to the supervisor:
+2. Escalate to the supervisor:
    ```python
    channels.send("supervisor:help", {
        "process_name": "discord-handle-message",
