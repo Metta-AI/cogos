@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import type { TimeRange, AgeInfo } from "@/lib/types";
+import * as api from "@/lib/api";
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "1m", label: "1m" },
@@ -67,6 +68,48 @@ function ageColor(iso: string | null | undefined): string {
   if (ms < 3_600_000) return "var(--success)";   // < 1h
   if (ms < 86_400_000) return "var(--warning)";   // < 1d
   return "var(--error)";
+}
+
+function RebootButton({ cogentName, onRefresh }: { cogentName: string; onRefresh: () => void }) {
+  const [state, setState] = useState<"idle" | "confirm" | "rebooting">("idle");
+
+  const handleClick = useCallback(() => {
+    if (state === "idle") {
+      setState("confirm");
+      setTimeout(() => setState((s) => (s === "confirm" ? "idle" : s)), 3000);
+    } else if (state === "confirm") {
+      setState("rebooting");
+      api.reboot(cogentName).then(() => {
+        setState("idle");
+        onRefresh();
+      }).catch(() => {
+        setState("idle");
+      });
+    }
+  }, [state, cogentName, onRefresh]);
+
+  const label = state === "confirm" ? "confirm?" : state === "rebooting" ? "..." : "reboot";
+  const color = state === "confirm" ? "var(--error)" : "var(--text-muted)";
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={state === "rebooting"}
+      className="border-0 rounded-md cursor-pointer transition-colors duration-150"
+      style={{
+        padding: "4px 8px",
+        fontSize: "10px",
+        fontFamily: "var(--font-mono)",
+        fontWeight: 500,
+        background: state === "confirm" ? "rgba(239,68,68,0.15)" : "var(--bg-surface)",
+        border: "1px solid var(--border)",
+        color,
+      }}
+      title="Kill all processes, clear state, re-create init"
+    >
+      {label}
+    </button>
+  );
 }
 
 export function Header({
@@ -237,6 +280,9 @@ export function Header({
             </button>
           ))}
         </div>
+
+        {/* Reboot button */}
+        <RebootButton cogentName={cogentName} onRefresh={onRefresh} />
 
         {/* Refresh button with ages hover panel */}
         <div className="relative group/refresh">

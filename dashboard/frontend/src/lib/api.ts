@@ -484,3 +484,14 @@ export async function deleteAlert(name: string, id: string): Promise<void> {
     headers: headers(),
   });
 }
+
+// ── System ──────────────────────────────────────────────────────────────────
+
+export async function reboot(name: string): Promise<{ cleared: number }> {
+  const resp = await fetch(`/api/cogents/${name}/reboot`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
