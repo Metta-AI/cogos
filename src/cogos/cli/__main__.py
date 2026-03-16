@@ -154,11 +154,11 @@ def _run_migrations(repo) -> None:
 
 
 @image.command()
-@click.argument("name")
+@click.argument("name", default="cogent-v1")
 @click.option("--clean", is_flag=True, help="Wipe all tables before loading")
 @click.pass_context
 def boot(ctx: click.Context, name: str, clean: bool):
-    """Boot CogOS from an image."""
+    """Boot CogOS from an image (default: cogent-v1)."""
     from cogos.image.apply import apply_image
     from cogos.image.spec import load_image
 
