@@ -237,9 +237,7 @@ def handler(event: dict, context: Any = None) -> dict:
 
         web_request_id = event.get("web_request_id")
         if web_request_id:
-            from cogos.io.web.capability import get_pending_response
-            web_response = get_pending_response(web_request_id)
-            result["web_response"] = web_response or {"status": 204, "headers": {}, "body": ""}
+            result["web_response"] = event.get("_web_response") or {"status": 204, "headers": {}, "body": ""}
 
         return result
 
@@ -316,6 +314,17 @@ def handler(event: dict, context: Any = None) -> dict:
         return result
 
 
+def _extract_web_response(vt: VariableTable, event_data: dict) -> None:
+    web_request_id = event_data.get("web_request_id")
+    if not web_request_id:
+        return
+    web_cap = vt.get("web")
+    if web_cap is not None and hasattr(web_cap, "get_pending_response"):
+        resp = web_cap.get_pending_response(web_request_id)
+        if resp:
+            event_data["_web_response"] = resp
+
+
 def _execute_python_process(
     process: Process,
     event_data: dict,
@@ -364,6 +373,7 @@ def _execute_python_process(
     run.tokens_in = 0
     run.tokens_out = 0
     run.scope_log = sandbox.scope_log
+    _extract_web_response(vt, event_data)
     return run
 
 
@@ -439,6 +449,9 @@ def execute_process(
     # Build user message from the triggering event only. Process instructions
     # already live in the system prompt, including any `@{file-key}` refs.
     user_text = ""
+    web_request = event_data.get("web_request")
+    if web_request:
+        user_text += f"Incoming web request:\n{json.dumps(web_request, indent=2)}\n"
     if event_data.get("payload"):
         user_text += f"Message payload: {json.dumps(event_data['payload'], indent=2)}\n"
     if not user_text.strip():
@@ -626,6 +639,7 @@ def execute_process(
         run.tokens_in = total_input_tokens
         run.tokens_out = total_output_tokens
         run.scope_log = sandbox.scope_log
+        _extract_web_response(vt, event_data)
         _record_step(
             "final_stop",
             {

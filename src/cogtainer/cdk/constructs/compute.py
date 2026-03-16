@@ -34,10 +34,19 @@ def _build_lambda_package() -> str:
     if not uv:
         raise RuntimeError("uv not found on PATH; needed to bundle Lambda dependencies")
     subprocess.check_call(
-        [uv, "pip", "install",
-         "pydantic",
-         "--target", build_dir, "--quiet",
-         "--python-platform", "linux", "--python-version", "3.12"],
+        [
+            uv,
+            "pip",
+            "install",
+            "pydantic",
+            "--target",
+            build_dir,
+            "--quiet",
+            "--python-platform",
+            "linux",
+            "--python-version",
+            "3.12",
+        ],
     )
     # Copy src/ contents
     src_dir = "src"
@@ -108,9 +117,7 @@ class ComputeConstruct(Construct):
             ),
         ]
 
-        lambda_basic = iam.ManagedPolicy.from_aws_managed_policy_name(
-            "service-role/AWSLambdaBasicExecutionRole"
-        )
+        lambda_basic = iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
 
         # Orchestrator role (no VPC needed — uses Data API)
         orchestrator_role = iam.Role(
@@ -333,7 +340,7 @@ class ComputeConstruct(Construct):
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="cogtainer.lambdas.web_gateway.handler.handler",
             code=lambda_code,
-            memory_size=512,
+            memory_size=256,
             timeout=Duration.seconds(60),
             role=web_gateway_role,
             environment={
@@ -418,9 +425,7 @@ class ComputeConstruct(Construct):
 
         # Use custom executor image from polis ECR repo if available
         if config.ecr_repo_uri:
-            image = ecs.ContainerImage.from_registry(
-                f"{config.ecr_repo_uri}:executor-{safe_name}"
-            )
+            image = ecs.ContainerImage.from_registry(f"{config.ecr_repo_uri}:executor-{safe_name}")
             # Grant execution role permission to pull from cross-account ECR
             self.task_definition.add_to_execution_role_policy(
                 iam.PolicyStatement(
@@ -464,7 +469,8 @@ class ComputeConstruct(Construct):
         # Look up default VPC for ECS task networking
         vpc = ec2.Vpc.from_lookup(self, "EcsVpc", is_default=True)
         ecs_sg = ec2.SecurityGroup(
-            self, "EcsTaskSG",
+            self,
+            "EcsTaskSG",
             vpc=vpc,
             description=f"cogent-{safe_name} ECS executor tasks",
             allow_all_outbound=True,
@@ -473,17 +479,13 @@ class ComputeConstruct(Construct):
 
         # Wire ECS config into orchestrator so it can launch tasks
         polis_cluster = ecs.Cluster.from_cluster_attributes(
-            self, "PolisCluster", cluster_name="cogent-polis", vpc=vpc, security_groups=[],
+            self,
+            "PolisCluster",
+            cluster_name="cogent-polis",
+            vpc=vpc,
+            security_groups=[],
         )
-        self.orchestrator.add_environment(
-            "ECS_CLUSTER_ARN", polis_cluster.cluster_arn
-        )
-        self.orchestrator.add_environment(
-            "ECS_TASK_DEFINITION", self.task_definition.task_definition_arn
-        )
-        self.orchestrator.add_environment(
-            "ECS_SUBNETS", ",".join(s.subnet_id for s in public_subnets.subnets)
-        )
-        self.orchestrator.add_environment(
-            "ECS_SECURITY_GROUP", ecs_sg.security_group_id
-        )
+        self.orchestrator.add_environment("ECS_CLUSTER_ARN", polis_cluster.cluster_arn)
+        self.orchestrator.add_environment("ECS_TASK_DEFINITION", self.task_definition.task_definition_arn)
+        self.orchestrator.add_environment("ECS_SUBNETS", ",".join(s.subnet_id for s in public_subnets.subnets))
+        self.orchestrator.add_environment("ECS_SECURITY_GROUP", ecs_sg.security_group_id)

@@ -6,22 +6,13 @@ from uuid import uuid4
 import pytest
 
 from cogos.io.web.capability import (
-    WebCapability,
+    ListResult,
     PublishResult,
     UnpublishResult,
-    WebResponse,
-    ListResult,
+    WebCapability,
     WebError,
-    get_pending_response,
-    _PENDING_RESPONSES,
+    WebResponse,
 )
-
-
-@pytest.fixture(autouse=True)
-def clear_pending():
-    _PENDING_RESPONSES.clear()
-    yield
-    _PENDING_RESPONSES.clear()
 
 
 @pytest.fixture
@@ -62,7 +53,8 @@ class TestPublish:
 
     def test_publish_created_true_on_new_file(self, cap, repo):
         from cogos.db.models import File
-        new_file = File(key="web/new.html")
+
+        File(key="web/new.html")
         repo.get_file_by_key.return_value = None
         repo.insert_file.return_value = None
         repo.insert_file_version.return_value = None
@@ -74,6 +66,7 @@ class TestPublish:
 
     def test_publish_created_false_on_existing_file(self, cap, repo):
         from cogos.db.models import File, FileVersion
+
         existing = File(key="web/old.html")
         repo.get_file_by_key.return_value = existing
         active_v = FileVersion(file_id=existing.id, version=2, content="old")
@@ -92,6 +85,7 @@ class TestPublish:
 class TestUnpublish:
     def test_unpublish_deletes_file(self, cap, repo):
         from cogos.db.models import File
+
         f = File(key="web/page.html")
         repo.get_file_by_key.return_value = f
         repo.delete_file.return_value = None
@@ -120,7 +114,7 @@ class TestRespond:
         assert result.request_id == "req-1"
         assert result.status == 200
 
-        pending = get_pending_response("req-1")
+        pending = cap.get_pending_response("req-1")
         assert pending is not None
         assert pending["status"] == 200
         assert pending["body"] == "OK"
@@ -129,7 +123,7 @@ class TestRespond:
         cap.respond("req-1", status=200, body="first")
         cap.respond("req-1", status=404, body="second")
 
-        pending = get_pending_response("req-1")
+        pending = cap.get_pending_response("req-1")
         assert pending["status"] == 200
         assert pending["body"] == "first"
 
@@ -139,20 +133,21 @@ class TestRespond:
 
     def test_respond_with_headers(self, cap):
         cap.respond("req-2", status=200, headers={"X-Custom": "val"}, body="ok")
-        pending = get_pending_response("req-2")
+        pending = cap.get_pending_response("req-2")
         assert pending["headers"] == {"X-Custom": "val"}
 
     def test_get_pending_response_pops(self, cap):
         cap.respond("req-3", status=200, body="data")
-        first = get_pending_response("req-3")
+        first = cap.get_pending_response("req-3")
         assert first is not None
-        second = get_pending_response("req-3")
+        second = cap.get_pending_response("req-3")
         assert second is None
 
 
 class TestList:
     def test_list_returns_files(self, cap, repo):
         from cogos.db.models import File
+
         repo.list_files.return_value = [
             File(key="web/a.html"),
             File(key="web/b.html"),
@@ -164,6 +159,7 @@ class TestList:
 
     def test_list_with_prefix(self, cap, repo):
         from cogos.db.models import File
+
         repo.list_files.return_value = [
             File(key="web/blog/post1.html"),
         ]

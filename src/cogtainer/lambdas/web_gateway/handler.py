@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
-from pathlib import PurePosixPath
+import time
 from uuid import uuid4
 
 import boto3
@@ -14,26 +15,13 @@ from cogos.files.store import FileStore
 
 logger = logging.getLogger(__name__)
 
-_MIME_TYPES: dict[str, str] = {
-    ".html": "text/html",
-    ".htm": "text/html",
-    ".js": "application/javascript",
-    ".mjs": "application/javascript",
-    ".css": "text/css",
-    ".json": "application/json",
-    ".svg": "image/svg+xml",
-    ".xml": "application/xml",
-    ".txt": "text/plain",
-    ".md": "text/plain",
-    ".ico": "image/x-icon",
-    ".woff2": "font/woff2",
-    ".woff": "font/woff",
-}
+_jwks_cache: dict[str, tuple[float, dict]] = {}
+_JWKS_TTL = 300
 
 
 def _content_type_for(path: str) -> str:
-    suffix = PurePosixPath(path).suffix.lower()
-    return _MIME_TYPES.get(suffix, "application/octet-stream")
+    ct, _ = mimetypes.guess_type(path)
+    return ct or "application/octet-stream"
 
 
 def _is_api_request(path: str) -> bool:
@@ -54,9 +42,15 @@ def _validate_cf_jwt(token: str, team_domain: str) -> bool:
         import requests
 
         certs_url = f"https://{team_domain}.cloudflareaccess.com/cdn-cgi/access/certs"
-        resp = requests.get(certs_url, timeout=5)
-        resp.raise_for_status()
-        jwks = resp.json()
+        now = time.monotonic()
+        cached = _jwks_cache.get(team_domain)
+        if cached and (now - cached[0]) < _JWKS_TTL:
+            jwks = cached[1]
+        else:
+            resp = requests.get(certs_url, timeout=5)
+            resp.raise_for_status()
+            jwks = resp.json()
+            _jwks_cache[team_domain] = (now, jwks)
 
         header = jwt.get_unverified_header(token)
         kid = header.get("kid")
@@ -102,13 +96,14 @@ def handler(event: dict, context=None) -> dict:
         if not token or not _validate_cf_jwt(token, team_domain):
             return _make_response(403, "forbidden")
 
-    if _is_api_request(path):
-        return _handle_api_request(method, path, query_params, headers, body)
-    return _handle_static_request(path)
-
-
-def _handle_static_request(path: str) -> dict:
     repo = Repository.create()
+
+    if _is_api_request(path):
+        return _handle_api_request(repo, method, path, query_params, headers, body)
+    return _handle_static_request(repo, path)
+
+
+def _handle_static_request(repo: Repository, path: str) -> dict:
     store = FileStore(repo)
     file_key = _resolve_static_path(path)
     content = store.get_content(file_key)
@@ -125,13 +120,13 @@ def _handle_static_request(path: str) -> dict:
 
 
 def _handle_api_request(
+    repo: Repository,
     method: str,
     path: str,
     query_params: dict,
     headers: dict,
     body: str | None,
 ) -> dict:
-    repo = Repository.create()
     request_id = str(uuid4())
 
     channel = repo.get_channel_by_name("io:web:request")
@@ -169,10 +164,19 @@ def _handle_api_request(
         response = lambda_client.invoke(
             FunctionName=executor_fn,
             InvocationType="RequestResponse",
-            Payload=json.dumps({
-                "process_id": str(process.id),
-                "web_request_id": request_id,
-            }),
+            Payload=json.dumps(
+                {
+                    "process_id": str(process.id),
+                    "web_request_id": request_id,
+                    "web_request": {
+                        "method": method,
+                        "path": path,
+                        "query": query_params,
+                        "headers": filtered_headers,
+                        "body": body,
+                    },
+                }
+            ),
         )
 
         resp_payload = json.loads(response["Payload"].read())

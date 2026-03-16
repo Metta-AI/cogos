@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
 from cogos.files.store import FileStore
 
-
-_PENDING_RESPONSES: dict[str, dict] = {}
+logger = logging.getLogger(__name__)
 
 
 class PublishResult(BaseModel):
@@ -33,12 +34,12 @@ class WebError(BaseModel):
     error: str
 
 
-def get_pending_response(request_id: str) -> dict | None:
-    return _PENDING_RESPONSES.pop(request_id, None)
-
-
 class WebCapability(Capability):
     ALL_OPS = {"publish", "unpublish", "respond", "list"}
+
+    def __init__(self, repo, process_id, **kwargs):
+        super().__init__(repo, process_id, **kwargs)
+        self._pending_responses: dict[str, dict] = {}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
@@ -99,7 +100,8 @@ class WebCapability(Capability):
                 return PublishResult(path=path, version=active.version if active else 1, created=False)
             return WebError(error="failed to publish")
 
-        from cogos.db.models import File, FileVersion
+        from cogos.db.models import File
+
         if isinstance(result, File):
             return PublishResult(path=path, version=1, created=True)
         return PublishResult(path=path, version=result.version, created=False)
@@ -128,13 +130,18 @@ class WebCapability(Capability):
             return WebError(error="'request_id' is required")
         self._check("respond")
 
-        if request_id not in _PENDING_RESPONSES:
+        if request_id in self._pending_responses:
+            logger.debug("Duplicate respond() for request_id=%s, ignoring", request_id)
+        else:
             entry: dict = {"status": status, "body": body}
             if headers:
                 entry["headers"] = headers
-            _PENDING_RESPONSES[request_id] = entry
+            self._pending_responses[request_id] = entry
 
-        return WebResponse(request_id=request_id, status=_PENDING_RESPONSES[request_id]["status"])
+        return WebResponse(request_id=request_id, status=self._pending_responses[request_id]["status"])
+
+    def get_pending_response(self, request_id: str) -> dict | None:
+        return self._pending_responses.pop(request_id, None)
 
     def list(self, prefix: str = "") -> ListResult | WebError:
         self._check("list")

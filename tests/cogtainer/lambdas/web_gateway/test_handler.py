@@ -5,16 +5,6 @@ import os
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
-
-os.environ["SKIP_JWT_VALIDATION"] = "1"
-os.environ["COGENT_NAME"] = "test"
-os.environ["DB_CLUSTER_ARN"] = "arn:aws:rds:us-east-1:000000000000:cluster:test"
-os.environ["DB_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:000000000000:secret:test"
-os.environ["DB_NAME"] = "testdb"
-os.environ["EXECUTOR_FUNCTION_NAME"] = "test-executor"
-
 from cogtainer.lambdas.web_gateway.handler import (
     _content_type_for,
     _is_api_request,
@@ -68,10 +58,10 @@ class TestContentTypeFor:
         assert _content_type_for("page.htm") == "text/html"
 
     def test_js(self):
-        assert _content_type_for("app.js") == "application/javascript"
+        assert _content_type_for("app.js") == "text/javascript"
 
     def test_mjs(self):
-        assert _content_type_for("module.mjs") == "application/javascript"
+        assert _content_type_for("module.mjs") == "text/javascript"
 
     def test_css(self):
         assert _content_type_for("style.css") == "text/css"
@@ -89,7 +79,7 @@ class TestContentTypeFor:
         assert _content_type_for("readme.txt") == "text/plain"
 
     def test_md(self):
-        assert _content_type_for("readme.md") == "text/plain"
+        assert _content_type_for("readme.md") == "text/markdown"
 
     def test_ico(self):
         assert _content_type_for("favicon.ico") == "image/x-icon"
@@ -163,34 +153,30 @@ class TestHandlerAuth:
 
 class TestHandlerStaticRequest:
     @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_serves_static_file(self, mock_repo_cls, mock_store_cls):
+    def test_serves_static_file(self, mock_store_cls):
         from cogtainer.lambdas.web_gateway.handler import _handle_static_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
         mock_store = MagicMock()
         mock_store_cls.return_value = mock_store
         mock_store.get_content.return_value = "<html>hello</html>"
 
-        resp = _handle_static_request("/index.html")
+        resp = _handle_static_request(mock_repo, "/index.html")
         assert resp["statusCode"] == 200
         assert resp["body"] == "<html>hello</html>"
         assert resp["headers"]["content-type"] == "text/html"
         mock_store.get_content.assert_called_with("web/index.html")
 
     @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_fallback_index_html(self, mock_repo_cls, mock_store_cls):
+    def test_fallback_index_html(self, mock_store_cls):
         from cogtainer.lambdas.web_gateway.handler import _handle_static_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
         mock_store = MagicMock()
         mock_store_cls.return_value = mock_store
         mock_store.get_content.side_effect = [None, "<html>index</html>"]
 
-        resp = _handle_static_request("/dashboard")
+        resp = _handle_static_request(mock_repo, "/dashboard")
         assert resp["statusCode"] == 200
         assert resp["body"] == "<html>index</html>"
         calls = mock_store.get_content.call_args_list
@@ -198,55 +184,47 @@ class TestHandlerStaticRequest:
         assert calls[1].args[0] == "web/dashboard/index.html"
 
     @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_returns_404(self, mock_repo_cls, mock_store_cls):
+    def test_returns_404(self, mock_store_cls):
         from cogtainer.lambdas.web_gateway.handler import _handle_static_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
         mock_store = MagicMock()
         mock_store_cls.return_value = mock_store
         mock_store.get_content.return_value = None
 
-        resp = _handle_static_request("/nonexistent.html")
+        resp = _handle_static_request(mock_repo, "/nonexistent.html")
         assert resp["statusCode"] == 404
 
 
 class TestHandlerApiRequest:
     @patch("cogtainer.lambdas.web_gateway.handler.boto3")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_returns_503_no_channel(self, mock_repo_cls, mock_boto):
+    def test_returns_503_no_channel(self, mock_boto):
         from cogtainer.lambdas.web_gateway.handler import _handle_api_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
         mock_repo.get_channel_by_name.return_value = None
 
-        resp = _handle_api_request("GET", "/api/status", {}, {}, None)
+        resp = _handle_api_request(mock_repo, "GET", "/api/status", {}, {}, None)
         assert resp["statusCode"] == 503
 
     @patch("cogtainer.lambdas.web_gateway.handler.boto3")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_returns_503_no_handler(self, mock_repo_cls, mock_boto):
+    def test_returns_503_no_handler(self, mock_boto):
         from cogtainer.lambdas.web_gateway.handler import _handle_api_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
         channel = MagicMock()
         channel.id = uuid4()
         mock_repo.get_channel_by_name.return_value = channel
         mock_repo.match_handlers_by_channel.return_value = []
 
-        resp = _handle_api_request("GET", "/api/status", {}, {}, None)
+        resp = _handle_api_request(mock_repo, "GET", "/api/status", {}, {}, None)
         assert resp["statusCode"] == 503
 
     @patch("cogtainer.lambdas.web_gateway.handler.boto3")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_successful_api_call(self, mock_repo_cls, mock_boto):
+    def test_successful_api_call(self, mock_boto):
         from cogtainer.lambdas.web_gateway.handler import _handle_api_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
 
         channel = MagicMock()
         channel.id = uuid4()
@@ -269,17 +247,15 @@ class TestHandlerApiRequest:
         lambda_client.invoke.return_value = lambda_response
         mock_boto.client.return_value = lambda_client
 
-        resp = _handle_api_request("GET", "/api/status", {}, {"host": "example.com"}, None)
+        resp = _handle_api_request(mock_repo, "GET", "/api/status", {}, {"host": "example.com"}, None)
         assert resp["statusCode"] == 200
         assert resp["body"] == '{"ok": true}'
 
     @patch("cogtainer.lambdas.web_gateway.handler.boto3")
-    @patch("cogtainer.lambdas.web_gateway.handler.Repository")
-    def test_filters_cf_headers(self, mock_repo_cls, mock_boto):
+    def test_filters_cf_headers(self, mock_boto):
         from cogtainer.lambdas.web_gateway.handler import _handle_api_request
 
         mock_repo = MagicMock()
-        mock_repo_cls.create.return_value = mock_repo
 
         channel = MagicMock()
         channel.id = uuid4()
@@ -303,7 +279,7 @@ class TestHandlerApiRequest:
         mock_boto.client.return_value = lambda_client
 
         _handle_api_request(
-            "POST", "/api/data", {}, {"host": "example.com", "cf-access-jwt-assertion": "secret"}, "body"
+            mock_repo, "POST", "/api/data", {}, {"host": "example.com", "cf-access-jwt-assertion": "secret"}, "body"
         )
 
         call_args = mock_repo.append_channel_message.call_args
