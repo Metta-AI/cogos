@@ -99,7 +99,23 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
         status=ProcessStatus.RUNNING,
         tty=True,
     )
-    state.repo.upsert_process(process)
+    pid = state.repo.upsert_process(process)
+
+    # Bind all enabled capabilities to the shell process
+    from cogos.db.models import ProcessCapability
+    for cap in state.repo.list_capabilities(enabled_only=True):
+        state.repo.create_process_capability(
+            ProcessCapability(process=pid, capability=cap.id, name=cap.name)
+        )
+
+    # Create stdio channels for the temp process
+    from cogos.db.models import Channel, ChannelType
+    for stream in ("stdin", "stdout", "stderr"):
+        state.repo.upsert_channel(Channel(
+            name=f"process:{proc_name}:{stream}",
+            owner_process=pid,
+            channel_type=ChannelType.NAMED,
+        ))
 
     run_obj = Run(process=process.id, status=RunStatus.RUNNING)
     state.repo.create_run(run_obj)
