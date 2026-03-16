@@ -90,17 +90,20 @@ def test_apps_dont_affect_top_level():
 
 
 def test_cogent_v1_recruiter_loads():
-    """The actual recruiter app should load from the cogent-v1 image."""
+    """The actual recruiter app should load from the cogent-v1 image as a cog."""
     spec = load_image(Path("images/cogent-v1"))
 
-    proc_names = {p["name"] for p in spec.processes}
-    assert "recruiter" in proc_names
-
-    recruiter = next(p for p in spec.processes if p["name"] == "recruiter")
-    assert recruiter["mode"] == "daemon"
-    assert recruiter["content"] == "@{apps/recruiter/recruiter.md}"
-    assert "procs" in recruiter["capabilities"]
-    assert "discord" in recruiter["capabilities"]
+    cog = next((c for c in spec.cogs if c["name"] == "recruiter"), None)
+    assert cog is not None, "recruiter cog not found"
+    default = cog["default_coglet"]
+    assert default is not None
+    assert default["mode"] == "daemon"
+    assert default["entrypoint"] == "main.md"
+    cap_names = [c if isinstance(c, str) else c["name"] for c in default["capabilities"]]
+    assert "procs" in cap_names
+    assert "discord" in cap_names
+    assert "cog" in cap_names
+    assert "coglet_runtime" in cap_names
 
 
 def test_cogent_v1_recruiter_files():
@@ -125,14 +128,15 @@ def test_cogent_v1_recruiter_files():
 
 
 def test_cogent_v1_recruiter_prompt_refs_are_explicit():
-    """Recruiter prompt dependencies should be declared inline in prompt files."""
+    """Recruiter prompt references config files via file.read() at runtime."""
     spec = load_image(Path("images/cogent-v1"))
 
-    assert "@{apps/recruiter/criteria.md}" in spec.files["apps/recruiter/recruiter.md"]
-    assert "@{apps/recruiter/strategy.md}" in spec.files["apps/recruiter/recruiter.md"]
-    assert "@{apps/recruiter/rubric.json}" in spec.files["apps/recruiter/discover.md"]
-    assert "@{apps/recruiter/sourcer/github.md}" in spec.files["apps/recruiter/discover.md"]
-    assert "@{apps/recruiter/diagnosis.md}" in spec.files["apps/recruiter/evolve.md"]
+    prompt = spec.files["apps/recruiter/recruiter.md"]
+    # The orchestrator uses file.read() to load config into coglets at runtime
+    assert 'file.read("apps/recruiter/criteria.md")' in prompt
+    assert 'file.read("apps/recruiter/strategy.md")' in prompt
+    # Child prompt files are still referenced via file.read()
+    assert 'file.read("apps/recruiter/discover.md")' in prompt
 
 
 def test_cogent_v1_recruiter_channel():

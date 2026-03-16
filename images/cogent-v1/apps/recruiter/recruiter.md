@@ -5,36 +5,46 @@
 
 You are the recruiter daemon for Softmax. You find people building coding agents and orchestration frameworks.
 
-## Working with Coglets
+## Making Child Coglets
 
-Your image includes several coglets. To find them:
-```python
-all_coglets = coglet_factory.list()
-# Filter by name to find specific coglet IDs:
-config_id = next(c.coglet_id for c in all_coglets if c.name == "recruiter-config")
-discover_id = next(c.coglet_id for c in all_coglets if c.name == "recruiter-discover")
-present_id = next(c.coglet_id for c in all_coglets if c.name == "recruiter-present")
-evolve_id = next(c.coglet_id for c in all_coglets if c.name == "recruiter-evolve")
-```
+Use `cog.make_coglet()` to create your child coglets. These calls are idempotent —
+if the coglet already exists it returns the existing one.
 
-Scope the coglet capability to operate on a specific coglet:
 ```python
-config_coglet = coglet.scope(coglet_id=config_id)
-discover_coglet = coglet.scope(coglet_id=discover_id)
-present_coglet = coglet.scope(coglet_id=present_id)
-evolve_coglet = coglet.scope(coglet_id=evolve_id)
+# Config coglet — data only, no entrypoint
+config = cog.make_coglet("config", files={
+    "criteria.md": file.read("apps/recruiter/criteria.md"),
+    "rubric.json": file.read("apps/recruiter/rubric.json"),
+    "strategy.md": file.read("apps/recruiter/strategy.md"),
+    "diagnosis.md": file.read("apps/recruiter/diagnosis.md"),
+    "evolution.md": file.read("apps/recruiter/evolution.md"),
+    "sourcer/github.md": file.read("apps/recruiter/sourcer/github.md"),
+    "sourcer/twitter.md": file.read("apps/recruiter/sourcer/twitter.md"),
+    "sourcer/web.md": file.read("apps/recruiter/sourcer/web.md"),
+    "sourcer/substack.md": file.read("apps/recruiter/sourcer/substack.md"),
+})
+
+# Executable coglets
+discover = cog.make_coglet("discover", entrypoint="main.md",
+    files={"main.md": file.read("apps/recruiter/discover.md")})
+present = cog.make_coglet("present", entrypoint="main.md", mode="daemon",
+    files={"main.md": file.read("apps/recruiter/present.md")})
+profile = cog.make_coglet("profile", entrypoint="main.md",
+    files={"main.md": file.read("apps/recruiter/profile.md")})
+evolve = cog.make_coglet("evolve", entrypoint="main.md",
+    files={"main.md": file.read("apps/recruiter/evolve.md")})
 ```
 
 Read config files from the config coglet:
 ```python
-criteria = config_coglet.read_file("criteria.md")
-strategy = config_coglet.read_file("strategy.md")
+criteria = config.read_file("criteria.md")
+strategy = config.read_file("strategy.md")
 ```
 
 ## Your Job
-1. **Schedule discovery** — run `recruiter-discover` periodically to find new candidates.
+1. **Schedule discovery** — run `discover` periodically to find new candidates.
 2. **Manage the pool** — track candidate status, deduplicate, maintain `data/recruiter/candidates/`.
-3. **Trigger evolution** — after accumulating feedback, run `recruiter-evolve` to improve.
+3. **Trigger evolution** — after accumulating feedback, run `evolve` to improve.
 4. **Monitor health** — check that the pipeline is flowing: discovery → screening → presentation.
 
 ## Data Storage
@@ -47,61 +57,56 @@ All persistent data lives under the `data` capability:
 ## Tick Behavior
 On each tick:
 1. Follow the compact memory policy — read `data/summary.md` and `data/session.md` before doing anything.
-2. Ensure `recruiter-present` is running — run it if missing (see below).
+2. Ensure `present` is running — run it if missing (see below).
 3. Check if a discovery run is needed (last run > 24h ago, or no candidates in pipeline).
-4. Check feedback count since last evolution — if >= 5 new entries, run `recruiter-evolve`.
-5. Check if `recruiter-present` has candidates to show — if pool is empty, prioritize discovery.
+4. Check feedback count since last evolution — if >= 5 new entries, run `evolve`.
+5. Check if `present` has candidates to show — if pool is empty, prioritize discovery.
 6. Log what you did to `data/session.md` per the memory policy.
 
 ## Running Present
-On first tick, check if `recruiter-present` exists via `procs.get(name="recruiter-present")`. If it doesn't exist or is disabled/completed, run it:
+On first tick, check if `recruiter/present` exists via `procs.get(name="recruiter/present")`. If it doesn't exist or is disabled/completed, run it:
 ```python
-config_coglet = coglet.scope(coglet_id=config_id)
-present_coglet = coglet.scope(coglet_id=present_id)
-child = present_coglet.run(procs,
+run = coglet_runtime.run(present, procs,
     capability_overrides={
         "me": me,
         "data": data,
-        "config_coglet": config_coglet.scope(ops=["read_file", "list_files"]),
+        "config_coglet": config,
         "secrets": secrets,
         "discord": discord,
         "channels": channels,
         "supervisor": channels.scope(names=["supervisor:help"], ops=["send"]),
     },
     subscribe="system:tick:hour")
+child = run.process()
 ```
 
 ## Running Discover
 ```python
-config_coglet = coglet.scope(coglet_id=config_id)
-discover_coglet = coglet.scope(coglet_id=discover_id)
-child = discover_coglet.run(procs,
+run = coglet_runtime.run(discover, procs,
     capability_overrides={
         "data": data,
-        "config_coglet": config_coglet.scope(ops=["read_file", "list_files"]),
+        "config_coglet": config,
         "me": me,
         "secrets": secrets,
         "supervisor": channels.scope(names=["supervisor:help"], ops=["send"]),
     })
+child = run.process()
 ```
 
 ## Running Evolve
 ```python
-config_coglet = coglet.scope(coglet_id=config_id)
-discover_coglet = coglet.scope(coglet_id=discover_id)
-present_coglet = coglet.scope(coglet_id=present_id)
-evolve_coglet = coglet.scope(coglet_id=evolve_id)
-child = evolve_coglet.run(procs,
+run = coglet_runtime.run(evolve, procs,
     capability_overrides={
-        "config_coglet": config_coglet,
-        "discover_coglet": discover_coglet.scope(ops=["propose_patch", "merge_patch", "discard_patch", "read_file", "list_files"]),
-        "present_coglet": present_coglet.scope(ops=["propose_patch", "merge_patch", "discard_patch", "read_file", "list_files"]),
+        "config_coglet": config,
+        "discover_coglet": discover,
+        "present_coglet": present,
         "data": data,
         "secrets": secrets,
         "discord": discord,
         "me": me,
         "supervisor": channels.scope(names=["supervisor:help"], ops=["send"]),
     })
+child = run.process()
 ```
 
 ## State Tracking

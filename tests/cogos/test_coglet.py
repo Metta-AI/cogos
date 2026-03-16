@@ -1124,9 +1124,10 @@ class TestCogletRun:
 
 
 class TestRecruiterCoglets:
-    def test_recruiter_coglets_created_on_image_apply(self, tmp_path):
+    def test_recruiter_cog_created_on_image_apply(self, tmp_path):
         from cogos.image.spec import load_image
         from cogos.image.apply import apply_image
+        from cogos.cog import load_cog_meta, load_coglet_meta
         from pathlib import Path
 
         repo = LocalRepository(str(tmp_path))
@@ -1135,15 +1136,19 @@ class TestRecruiterCoglets:
         apply_image(spec, repo)
 
         store = FileStore(repo)
-        meta_files = store.list_files(prefix="coglets/")
-        coglet_names = set()
-        for f in meta_files:
-            if f.key.endswith("/meta.json"):
-                cid = f.key.split("/")[1]
-                meta = _load_meta(store, cid)
-                if meta and meta.name.startswith("recruiter-"):
-                    coglet_names.add(meta.name)
 
-        expected = {"recruiter-orchestrator", "recruiter-config", "recruiter-discover",
-                    "recruiter-present", "recruiter-profile", "recruiter-evolve"}
-        assert expected.issubset(coglet_names), f"Missing: {expected - coglet_names}"
+        # Cog meta should exist
+        cog_meta = load_cog_meta(store, "recruiter")
+        assert cog_meta is not None
+        assert cog_meta.name == "recruiter"
+
+        # Default coglet should exist
+        coglet_meta = load_coglet_meta(store, "recruiter", "recruiter")
+        assert coglet_meta is not None
+        assert coglet_meta.entrypoint == "main.md"
+        assert coglet_meta.mode == "daemon"
+
+        # Process should be registered
+        procs = repo.list_processes(limit=100)
+        proc = next((p for p in procs if p.name == "recruiter"), None)
+        assert proc is not None

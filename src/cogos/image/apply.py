@@ -218,8 +218,105 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
 
         counts["coglets"] += 1
 
-    # 9. Disable stale top-level processes not in this image
-    image_process_names = {p["name"] for p in spec.processes}
+    # 9. Cogs — create cog meta + default coglet + auto-start process
+    from cogos.cog import (
+        CogMeta as CogMetaModel,
+        save_cog_meta as _save_cog_meta,
+        load_coglet_meta as _load_cog_coglet_meta,
+        save_coglet_meta as _save_cog_coglet_meta,
+        write_file_tree as _write_cog_file_tree,
+    )
+    counts["cogs"] = 0
+    cog_process_names: set[str] = set()
+    for cog_dict in spec.cogs:
+        cog_name = cog_dict["name"]
+        _save_cog_meta(fs, cog_name, CogMetaModel(name=cog_name))
+
+        default = cog_dict.get("default_coglet")
+        if default is None:
+            counts["cogs"] += 1
+            continue
+
+        # Create or update the default coglet under the cog
+        coglet_name = cog_name  # default coglet shares the cog's name
+        existing_meta = _load_cog_coglet_meta(fs, cog_name, coglet_name)
+        if existing_meta is not None:
+            existing_meta.test_command = default.get("test_command", "true")
+            existing_meta.entrypoint = default["entrypoint"]
+            existing_meta.mode = default["mode"]
+            existing_meta.model = default.get("model")
+            existing_meta.capabilities = default.get("capabilities") or []
+            existing_meta.idle_timeout_ms = default.get("idle_timeout_ms")
+            _write_cog_file_tree(fs, cog_name, coglet_name, "main", default["files"])
+            _save_cog_coglet_meta(fs, cog_name, coglet_name, existing_meta)
+        else:
+            meta = CogletMeta(
+                name=coglet_name,
+                test_command=default.get("test_command", "true"),
+                entrypoint=default["entrypoint"],
+                mode=default["mode"],
+                model=default.get("model"),
+                capabilities=default.get("capabilities") or [],
+                idle_timeout_ms=default.get("idle_timeout_ms"),
+            )
+            _write_cog_file_tree(fs, cog_name, coglet_name, "main", default["files"])
+            _save_cog_coglet_meta(fs, cog_name, coglet_name, meta)
+
+        # Register the default coglet as an auto-started process.
+        # The cog capability is auto-scoped to this cog.
+        proc_name = cog_name
+        cog_process_names.add(proc_name)
+        mode = ProcessMode(default["mode"])
+
+        # Build capability list: inject cog (scoped) + coglet_runtime
+        caps = list(default.get("capabilities") or [])
+
+        p = Process(
+            name=proc_name,
+            mode=mode,
+            content=default["files"].get(default["entrypoint"], ""),
+            runner=default.get("runner", "lambda"),
+            executor="llm",
+            model=default.get("model"),
+            priority=float(default.get("priority", 0.0)),
+            status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
+            idle_timeout_ms=default.get("idle_timeout_ms"),
+        )
+        pid = repo.upsert_process(p)
+
+        for cap_entry in caps:
+            if isinstance(cap_entry, dict):
+                cap_name = cap_entry["name"]
+                cap_config = cap_entry.get("config")
+                cap_alias = cap_entry.get("alias", cap_name)
+            else:
+                cap_name = cap_entry
+                cap_config = None
+                cap_alias = cap_name
+            # Auto-scope the cog capability to this cog
+            if cap_name == "cog":
+                cap_config = {"cog_name": cog_name}
+            cap = repo.get_capability_by_name(cap_name)
+            if cap:
+                pc = ProcessCapability(
+                    process=pid, capability=cap.id,
+                    name=cap_alias, config=cap_config,
+                )
+                repo.create_process_capability(pc)
+
+        for ch_name in default.get("handlers") or []:
+            ch = repo.get_channel_by_name(ch_name)
+            if ch is None:
+                ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
+                repo.upsert_channel(ch)
+                ch = repo.get_channel_by_name(ch_name)
+            h = Handler(process=pid, channel=ch.id, enabled=True)
+            repo.create_handler(h)
+
+        counts["cogs"] += 1
+
+    # 10. Disable stale top-level processes not in this image
+    image_process_names = {p["name"] for p in spec.processes} | cog_process_names
     all_procs = repo.list_processes(limit=500)
     stale_count = 0
     for proc in all_procs:

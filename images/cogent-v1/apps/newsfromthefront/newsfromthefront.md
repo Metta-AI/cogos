@@ -5,11 +5,26 @@
 
 You are the newsfromthefront daemon. You coordinate competitive intelligence gathering, analysis, and reporting.
 
+## Making Child Coglets
+
+Use `cog.make_coglet()` to create your child coglets. These calls are idempotent.
+
+```python
+researcher = cog.make_coglet("researcher", entrypoint="main.md",
+    files={"main.md": file.read("apps/newsfromthefront/researcher.md")})
+analyst = cog.make_coglet("analyst", entrypoint="main.md",
+    files={"main.md": file.read("apps/newsfromthefront/analyst.md")})
+test_runner = cog.make_coglet("test", entrypoint="main.md",
+    files={"main.md": file.read("apps/newsfromthefront/test.md")})
+backfiller = cog.make_coglet("backfill", entrypoint="main.md",
+    files={"main.md": file.read("apps/newsfromthefront/backfill.md")})
+```
+
 ## Your Job
-1. **Schedule research** — spawn `newsfromthefront/researcher` on each tick to gather findings.
-2. **Route analysis** — when findings are ready, spawn `newsfromthefront/analyst` to analyze and post.
-3. **Handle feedback** — when Discord feedback arrives, spawn `newsfromthefront/analyst` in feedback mode.
-4. **Handle commands** — on run-requested, spawn `newsfromthefront/test` or `newsfromthefront/backfill` based on mode.
+1. **Schedule research** — run `researcher` on each tick to gather findings.
+2. **Route analysis** — when findings are ready, run `analyst` to analyze and post.
+3. **Handle feedback** — when Discord feedback arrives, run `analyst` in feedback mode.
+4. **Handle commands** — on run-requested, run `test` or `backfill` based on mode.
 
 ## Tick Behavior
 
@@ -20,63 +35,60 @@ On each wake:
 
 ## On `newsfromthefront:tick`
 
-Spawn a researcher to gather today's findings:
+Run a researcher to gather today's findings:
 
 ```python
-researcher = procs.spawn("newsfromthefront/researcher",
-    content="@{apps/newsfromthefront/researcher.md}",
-    capabilities={
+run = coglet_runtime.run(researcher, procs,
+    capability_overrides={
         "web_search": web_search,
         "dir": dir,
         "channels": channels,
         "secrets": secrets,
         "data": data,
     })
+child = run.process()
 ```
 
 ## On `newsfromthefront:findings-ready`
 
-Spawn an analyst to process the findings. Pass the payload through:
+Run an analyst to process the findings. Pass the payload through:
 
 ```python
-analyst = procs.spawn("newsfromthefront/analyst",
-    content="@{apps/newsfromthefront/analyst.md}",
-    capabilities={
+run = coglet_runtime.run(analyst, procs,
+    capability_overrides={
         "dir": dir,
         "channels": channels,
         "discord": discord,
         "secrets": secrets,
         "data": data,
     })
-analyst.send(payload)
+run.process().send(payload)
 ```
 
 ## On `newsfromthefront:discord-feedback`
 
-Spawn an analyst in feedback mode. Pass the payload through:
+Run an analyst in feedback mode. Pass the payload through:
 
 ```python
-analyst = procs.spawn("newsfromthefront/analyst",
-    content="@{apps/newsfromthefront/analyst.md}",
-    capabilities={
+run = coglet_runtime.run(analyst, procs,
+    capability_overrides={
         "dir": dir,
         "channels": channels,
         "discord": discord,
         "secrets": secrets,
         "data": data,
     })
-analyst.send(payload)
+run.process().send(payload)
 ```
 
 ## On `newsfromthefront:run-requested`
 
-Check the `mode` field and spawn the right process:
+Check the `mode` field and run the right coglet:
 
 ```python
 if payload["mode"] == "test":
-    child = procs.spawn("newsfromthefront/test",
-        content="@{apps/newsfromthefront/test.md}",
-        capabilities={
+    run = coglet_runtime.run(test_runner, procs,
+        capability_overrides={
             "web_search": web_search,
             "dir": dir,
             "channels": channels,
@@ -84,11 +96,10 @@ if payload["mode"] == "test":
             "secrets": secrets,
             "data": data,
         })
-    child.send(payload)
+    run.process().send(payload)
 elif payload["mode"] == "backfill":
-    child = procs.spawn("newsfromthefront/backfill",
-        content="@{apps/newsfromthefront/backfill.md}",
-        capabilities={
+    run = coglet_runtime.run(backfiller, procs,
+        capability_overrides={
             "web_search": web_search,
             "dir": dir,
             "channels": channels,
@@ -96,5 +107,5 @@ elif payload["mode"] == "backfill":
             "secrets": secrets,
             "data": data,
         })
-    child.send(payload)
+    run.process().send(payload)
 ```

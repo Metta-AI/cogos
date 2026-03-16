@@ -1,3 +1,6 @@
+# Newsfromthefront process is now managed as a cog.
+# See cog.py in this directory for the default coglet declaration.
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 add_schema("newsfromthefront_findings_ready", definition={

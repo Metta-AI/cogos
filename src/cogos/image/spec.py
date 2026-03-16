@@ -16,6 +16,7 @@ class ImageSpec:
     schemas: list[dict] = field(default_factory=list)
     channels: list[dict] = field(default_factory=list)
     coglets: list[dict] = field(default_factory=list)
+    cogs: list[dict] = field(default_factory=list)
 
 
 def image_file_prefixes(image_dir: Path) -> list[str]:
@@ -95,6 +96,44 @@ def load_image(image_dir: Path) -> ImageSpec:
             "mode": mode, "idle_timeout_ms": idle_timeout_ms,
         })
 
+    class _CogBuilder:
+        """Builder returned by add_cog(). Collects the default coglet declaration."""
+
+        def __init__(self, cog_name: str):
+            self.cog_name = cog_name
+
+        def make_default_coglet(
+            self, *, entrypoint, files, mode="daemon",
+            test_command="true", model=None,
+            capabilities=None, handlers=None,
+            priority=0.0, runner="lambda",
+            idle_timeout_ms=None,
+        ):
+            """Declare the default (root) coglet for this cog.
+
+            This coglet is auto-started as a process at boot.
+            """
+            cog_entry = next((c for c in spec.cogs if c["name"] == self.cog_name), None)
+            if cog_entry is None:
+                raise ValueError(f"Cog '{self.cog_name}' not found in spec")
+            cog_entry["default_coglet"] = {
+                "entrypoint": entrypoint,
+                "files": files,
+                "mode": mode,
+                "test_command": test_command,
+                "model": model,
+                "capabilities": capabilities or [],
+                "handlers": handlers or [],
+                "priority": priority,
+                "runner": runner,
+                "idle_timeout_ms": idle_timeout_ms,
+            }
+
+    def add_cog(name):
+        """Register a cog and return a builder for declaring its default coglet."""
+        spec.cogs.append({"name": name, "default_coglet": None})
+        return _CogBuilder(name)
+
     builtins = {
         "__builtins__": __builtins__,
         "add_capability": add_capability,
@@ -105,6 +144,7 @@ def load_image(image_dir: Path) -> ImageSpec:
         "add_channel": add_channel,
         "add_file": add_file,
         "add_coglet": add_coglet,
+        "add_cog": add_cog,
     }
 
     # Load top-level init scripts

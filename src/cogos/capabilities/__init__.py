@@ -970,4 +970,26 @@ BUILTIN_CAPABILITIES: list[dict] = [
         ),
         "schema": {},
     },
+    {
+        "name": "cog",
+        "description": "Make coglets within a named cog — scoped factory.",
+        "handler": "cogos.capabilities.cog.CogCapability",
+        "instructions": (
+            "Use cog to create coglets within your cog.\n"
+            "- cog.make_coglet(name, files={...}, entrypoint='main.md', mode='one_shot') — create or update a coglet\n"
+            "Returns a Coglet object with code operations: read_file, propose_patch, merge_patch, etc."
+        ),
+        "schema": {},
+    },
+    {
+        "name": "coglet_runtime",
+        "description": "Run coglets as CogOS processes.",
+        "handler": "cogos.capabilities.coglet_runtime.CogletRuntimeCapability",
+        "instructions": (
+            "Use coglet_runtime to run coglets.\n"
+            "- coglet_runtime.run(coglet, procs, capability_overrides={...}) — run a coglet, returns CogletRun\n"
+            "- run.process() — get the ProcessHandle for the running coglet"
+        ),
+        "schema": {},
+    },
 ]
