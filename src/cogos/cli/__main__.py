@@ -416,6 +416,7 @@ def process_load(file_path: str):
             mode=mode,
             content=entry.get("content", ""),
             runner=entry.get("runner", "lambda"),
+            executor=entry.get("executor", "llm"),
             model=entry.get("model"),
             priority=float(entry.get("priority", 0.0)),
             status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
@@ -429,7 +430,7 @@ def process_load(file_path: str):
             if not cap:
                 click.echo(f"    Warning: capability '{cap_name}' not found")
                 continue
-            pc = ProcessCapability(process=pid, capability=cap.id)
+            pc = ProcessCapability(process=pid, capability=cap.id, name=cap_name)
             repo.create_process_capability(pc)
             click.echo(f"    Bound capability: {cap_name}")
 

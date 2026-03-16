@@ -164,6 +164,7 @@ class ComputeConstruct(Construct):
                 ],
             )
         )
+        sessions_bucket.grant_read_write(executor_role)
 
         # Lambda code with bundled dependencies
         lambda_code = lambda_.Code.from_asset(_build_lambda_package())
