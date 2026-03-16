@@ -62,19 +62,23 @@ def _print_assistant_turn(turn_num: int, output_message: dict, verbose: bool) ->
     return "\n".join(text_parts) if text_parts else None
 
 
-def _print_tool_results(tool_results: list[dict], verbose: bool) -> None:
-    """Print tool result summaries in verbose mode."""
-    if not verbose:
-        return
-    for tr_block in tool_results:
+def _print_tool_results(tool_results: list[dict], tool_names: list[str], verbose: bool) -> None:
+    """Print tool result output. Always shows run_code stdout; verbose shows all."""
+    for tr_block, tool_name in zip(tool_results, tool_names):
         tr = tr_block.get("toolResult", {})
         result_text = ""
         for c in tr.get("content", []):
             if "text" in c:
                 result_text = c["text"]
-        if len(result_text) > 500:
-            result_text = result_text[:500] + "..."
-        print(f"  {_DIM}← {result_text}{_RESET}")
+        if not result_text:
+            continue
+        if verbose:
+            if len(result_text) > 500:
+                result_text = result_text[:500] + "..."
+            print(f"  {_DIM}← {result_text}{_RESET}")
+        elif tool_name == "run_code" and result_text.strip():
+            # Always show run_code stdout — it's program output
+            print(result_text)
 
 
 def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -> str:
@@ -184,6 +188,7 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
 
             if stop_reason == "tool_use":
                 tool_results = []
+                tool_names_for_results = []
                 for block in output_message.get("content", []):
                     if "toolUse" not in block:
                         continue
@@ -200,6 +205,7 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
                                 "content": [{"text": f"Error: invalid tool name '{invalid}'."}],
                             }
                         })
+                        tool_names_for_results.append(invalid)
                         continue
 
                     tool_start = time.monotonic()
@@ -220,8 +226,9 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
                             "content": [{"text": result}],
                         }
                     })
+                    tool_names_for_results.append(tool_name)
 
-                _print_tool_results(tool_results, verbose)
+                _print_tool_results(tool_results, tool_names_for_results, verbose)
                 messages.append({"role": "user", "content": tool_results})
                 continue
 
