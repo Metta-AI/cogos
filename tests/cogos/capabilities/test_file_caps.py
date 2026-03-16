@@ -75,7 +75,7 @@ class TestFileCapabilityScoping:
             assert isinstance(result, FileError)
 
     def test_all_ops(self):
-        assert FileCapability.ALL_OPS == {"read", "write", "delete", "get_metadata"}
+        assert FileCapability.ALL_OPS == {"read", "write", "append", "delete", "get_metadata"}
 
 
 # ── FileVersionCapability ───────────────────────────────────
@@ -141,26 +141,22 @@ class TestDirCapabilityScoping:
         with pytest.raises(ValueError):
             scoped.scope(prefix="/other/")
 
-    def test_check_denies_outside_prefix(self, repo, pid):
+    def test_full_key_prepends_prefix(self, repo, pid):
         cap = DirCapability(repo, pid)
         scoped = cap.scope(prefix="/workspace/")
-        with pytest.raises(PermissionError):
-            scoped.read("/other/file.txt")
+        assert scoped._full_key("file.txt") == "/workspace/file.txt"
 
-    def test_check_denies_wrong_op(self, repo, pid):
-        cap = DirCapability(repo, pid)
-        scoped = cap.scope(prefix="/workspace/", ops={"read"})
-        with pytest.raises(PermissionError):
-            scoped.write("/workspace/file.txt", "data")
-
-    def test_check_allows_inside_prefix(self, repo, pid):
+    def test_full_key_does_not_double_prefix(self, repo, pid):
         cap = DirCapability(repo, pid)
         scoped = cap.scope(prefix="/workspace/")
-        with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
-            store = mock_cls.return_value
-            store.get.return_value = None
-            result = scoped.read("/workspace/file.txt")
-            assert isinstance(result, FileError)
+        assert scoped._full_key("/workspace/file.txt") == "/workspace/file.txt"
+
+    def test_get_returns_file_capability(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/workspace/")
+        fc = scoped.get("file.txt")
+        assert isinstance(fc, FileCapability)
+        assert fc._scope["key"] == "/workspace/file.txt"
 
     def test_list_uses_prefix_scope(self, repo, pid):
         cap = DirCapability(repo, pid)
@@ -173,9 +169,9 @@ class TestDirCapabilityScoping:
 
     def test_ops_intersect(self, repo, pid):
         cap = DirCapability(repo, pid)
-        scoped = cap.scope(ops={"list", "read", "write", "create", "delete"})
-        narrower = scoped.scope(ops={"list", "read"})
-        assert narrower._scope["ops"] == {"list", "read"}
+        scoped = cap.scope(ops={"list", "get"})
+        narrower = scoped.scope(ops={"list"})
+        assert narrower._scope["ops"] == {"list"}
 
     def test_all_ops(self):
-        assert DirCapability.ALL_OPS == {"list", "read", "write", "create", "delete"}
+        assert DirCapability.ALL_OPS == {"list", "get"}
