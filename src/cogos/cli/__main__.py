@@ -920,6 +920,28 @@ def reload(ctx: click.Context, image: str, yes: bool, full: bool):
 
 
 # ═══════════════════════════════════════════════════════════
+# REBOOT
+# ═══════════════════════════════════════════════════════════
+
+@cogos.command("reboot")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def reboot_cmd(ctx: click.Context, yes: bool):
+    """Kill all processes and restart from init.
+
+    Preserves files, coglets, channels. Clears all processes and runs.
+    """
+    from cogos.runtime.reboot import reboot as do_reboot
+
+    if not yes:
+        click.confirm("This will kill all processes and restart from init. Continue?", abort=True)
+
+    repo = _repo()
+    result = do_reboot(repo)
+    click.echo(f"Reboot complete: cleared {result['cleared_processes']} processes, init queued")
+
+
+# ═══════════════════════════════════════════════════════════
 # LOCAL EXECUTOR
 # ═══════════════════════════════════════════════════════════
 

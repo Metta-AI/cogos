@@ -452,6 +452,16 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
     return _detail(p)
 
 
+@router.post("/reboot")
+def reboot_system(name: str) -> dict:
+    """Kill all processes, clear process state, re-create init."""
+    from cogos.runtime.reboot import reboot as do_reboot
+
+    repo = get_repo()
+    result = do_reboot(repo)
+    return result
+
+
 @router.delete("/processes/{process_id}")
 def delete_process(name: str, process_id: str) -> dict:
     repo = get_repo()
