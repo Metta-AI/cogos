@@ -15,7 +15,7 @@ cogent local cogos image boot cogent-v1 --clean
 cogent local cogos status
 ```
 
-- [ ] Shows all 5 processes (discord-handle-message, recruiter, recruiter/present, scheduler, secret-audit)
+- [ ] Shows all 4 processes (discord-handle-message, recruiter, recruiter/present, scheduler)
 - [ ] All processes in `waiting` state
 - [ ] Shows file and capability counts
 
@@ -64,7 +64,7 @@ cogent local cogos handler list
 - [ ] discord-handle-message subscribed to `io:discord:dm` and `io:discord:mention`
 - [ ] recruiter subscribed to `system:tick:hour` and `recruiter:feedback`
 - [ ] recruiter/present subscribed to `system:tick:hour`
-- [ ] secret-audit subscribed to `secret-audit:requests`, `secret-audit:events`, and `system:tick:hour`
+
 
 ## Channel Delivery (Discord DM)
 

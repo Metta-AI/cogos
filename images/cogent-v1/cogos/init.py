@@ -60,17 +60,6 @@ procs.spawn("fibonacci",
     capabilities={"dir": None},
     subscribe="fibonacci:poke")
 
-audit_prompt = file.read("apps/secret-audit/orchestrator.md").content
-procs.spawn("secret-audit",
-    mode="daemon",
-    content=audit_prompt,
-    priority=4.0,
-    capabilities={
-        "me": None, "procs": None, "dir": None, "file": None,
-        "channels": None, "secrets": None, "stdlib": None,
-    },
-    subscribe=["secret-audit:requests", "secret-audit:events", "system:tick:hour"])
-
 # ── Coglets ──────────────────────────────────────────────────
 
 all_coglets = coglet_factory.list()

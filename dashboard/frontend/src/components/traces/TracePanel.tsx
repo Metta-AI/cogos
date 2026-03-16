@@ -573,7 +573,7 @@ export function TracePanel({ traces, cogentName, timeRange, onRefresh }: TracePa
               onChange={(event) => setPayloadDraft(event.target.value)}
               spellCheck={false}
               rows={10}
-              placeholder='{"message_type":"secret-audit:request"}'
+              placeholder='{"message_type":"example:request"}'
               className="w-full rounded-md border px-3 py-2 text-[12px] font-mono"
               style={{
                 background: "var(--bg-base)",

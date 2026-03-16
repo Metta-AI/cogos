@@ -12,8 +12,7 @@ images/cogent-v1/
 │   ├── processes.py       # process definitions with handler + capability bindings
 │   └── cron.py            # scheduled channel message emitters
 ├── apps/
-│   ├── recruiter/         # example recruiting workflow app
-│   └── secret-audit/      # example least-privilege filesystem audit app
+│   └── recruiter/         # example recruiting workflow app
 └── files/
     └── cogos/
         └── scheduler.md   # scheduler daemon prompt template

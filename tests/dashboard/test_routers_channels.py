@@ -15,7 +15,7 @@ class _ChannelsRepoStub:
         now = datetime.now(timezone.utc)
         self.process = Process(
             id=uuid4(),
-            name="secret-audit",
+            name="test-daemon",
             mode=ProcessMode.DAEMON,
             status=ProcessStatus.WAITING,
             runner="lambda",
@@ -23,7 +23,7 @@ class _ChannelsRepoStub:
         )
         self.channel = Channel(
             id=uuid4(),
-            name="secret-audit:requests",
+            name="test:requests",
             owner_process=self.process.id,
             channel_type=ChannelType.NAMED,
             inline_schema={"fields": {"prefix": "string", "reason": "string"}},
@@ -36,7 +36,7 @@ class _ChannelsRepoStub:
         )
         self.schema_channel = Channel(
             id=uuid4(),
-            name="secret-audit:findings",
+            name="test:findings",
             channel_type=ChannelType.NAMED,
             schema_id=self.schema.id,
             created_at=now,
@@ -106,7 +106,7 @@ def test_send_channel_message_accepts_valid_named_channel_payload():
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["channel_name"] == "secret-audit:requests"
+    assert payload["channel_name"] == "test:requests"
     assert payload["payload"]["prefix"] == "workspace/"
     assert len(repo.appended_messages) == 1
     assert repo.appended_messages[0]["sender_process"] is None
@@ -122,8 +122,8 @@ def test_list_channels_includes_resolved_schema_metadata():
 
     assert response.status_code == 200
     channels = response.json()["channels"]
-    request_channel = next(channel for channel in channels if channel["name"] == "secret-audit:requests")
-    findings_channel = next(channel for channel in channels if channel["name"] == "secret-audit:findings")
+    request_channel = next(channel for channel in channels if channel["name"] == "test:requests")
+    findings_channel = next(channel for channel in channels if channel["name"] == "test:findings")
 
     assert request_channel["schema_definition"] == {"fields": {"prefix": "string", "reason": "string"}}
     assert request_channel["schema_name"] is None
