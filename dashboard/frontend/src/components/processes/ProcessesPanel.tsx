@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { CogosProcess, CogosProcessRun, Resource, CogosRun, CogosFile, CogosCapability, EventType } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
@@ -8,6 +8,7 @@ import { FileReferenceTextarea } from "@/components/shared/FileReferenceTextarea
 import { InfoTooltip } from "@/components/shared/InfoTooltip";
 import { JsonViewer } from "@/components/shared/JsonViewer";
 import type { CogosFileVersion } from "@/lib/types";
+import type { CogosRunLogsResponse } from "@/lib/types";
 import * as api from "@/lib/api";
 import { fmtTimestamp } from "@/lib/format";
 import { buildCogentRunLogsUrl } from "@/lib/cloudwatch";
@@ -1128,10 +1129,68 @@ function TagEditor({
   );
 }
 
+/* ── Session Log Inline Viewer ── */
+
+function SessionLogInline({ cogentName, runId }: { cogentName: string; runId: string }) {
+  const [logs, setLogs] = useState<CogosRunLogsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api.getRunLogs(cogentName, runId, 100).then((data) => {
+      if (!cancelled) { setLogs(data); setLoading(false); }
+    }).catch((err) => {
+      if (!cancelled) { setError(err instanceof Error ? err.message : "Failed to load"); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [cogentName, runId]);
+
+  if (loading) return <div className="text-[11px] text-[var(--text-muted)] py-1">Loading session log...</div>;
+  if (error) return <div className="text-[11px] text-red-400 py-1">{error}</div>;
+  if (!logs || logs.entries.length === 0) return <div className="text-[11px] text-[var(--text-muted)] py-1">No session log entries found.</div>;
+
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)] mt-1 max-h-[400px] overflow-y-auto">
+      {logs.log_stream && (
+        <div className="px-3 py-1 text-[10px] text-[var(--text-muted)] border-b border-[var(--border)]" style={{ background: "var(--bg-deep)" }}>
+          {logs.log_stream}
+        </div>
+      )}
+      {logs.entries.map((entry, i) => (
+        <div
+          key={`${entry.log_stream}-${entry.timestamp}-${i}`}
+          className="grid gap-2 px-3 py-1.5 text-[11px] font-mono border-b border-[var(--border)] last:border-b-0"
+          style={{ gridTemplateColumns: "150px 1fr" }}
+        >
+          <div className="text-[var(--text-muted)] text-[10px]">{fmtTimestamp(entry.timestamp)}</div>
+          <pre className="whitespace-pre-wrap break-words text-[var(--text-secondary)] m-0 text-[10px]">{entry.message}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SessionLogToggle({ cogentName, runId, onClick }: { cogentName: string; runId: string; onClick?: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-[10px] font-mono px-1 py-0 rounded hover:underline bg-transparent border-0 cursor-pointer"
+      style={{ background: "rgba(59,130,246,0.12)", color: "#60a5fa" }}
+      title="Session log (inline)"
+    >
+      L
+    </button>
+  );
+}
+
 /* ── Last Run Display ── */
 
 function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogentName?: string; runner?: string }) {
   const [showResult, setShowResult] = useState(false);
+  const [showSessionLog, setShowSessionLog] = useState(false);
   return (
     <div
       className="rounded p-3 space-y-2"
@@ -1144,18 +1203,22 @@ function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogent
             {run.status}
           </Badge>
           {cogentName && (
-            <a
-              href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, runner)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--accent)] text-[10px] hover:underline"
-              title="View CloudWatch logs"
-            >
-              CW Logs
-            </a>
+            <>
+              <a
+                href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, runner)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--accent)] text-[10px] hover:underline"
+                title="View CloudWatch logs"
+              >
+                CW Logs
+              </a>
+              <SessionLogToggle cogentName={cogentName} runId={run.id} onClick={() => setShowSessionLog(!showSessionLog)} />
+            </>
           )}
         </div>
       </div>
+      {showSessionLog && cogentName && <SessionLogInline cogentName={cogentName} runId={run.id} />}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
         <span className="text-[var(--text-muted)]">
           duration: <span className="text-[var(--text-secondary)]">{fmtDuration(run.duration_ms)}</span>
@@ -1939,6 +2002,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
   const [editingFileKey, setEditingFileKey] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"tree" | "status">("tree");
+  const [sessionLogRunId, setSessionLogRunId] = useState<string | null>(null);
 
   const resourceSuggestions = useMemo(() => resources.map((r) => r.name), [resources]);
   const fileSuggestions = useMemo(() => files.map((f) => f.key), [files]);
@@ -2324,6 +2388,13 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                       <span className="text-[var(--text-muted)] text-[10px]">·</span>
                     )}
                   </span>
+                  <span className="inline-flex items-center justify-center w-[22px] h-[18px]">
+                    {lastRun ? (
+                      <SessionLogToggle cogentName={cogentName} runId={lastRun.id} onClick={(e) => { e.stopPropagation(); setSessionLogRunId(sessionLogRunId === lastRun.id ? null : lastRun.id); }} />
+                    ) : (
+                      <span className="text-[var(--text-muted)] text-[10px]">·</span>
+                    )}
+                  </span>
                   <span
                     className="inline-flex items-center justify-center w-[22px] h-[18px] text-[10px] font-mono rounded"
                     style={{ background: proc.runner === "ecs" ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)", color: proc.runner === "ecs" ? "#a78bfa" : "#60a5fa" }}
@@ -2333,6 +2404,13 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                   </span>
                 </span>
               </div>
+
+              {/* Inline session log */}
+              {lastRun && sessionLogRunId === lastRun.id && (
+                <div className="px-4 py-2" style={{ background: "var(--bg-deep)", borderBottom: "1px solid var(--border)" }}>
+                  <SessionLogInline cogentName={cogentName} runId={lastRun.id} />
+                </div>
+              )}
 
               {/* Expanded detail */}
               {isSelected && !isEditing && (
@@ -2576,30 +2654,42 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                         </thead>
                         <tbody>
                           {detailRuns.slice(0, 10).map((run) => (
-                            <tr key={run.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                              <td className="px-2 py-1">
-                                <Badge variant={run.status === "completed" ? "success" : run.status === "failed" || run.status === "error" ? "error" : run.status === "running" ? "accent" : "warning"}>
-                                  {run.status === "completed" ? "✓" : run.status === "failed" || run.status === "error" ? "✗" : run.status === "running" ? "…" : "?"}
-                                </Badge>
-                              </td>
-                              <td className="px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap">{fmtDuration(run.duration_ms)}</td>
-                              <td className="px-2 py-1 text-[var(--text-muted)] whitespace-nowrap">{fmtTokens(run.tokens_in)}/{fmtTokens(run.tokens_out)}</td>
-                              <td className="px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap">${run.cost_usd.toFixed(3)}</td>
-                              <td className="px-2 py-1 text-[var(--text-muted)] text-[10px] whitespace-nowrap">{run.created_at ? fmtTimestamp(run.created_at) : "--"}</td>
-                              <td className="px-2 py-1 text-red-400 text-[10px] truncate max-w-[200px]" title={run.error || ""}>{run.error ? (run.error.length > 30 ? run.error.slice(0, 30) + "…" : run.error) : ""}</td>
-                              <td className="px-2 py-1 text-right">
-                                <a
-                                  href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, proc.runner)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[var(--accent)] text-[10px] hover:underline"
-                                  title="CloudWatch logs"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  CW
-                                </a>
-                              </td>
-                            </tr>
+                            <React.Fragment key={run.id}>
+                              <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td className="px-2 py-1">
+                                  <Badge variant={run.status === "completed" ? "success" : run.status === "failed" || run.status === "error" ? "error" : run.status === "running" ? "accent" : "warning"}>
+                                    {run.status === "completed" ? "✓" : run.status === "failed" || run.status === "error" ? "✗" : run.status === "running" ? "…" : "?"}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap">{fmtDuration(run.duration_ms)}</td>
+                                <td className="px-2 py-1 text-[var(--text-muted)] whitespace-nowrap">{fmtTokens(run.tokens_in)}/{fmtTokens(run.tokens_out)}</td>
+                                <td className="px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap">${run.cost_usd.toFixed(3)}</td>
+                                <td className="px-2 py-1 text-[var(--text-muted)] text-[10px] whitespace-nowrap">{run.created_at ? fmtTimestamp(run.created_at) : "--"}</td>
+                                <td className="px-2 py-1 text-red-400 text-[10px] truncate max-w-[200px]" title={run.error || ""}>{run.error ? (run.error.length > 30 ? run.error.slice(0, 30) + "…" : run.error) : ""}</td>
+                                <td className="px-2 py-1 text-right whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1">
+                                    <a
+                                      href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, proc.runner)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[var(--accent)] text-[10px] hover:underline"
+                                      title="CloudWatch logs"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      CW
+                                    </a>
+                                    <SessionLogToggle cogentName={cogentName} runId={run.id} onClick={(e) => { e.stopPropagation(); setSessionLogRunId(sessionLogRunId === run.id ? null : run.id); }} />
+                                  </span>
+                                </td>
+                              </tr>
+                              {sessionLogRunId === run.id && (
+                                <tr>
+                                  <td colSpan={7} className="px-2 py-2" style={{ background: "var(--bg-deep)" }}>
+                                    <SessionLogInline cogentName={cogentName} runId={run.id} />
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           ))}
                         </tbody>
                       </table>

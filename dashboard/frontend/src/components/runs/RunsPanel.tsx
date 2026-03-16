@@ -107,7 +107,10 @@ function renderLogPreview(
   );
 }
 
-function makeColumns(): Column<RunRow>[] {
+function makeColumns(
+  cogentName: string | undefined,
+  toggleRunLogs: (runId: string) => void,
+): Column<RunRow>[] {
   return [
     {
       key: "process_name",
@@ -174,6 +177,35 @@ function makeColumns(): Column<RunRow>[] {
       label: "Created",
       render: (row) => (
         <span className="text-[var(--text-muted)] text-xs">{fmtTimestamp(row.created_at)}</span>
+      ),
+    },
+    {
+      key: "_links",
+      label: "",
+      render: (row) => (
+        <span className="inline-flex items-center gap-1">
+          {cogentName && (
+            <a
+              href={buildCogentRunLogsUrl(cogentName, row.id, row.created_at, row.runner)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-mono px-1 py-0 rounded hover:underline"
+              style={{ background: "rgba(234,179,8,0.12)", color: "#facc15" }}
+              title="CloudWatch logs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              CW
+            </a>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleRunLogs(row.id); }}
+            className="text-[10px] font-mono px-1 py-0 rounded hover:underline bg-transparent border-0 cursor-pointer"
+            style={{ background: "rgba(59,130,246,0.12)", color: "#60a5fa" }}
+            title="Session log (inline)"
+          >
+            L
+          </button>
+        </span>
       ),
     },
   ];
@@ -244,7 +276,7 @@ export function RunsPanel({ runs, cogentName }: Props) {
     }
   }, [cogentName, expandedRunIds, loadingRunIds]);
 
-  const columns = makeColumns();
+  const columns = makeColumns(cogentName, toggleRunLogs);
   const rows = runs.map((r) => ({ ...r } as RunRow));
 
   return (
