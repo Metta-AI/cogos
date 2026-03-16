@@ -65,3 +65,28 @@ read_only = discord.scope(ops=["receive"])
 # Both
 scoped = discord.scope(channels=["123456789"], ops=["send", "receive"])
 ```
+
+## list_guilds()
+
+```python
+guilds = discord.list_guilds()
+for g in guilds:
+    print(f"{g.name} ({g.guild_id}) — {g.member_count} members")
+```
+
+Returns `list[DiscordGuildInfo]` — guild_id, name, icon_url, member_count.
+
+## list_channels(guild_id?)
+
+```python
+# All channels across all guilds
+channels = discord.list_channels()
+
+# Channels in a specific guild
+channels = discord.list_channels(guild_id="123456")
+
+for ch in channels:
+    print(f"#{ch.name} ({ch.channel_id}) — {ch.channel_type}, topic: {ch.topic}")
+```
+
+Returns `list[DiscordChannelInfo]` — channel_id, guild_id, name, topic, category, channel_type, position.
