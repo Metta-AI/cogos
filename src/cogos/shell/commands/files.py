@@ -159,7 +159,7 @@ def register(reg: CommandRegistry) -> None:
                 lines.append(f"{indent}{filename}")
         return "\n".join(lines)
 
-    @reg.register("edit", aliases=["vim"], help="Edit a file with $EDITOR")
+    @reg.register("edit", aliases=["vim", "vi"], help="Edit a file with $EDITOR")
     def edit(state: ShellState, args: list[str]) -> str:
         if not args:
             return "Usage: edit <file>"

@@ -10,7 +10,7 @@ from prompt_toolkit.document import Document
 
 from cogos.shell.commands import CommandRegistry, ShellState
 
-_FILE_COMMANDS = {"cat", "less", "rm", "vim", "edit", "source", "."}
+_FILE_COMMANDS = {"cat", "less", "rm", "vim", "vi", "edit", "source", "."}
 _DIR_COMMANDS = {"cd", "ls", "tree"}
 _PROC_COMMANDS = {"kill"}
 _CHANNEL_SUBCMDS = {"send", "log"}

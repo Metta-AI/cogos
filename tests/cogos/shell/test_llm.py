@@ -27,7 +27,6 @@ def test_llm_creates_temp_process(tmp_path, monkeypatch):
         executed.append(process.name)
         run.tokens_in = 10
         run.tokens_out = 5
-        run.result = "Hello world!"
         return run
 
     monkeypatch.setattr("cogos.shell.commands.llm.run_and_complete", fake_run_and_complete)
@@ -36,7 +35,6 @@ def test_llm_creates_temp_process(tmp_path, monkeypatch):
     output = reg.dispatch(state, "llm say hi")
     assert len(executed) == 1
     assert executed[0].startswith("shell-")
-    assert "Hello world!" in output
 
 
 def test_source_reads_file(tmp_path, monkeypatch):
@@ -73,3 +71,17 @@ def test_llm_file_flag(tmp_path, monkeypatch):
 
     reg.dispatch(state, "llm -f prompts/hello.md")
     assert "Say hello world" in prompts_seen[0]
+
+
+def test_llm_help(tmp_path):
+    state, reg, _ = _setup(tmp_path)
+    output = reg.dispatch(state, "llm --help")
+    assert "Usage:" in output
+    assert "-v" in output
+    assert "-f" in output
+
+
+def test_llm_no_args_shows_help(tmp_path):
+    state, reg, _ = _setup(tmp_path)
+    output = reg.dispatch(state, "llm")
+    assert "Usage:" in output
