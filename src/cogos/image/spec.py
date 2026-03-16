@@ -178,9 +178,10 @@ def load_image(image_dir: Path) -> ImageSpec:
                     if py.name.startswith("_"):
                         continue
                     exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
-            # App files — everything under the app dir except init/
+            # App files — everything under the app dir except init/ and __pycache__/
             for f in sorted(app_dir.rglob("*")):
-                if f.is_file() and "init" not in f.relative_to(app_dir).parts:
+                rel_parts = f.relative_to(app_dir).parts
+                if f.is_file() and "init" not in rel_parts and "__pycache__" not in rel_parts:
                     key = str(f.relative_to(image_dir))
                     spec.files[key] = f.read_text()
 

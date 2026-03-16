@@ -17,18 +17,6 @@ procs.spawn("scheduler",
         "channels": None,
     })
 
-discord_prompt = file.read("cogos/io/discord/dispatch.md").content
-procs.spawn("discord-handle-message",
-    mode="daemon",
-    content=discord_prompt,
-    priority=10.0,
-    model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    capabilities={
-        "discord": None, "channels": None, "stdlib": None,
-        "procs": None, "file": None, "data:dir": None,
-    },
-    subscribe=["io:discord:dm", "io:discord:mention", "io:discord:message"])
-
 supervisor_prompt = file.read("apps/supervisor/supervisor.md").content
 procs.spawn("supervisor",
     mode="daemon",
