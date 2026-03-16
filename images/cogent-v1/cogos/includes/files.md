@@ -2,7 +2,7 @@
 
 Three capabilities for file access: `file` (single key), `dir` (prefix/directory), `file_version` (history).
 
-Use exact file keys, including suffixes like `.md` and `.json`. Inline prompt references should also keep the suffix: `@{cogos/docs/layout.md}`, not `@{cogos/docs/layout}`.
+Use exact file keys, including suffixes like `.md` and `.json`. Inline prompt references must include the suffix (e.g. `layout.md`, not `layout`).
 
 ## dir — directory access
 
