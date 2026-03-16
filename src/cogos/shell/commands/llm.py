@@ -97,6 +97,7 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
         content=content,
         runner="local",
         status=ProcessStatus.RUNNING,
+        tty=True,
     )
     state.repo.upsert_process(process)
 

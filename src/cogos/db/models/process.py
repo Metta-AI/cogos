@@ -47,6 +47,7 @@ class Process(BaseModel):
     retry_count: int = 0
     retry_backoff_ms: int | None = None
     clear_context: bool = False  # ECS only: resume or fresh
+    tty: bool = False  # forward stdio to global io channels
     metadata: dict[str, Any] = Field(default_factory=dict)
     output_events: list[str] = Field(default_factory=list)  # event types this process emits
     schema_id: UUID | None = None  # FK -> Schema.id

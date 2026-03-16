@@ -254,12 +254,12 @@ class Repository:
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     idle_timeout_ms, max_duration_ms, max_retries, retry_count, retry_backoff_ms,
-                    clear_context, metadata)
+                    clear_context, tty, metadata)
                VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :runner, :executor,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :idle_timeout_ms, :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
-                       :clear_context, :metadata::jsonb)
+                       :clear_context, :tty, :metadata::jsonb)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content,
                    resources = EXCLUDED.resources, runner = EXCLUDED.runner,
@@ -272,6 +272,7 @@ class Repository:
                    max_retries = EXCLUDED.max_retries,
                    retry_backoff_ms = EXCLUDED.retry_backoff_ms,
                    clear_context = EXCLUDED.clear_context,
+                   tty = EXCLUDED.tty,
                    metadata = EXCLUDED.metadata,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
@@ -297,6 +298,7 @@ class Repository:
                 self._param("retry_count", p.retry_count),
                 self._param("retry_backoff_ms", p.retry_backoff_ms),
                 self._param("clear_context", p.clear_context),
+                self._param("tty", p.tty),
                 self._param("metadata", p.metadata),
             ],
         )
@@ -391,6 +393,7 @@ class Repository:
             retry_count=row.get("retry_count", 0),
             retry_backoff_ms=row.get("retry_backoff_ms"),
             clear_context=row.get("clear_context", False),
+            tty=row.get("tty", False),
             metadata=self._json_field(row, "metadata", {}),
             created_at=self._ts(row, "created_at"),
             updated_at=self._ts(row, "updated_at"),

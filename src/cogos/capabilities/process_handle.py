@@ -110,5 +110,36 @@ class ProcessHandle:
     def wait_all(handles: list[ProcessHandle]) -> dict:
         return {"type": "wait_all", "process_ids": [h.id for h in handles]}
 
+    def stdin(self, text: str) -> dict:
+        """Write to child's stdin channel."""
+        ch = self._repo.get_channel_by_name(f"process:{self._process.name}:stdin")
+        if not ch:
+            return {"error": f"No stdin channel for {self._process.name}"}
+        msg = ChannelMessage(channel=ch.id, sender_process=self._caller_id, payload={"text": text})
+        msg_id = self._repo.append_channel_message(msg)
+        return {"id": str(msg_id)}
+
+    def stdout(self, limit: int = 1) -> str | list[str] | None:
+        """Read from child's stdout channel."""
+        ch = self._repo.get_channel_by_name(f"process:{self._process.name}:stdout")
+        if not ch:
+            return None
+        msgs = self._repo.list_channel_messages(ch.id, limit=limit)
+        if not msgs:
+            return None
+        texts = [m.payload.get("text", "") if isinstance(m.payload, dict) else str(m.payload) for m in msgs]
+        return texts[0] if limit == 1 else texts
+
+    def stderr(self, limit: int = 1) -> str | list[str] | None:
+        """Read from child's stderr channel."""
+        ch = self._repo.get_channel_by_name(f"process:{self._process.name}:stderr")
+        if not ch:
+            return None
+        msgs = self._repo.list_channel_messages(ch.id, limit=limit)
+        if not msgs:
+            return None
+        texts = [m.payload.get("text", "") if isinstance(m.payload, dict) else str(m.payload) for m in msgs]
+        return texts[0] if limit == 1 else texts
+
     def __repr__(self) -> str:
         return f"<ProcessHandle {self.name} ({self.id[:8]})>"

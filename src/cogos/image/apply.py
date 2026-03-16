@@ -162,6 +162,14 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             h = Handler(process=pid, channel=ch.id, enabled=True)
             repo.create_handler(h)
 
+        # Create per-process stdio channels
+        for stream in ("stdin", "stdout", "stderr"):
+            io_ch_name = f"process:{proc_dict['name']}:{stream}"
+            if repo.get_channel_by_name(io_ch_name) is None:
+                repo.upsert_channel(Channel(
+                    name=io_ch_name, owner_process=pid, channel_type=ChannelType.NAMED,
+                ))
+
         counts["processes"] += 1
 
     # 8. Coglets

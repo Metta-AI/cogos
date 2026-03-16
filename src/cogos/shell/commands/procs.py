@@ -22,13 +22,14 @@ _RESET = "\033[0m"
 def _format_process_table(procs: list[Process]) -> str:
     if not procs:
         return "(no processes)"
-    lines = [f"{'NAME':<24} {'STATUS':<12} {'MODE':<10} {'RUNNER':<8} {'PRI':>5}"]
-    lines.append("-" * 63)
+    lines = [f"{'NAME':<24} {'STATUS':<12} {'MODE':<10} {'RUNNER':<8} {'TTY':<5} {'PRI':>5}"]
+    lines.append("-" * 68)
     for p in procs:
         color = _STATUS_COLORS.get(p.status.value, "")
+        tty = "*" if p.tty else ""
         lines.append(
             f"{p.name:<24} {color}{p.status.value:<12}{_RESET} "
-            f"{p.mode.value:<10} {p.runner:<8} {p.priority:>5.1f}"
+            f"{p.mode.value:<10} {p.runner:<8} {tty:<5} {p.priority:>5.1f}"
         )
     return "\n".join(lines)
 
@@ -82,6 +83,7 @@ def register(reg: CommandRegistry) -> None:
         model = None
         mode = "one_shot"
         priority = 0.0
+        tty = False
 
         i = 1
         while i < len(args):
@@ -100,6 +102,9 @@ def register(reg: CommandRegistry) -> None:
             elif args[i] == "--priority" and i + 1 < len(args):
                 priority = float(args[i + 1])
                 i += 2
+            elif args[i] == "--tty":
+                tty = True
+                i += 1
             else:
                 i += 1
 
@@ -111,6 +116,7 @@ def register(reg: CommandRegistry) -> None:
             model=model,
             priority=priority,
             status=ProcessStatus.RUNNABLE,
+            tty=tty,
         )
         pid = state.repo.upsert_process(p)
         return f"Spawned: {name} ({pid})"

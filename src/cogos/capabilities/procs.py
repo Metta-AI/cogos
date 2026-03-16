@@ -137,6 +137,7 @@ class ProcsCapability(Capability):
         mode: str = "one_shot",
         idle_timeout_ms: int | None = None,
         detached: bool = False,
+        tty: bool = False,
     ) -> ProcessHandle | ProcessError:
         """Spawn a child process. Capabilities are NOT inherited — pass them explicitly.
 
@@ -165,6 +166,7 @@ class ProcsCapability(Capability):
             parent_process=parent_id,
             model=model,
             idle_timeout_ms=idle_timeout_ms,
+            tty=tty,
         )
 
         child_id = self.repo.upsert_process(child)
@@ -255,6 +257,15 @@ class ProcsCapability(Capability):
             schema_id=schema_id,
         )
         self.repo.upsert_channel(recv_ch)
+
+        # Create per-process stdio channels
+        for stream in ("stdin", "stdout", "stderr"):
+            io_ch = Channel(
+                name=f"process:{name}:{stream}",
+                owner_process=child_id,
+                channel_type=ChannelType.NAMED,
+            )
+            self.repo.upsert_channel(io_ch)
 
         # Bind child to channel handlers if subscribe is set
         if subscribe:

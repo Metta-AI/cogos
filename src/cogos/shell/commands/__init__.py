@@ -88,6 +88,7 @@ def build_registry() -> CommandRegistry:
     """Build the full command registry with all command modules."""
     reg = CommandRegistry()
 
+    from cogos.shell.commands.attach import register as register_attach
     from cogos.shell.commands.builtins import register as register_builtins
     from cogos.shell.commands.caps import register as register_caps
     from cogos.shell.commands.channels import register as register_channels
@@ -99,6 +100,7 @@ def build_registry() -> CommandRegistry:
     register_procs(reg)
     register_channels(reg)
     register_caps(reg)
+    register_attach(reg)
     register_runs(reg)
     register_builtins(reg)
 

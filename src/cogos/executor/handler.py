@@ -357,7 +357,7 @@ def _execute_python_process(
 
 
 def _publish_io(repo, process, channel_name: str, text: str) -> None:
-    """Publish text to an io channel (io:stdout or io:stderr) if it exists."""
+    """Publish text to a named channel if it exists."""
     if not text or not text.strip():
         return
     try:
@@ -370,6 +370,13 @@ def _publish_io(repo, process, channel_name: str, text: str) -> None:
             ))
     except Exception:
         logger.debug("Failed to publish to %s", channel_name, exc_info=True)
+
+
+def _publish_process_io(repo, process, stream: str, text: str) -> None:
+    """Publish to process:<name>:<stream> and optionally forward to io:<stream>."""
+    _publish_io(repo, process, f"process:{process.name}:{stream}", text)
+    if process.tty:
+        _publish_io(repo, process, f"io:{stream}", text)
 
 
 def execute_process(
@@ -564,9 +571,9 @@ def execute_process(
                         result = _handle_search(tool_input, process, repo)
                     elif tool_name == "run_code":
                         result = sandbox.execute(tool_input.get("code", ""))
-                        # Publish run_code output to io channels
+                        # Publish run_code output to process io channels
                         if result and result != "(no output)":
-                            _publish_io(repo, process, "io:stdout", result)
+                            _publish_process_io(repo, process, "stdout", result)
                     else:
                         result = f"Unknown tool: {tool_name}"
 
@@ -600,10 +607,10 @@ def execute_process(
                 )
                 continue
 
-            # Publish final assistant commentary to io:stderr (not program output)
+            # Publish final assistant commentary to process stderr
             for block in output_message.get("content", []):
                 if isinstance(block, dict) and "text" in block:
-                    _publish_io(repo, process, "io:stderr", block["text"])
+                    _publish_process_io(repo, process, "stderr", block["text"])
             break
         else:
             final_stop_reason = "max_turns"
@@ -656,7 +663,7 @@ def execute_process(
         )
         return run
     except Exception as exc:
-        _publish_io(repo, process, "io:stderr", f"[{process.name}] {exc}")
+        _publish_process_io(repo, process, "stderr", f"[{process.name}] {exc}")
         run.tokens_in = total_input_tokens
         run.tokens_out = total_output_tokens
         run.scope_log = sandbox.scope_log

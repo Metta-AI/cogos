@@ -156,5 +156,48 @@ class MeCapability(Capability):
     def process(self) -> ProcessScope:
         return ProcessScope(self.process_id, self._store, self.repo)
 
+    def _process_name(self) -> str:
+        proc = self.repo.get_process(self.process_id)
+        return proc.name if proc else str(self.process_id)
+
+    def _publish_stream(self, stream: str, text: str) -> None:
+        """Publish to process:<name>:<stream> and optionally forward to io:<stream>."""
+        from cogos.db.models import ChannelMessage
+        name = self._process_name()
+        ch = self.repo.get_channel_by_name(f"process:{name}:{stream}")
+        if ch:
+            self.repo.append_channel_message(ChannelMessage(
+                channel=ch.id, sender_process=self.process_id,
+                payload={"text": text, "process": name},
+            ))
+        proc = self.repo.get_process(self.process_id)
+        if proc and proc.tty:
+            io_ch = self.repo.get_channel_by_name(f"io:{stream}")
+            if io_ch:
+                self.repo.append_channel_message(ChannelMessage(
+                    channel=io_ch.id, sender_process=self.process_id,
+                    payload={"text": text, "process": name},
+                ))
+
+    def stdout(self, text: str) -> None:
+        """Write to process stdout (and io:stdout if tty)."""
+        self._publish_stream("stdout", text)
+
+    def stderr(self, text: str) -> None:
+        """Write to process stderr (and io:stderr if tty)."""
+        self._publish_stream("stderr", text)
+
+    def stdin(self, limit: int = 1) -> str | list[str] | None:
+        """Read next message(s) from process stdin."""
+        name = self._process_name()
+        ch = self.repo.get_channel_by_name(f"process:{name}:stdin")
+        if not ch:
+            return None
+        msgs = self.repo.list_channel_messages(ch.id, limit=limit)
+        if not msgs:
+            return None
+        texts = [m.payload.get("text", "") if isinstance(m.payload, dict) else str(m.payload) for m in msgs]
+        return texts[0] if limit == 1 else texts
+
     def __repr__(self) -> str:
         return f"<MeCapability process={self.process_id} run={self.run_id}>"
