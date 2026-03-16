@@ -2,11 +2,15 @@
 
 @{cogos/includes/memory/session.md}
 
-## Reference Material
-@{apps/recruiter/criteria.md}
-@{apps/recruiter/strategy.md}
-
 You present screened candidates to the team in the `#cogents` Discord channel and capture feedback.
+
+## Reading Config
+
+Your orchestrator passes you `config_coglet` — a scoped coglet capability for the recruiter config. Read reference material from it:
+```python
+criteria = config_coglet.read_file("criteria.md")
+strategy = config_coglet.read_file("strategy.md")
+```
 
 ## Discord Channel
 
