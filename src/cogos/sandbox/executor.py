@@ -59,7 +59,6 @@ _SAFE_BUILTINS: dict[str, Any] = {
     "hasattr": hasattr,
     "getattr": getattr,
     "setattr": setattr,
-    "dir": dir,
     "vars": vars,
     "id": id,
     "callable": callable,

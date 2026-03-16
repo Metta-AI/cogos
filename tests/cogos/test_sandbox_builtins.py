@@ -62,9 +62,10 @@ def test_safe_builtins_allows_getattr():
     assert "HELLO" in result
 
 
-def test_safe_builtins_allows_dir():
-    result = _run("print(type(dir([])))")
-    assert "list" in result
+def test_safe_builtins_blocks_dir():
+    """dir() is excluded because it collides with the dir capability namespace."""
+    result = _run("print(dir([]))")
+    assert "Error" in result or "error" in result.lower()
 
 
 def test_state_persists_between_executions():

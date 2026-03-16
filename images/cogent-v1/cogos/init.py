@@ -25,7 +25,7 @@ procs.spawn("discord-handle-message",
     model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
     capabilities={
         "discord": None, "channels": None, "stdlib": None,
-        "procs": None, "file": None, "dir": None,
+        "procs": None, "file": None, "data:dir": None,
     },
     subscribe=["io:discord:dm", "io:discord:mention", "io:discord:message"])
 
