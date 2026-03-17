@@ -134,13 +134,7 @@ def create_app() -> FastAPI:
             manager.disconnect(name, ws)
 
     # --- Web static content from FileStore (DB) ---
-    @app.get("/web/static")
-    async def web_static_root():
-        from starlette.responses import RedirectResponse
-        return RedirectResponse("/web/static/", status_code=301)
-
-    @app.get("/web/static/{path:path}")
-    async def web_static(path: str):
+    def _serve_web_file(path: str) -> Response:
         import mimetypes
 
         from cogos.files.store import FileStore
@@ -156,6 +150,14 @@ def create_app() -> FastAPI:
 
         mime, _ = mimetypes.guess_type(path)
         return Response(content=content, media_type=mime or "application/octet-stream")
+
+    @app.get("/web/static")
+    async def web_static_root():
+        return _serve_web_file("index.html")
+
+    @app.get("/web/static/{path:path}")
+    async def web_static(path: str):
+        return _serve_web_file(path)
 
     # --- Executor proxy for web API requests ---
     @app.api_route("/web/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
