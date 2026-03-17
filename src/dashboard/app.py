@@ -155,6 +155,7 @@ def create_app() -> FastAPI:
     # --- Executor proxy for web API requests ---
     @app.api_route("/web/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def web_api_proxy(request: Request, path: str):
+        import asyncio
         import json
         from uuid import uuid4
 
@@ -199,7 +200,7 @@ def create_app() -> FastAPI:
         if not executor_fn:
             return JSONResponse(status_code=503, content={"detail": "executor function not configured"})
 
-        try:
+        def _invoke_executor() -> dict:
             lambda_client = boto3.client("lambda")
             response = lambda_client.invoke(
                 FunctionName=executor_fn,
@@ -218,7 +219,10 @@ def create_app() -> FastAPI:
                     }
                 ),
             )
-            resp_payload = json.loads(response["Payload"].read())
+            return json.loads(response["Payload"].read())
+
+        try:
+            resp_payload = await asyncio.to_thread(_invoke_executor)
             web_response = resp_payload.get("web_response")
             if not web_response:
                 return Response(status_code=204)
