@@ -155,6 +155,9 @@ def create_app() -> FastAPI:
     # --- Executor proxy for non-dashboard /api/ paths ---
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def api_proxy(request: Request, path: str):
+        if path.startswith("cogents/"):
+            return JSONResponse(status_code=404, content={"detail": "not found"})
+
         import json
         from uuid import uuid4
 
