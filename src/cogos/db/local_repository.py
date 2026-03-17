@@ -914,6 +914,7 @@ class LocalRepository:
         cost_usd: Decimal = Decimal("0"),
         duration_ms: int | None = None,
         error: str | None = None,
+        model_version: str | None = None,
         result: dict | None = None,
         snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
@@ -928,6 +929,8 @@ class LocalRepository:
             run.cost_usd = cost_usd
             run.duration_ms = duration_ms
             run.error = error
+            if model_version is not None:
+                run.model_version = model_version
             if result is not None:
                 run.result = result
             if snapshot is not None:
@@ -936,6 +939,24 @@ class LocalRepository:
                 run.scope_log = scope_log
             run.completed_at = datetime.now(UTC)
             return True
+
+    def timeout_stale_runs(self, max_age_ms: int = 900_000) -> int:
+        """Mark RUNNING runs older than max_age_ms as TIMEOUT."""
+        now = datetime.now(UTC)
+        count = 0
+        with self._writing():
+            for run in self._runs.values():
+                if run.status != RunStatus.RUNNING:
+                    continue
+                if run.created_at is None:
+                    continue
+                age_ms = (now - run.created_at).total_seconds() * 1000
+                if age_ms > max_age_ms:
+                    run.status = RunStatus.TIMEOUT
+                    run.error = "Run exceeded maximum duration and was reaped by dispatcher"
+                    run.completed_at = now
+                    count += 1
+        return count
 
     def get_run(self, run_id: UUID) -> Run | None:
         self._maybe_reload()

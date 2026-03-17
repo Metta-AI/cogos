@@ -10,6 +10,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +22,30 @@ from cogos.executor.session_store import SessionStore, build_prompt_fingerprint
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
 logger = logging.getLogger(__name__)
+
+
+# ── Cost estimation ──────────────────────────────────────────
+# Bedrock pricing per 1K tokens (USD) as of 2025-06.
+# Keys are matched as prefixes against the model ID.
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "us.anthropic.claude-sonnet-4": (0.003, 0.015),
+    "us.anthropic.claude-haiku-4": (0.0008, 0.004),
+    "us.anthropic.claude-opus-4": (0.015, 0.075),
+    "anthropic.claude-sonnet-4": (0.003, 0.015),
+    "anthropic.claude-haiku-4": (0.0008, 0.004),
+    "anthropic.claude-opus-4": (0.015, 0.075),
+    "us.anthropic.claude-3-5-sonnet": (0.003, 0.015),
+    "us.anthropic.claude-3-haiku": (0.00025, 0.00125),
+}
+
+
+def _estimate_cost(model_id: str, tokens_in: int, tokens_out: int) -> Decimal:
+    """Estimate USD cost from model ID and token counts."""
+    for prefix, (in_rate, out_rate) in _MODEL_PRICING.items():
+        if model_id.startswith(prefix):
+            cost = (tokens_in * in_rate + tokens_out * out_rate) / 1000.0
+            return Decimal(str(round(cost, 6)))
+    return Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -189,13 +214,17 @@ def handler(event: dict, context: Any = None) -> dict:
         run.status = RunStatus.COMPLETED
         duration_ms = int((time.time() - start_time) * 1000)
 
+        cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
+        run.cost_usd = cost
+
         repo.complete_run(
             run.id,
             status=RunStatus.COMPLETED,
             tokens_in=run.tokens_in,
             tokens_out=run.tokens_out,
-            cost_usd=run.cost_usd,
+            cost_usd=cost,
             duration_ms=duration_ms,
+            model_version=run.model_version,
             result=run.result,
             snapshot=run.snapshot,
             scope_log=run.scope_log,
@@ -244,13 +273,17 @@ def handler(event: dict, context: Any = None) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
 
+        cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
+        run.cost_usd = cost
+
         repo.complete_run(
             run.id,
             status=RunStatus.FAILED,
             tokens_in=run.tokens_in,
             tokens_out=run.tokens_out,
-            cost_usd=run.cost_usd,
+            cost_usd=cost,
             duration_ms=duration_ms,
+            model_version=run.model_version,
             error=str(e)[:4000],
             snapshot=run.snapshot,
         )
@@ -927,13 +960,16 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
         except (ImportError, AttributeError) as exc:
             logger.warning("Could not load capability %s (%s): %s", cap_model.name, handler_path, exc)
 
-    # Expose a summary of what's available so the model doesn't waste turns probing
-    cap_names = sorted(k for k in vt.as_dict() if k != "print")
-    vt.set("__capabilities__", ", ".join(cap_names))
-
-    # Note: individual capabilities expose .help() for on-demand API docs.
-    # We don't pre-inject a full __help__ dump because it's ~5k tokens
-    # and models print it eagerly, bloating every subsequent turn.
+    # Expose a summary of what's available with method signatures so the model
+    # doesn't waste turns probing with dir()/help()/search.
+    cap_entries = []
+    for name in sorted(k for k in vt.as_dict() if k != "print"):
+        obj = vt.get(name)
+        if hasattr(obj, "help") and callable(obj.help):
+            cap_entries.append(f"{name}: {obj.help()}")
+        else:
+            cap_entries.append(name)
+    vt.set("__capabilities__", "\n\n".join(cap_entries))
 
     # Create implicit process channel and per-process IO channels if they don't exist
     try:

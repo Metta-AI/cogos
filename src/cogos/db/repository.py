@@ -839,7 +839,11 @@ class Repository:
     def insert_file_version(self, fv: FileVersion) -> None:
         self._execute(
             """INSERT INTO cogos_file_version (id, file_id, version, read_only, content, source, is_active)
-               VALUES (:id, :file_id, :version, :read_only, :content, :source, :is_active)""",
+               VALUES (:id, :file_id, :version, :read_only, :content, :source, :is_active)
+               ON CONFLICT (file_id, version) DO UPDATE SET
+                   content = EXCLUDED.content,
+                   source = EXCLUDED.source,
+                   is_active = EXCLUDED.is_active""",
             [
                 self._param("id", fv.id),
                 self._param("file_id", fv.file_id),
@@ -1054,6 +1058,7 @@ class Repository:
         cost_usd: Decimal = Decimal("0"),
         duration_ms: int | None = None,
         error: str | None = None,
+        model_version: str | None = None,
         result: dict | None = None,
         snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
@@ -1062,7 +1067,9 @@ class Repository:
             """UPDATE cogos_run SET
                    status = :status, tokens_in = :tokens_in, tokens_out = :tokens_out,
                    cost_usd = :cost_usd::numeric, duration_ms = :duration_ms,
-                   error = :error, result = :result::jsonb,
+                   error = :error,
+                   model_version = COALESCE(:model_version, model_version),
+                   result = :result::jsonb,
                    snapshot = COALESCE(:snapshot::jsonb, snapshot),
                    scope_log = COALESCE(:scope_log::jsonb, scope_log),
                    completed_at = now()
@@ -1075,12 +1082,27 @@ class Repository:
                 self._param("cost_usd", cost_usd),
                 self._param("duration_ms", duration_ms),
                 self._param("error", error),
+                self._param("model_version", model_version),
                 self._param("result", result),
                 self._param("snapshot", snapshot),
                 self._param("scope_log", scope_log),
             ],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
+
+    def timeout_stale_runs(self, max_age_ms: int = 900_000) -> int:
+        """Mark RUNNING runs older than max_age_ms as TIMEOUT. Returns count updated."""
+        response = self._execute(
+            """UPDATE cogos_run SET
+                   status = 'timeout',
+                   error = 'Run exceeded maximum duration and was reaped by dispatcher',
+                   completed_at = now()
+               WHERE status = 'running'
+                 AND created_at < now() - make_interval(secs => :max_age_s)
+               """,
+            [self._param("max_age_s", max_age_ms / 1000.0)],
+        )
+        return response.get("numberOfRecordsUpdated", 0)
 
     def get_run(self, run_id: UUID) -> Run | None:
         response = self._execute(

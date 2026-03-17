@@ -802,12 +802,32 @@ def run_list(process_name: str | None, limit: int, use_json: bool):
         if p:
             pid = p.id
     runs = repo.list_runs(process_id=pid, limit=limit)
+    if not runs:
+        click.echo("(no runs)")
+        return
+
+    # Resolve process names
+    processes = repo.list_processes()
+    proc_names = {p.id: p.name for p in processes}
+
     data = [
-        {"id": str(r.id), "process": str(r.process), "status": r.status.value,
-         "tokens_in": r.tokens_in, "tokens_out": r.tokens_out,
-         "duration_ms": r.duration_ms, "created_at": str(r.created_at)}
+        {
+            "id": str(r.id)[:8],
+            "process": proc_names.get(r.process, str(r.process)[:8]),
+            "status": r.status.value,
+            "model": r.model_version or "-",
+            "tokens": f"{r.tokens_in}/{r.tokens_out}",
+            "cost": f"${r.cost_usd}" if r.cost_usd else "-",
+            "duration": f"{r.duration_ms}ms" if r.duration_ms else "-",
+            "error": (r.error[:60] + "...") if r.error else None,
+            "created_at": str(r.created_at),
+        }
         for r in runs
     ]
+    # Filter out None error fields for cleaner output
+    for d in data:
+        if d["error"] is None:
+            del d["error"]
     _output(data, use_json=use_json)
 
 

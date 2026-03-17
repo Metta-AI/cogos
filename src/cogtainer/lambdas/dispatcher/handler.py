@@ -51,7 +51,12 @@ def handler(event: dict, context) -> dict:
     except Exception:
         pass
 
-    # 0. Recover stuck daemons — if RUNNING but no active run, reset to WAITING
+    # 0a. Reap runs stuck in RUNNING longer than 15 minutes (Lambda max timeout)
+    reaped = repo.timeout_stale_runs(max_age_ms=900_000)
+    if reaped:
+        logger.warning("Reaped %s stale runs stuck in RUNNING state", reaped)
+
+    # 0b. Recover stuck daemons — if RUNNING but no active run, reset to WAITING
     _recover_stuck_daemons(repo)
 
     # 1. Generate virtual system tick events (not written to event log)
