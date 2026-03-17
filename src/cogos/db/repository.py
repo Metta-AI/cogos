@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -241,7 +241,12 @@ class Repository:
     @staticmethod
     def _ts(row: dict, key: str) -> datetime | None:
         v = row.get(key)
-        return datetime.fromisoformat(v) if v else None
+        if not v:
+            return None
+        dt = datetime.fromisoformat(v)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
 
     # ═══════════════════════════════════════════════════════════
     # PROCESSES
