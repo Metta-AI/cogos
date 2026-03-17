@@ -42,6 +42,12 @@ class TestDiscordCogImage:
         init_py = Path("images/cogent-v1/cogos/init.py").read_text()
         assert 'procs.spawn("scheduler"' not in init_py
 
+    def test_init_kicks_discord_review_after_boot(self):
+        """Reload should wake the Discord root cog immediately to recreate its runtime children."""
+        init_py = Path("images/cogent-v1/cogos/init.py").read_text()
+        assert '"discord-cog:review"' in init_py
+        assert 'channels.send("discord-cog:review", {"reason": "boot"})' in init_py
+
     def test_discord_handler_prompt_uses_web_url_helper(self):
         prompt = Path("images/cogent-v1/apps/discord/handler/main.md").read_text()
         assert "web.url(path)" in prompt
