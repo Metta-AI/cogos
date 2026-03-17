@@ -321,6 +321,67 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             h = Handler(process=pid, channel=ch.id, enabled=True)
             repo.create_handler(h)
 
+        # Process child coglets declared via cog.make_coglet()
+        for child in cog_dict.get("coglets") or []:
+            child_name = child["name"]
+            coglet_proc_name = f"{cog_name}/{child_name}"
+            cog_process_names.add(coglet_proc_name)
+
+            # Write coglet metadata and files
+            child_meta = CogletMeta(
+                name=child_name,
+                test_command=child.get("test_command", "true"),
+                entrypoint=child["entrypoint"],
+                mode=child["mode"],
+                model=child.get("model"),
+                capabilities=child.get("capabilities") or [],
+                idle_timeout_ms=child.get("idle_timeout_ms"),
+            )
+            _write_cog_file_tree(fs, cog_name, child_name, "main", child["files"])
+            _save_cog_coglet_meta(fs, cog_name, child_name, child_meta)
+
+            # Register as a process
+            child_mode = ProcessMode(child["mode"])
+            cp = Process(
+                name=coglet_proc_name,
+                mode=child_mode,
+                content=child["files"].get(child["entrypoint"], ""),
+                runner=child.get("runner", "lambda"),
+                executor=child.get("executor", "llm"),
+                model=child.get("model"),
+                priority=float(child.get("priority", 0.0)),
+                status=ProcessStatus.WAITING if child_mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
+                parent_process=pid,
+                idle_timeout_ms=child.get("idle_timeout_ms"),
+            )
+            child_pid = repo.upsert_process(cp)
+
+            for cap_entry in child.get("capabilities") or []:
+                if isinstance(cap_entry, dict):
+                    cap_name = cap_entry["name"]
+                    cap_config = cap_entry.get("config")
+                    cap_alias = cap_entry.get("alias", cap_name)
+                else:
+                    cap_name = cap_entry
+                    cap_config = None
+                    cap_alias = cap_name
+                cap = repo.get_capability_by_name(cap_name)
+                if cap:
+                    pc = ProcessCapability(
+                        process=child_pid, capability=cap.id,
+                        name=cap_alias, config=cap_config,
+                    )
+                    repo.create_process_capability(pc)
+
+            for ch_name in child.get("handlers") or []:
+                ch = repo.get_channel_by_name(ch_name)
+                if ch is None:
+                    ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
+                    repo.upsert_channel(ch)
+                    ch = repo.get_channel_by_name(ch_name)
+                h = Handler(process=child_pid, channel=ch.id, enabled=True)
+                repo.create_handler(h)
+
         counts["cogs"] += 1
 
     # 10. Disable stale top-level processes not in this image

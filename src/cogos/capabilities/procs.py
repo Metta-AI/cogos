@@ -130,6 +130,7 @@ class ProcsCapability(Capability):
         content: str = "",
         priority: float = 0.0,
         runner: str = "lambda",
+        executor: str = "llm",
         model: str | None = None,
         capabilities: dict[str, "Capability | None"] | None = None,
         schema: dict | None = None,
@@ -156,13 +157,21 @@ class ProcsCapability(Capability):
         else:
             parent_id = self.process_id
 
+        proc_mode = ProcessMode(mode)
+        # Daemons start WAITING (activated by channel messages);
+        # one-shots start RUNNABLE (run immediately).
+        initial_status = (
+            ProcessStatus.WAITING if proc_mode == ProcessMode.DAEMON
+            else ProcessStatus.RUNNABLE
+        )
         child = Process(
             name=name,
-            mode=ProcessMode(mode),
+            mode=proc_mode,
             content=content,
             priority=priority,
             runner=runner,
-            status=ProcessStatus.RUNNABLE,
+            executor=executor,
+            status=initial_status,
             parent_process=parent_id,
             model=model,
             idle_timeout_ms=idle_timeout_ms,

@@ -97,7 +97,7 @@ def load_image(image_dir: Path) -> ImageSpec:
         })
 
     class _CogBuilder:
-        """Builder returned by add_cog(). Collects the default coglet declaration."""
+        """Builder returned by add_cog(). Collects coglet declarations."""
 
         def __init__(self, cog_name: str):
             self.cog_name = cog_name
@@ -130,9 +130,38 @@ def load_image(image_dir: Path) -> ImageSpec:
                 "idle_timeout_ms": idle_timeout_ms,
             }
 
+        def make_coglet(
+            self, *, name, entrypoint, files, mode="daemon",
+            test_command="true", model=None, executor="llm",
+            capabilities=None, handlers=None,
+            priority=0.0, runner="lambda",
+            idle_timeout_ms=None,
+        ):
+            """Declare a child coglet for this cog.
+
+            Child coglets are created as processes at boot, named ``cog/name``.
+            """
+            cog_entry = next((c for c in spec.cogs if c["name"] == self.cog_name), None)
+            if cog_entry is None:
+                raise ValueError(f"Cog '{self.cog_name}' not found in spec")
+            cog_entry.setdefault("coglets", []).append({
+                "name": name,
+                "entrypoint": entrypoint,
+                "files": files,
+                "mode": mode,
+                "test_command": test_command,
+                "model": model,
+                "executor": executor,
+                "capabilities": capabilities or [],
+                "handlers": handlers or [],
+                "priority": priority,
+                "runner": runner,
+                "idle_timeout_ms": idle_timeout_ms,
+            })
+
     def add_cog(name):
         """Register a cog and return a builder for declaring its default coglet."""
-        spec.cogs.append({"name": name, "default_coglet": None})
+        spec.cogs.append({"name": name, "default_coglet": None, "coglets": []})
         return _CogBuilder(name)
 
     builtins = {

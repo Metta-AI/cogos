@@ -82,3 +82,19 @@ class TestDiscordCogApply:
         assert meta is not None
         assert meta.entrypoint == "main.py"
         assert meta.mode == "daemon"
+
+    def test_apply_creates_discord_handler(self, tmp_path):
+        """Handler child coglet is created at boot, not at runtime."""
+        from cogos.image.apply import apply_image
+        from cogos.db.local_repository import LocalRepository
+
+        spec = load_image(Path("images/cogent-v1"))
+        repo = LocalRepository(str(tmp_path))
+        apply_image(spec, repo)
+
+        procs = repo.list_processes(limit=100)
+        proc_names = {p.name for p in procs}
+        assert "discord/handler" in proc_names, f"Expected 'discord/handler', got: {proc_names}"
+        handler = next(p for p in procs if p.name == "discord/handler")
+        assert handler.model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        assert handler.mode.value == "daemon"
