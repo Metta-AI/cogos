@@ -296,10 +296,10 @@ def _cogos_scheduler_tick(config) -> None:
                 continue
 
             event_payload = {}
-            if dispatch_result.event_id:
+            if dispatch_result.message_id:
                 rows = cogos_repo._rows_to_dicts(cogos_repo._execute(
                     "SELECT payload FROM cogos_channel_message WHERE id = :id",
-                    [cogos_repo._param("id", _UUID(dispatch_result.event_id))],
+                    [cogos_repo._param("id", _UUID(dispatch_result.message_id))],
                 ))
                 if rows:
                     raw = rows[0].get("payload", "{}")
@@ -308,7 +308,7 @@ def _cogos_scheduler_tick(config) -> None:
             payload = {
                 "process_id": dispatch_result.process_id,
                 "run_id": dispatch_result.run_id,
-                "event_id": dispatch_result.event_id,
+                "event_id": dispatch_result.message_id,
                 "trace_id": getattr(dispatch_result, "trace_id", None),
                 "dispatched_at_ms": int(time.time() * 1000),
                 "event_type": event_payload.get("event_type", ""),
