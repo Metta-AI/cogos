@@ -4,6 +4,7 @@
 # ── Channels (created at boot so handlers can subscribe) ──────
 for ch_name in [
     "io:discord:dm", "io:discord:mention", "io:discord:message",
+    "discord-cog:review",
     "system:tick:minute", "system:tick:hour",
     "supervisor:help",
 ]:
@@ -40,6 +41,10 @@ else:
         print(f"WARN: supervisor spawn failed: {r.error}")
 
 # ── Apps are now cogs (created by apply_image from apps/*/init/cog.py) ──
+
+# Kick the Discord root cog once after boot so it can recreate runtime child
+# processes like discord/handler immediately after a reload.
+channels.send("discord-cog:review", {"reason": "boot"})
 
 # ── Coglets ──────────────────────────────────────────────────
 
