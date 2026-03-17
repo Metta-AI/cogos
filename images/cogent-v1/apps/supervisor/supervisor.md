@@ -43,11 +43,31 @@ print(f"Context: {context}")
 
 ```python
 # Determine what capabilities the helper needs based on the description
-# Common mappings:
+# Always include discord + channels (for replying and escalation).
+# Add others based on keywords:
 #   "task" / "asana" → asana
 #   "email" / "send mail" → email
-#   "search" / "look up" → web_search
+#   "search" / "look up" → web_search, web_fetch
 #   "github" / "repo" → github
+#   "site" / "website" / "page" / "publish" → web, blob
+#   "image" / "picture" / "photo" → image, blob
+caps = {"discord": None, "channels": None}
+desc_lower = description.lower()
+if any(w in desc_lower for w in ["task", "asana"]):
+    caps["asana"] = None
+if any(w in desc_lower for w in ["email", "send mail", "mail"]):
+    caps["email"] = None
+if any(w in desc_lower for w in ["search", "look up", "lookup", "find info"]):
+    caps["web_search"] = None
+    caps["web_fetch"] = None
+if any(w in desc_lower for w in ["github", "repo", "pull request", "pr", "issue"]):
+    caps["github"] = None
+if any(w in desc_lower for w in ["site", "website", "page", "publish", "web"]):
+    caps["web"] = None
+    caps["blob"] = None
+if any(w in desc_lower for w in ["image", "picture", "photo", "generate"]):
+    caps["image"] = None
+    caps["blob"] = None
 
 # Spawn a helper with the needed capabilities
 helper = procs.spawn(
@@ -70,7 +90,7 @@ channels.send("supervisor:help", {{
     "discord_author_id": "{discord_author_id}",
 }})
 """,
-    capabilities={"asana": None, "channels": None, "discord": None},
+    capabilities=caps,
 )
 
 # Check spawn result

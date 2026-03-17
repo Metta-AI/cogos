@@ -9,14 +9,15 @@ the supervisor must hold asana, and init must hold asana (to delegate to supervi
 
 from pathlib import Path
 
-from cogos.capabilities.procs import ProcsCapability, ProcessError
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import ProcessCapability
 from cogos.image.apply import apply_image
 from cogos.image.spec import load_image
 
-
-DELEGATABLE_CAPS = ["asana", "email", "github", "web_search", "web_fetch"]
+DELEGATABLE_CAPS = [
+    "asana", "email", "github", "web_search", "web_fetch",
+    "web", "blob", "image",
+]
 
 
 def _boot_cogent_v1(tmp_path):
@@ -53,7 +54,7 @@ def test_init_can_spawn_supervisor_with_delegatable_caps(tmp_path):
         "discord": None, "channels": None, "secrets": None,
         "stdlib": None, "alerts": None,
         "asana": None, "email": None, "github": None,
-        "web_search": None, "web_fetch": None,
+        "web_search": None, "web_fetch": None, "web": None,
         "blob": None, "image": None,
     }
 
