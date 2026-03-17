@@ -134,6 +134,11 @@ def create_app() -> FastAPI:
             manager.disconnect(name, ws)
 
     # --- Web static content from FileStore (DB) ---
+    @app.get("/web/static")
+    async def web_static_root():
+        from starlette.responses import RedirectResponse
+        return RedirectResponse("/web/static/", status_code=301)
+
     @app.get("/web/static/{path:path}")
     async def web_static(path: str):
         import mimetypes
