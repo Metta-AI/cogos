@@ -17,6 +17,7 @@ from cogos.db.models import (
     Capability,
     Channel,
     ChannelMessage,
+    CogosOperation,
     Cron,
     Delivery,
     DeliveryStatus,
@@ -34,6 +35,8 @@ from cogos.db.models import (
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
 logger = logging.getLogger(__name__)
+
+ALL_EPOCHS = -1  # sentinel: return records from every epoch
 
 
 def _json_serial(obj: Any) -> Any:
@@ -77,6 +80,8 @@ class LocalRepository:
         self._discord_channels: dict[str, DiscordChannel] = {}
         self._meta: dict[str, dict[str, str]] = {}
         self._alerts: dict[UUID, Any] = {}
+        self._operations: dict[UUID, CogosOperation] = {}
+        self._reboot_epoch: int = 0
 
         self._load()
 
@@ -99,6 +104,8 @@ class LocalRepository:
         self._discord_guilds.clear()
         self._discord_channels.clear()
         self._meta.clear()
+        self._operations.clear()
+        self._reboot_epoch = 0
 
     def _read_persisted_data(self) -> dict[str, Any]:
         if not self._file.exists():
@@ -130,6 +137,8 @@ class LocalRepository:
             "channel_messages": [m.model_dump(mode="json") for m in self._channel_messages.values()],
             "discord_guilds": [g.model_dump(mode="json") for g in self._discord_guilds.values()],
             "discord_channels": [ch.model_dump(mode="json") for ch in self._discord_channels.values()],
+            "operations": [op.model_dump(mode="json") for op in self._operations.values()],
+            "reboot_epoch": self._reboot_epoch,
             "meta": self._meta,
         }
 
@@ -193,6 +202,7 @@ class LocalRepository:
             "channel_messages": (("id",), None),
             "discord_guilds": (("guild_id",), None),
             "discord_channels": (("channel_id",), None),
+            "operations": (("id",), None),
         }
 
         merged = {}
@@ -206,6 +216,10 @@ class LocalRepository:
 
         merged["meta"] = dict(latest_data.get("meta", {}))
         merged["meta"].update(current_data.get("meta", {}))
+        merged["reboot_epoch"] = max(
+            latest_data.get("reboot_epoch", 0),
+            current_data.get("reboot_epoch", 0),
+        )
         return merged
 
     def _populate_from_data(self, data: dict[str, Any]) -> None:
@@ -257,6 +271,10 @@ class LocalRepository:
             dchannel = DiscordChannel(**dch)
             self._discord_channels[dchannel.channel_id] = dchannel
         self._meta.update(data.get("meta", {}))
+        self._reboot_epoch = data.get("reboot_epoch", 0)
+        for op in data.get("operations", []):
+            operation = CogosOperation(**op)
+            self._operations[operation.id] = operation
 
     def _migrate_legacy_process_prompt(self, raw: dict[str, Any]) -> dict[str, Any]:
         migrated = dict(raw)
@@ -360,6 +378,30 @@ class LocalRepository:
             finally:
                 fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
+    # ── Epoch & Operations ────────────────────────────────────
+
+    @property
+    def reboot_epoch(self) -> int:
+        self._maybe_reload()
+        return self._reboot_epoch
+
+    def increment_epoch(self) -> int:
+        with self._writing():
+            self._reboot_epoch += 1
+            return self._reboot_epoch
+
+    def add_operation(self, op: CogosOperation) -> UUID:
+        with self._writing():
+            op.created_at = op.created_at or datetime.now(UTC)
+            self._operations[op.id] = op
+            return op.id
+
+    def list_operations(self, limit: int = 50) -> list[CogosOperation]:
+        self._maybe_reload()
+        ops = list(self._operations.values())
+        ops.sort(key=lambda o: o.created_at or datetime.min, reverse=True)
+        return ops[:limit]
+
     # ── Raw query stubs (used by cogos_events router) ────────
 
     def query(self, sql: str, params: dict[str, Any] | None = None) -> list[dict]:
@@ -439,6 +481,7 @@ class LocalRepository:
                 p.created_at = existing.created_at
             else:
                 p.created_at = now
+                p.epoch = p.epoch or self._reboot_epoch
             p.updated_at = now
             self._processes[p.id] = p
             return p.id
@@ -461,9 +504,12 @@ class LocalRepository:
                 return True
             return False
 
-    def list_processes(self, *, status: ProcessStatus | None = None, limit: int = 200) -> list[Process]:
+    def list_processes(self, *, status: ProcessStatus | None = None, limit: int = 200, epoch: int | None = None) -> list[Process]:
         self._maybe_reload()
+        effective_epoch = self._reboot_epoch if epoch is None else epoch
         procs = list(self._processes.values())
+        if effective_epoch != ALL_EPOCHS:
+            procs = [p for p in procs if p.epoch == effective_epoch]
         if status:
             procs = [p for p in procs if p.status == status]
         procs.sort(key=lambda p: p.name)
@@ -500,14 +546,9 @@ class LocalRepository:
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         self._maybe_reload()
-        runnable = [p for p in self._processes.values() if p.status == ProcessStatus.RUNNABLE]
-        runnable.sort(
-            key=lambda p: (
-                -p.priority,
-                p.runnable_since or datetime.max,
-                p.name,
-            ),
-        )
+        runnable = [p for p in self._processes.values()
+                    if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch]
+        runnable.sort(key=lambda p: (-p.priority, p.runnable_since or datetime.max, p.name))
         return runnable[:limit]
 
     def increment_retry(self, process_id: UUID) -> bool:
@@ -579,13 +620,17 @@ class LocalRepository:
                     if existing.process == h.process and existing.channel == h.channel:
                         existing.enabled = h.enabled
                         return existing.id
+            h.epoch = self._reboot_epoch
             h.created_at = datetime.now(UTC)
             self._handlers[h.id] = h
             return h.id
 
-    def list_handlers(self, *, process_id: UUID | None = None, enabled_only: bool = False) -> list[Handler]:
+    def list_handlers(self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None) -> list[Handler]:
         self._maybe_reload()
+        effective_epoch = self._reboot_epoch if epoch is None else epoch
         handlers = list(self._handlers.values())
+        if effective_epoch != ALL_EPOCHS:
+            handlers = [h for h in handlers if h.epoch == effective_epoch]
         if process_id:
             handlers = [h for h in handlers if h.process == process_id]
         if enabled_only:
@@ -620,6 +665,7 @@ class LocalRepository:
                     existing.capability = pc.capability
                     existing.config = pc.config
                     return existing.id
+            pc.epoch = self._reboot_epoch
             self._process_capabilities[pc.id] = pc
             return pc.id
 
@@ -799,6 +845,7 @@ class LocalRepository:
             for existing in self._deliveries.values():
                 if existing.message == ed.message and existing.handler == ed.handler:
                     return existing.id, False
+            ed.epoch = self._reboot_epoch
             ed.created_at = datetime.now(UTC)
             self._deliveries[ed.id] = ed
             return ed.id, True
@@ -820,9 +867,13 @@ class LocalRepository:
         handler_id: UUID | None = None,
         run_id: UUID | None = None,
         limit: int = 500,
+        epoch: int | None = None,
     ) -> list[Delivery]:
         self._maybe_reload()
+        effective_epoch = self._reboot_epoch if epoch is None else epoch
         deliveries = list(self._deliveries.values())
+        if effective_epoch != ALL_EPOCHS:
+            deliveries = [d for d in deliveries if d.epoch == effective_epoch]
         if message_id is not None:
             deliveries = [delivery for delivery in deliveries if delivery.message == message_id]
         if handler_id is not None:
@@ -901,6 +952,7 @@ class LocalRepository:
 
     def create_run(self, run: Run) -> UUID:
         with self._writing():
+            run.epoch = self._reboot_epoch
             run.created_at = datetime.now(UTC)
             self._runs[run.id] = run
             return run.id
@@ -970,6 +1022,8 @@ class LocalRepository:
         cutoff = datetime.now(UTC) - timedelta(milliseconds=max_age_ms)
         result = []
         for run in self._runs.values():
+            if run.epoch != self._reboot_epoch:
+                continue
             if run.status in (RunStatus.FAILED, RunStatus.TIMEOUT, RunStatus.THROTTLED):
                 if run.completed_at and run.completed_at >= cutoff:
                     result.append(run)
@@ -983,9 +1037,12 @@ class LocalRepository:
             if run:
                 run.metadata = metadata
 
-    def list_runs(self, *, process_id: UUID | None = None, limit: int = 50) -> list[Run]:
+    def list_runs(self, *, process_id: UUID | None = None, limit: int = 50, epoch: int | None = None) -> list[Run]:
         self._maybe_reload()
+        effective_epoch = self._reboot_epoch if epoch is None else epoch
         runs = list(self._runs.values())
+        if effective_epoch != ALL_EPOCHS:
+            runs = [r for r in runs if r.epoch == effective_epoch]
         if process_id:
             runs = [r for r in runs if r.process == process_id]
         runs.sort(key=lambda r: r.created_at or datetime.min, reverse=True)
