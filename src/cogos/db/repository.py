@@ -22,6 +22,7 @@ from cogos.db.models import (
     Channel,
     ChannelMessage,
     ChannelType,
+    CogosOperation,
     Conversation,
     ConversationStatus,
     Cron,
@@ -45,6 +46,8 @@ from cogos.db.models import (
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
 logger = logging.getLogger(__name__)
+
+ALL_EPOCHS = -1
 
 
 class Repository:
@@ -266,6 +269,57 @@ class Repository:
         return dt
 
     # ═══════════════════════════════════════════════════════════
+    # EPOCH
+    # ═══════════════════════════════════════════════════════════
+
+    @property
+    def reboot_epoch(self) -> int:
+        meta = self.get_meta("reboot_epoch")
+        if meta and meta.get("value"):
+            return int(meta["value"])
+        return 0
+
+    def increment_epoch(self) -> int:
+        new_epoch = self.reboot_epoch + 1
+        self.set_meta("reboot_epoch", str(new_epoch))
+        return new_epoch
+
+    # ═══════════════════════════════════════════════════════════
+    # OPERATIONS
+    # ═══════════════════════════════════════════════════════════
+
+    def add_operation(self, op: CogosOperation) -> UUID:
+        now = op.created_at or datetime.now(timezone.utc)
+        self._execute(
+            """INSERT INTO cogos_operation (id, epoch, type, metadata, created_at)
+               VALUES (:id, :epoch, :type, :metadata::jsonb, :created_at)""",
+            [
+                self._param("id", op.id),
+                self._param("epoch", op.epoch),
+                self._param("type", op.type),
+                self._param("metadata", op.metadata),
+                self._param("created_at", now),
+            ],
+        )
+        return op.id
+
+    def list_operations(self, limit: int = 50) -> list[CogosOperation]:
+        response = self._execute(
+            "SELECT * FROM cogos_operation ORDER BY created_at DESC LIMIT :limit",
+            [self._param("limit", limit)],
+        )
+        result = []
+        for row in self._rows_to_dicts(response):
+            result.append(CogosOperation(
+                id=UUID(row["id"]),
+                epoch=row.get("epoch", 0),
+                type=row.get("type", ""),
+                metadata=self._json_field(row, "metadata", {}),
+                created_at=self._ts(row, "created_at"),
+            ))
+        return result
+
+    # ═══════════════════════════════════════════════════════════
     # PROCESSES
     # ═══════════════════════════════════════════════════════════
 
@@ -276,12 +330,12 @@ class Repository:
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     idle_timeout_ms, max_duration_ms, max_retries, retry_count, retry_backoff_ms,
-                    clear_context, tty, metadata)
+                    clear_context, tty, metadata, epoch)
                VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :runner, :executor,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :idle_timeout_ms, :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
-                       :clear_context, :tty, :metadata::jsonb)
+                       :clear_context, :tty, :metadata::jsonb, :epoch)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content,
                    resources = EXCLUDED.resources, runner = EXCLUDED.runner,
@@ -322,6 +376,7 @@ class Repository:
                 self._param("clear_context", p.clear_context),
                 self._param("tty", p.tty),
                 self._param("metadata", p.metadata),
+                self._param("epoch", p.epoch),
             ],
         )
         row = self._first_row(response)
@@ -348,18 +403,22 @@ class Repository:
         return self._process_from_row(row) if row else None
 
     def list_processes(
-        self, *, status: ProcessStatus | None = None, limit: int = 200,
+        self, *, status: ProcessStatus | None = None, limit: int = 200, epoch: int | None = None,
     ) -> list[Process]:
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
+        conditions = []
+        params = [self._param("limit", limit)]
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("epoch = :epoch")
+            params.append(self._param("epoch", effective_epoch))
         if status:
-            response = self._execute(
-                "SELECT * FROM cogos_process WHERE status = :status ORDER BY name LIMIT :limit",
-                [self._param("status", status.value), self._param("limit", limit)],
-            )
-        else:
-            response = self._execute(
-                "SELECT * FROM cogos_process ORDER BY name LIMIT :limit",
-                [self._param("limit", limit)],
-            )
+            conditions.append("status = :status")
+            params.append(self._param("status", status.value))
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        response = self._execute(
+            f"SELECT * FROM cogos_process{where} ORDER BY name LIMIT :limit",
+            params,
+        )
         return [self._process_from_row(r) for r in self._rows_to_dicts(response)]
 
     def update_process_status(self, process_id: UUID, status: ProcessStatus) -> bool:
@@ -376,10 +435,10 @@ class Repository:
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         response = self._execute(
-            """SELECT * FROM cogos_process WHERE status = 'runnable'
+            """SELECT * FROM cogos_process WHERE status = 'runnable' AND epoch = :epoch
                ORDER BY priority DESC, runnable_since ASC NULLS LAST
                LIMIT :limit""",
-            [self._param("limit", limit)],
+            [self._param("epoch", self.reboot_epoch), self._param("limit", limit)],
         )
         return [self._process_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -395,6 +454,7 @@ class Repository:
         resources = [UUID(r) for r in resources_raw] if resources_raw else []
         return Process(
             id=UUID(row["id"]),
+            epoch=row.get("epoch", 0),
             name=row["name"],
             mode=ProcessMode(row["mode"]),
             content=row.get("content", ""),
@@ -427,8 +487,8 @@ class Repository:
 
     def create_process_capability(self, pc: ProcessCapability) -> UUID:
         response = self._execute(
-            """INSERT INTO cogos_process_capability (id, process, capability, name, config)
-               VALUES (:id, :process, :capability, :name, :config::jsonb)
+            """INSERT INTO cogos_process_capability (id, process, capability, name, config, epoch)
+               VALUES (:id, :process, :capability, :name, :config::jsonb, :epoch)
                ON CONFLICT (process, name) DO UPDATE SET
                    capability = EXCLUDED.capability,
                    config = EXCLUDED.config
@@ -439,6 +499,7 @@ class Repository:
                 self._param("capability", pc.capability),
                 self._param("name", pc.name),
                 self._param("config", pc.config),
+                self._param("epoch", pc.epoch),
             ],
         )
         row = self._first_row(response)
@@ -505,8 +566,8 @@ class Repository:
         if h.channel is not None:
             # Channel-based handler: upsert by (process, channel)
             response = self._execute(
-                """INSERT INTO cogos_handler (id, process, channel, enabled)
-                   VALUES (:id, :process, :channel, :enabled)
+                """INSERT INTO cogos_handler (id, process, channel, enabled, epoch)
+                   VALUES (:id, :process, :channel, :enabled, :epoch)
                    ON CONFLICT (process, channel) DO UPDATE SET enabled = EXCLUDED.enabled
                    RETURNING id, created_at""",
                 [
@@ -514,6 +575,7 @@ class Repository:
                     self._param("process", h.process),
                     self._param("channel", h.channel),
                     self._param("enabled", h.enabled),
+                    self._param("epoch", h.epoch),
                 ],
             )
         else:
@@ -525,10 +587,14 @@ class Repository:
         return h.id
 
     def list_handlers(
-        self, *, process_id: UUID | None = None, enabled_only: bool = False,
+        self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None,
     ) -> list[Handler]:
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
         conditions = []
         params = []
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("epoch = :epoch")
+            params.append(self._param("epoch", effective_epoch))
         if process_id:
             conditions.append("process = :process")
             params.append(self._param("process", process_id))
@@ -570,6 +636,7 @@ class Repository:
     def _handler_from_row(self, r: dict) -> Handler:
         return Handler(
             id=UUID(r["id"]),
+            epoch=r.get("epoch", 0),
             process=UUID(r["process"]),
             channel=UUID(r["channel"]) if r.get("channel") else None,
             enabled=r["enabled"],
@@ -583,8 +650,8 @@ class Repository:
     def create_delivery(self, ed: Delivery) -> tuple[UUID, bool]:
         response = self._execute(
             """WITH inserted AS (
-                   INSERT INTO cogos_delivery (id, message, handler, status, run, trace_id)
-                   VALUES (:id, :message, :handler, :status, :run, :trace_id)
+                   INSERT INTO cogos_delivery (id, message, handler, status, run, trace_id, epoch)
+                   VALUES (:id, :message, :handler, :status, :run, :trace_id, :epoch)
                    ON CONFLICT (message, handler) DO NOTHING
                    RETURNING id, created_at, TRUE AS inserted
                )
@@ -602,6 +669,7 @@ class Repository:
                 self._param("status", ed.status.value),
                 self._param("run", ed.run),
                 self._param("trace_id", ed.trace_id),
+                self._param("epoch", ed.epoch),
             ],
         )
         row = self._first_row(response)
@@ -627,9 +695,14 @@ class Repository:
         handler_id: UUID | None = None,
         run_id: UUID | None = None,
         limit: int = 500,
+        epoch: int | None = None,
     ) -> list[Delivery]:
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
         conditions = []
         params = [self._param("limit", limit)]
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("epoch = :epoch")
+            params.append(self._param("epoch", effective_epoch))
         if message_id is not None:
             conditions.append("message = :message")
             params.append(self._param("message", message_id))
@@ -1050,11 +1123,11 @@ class Repository:
                    (id, process, message, conversation, status,
                     tokens_in, tokens_out, cost_usd, duration_ms,
                     error, model_version, result, snapshot, scope_log,
-                    trace_id, parent_trace_id)
+                    trace_id, parent_trace_id, epoch)
                VALUES (:id, :process, :message, :conversation, :status,
                        :tokens_in, :tokens_out, :cost_usd::numeric, :duration_ms,
                        :error, :model_version, :result::jsonb, :snapshot::jsonb, :scope_log::jsonb,
-                       :trace_id, :parent_trace_id)
+                       :trace_id, :parent_trace_id, :epoch)
                RETURNING id, created_at""",
             [
                 self._param("id", run.id),
@@ -1073,6 +1146,7 @@ class Repository:
                 self._param("scope_log", run.scope_log),
                 self._param("trace_id", run.trace_id),
                 self._param("parent_trace_id", run.parent_trace_id),
+                self._param("epoch", run.epoch),
             ],
         )
         row = self._first_row(response)
@@ -1142,9 +1216,10 @@ class Repository:
         response = self._execute(
             """SELECT * FROM cogos_run
                WHERE status IN ('failed', 'timeout', 'throttled')
+                 AND epoch = :epoch
                  AND COALESCE(completed_at, created_at) > now() - make_interval(secs => :max_age_s)
                ORDER BY completed_at DESC""",
-            [self._param("max_age_s", max_age_ms / 1000.0)],
+            [self._param("epoch", self.reboot_epoch), self._param("max_age_s", max_age_ms / 1000.0)],
         )
         return [self._run_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -1167,23 +1242,28 @@ class Repository:
         return self._run_from_row(row) if row else None
 
     def list_runs(
-        self, *, process_id: UUID | None = None, limit: int = 50,
+        self, *, process_id: UUID | None = None, limit: int = 50, epoch: int | None = None,
     ) -> list[Run]:
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
+        conditions = []
+        params = [self._param("limit", limit)]
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("epoch = :epoch")
+            params.append(self._param("epoch", effective_epoch))
         if process_id:
-            response = self._execute(
-                "SELECT * FROM cogos_run WHERE process = :process ORDER BY created_at DESC LIMIT :limit",
-                [self._param("process", process_id), self._param("limit", limit)],
-            )
-        else:
-            response = self._execute(
-                "SELECT * FROM cogos_run ORDER BY created_at DESC LIMIT :limit",
-                [self._param("limit", limit)],
-            )
+            conditions.append("process = :process")
+            params.append(self._param("process", process_id))
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        response = self._execute(
+            f"SELECT * FROM cogos_run{where} ORDER BY created_at DESC LIMIT :limit",
+            params,
+        )
         return [self._run_from_row(r) for r in self._rows_to_dicts(response)]
 
     def _run_from_row(self, row: dict) -> Run:
         return Run(
             id=UUID(row["id"]),
+            epoch=row.get("epoch", 0),
             process=UUID(row["process"]),
             message=UUID(row["message"]) if row.get("message") else None,
             conversation=UUID(row["conversation"]) if row.get("conversation") else None,
@@ -1207,6 +1287,7 @@ class Repository:
     def _delivery_from_row(self, row: dict) -> Delivery:
         return Delivery(
             id=UUID(row["id"]),
+            epoch=row.get("epoch", 0),
             message=UUID(row["message"]),
             handler=UUID(row["handler"]),
             status=DeliveryStatus(row["status"]),
