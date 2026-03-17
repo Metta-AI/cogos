@@ -34,32 +34,7 @@ procs.spawn("supervisor",
     },
     subscribe="supervisor:help")
 
-# ── Apps ─────────────────────────────────────────────────────
-
-nftf_prompt = file.read("apps/newsfromthefront/newsfromthefront.md").content
-procs.spawn("newsfromthefront",
-    mode="daemon",
-    content=nftf_prompt,
-    priority=15.0,
-    capabilities={
-        "me": None, "procs": None, "dir": None, "file": None,
-        "channels": None, "discord": None, "web_search": None,
-        "secrets": None, "stdlib": None,
-    },
-    subscribe=[
-        "newsfromthefront:tick",
-        "newsfromthefront:findings-ready",
-        "newsfromthefront:discord-feedback",
-        "newsfromthefront:run-requested",
-    ])
-
-fib_prompt = file.read("apps/fibonacci/fibonacci.md").content
-procs.spawn("fibonacci",
-    mode="daemon",
-    content=fib_prompt,
-    priority=1.0,
-    capabilities={"dir": None},
-    subscribe="fibonacci:poke")
+# ── Apps are now cogs (created by apply_image from apps/*/init/cog.py) ──
 
 # ── Coglets ──────────────────────────────────────────────────
 
