@@ -11,7 +11,7 @@ def test_reboot_endpoint(tmp_path):
     proc = Process(name="test", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE)
     repo.upsert_process(proc)
 
-    with patch("dashboard.db.get_repo", return_value=repo):
+    with patch("dashboard.routers.processes.get_repo", return_value=repo):
         from dashboard.app import create_app
         app = create_app()
         client = TestClient(app)

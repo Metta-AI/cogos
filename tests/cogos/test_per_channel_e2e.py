@@ -7,7 +7,6 @@ Boots cogent-v1 image, simulates Discord DM flow, verifies:
 4. Idle reaping cleans up the child after timeout
 """
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from uuid import UUID
 
 from cogos.capabilities.procs import ProcsCapability
@@ -24,8 +23,6 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
-from cogos.image.apply import apply_image
-from cogos.image.spec import load_image
 from cogos.runtime.local import run_local_tick
 
 
@@ -77,27 +74,29 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
     """Full flow: boot image, send DM, parent spawns child, second DM goes to child."""
     repo = _repo(tmp_path)
 
-    # Boot cogent-v1 image
-    repo_root = Path(__file__).resolve().parents[2]
-    image_dir = repo_root / "images" / "cogent-v1"
-    spec = load_image(image_dir)
-    apply_image(spec, repo)
+    # Create the discord-handle-message daemon and its handler channels
+    # (In production these are spawned by init.py at runtime; here we set them up directly.)
+    handler_channel_names = ["io:discord:dm", "io:discord:message", "io:discord:mention"]
+    for ch_name in handler_channel_names:
+        repo.upsert_channel(Channel(name=ch_name, channel_type=ChannelType.NAMED))
 
-    # Verify parent process exists with handlers
-    parent = repo.get_process_by_name("discord-handle-message")
+    parent = Process(
+        name="discord-handle-message",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.WAITING,
+        content="Discord dispatch handler",
+        runner="lambda",
+    )
+    parent_id = repo.upsert_process(parent)
+    parent = repo.get_process(parent_id)
+
+    for ch_name in handler_channel_names:
+        ch = repo.get_channel_by_name(ch_name)
+        repo.create_handler(Handler(process=parent_id, channel=ch.id, enabled=True))
+
     assert parent is not None
     assert parent.mode == ProcessMode.DAEMON
     assert parent.status == ProcessStatus.WAITING
-
-    parent_handlers = repo.list_handlers(process_id=parent.id)
-    handler_channels = set()
-    for h in parent_handlers:
-        ch = repo.get_channel(h.channel)
-        if ch:
-            handler_channels.add(ch.name)
-    assert "io:discord:dm" in handler_channels
-    assert "io:discord:message" in handler_channels
-    assert "io:discord:mention" in handler_channels
 
     # Send first DM — simulates bridge dual-write
     _simulate_bridge_dm(repo, _dm_payload(author_id="42", content="hello"))

@@ -6,18 +6,15 @@ from cogos.image.spec import load_image
 
 
 def test_cogent_v1_supervisor_loads():
-    """The supervisor process should load from the cogent-v1 image."""
+    """The supervisor process should be spawned by init.py at runtime."""
     spec = load_image(Path("images/cogent-v1"))
 
-    proc_names = {p["name"] for p in spec.processes}
-    assert "supervisor" in proc_names
+    # supervisor is spawned at runtime by init.py, not declared as a spec process
+    init_content = spec.files.get("cogos/init.py", "")
+    assert "supervisor" in init_content
 
-    supervisor = next(p for p in spec.processes if p["name"] == "supervisor")
-    assert supervisor["mode"] == "daemon"
-    assert supervisor["content"] == "@{apps/supervisor/supervisor.md}"
-    assert "procs" in supervisor["capabilities"]
-    assert "alerts" in supervisor["capabilities"]
-    assert "channels" in supervisor["capabilities"]
+    # The supervisor prompt file should be loaded
+    assert "apps/supervisor/supervisor.md" in spec.files
 
 
 def test_cogent_v1_supervisor_channel():

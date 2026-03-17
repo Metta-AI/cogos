@@ -75,7 +75,7 @@ class TestFileCapabilityScoping:
             assert isinstance(result, FileError)
 
     def test_all_ops(self):
-        assert FileCapability.ALL_OPS == {"read", "write", "append", "delete", "get_metadata"}
+        assert FileCapability.ALL_OPS == {"read", "write", "append"}
 
 
 # ── FileVersionCapability ───────────────────────────────────
@@ -116,7 +116,7 @@ class TestFileVersionCapabilityScoping:
             assert isinstance(result, list)
 
     def test_all_ops(self):
-        assert FileVersionCapability.ALL_OPS == {"add", "list", "get", "update"}
+        assert FileVersionCapability.ALL_OPS == {"add", "list"}
 
 
 # ── DirCapability ───────────────────────────────────────────

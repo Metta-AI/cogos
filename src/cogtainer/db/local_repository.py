@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -208,7 +208,7 @@ class LocalRepository:
     # ── Programs ─────────────────────────────────────────────
 
     def upsert_program(self, program: Program) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if program.name in self._programs:
             existing = self._programs[program.name]
             program.id = existing.id
@@ -238,7 +238,7 @@ class LocalRepository:
     # ── Tasks ────────────────────────────────────────────────
 
     def create_task(self, task: Task) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         task.created_at = now
         task.updated_at = now
         self._tasks[task.id] = task
@@ -253,16 +253,16 @@ class LocalRepository:
         if not task:
             return False
         task.status = status
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(UTC)
         if status == TaskStatus.COMPLETED:
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(UTC)
         self._save()
         return True
 
     def update_task(self, task: Task) -> bool:
         if task.id not in self._tasks:
             return False
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(UTC)
         self._tasks[task.id] = task
         self._save()
         return True
@@ -285,7 +285,7 @@ class LocalRepository:
     # ── Triggers ─────────────────────────────────────────────
 
     def insert_trigger(self, trigger: Trigger) -> UUID:
-        trigger.created_at = datetime.utcnow()
+        trigger.created_at = datetime.now(UTC)
         self._triggers[trigger.id] = trigger
         self._save()
         return trigger.id
@@ -359,7 +359,7 @@ class LocalRepository:
     # ── Cron ─────────────────────────────────────────────────
 
     def insert_cron(self, cron: Cron) -> UUID:
-        cron.created_at = datetime.utcnow()
+        cron.created_at = datetime.now(UTC)
         self._crons[cron.id] = cron
         self._save()
         return cron.id
@@ -390,7 +390,7 @@ class LocalRepository:
     def append_event(self, event: Event) -> int:
         self._event_seq += 1
         event.id = self._event_seq
-        event.created_at = datetime.utcnow()
+        event.created_at = datetime.now(UTC)
         self._events.append(event)
         self._save()
         return event.id
@@ -430,7 +430,7 @@ class LocalRepository:
     # ── Runs ─────────────────────────────────────────────────
 
     def insert_run(self, run: Run) -> UUID:
-        run.started_at = run.started_at or datetime.utcnow()
+        run.started_at = run.started_at or datetime.now(UTC)
         self._runs[run.id] = run
         self._save()
         return run.id
@@ -467,7 +467,7 @@ class LocalRepository:
     # ── Conversations ────────────────────────────────────────
 
     def upsert_conversation(self, conv: Conversation) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if conv.id in self._conversations:
             existing = self._conversations[conv.id]
             conv.started_at = existing.started_at
@@ -500,7 +500,7 @@ class LocalRepository:
     # ── Alerts ───────────────────────────────────────────────
 
     def create_alert(self, alert: Alert) -> UUID:
-        alert.created_at = datetime.utcnow()
+        alert.created_at = datetime.now(UTC)
         self._alerts[alert.id] = alert
         self._save()
         return alert.id
@@ -513,13 +513,13 @@ class LocalRepository:
         alert = self._alerts.get(alert_id)
         if not alert:
             return False
-        alert.resolved_at = datetime.utcnow()
+        alert.resolved_at = datetime.now(UTC)
         self._save()
         return True
 
     def resolve_all_alerts(self) -> int:
         count = 0
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         for alert in self._alerts.values():
             if alert.resolved_at is None:
                 alert.resolved_at = now
@@ -544,7 +544,7 @@ class LocalRepository:
     # ── Traces ───────────────────────────────────────────────
 
     def insert_trace(self, trace: Trace) -> UUID:
-        trace.created_at = datetime.utcnow()
+        trace.created_at = datetime.now(UTC)
         self._traces[trace.id] = trace
         self._save()
         return trace.id
@@ -597,7 +597,7 @@ class LocalRepository:
         return None
 
     def upsert_task(self, task: Task, *, update_priority: bool = False) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         existing = self.get_task_by_name(task.name)
         if existing:
             task.id = existing.id
@@ -614,7 +614,7 @@ class LocalRepository:
     # ── Tools ────────────────────────────────────────────────
 
     def upsert_tool(self, tool: Tool) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if tool.name in self._tools:
             existing = self._tools[tool.name]
             tool.id = existing.id
@@ -656,14 +656,14 @@ class LocalRepository:
         if not tool:
             return False
         tool.enabled = enabled
-        tool.updated_at = datetime.utcnow()
+        tool.updated_at = datetime.now(UTC)
         self._save()
         return True
 
     # ── Memory (versioned) ──────────────────────────────────
 
     def insert_memory(self, mem: Memory) -> UUID:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         mem.created_at = mem.created_at or now
         mem.modified_at = now
         # Extract any inline versions into _memory_versions storage
@@ -698,11 +698,11 @@ class LocalRepository:
         return mem
 
     def insert_memory_version(self, mv: MemoryVersion) -> None:
-        mv.created_at = mv.created_at or datetime.utcnow()
+        mv.created_at = mv.created_at or datetime.now(UTC)
         self._memory_versions.setdefault(mv.memory_id, []).append(mv)
         # Update modified_at on parent memory
         if mv.memory_id in self._memories:
-            self._memories[mv.memory_id].modified_at = datetime.utcnow()
+            self._memories[mv.memory_id].modified_at = datetime.now(UTC)
         self._save()
 
     def get_memory_version(self, memory_id: UUID, version: int) -> MemoryVersion | None:
@@ -726,7 +726,7 @@ class LocalRepository:
         mem = self._memories.get(memory_id)
         if mem:
             mem.active_version = version
-            mem.modified_at = datetime.utcnow()
+            mem.modified_at = datetime.now(UTC)
             self._save()
 
     def update_version_read_only(self, memory_id: UUID, version: int, read_only: bool) -> None:
@@ -740,14 +740,14 @@ class LocalRepository:
         mem = self._memories.get(memory_id)
         if mem:
             mem.includes = includes
-            mem.modified_at = datetime.utcnow()
+            mem.modified_at = datetime.now(UTC)
             self._save()
 
     def update_memory_name(self, memory_id: UUID, new_name: str) -> None:
         mem = self._memories.get(memory_id)
         if mem:
             mem.name = new_name
-            mem.modified_at = datetime.utcnow()
+            mem.modified_at = datetime.now(UTC)
             self._save()
 
     def delete_memory(self, memory_id: UUID) -> None:

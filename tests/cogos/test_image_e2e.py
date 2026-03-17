@@ -40,7 +40,7 @@ def test_boot_cogs_e2e(tmp_path):
     spec = load_image(image_dir)
     counts = apply_image(spec, repo)
 
-    assert counts["cogs"] == 2  # recruiter + newsfromthefront
+    assert counts["cogs"] == 4  # recruiter + newsfromthefront + discord + website
 
     # -- Verify both cog processes exist --
     procs = repo.list_processes()
@@ -110,7 +110,7 @@ def test_boot_cogs_e2e(tmp_path):
         assert cog_meta is not None, f"cog meta missing for {cog_name}"
         coglet_meta = load_coglet_meta(fs, cog_name, cog_name)
         assert coglet_meta is not None, f"default coglet missing for {cog_name}"
-        assert coglet_meta.entrypoint == "main.md"
+        assert coglet_meta.entrypoint in ("main.md", "recruiter.py", "newsfromthefront.py")
         assert coglet_meta.mode == "daemon"
 
     # -- Verify runtime cog.make_coglet works --

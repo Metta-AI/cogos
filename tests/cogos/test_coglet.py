@@ -1145,7 +1145,7 @@ class TestRecruiterCoglets:
         # Default coglet should exist
         coglet_meta = load_coglet_meta(store, "recruiter", "recruiter")
         assert coglet_meta is not None
-        assert coglet_meta.entrypoint == "main.md"
+        assert coglet_meta.entrypoint == "recruiter.py"
         assert coglet_meta.mode == "daemon"
 
         # Process should be registered

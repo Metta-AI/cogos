@@ -7,7 +7,7 @@ import fcntl
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -425,7 +425,7 @@ class LocalRepository:
 
     def upsert_process(self, p: Process) -> UUID:
         with self._writing():
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             existing = self._processes.get(p.id)
             if existing is None:
                 # Check by name
@@ -475,10 +475,10 @@ class LocalRepository:
                 return False
             process.status = status
             if status == ProcessStatus.RUNNABLE:
-                process.runnable_since = process.runnable_since or datetime.utcnow()
+                process.runnable_since = process.runnable_since or datetime.now(UTC)
             else:
                 process.runnable_since = None
-            process.updated_at = datetime.utcnow()
+            process.updated_at = datetime.now(UTC)
             # Cascade: if disabling, recursively disable all children
             if status == ProcessStatus.DISABLED:
                 self._cascade_disable(process_id)
@@ -494,7 +494,7 @@ class LocalRepository:
             if child.status not in (ProcessStatus.DISABLED, ProcessStatus.COMPLETED):
                 child.status = ProcessStatus.DISABLED
                 child.runnable_since = None
-                child.updated_at = datetime.utcnow()
+                child.updated_at = datetime.now(UTC)
                 self._cascade_disable(child.id)
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
@@ -515,14 +515,14 @@ class LocalRepository:
             if process is None:
                 return False
             process.retry_count += 1
-            process.updated_at = datetime.utcnow()
+            process.updated_at = datetime.now(UTC)
             return True
 
     # ── Capabilities ─────────────────────────────────────────
 
     def upsert_capability(self, cap: Capability) -> UUID:
         with self._writing():
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             existing = self._capabilities.get(cap.id)
             if existing is None:
                 for ec in self._capabilities.values():
@@ -578,7 +578,7 @@ class LocalRepository:
                     if existing.process == h.process and existing.channel == h.channel:
                         existing.enabled = h.enabled
                         return existing.id
-            h.created_at = datetime.utcnow()
+            h.created_at = datetime.now(UTC)
             self._handlers[h.id] = h
             return h.id
 
@@ -659,7 +659,7 @@ class LocalRepository:
 
     def insert_file(self, f: File) -> UUID:
         with self._writing():
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             f.created_at = now
             f.updated_at = now
             self._files[f.id] = f
@@ -690,7 +690,7 @@ class LocalRepository:
             if not file:
                 return False
             file.includes = includes
-            file.updated_at = datetime.utcnow()
+            file.updated_at = datetime.now(UTC)
             return True
 
     def delete_file(self, file_id: UUID) -> bool:
@@ -703,10 +703,10 @@ class LocalRepository:
 
     def insert_file_version(self, fv: FileVersion) -> None:
         with self._writing():
-            fv.created_at = datetime.utcnow()
+            fv.created_at = datetime.now(UTC)
             self._file_versions.setdefault(fv.file_id, []).append(fv)
             if fv.file_id in self._files:
-                self._files[fv.file_id].updated_at = datetime.utcnow()
+                self._files[fv.file_id].updated_at = datetime.now(UTC)
 
     def get_active_file_version(self, file_id: UUID) -> FileVersion | None:
         versions = self._file_versions.get(file_id, [])
@@ -748,7 +748,7 @@ class LocalRepository:
 
     def upsert_resource(self, r: Resource) -> str:
         with self._writing():
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             existing = self._resources.get(r.name)
             if existing:
                 r.id = existing.id
@@ -768,7 +768,7 @@ class LocalRepository:
 
     def upsert_cron(self, c: Cron) -> UUID:
         with self._writing():
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             # Match by (expression, channel_name)
             existing = None
             for ec in self._cron_rules.values():
@@ -798,7 +798,7 @@ class LocalRepository:
             for existing in self._deliveries.values():
                 if existing.message == ed.message and existing.handler == ed.handler:
                     return existing.id, False
-            ed.created_at = datetime.utcnow()
+            ed.created_at = datetime.now(UTC)
             self._deliveries[ed.id] = ed
             return ed.id, True
 
@@ -900,7 +900,7 @@ class LocalRepository:
 
     def create_run(self, run: Run) -> UUID:
         with self._writing():
-            run.created_at = datetime.utcnow()
+            run.created_at = datetime.now(UTC)
             self._runs[run.id] = run
             return run.id
 
@@ -934,7 +934,7 @@ class LocalRepository:
                 run.snapshot = snapshot
             if scope_log is not None:
                 run.scope_log = scope_log
-            run.completed_at = datetime.utcnow()
+            run.completed_at = datetime.now(UTC)
             return True
 
     def get_run(self, run_id: UUID) -> Run | None:
@@ -956,7 +956,7 @@ class LocalRepository:
             self._meta[key] = {
                 "key": key,
                 "value": value,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
 
     def get_meta(self, key: str) -> dict[str, str] | None:
@@ -973,7 +973,7 @@ class LocalRepository:
                     s.created_at = existing.created_at
                     break
             if s.created_at is None:
-                s.created_at = datetime.utcnow()
+                s.created_at = datetime.now(UTC)
             self._schemas[s.id] = s
             return s.id
 
@@ -1002,7 +1002,7 @@ class LocalRepository:
                     ch.created_at = existing.created_at
                     break
             if ch.created_at is None:
-                ch.created_at = datetime.utcnow()
+                ch.created_at = datetime.now(UTC)
             self._channels[ch.id] = ch
             return ch.id
 
@@ -1029,7 +1029,7 @@ class LocalRepository:
             ch = self._channels.get(channel_id)
             if ch is None:
                 return False
-            ch.closed_at = datetime.utcnow()
+            ch.closed_at = datetime.now(UTC)
             return True
 
     # ── Channel Message CRUD ─────────────────────────────────
@@ -1037,7 +1037,7 @@ class LocalRepository:
     def append_channel_message(self, msg: ChannelMessage) -> UUID:
         with self._writing():
             if msg.created_at is None:
-                msg.created_at = datetime.utcnow()
+                msg.created_at = datetime.now(UTC)
 
             # Idempotency check
             if msg.idempotency_key:

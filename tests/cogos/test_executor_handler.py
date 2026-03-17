@@ -308,8 +308,6 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
 
     fake_bedrock = FakeBedrock()
 
-    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
-
     executor_handler.execute_process(
         process,
         {},
@@ -557,8 +555,6 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
     )
     repo.upsert_process(process)
 
-    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
-
     first_run = _make_run(repo, process)
     run_and_complete(
         process,
@@ -698,3 +694,221 @@ def test_python_executor_error_captured_in_run(monkeypatch, tmp_path):
 
     assert "ValueError" in result_run.result["output"]
     assert "boom" in result_run.result["output"]
+
+
+def _tool_use_response(tool_name: str, tool_input: dict, tool_use_id: str = "tool-1",
+                        text: str | None = None,
+                        input_tokens: int = 5, output_tokens: int = 3) -> dict:
+    content = []
+    if text:
+        content.append({"text": text})
+    content.append({"toolUse": {"toolUseId": tool_use_id, "name": tool_name, "input": tool_input}})
+    return {
+        "output": {"message": {"role": "assistant", "content": content}},
+        "usage": {"inputTokens": input_tokens, "outputTokens": output_tokens},
+        "stopReason": "tool_use",
+    }
+
+
+def test_per_process_io_channels_created_on_execute(monkeypatch, tmp_path):
+    """Executing a process creates process:<name>:stdout/stderr/stdin channels."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="io-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Do work.",
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=1)
+    fake_bedrock = _FakeBedrock([_text_response("all done")])
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    for suffix in ("stdout", "stderr", "stdin"):
+        ch = repo.get_channel_by_name(f"process:io-worker:{suffix}")
+        assert ch is not None, f"Channel process:io-worker:{suffix} was not created"
+
+
+def test_run_code_output_published_to_process_stdout(monkeypatch, tmp_path):
+    """run_code output is written to the process:<name>:stdout channel."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="code-runner",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Run code.",
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=3)
+
+    responses = [
+        _tool_use_response("run_code", {"code": "print('hello world')"}),
+        _text_response("done"),
+    ]
+    fake_bedrock = _FakeBedrock(responses)
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", lambda self, code: "hello world")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    ch = repo.get_channel_by_name("process:code-runner:stdout")
+    assert ch is not None
+    msgs = repo.list_channel_messages(ch.id, limit=10)
+    texts = [m.payload.get("text", "") for m in msgs]
+    assert any("hello world" in t for t in texts)
+
+
+def test_final_assistant_text_published_to_process_stderr(monkeypatch, tmp_path):
+    """Final assistant commentary is written to process:<name>:stderr."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="chat-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Chat.",
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=1)
+    fake_bedrock = _FakeBedrock([_text_response("final words")])
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    ch = repo.get_channel_by_name("process:chat-worker:stderr")
+    assert ch is not None
+    msgs = repo.list_channel_messages(ch.id, limit=10)
+    texts = [m.payload.get("text", "") for m in msgs]
+    assert any("final words" in t for t in texts)
+
+
+def test_intermediate_assistant_text_published_to_stdout(monkeypatch, tmp_path):
+    """Assistant text blocks during tool_use turns are written to process:<name>:stdout."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="think-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Think and act.",
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=3)
+
+    responses = [
+        _tool_use_response("run_code", {"code": "1+1"}, text="Let me think about this..."),
+        _text_response("done"),
+    ]
+    fake_bedrock = _FakeBedrock(responses)
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", lambda self, code: "2")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    ch = repo.get_channel_by_name("process:think-worker:stdout")
+    assert ch is not None
+    msgs = repo.list_channel_messages(ch.id, limit=10)
+    texts = [m.payload.get("text", "") for m in msgs]
+    assert any("Let me think about this" in t for t in texts)
+
+
+def test_tty_forwards_to_global_io_channels(monkeypatch, tmp_path):
+    """When process.tty=True, output is also forwarded to io:stdout / io:stderr."""
+    repo = _repo(tmp_path)
+
+    # Create global io channels
+    for name in ("io:stdout", "io:stderr"):
+        repo.upsert_channel(Channel(name=name, channel_type=ChannelType.NAMED))
+
+    process = Process(
+        name="tty-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Run with tty.",
+        tty=True,
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=3)
+
+    responses = [
+        _tool_use_response("run_code", {"code": "print('tty output')"}),
+        _text_response("tty final"),
+    ]
+    fake_bedrock = _FakeBedrock(responses)
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", lambda self, code: "tty output")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    # Check global io:stdout got the run_code output
+    io_stdout = repo.get_channel_by_name("io:stdout")
+    assert io_stdout is not None
+    stdout_msgs = repo.list_channel_messages(io_stdout.id, limit=10)
+    stdout_texts = [m.payload.get("text", "") for m in stdout_msgs]
+    assert any("tty output" in t for t in stdout_texts)
+
+    # Check global io:stderr got the final commentary
+    io_stderr = repo.get_channel_by_name("io:stderr")
+    assert io_stderr is not None
+    stderr_msgs = repo.list_channel_messages(io_stderr.id, limit=10)
+    stderr_texts = [m.payload.get("text", "") for m in stderr_msgs]
+    assert any("tty final" in t for t in stderr_texts)
+
+
+def test_no_tty_does_not_forward_to_global_io(monkeypatch, tmp_path):
+    """When process.tty=False, output goes to per-process channels only, not io:stdout/stderr."""
+    repo = _repo(tmp_path)
+
+    # Create global io channels
+    for name in ("io:stdout", "io:stderr"):
+        repo.upsert_channel(Channel(name=name, channel_type=ChannelType.NAMED))
+
+    process = Process(
+        name="no-tty-worker",
+        mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+        content="Run without tty.",
+        tty=False,
+    )
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig(max_turns=3)
+
+    responses = [
+        _tool_use_response("run_code", {"code": "print('quiet')"}),
+        _text_response("quiet final"),
+    ]
+    fake_bedrock = _FakeBedrock(responses)
+
+    monkeypatch.setattr("cogos.files.context_engine.ContextEngine.generate_full_prompt", lambda self, process: "")
+    monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", lambda self, code: "quiet")
+
+    executor_handler.execute_process(process, {}, run, config, repo, bedrock_client=fake_bedrock)
+
+    # Per-process channels should have messages
+    ch = repo.get_channel_by_name("process:no-tty-worker:stdout")
+    assert ch is not None
+    msgs = repo.list_channel_messages(ch.id, limit=10)
+    assert len(msgs) > 0
+
+    # Global io channels should be empty
+    io_stdout = repo.get_channel_by_name("io:stdout")
+    io_stderr = repo.get_channel_by_name("io:stderr")
+    assert len(repo.list_channel_messages(io_stdout.id, limit=10)) == 0
+    assert len(repo.list_channel_messages(io_stderr.id, limit=10)) == 0

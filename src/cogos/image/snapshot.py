@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
             out_path.write_text(fv.content)
 
     # -- README --
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     source = f" from cogent `{cogent_name}`" if cogent_name else ""
     readme = (
         f"# Snapshot{source}\n\n"

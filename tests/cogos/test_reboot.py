@@ -53,10 +53,11 @@ def test_image_declares_only_init_process(tmp_path):
 
     procs = repo.list_processes()
     top_level = [p for p in procs if p.parent_process is None]
-    assert len(top_level) == 1
-    assert top_level[0].name == "init"
-    assert top_level[0].executor == "python"
-    assert top_level[0].priority >= 100
+    # init + cog processes (discord, recruiter, newsfromthefront, website)
+    assert len(top_level) == 5
+    init_proc = next(p for p in top_level if p.name == "init")
+    assert init_proc.executor == "python"
+    assert init_proc.priority >= 100
 
 
 def test_spawn_with_multiple_subscribe(tmp_path):

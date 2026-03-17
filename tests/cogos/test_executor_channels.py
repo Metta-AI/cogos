@@ -23,11 +23,16 @@ def test_implicit_channel_created():
 
     _setup_capability_proxies(vt, proc, repo)
 
-    # Should have called upsert_channel to create implicit channel
-    repo.upsert_channel.assert_called_once()
-    call_args = repo.upsert_channel.call_args[0][0]
-    assert call_args.name == "process:test-worker"
-    assert call_args.channel_type.value == "implicit"
+    # Should have called upsert_channel to create implicit channels
+    # (process:test-worker, process:test-worker:stdout, :stderr, :stdin)
+    assert repo.upsert_channel.call_count == 4
+    channel_names = [c[0][0].name for c in repo.upsert_channel.call_args_list]
+    assert "process:test-worker" in channel_names
+    assert "process:test-worker:stdout" in channel_names
+    assert "process:test-worker:stderr" in channel_names
+    assert "process:test-worker:stdin" in channel_names
+    for call in repo.upsert_channel.call_args_list:
+        assert call[0][0].channel_type.value == "implicit"
 
 
 def test_implicit_channel_not_duplicated():
@@ -48,6 +53,7 @@ def test_implicit_channel_not_duplicated():
 
     _setup_capability_proxies(vt, proc, repo)
 
+    # All channels already exist, no upsert needed
     repo.upsert_channel.assert_not_called()
 
 

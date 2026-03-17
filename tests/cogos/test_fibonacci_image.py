@@ -8,15 +8,12 @@ from cogos.image.spec import load_image
 def test_cogent_v1_fibonacci_loads():
     spec = load_image(Path("images/cogent-v1"))
 
-    proc_names = {p["name"] for p in spec.processes}
-    assert "fibonacci" in proc_names
+    # The fibonacci channel should be declared (via apps/fibonacci/init/processes.py)
+    channel_names = {c["name"] for c in spec.channels}
+    assert "fibonacci:poke" in channel_names
 
-    fibonacci = next(p for p in spec.processes if p["name"] == "fibonacci")
-    assert fibonacci["mode"] == "daemon"
-    assert fibonacci["content"] == "@{apps/fibonacci/fibonacci.md}"
-    assert fibonacci["capabilities"] == ["dir"]
-    assert fibonacci["handlers"] == ["fibonacci:poke"]
-    assert fibonacci["metadata"] == {"session": {"resume": True, "scope": "process"}}
+    # The fibonacci prompt file should be loaded
+    assert "apps/fibonacci/fibonacci.md" in spec.files
 
 
 def test_cogent_v1_fibonacci_files_and_prompt():

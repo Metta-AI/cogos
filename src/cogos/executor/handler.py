@@ -9,7 +9,7 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -562,6 +562,10 @@ def execute_process(
 
             if stop_reason == "tool_use":
                 tool_turns += 1
+                # Publish any assistant text blocks to stdout (thinking alongside tool calls)
+                for block in output_message.get("content", []):
+                    if isinstance(block, dict) and "text" in block:
+                        _publish_process_io(repo, process, "stdout", block["text"])
                 tool_results = []
                 for block in output_message.get("content", []):
                     if "toolUse" not in block:
@@ -785,7 +789,7 @@ def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -
     if not run.created_at:
         return
     if run.created_at.tzinfo is None:
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(UTC)
     else:
         completed_at = datetime.now(run.created_at.tzinfo)
     latency_ms = int((completed_at - run.created_at).total_seconds() * 1000)
@@ -931,17 +935,18 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
     # We don't pre-inject a full __help__ dump because it's ~5k tokens
     # and models print it eagerly, bloating every subsequent turn.
 
-    # Create implicit process channel if it doesn't exist
+    # Create implicit process channel and per-process IO channels if they don't exist
     try:
         from cogos.db.models import Channel, ChannelType
 
-        implicit_name = f"process:{process.name}"
-        if repo.get_channel_by_name(implicit_name) is None:
-            ch = Channel(
-                name=implicit_name,
-                owner_process=process.id,
-                channel_type=ChannelType.IMPLICIT,
-            )
-            repo.upsert_channel(ch)
+        for suffix in ("", ":stdout", ":stderr", ":stdin"):
+            ch_name = f"process:{process.name}{suffix}"
+            if repo.get_channel_by_name(ch_name) is None:
+                ch = Channel(
+                    name=ch_name,
+                    owner_process=process.id,
+                    channel_type=ChannelType.IMPLICIT,
+                )
+                repo.upsert_channel(ch)
     except Exception as exc:
-        logger.warning("Could not create implicit channel for process %s: %s", process.name, exc)
+        logger.warning("Could not create implicit channels for process %s: %s", process.name, exc)
