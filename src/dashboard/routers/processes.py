@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from cogos.db.local_repository import ALL_EPOCHS
 from cogos.db.models import Handler, Process, ProcessMode, ProcessStatus
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
@@ -38,6 +39,7 @@ class ProcessSummary(BaseModel):
 
 class ProcessDetail(BaseModel):
     id: str
+    epoch: int = 0
     name: str
     mode: str
     content: str
@@ -150,6 +152,7 @@ def _summary(p: Process) -> ProcessSummary:
 def _detail(p: Process) -> ProcessDetail:
     return ProcessDetail(
         id=str(p.id),
+        epoch=p.epoch,
         name=p.name,
         mode=p.mode.value,
         content=p.content,
@@ -252,10 +255,12 @@ def _sync_capabilities_from_grants(
 def list_processes(
     name: str,
     status: str | None = Query(None, description="Filter by process status"),
+    epoch: str | None = Query(None, description="Epoch filter: omit for current, 'all' for all epochs"),
 ) -> ProcessesResponse:
     repo = get_repo()
     ps = ProcessStatus(status) if status else None
-    procs = repo.list_processes(status=ps)
+    ep = ALL_EPOCHS if epoch == "all" else None
+    procs = repo.list_processes(status=ps, epoch=ep)
 
     details = [_detail(p) for p in procs]
 

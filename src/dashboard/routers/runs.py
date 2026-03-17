@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from cogos.db.local_repository import ALL_EPOCHS
 from cogos.db.models import Run
 from cogos.files.store import FileStore
 from dashboard.db import get_repo
@@ -20,6 +21,7 @@ router = APIRouter(tags=["cogos-runs"])
 
 class RunSummary(BaseModel):
     id: str
+    epoch: int = 0
     process: str
     process_name: str | None = None
     runner: str | None = None
@@ -263,6 +265,7 @@ def _summary(
 ) -> RunSummary:
     return RunSummary(
         id=str(r.id),
+        epoch=r.epoch,
         process=str(r.process),
         process_name=process_names.get(r.process) if process_names else None,
         runner=process_runners.get(r.process) if process_runners else None,
@@ -308,11 +311,14 @@ def list_runs(
     name: str,
     process: str | None = Query(None, description="Filter by process UUID"),
     limit: int = Query(50, ge=1, le=500),
+    epoch: str | None = Query(None, description="Epoch filter: omit for current, 'all' for all epochs"),
 ) -> RunsResponse:
     repo = get_repo()
     pid = UUID(process) if process else None
-    items = repo.list_runs(process_id=pid, limit=limit)
-    processes = repo.list_processes()
+    ep = ALL_EPOCHS if epoch == "all" else None
+    items = repo.list_runs(process_id=pid, limit=limit, epoch=ep)
+    proc_epoch = ALL_EPOCHS if epoch == "all" else None
+    processes = repo.list_processes(epoch=proc_epoch)
     process_names = {p.id: p.name for p in processes}
     process_runners = {p.id: p.runner for p in processes}
     out = [_summary(r, process_names, process_runners) for r in items]

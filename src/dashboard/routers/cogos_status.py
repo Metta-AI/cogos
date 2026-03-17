@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from cogos.db.local_repository import ALL_EPOCHS
 from cogos.db.models import ProcessStatus
 from dashboard.db import get_repo
 
@@ -37,17 +38,22 @@ class CogosStatusResponse(BaseModel):
     recent_runs: list[dict]
     scheduler_last_tick: str | None = None
     ages: AgeInfo = AgeInfo()
+    reboot_epoch: int = 0
 
 
 # ── Routes ──────────────────────────────────────────────────────────
 
 
 @router.get("/cogos-status", response_model=CogosStatusResponse)
-def cogos_status(name: str) -> CogosStatusResponse:
+def cogos_status(
+    name: str,
+    epoch: str | None = Query(None, description="Epoch filter"),
+) -> CogosStatusResponse:
     repo = get_repo()
+    ep = ALL_EPOCHS if epoch == "all" else None
 
     # Process counts by status
-    all_procs = repo.list_processes()
+    all_procs = repo.list_processes(epoch=ep)
     counts: dict[str, int] = {}
     for p in all_procs:
         s = p.status.value
@@ -67,7 +73,7 @@ def cogos_status(name: str) -> CogosStatusResponse:
 
     # Recent runs (last 10) with process name
     proc_map = {p.id: p.name for p in all_procs}
-    runs = repo.list_runs(limit=10)
+    runs = repo.list_runs(limit=10, epoch=ep)
     recent_runs = [
         {
             "id": str(r.id),
@@ -110,4 +116,5 @@ def cogos_status(name: str) -> CogosStatusResponse:
         recent_runs=recent_runs,
         scheduler_last_tick=scheduler_tick,
         ages=ages,
+        reboot_epoch=repo.reboot_epoch,
     )
