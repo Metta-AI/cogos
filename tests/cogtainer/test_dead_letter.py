@@ -63,6 +63,35 @@ def test_flush_dead_letters_skips_already_reported(tmp_path):
     assert _flush_dead_letters(repo) == 0
 
 
+def test_flush_dead_letters_tolerates_metadata_write_failure(tmp_path, monkeypatch):
+    """Dead-letter flushing should not crash if run metadata cannot be persisted."""
+    from cogtainer.lambdas.dispatcher.handler import _flush_dead_letters
+
+    repo = _repo(tmp_path)
+
+    process = Process(name="worker", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.COMPLETED)
+    repo.upsert_process(process)
+
+    run = Run(process=process.id, status=RunStatus.FAILED, error="boom")
+    repo.create_run(run)
+    repo.complete_run(run.id, status=RunStatus.FAILED, error="boom")
+
+    monkeypatch.setattr(
+        repo,
+        "update_run_metadata",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no metadata column")),
+    )
+
+    flushed = _flush_dead_letters(repo)
+    assert flushed == 1
+
+    dl_ch = repo.get_channel_by_name("system:dead-letter")
+    assert dl_ch is not None
+    msgs = repo.list_channel_messages(dl_ch.id, limit=10)
+    assert len(msgs) == 1
+    assert msgs[0].payload["type"] == "executor:failed"
+
+
 def test_flush_dead_letters_ignores_completed_runs(tmp_path):
     """Completed runs are not flushed."""
     from cogtainer.lambdas.dispatcher.handler import _flush_dead_letters

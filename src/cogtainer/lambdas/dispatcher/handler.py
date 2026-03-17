@@ -200,7 +200,14 @@ def _flush_dead_letters(repo) -> int:
         # Mark as reported to avoid duplicate dead-letters
         run_meta = run.metadata or {}
         run_meta["dead_letter_reported"] = True
-        repo.update_run_metadata(run.id, run_meta)
+        try:
+            repo.update_run_metadata(run.id, run_meta)
+        except Exception:
+            logger.warning(
+                "Failed to persist dead-letter metadata for run %s; continuing",
+                run.id,
+                exc_info=True,
+            )
         flushed += 1
 
     return flushed

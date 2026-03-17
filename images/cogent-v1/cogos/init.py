@@ -14,19 +14,9 @@ channels.create("io:web:request")
 
 # ── Infrastructure ───────────────────────────────────────────
 
-scheduler_data = file.read("cogos/lib/scheduler.md")
-if hasattr(scheduler_data, 'error'):
-    print(f"WARN: scheduler prompt not found: {scheduler_data.error}")
-else:
-    r = procs.spawn("scheduler",
-        mode="daemon",
-        content=scheduler_data.content,
-        priority=100.0,
-        model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        capabilities={"scheduler": None, "channels": None},
-        subscribe="system:tick:minute")
-    if hasattr(r, 'error'):
-        print(f"WARN: scheduler spawn failed: {r.error}")
+# The dispatcher Lambda already owns matching and dispatch. Do not spawn the
+# legacy LLM scheduler daemon here or it can create orphaned runs without
+# invoking executors.
 
 supervisor_data = file.read("apps/supervisor/supervisor.md")
 if hasattr(supervisor_data, 'error'):

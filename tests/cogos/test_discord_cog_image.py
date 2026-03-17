@@ -37,6 +37,17 @@ class TestDiscordCogImage:
         init_py = Path("images/cogent-v1/cogos/init.py").read_text()
         assert "discord-handle-message" not in init_py
 
+    def test_no_legacy_scheduler_spawn_in_init(self):
+        """Dispatcher Lambda owns scheduling; init.py must not spawn a scheduler daemon."""
+        init_py = Path("images/cogent-v1/cogos/init.py").read_text()
+        assert 'procs.spawn("scheduler"' not in init_py
+
+    def test_init_process_does_not_request_scheduler_capability(self):
+        """The init process should not request the obsolete scheduler capability."""
+        spec = load_image(Path("images/cogent-v1"))
+        init_proc = next(p for p in spec.processes if p["name"] == "init")
+        assert "scheduler" not in init_proc["capabilities"]
+
 
 class TestDiscordCogApply:
     def test_apply_creates_discord_process(self, tmp_path):
