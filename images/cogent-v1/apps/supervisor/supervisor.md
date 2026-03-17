@@ -42,32 +42,19 @@ print(f"Context: {context}")
 ### Step 2: Spawn helper and alert (single run_code call)
 
 ```python
-# Determine what capabilities the helper needs based on the description
-# Always include discord + channels (for replying and escalation).
-# Add others based on keywords:
-#   "task" / "asana" → asana
-#   "email" / "send mail" → email
-#   "search" / "look up" → web_search, web_fetch
-#   "github" / "repo" → github
-#   "site" / "website" / "page" / "publish" → web, blob
-#   "image" / "picture" / "photo" → image, blob
+# Pick the capabilities the helper needs from this list.
+# Always include discord + channels. Add others as needed for the task.
+# Available: asana, email, github, web_search, web_fetch, web, blob, image
 caps = {"discord": None, "channels": None}
-desc_lower = description.lower()
-if any(w in desc_lower for w in ["task", "asana"]):
-    caps["asana"] = None
-if any(w in desc_lower for w in ["email", "send mail", "mail"]):
-    caps["email"] = None
-if any(w in desc_lower for w in ["search", "look up", "lookup", "find info"]):
-    caps["web_search"] = None
-    caps["web_fetch"] = None
-if any(w in desc_lower for w in ["github", "repo", "pull request", "pr", "issue"]):
-    caps["github"] = None
-if any(w in desc_lower for w in ["site", "website", "page", "publish", "web"]):
-    caps["web"] = None
-    caps["blob"] = None
-if any(w in desc_lower for w in ["image", "picture", "photo", "generate"]):
-    caps["image"] = None
-    caps["blob"] = None
+# TODO: add capabilities the helper needs based on description, e.g.:
+# caps["web_search"] = None   # to search the web
+# caps["web_fetch"] = None    # to fetch URLs / PDFs
+# caps["web"] = None           # to publish websites
+# caps["blob"] = None          # for file/image storage
+# caps["image"] = None         # to generate/edit images
+# caps["asana"] = None         # to create tasks
+# caps["email"] = None         # to send email
+# caps["github"] = None        # for github operations
 
 # Spawn a helper with the needed capabilities
 helper = procs.spawn(
