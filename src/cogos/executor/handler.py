@@ -88,7 +88,7 @@ TOOL_CONFIG = {"tools": [
             "Execute Python code in a sandboxed environment. "
             "Variables persist between calls — define a variable in one call, use it in the next. "
             "Capability proxies are pre-injected as top-level objects. "
-            "print(__help__) shows ALL available capabilities with method signatures. "
+            "print(__capabilities__) lists available objects. Use obj.help() for method signatures. "
             "Available builtins: print, len, range, sorted, min, max, sum, "
             "str, int, float, list, dict, set, tuple, bool, isinstance, hasattr, getattr, "
             "type, map, filter, any, all, repr, json (pre-loaded). "
@@ -901,17 +901,9 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
     cap_names = sorted(k for k in vt.as_dict() if k != "print")
     vt.set("__capabilities__", ", ".join(cap_names))
 
-    # Generate concise help for each capability
-    help_lines = []
-    for name in cap_names:
-        obj = vt.get(name)
-        if obj is not None and hasattr(obj, "help") and callable(obj.help):
-            try:
-                help_lines.append(f"## {name}\n{obj.help()}")
-            except Exception:
-                pass
-    if help_lines:
-        vt.set("__help__", "\n\n".join(help_lines))
+    # Note: individual capabilities expose .help() for on-demand API docs.
+    # We don't pre-inject a full __help__ dump because it's ~5k tokens
+    # and models print it eagerly, bloating every subsequent turn.
 
     # Create implicit process channel if it doesn't exist
     try:
