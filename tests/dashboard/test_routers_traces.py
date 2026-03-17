@@ -26,6 +26,8 @@ from dashboard.app import create_app
 class _TraceRepoStub:
     def __init__(self) -> None:
         now = datetime.now(timezone.utc)
+        self.request_id = "req-123"
+        self.trace_id = uuid4()
         self.process = Process(
             id=uuid4(),
             name="alpha.worker",
@@ -48,7 +50,12 @@ class _TraceRepoStub:
             id=uuid4(),
             channel=self.inbound_channel.id,
             sender_process=None,
-            payload={"task": "index workspace", "message_type": "filesystem:index.request"},
+            payload={
+                "task": "index workspace",
+                "message_type": "filesystem:index.request",
+                "request_id": self.request_id,
+            },
+            trace_id=self.trace_id,
             created_at=now,
         )
         self.handler = Handler(
@@ -137,6 +144,8 @@ def test_message_traces_endpoint_returns_channel_delivery_run_graph():
     trace = payload["traces"][0]
     assert trace["message"]["channel_name"] == "filesystem-lab:requests"
     assert trace["message"]["message_type"] == "filesystem:index.request"
+    assert trace["message"]["request_id"] == repo.request_id
+    assert trace["message"]["trace_id"] == str(repo.trace_id)
     assert trace["deliveries"][0]["process_name"] == "alpha.worker"
     assert trace["deliveries"][0]["run"]["id"] == str(repo.run.id)
     assert trace["deliveries"][0]["emitted_messages"][0]["message_type"] == "process:run:success"
@@ -181,6 +190,53 @@ def test_message_traces_endpoint_filters_by_emitted_message_type():
 
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+def test_message_traces_endpoint_filters_by_request_id():
+    app = create_app()
+    client = TestClient(app)
+    repo = _TraceRepoStub()
+
+    with patch("dashboard.routers.traces.get_repo", return_value=repo):
+        response = client.get(f"/api/cogents/test/message-traces?range=1h&request_id={repo.request_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["traces"][0]["message"]["id"] == str(repo.message.id)
+
+    with patch("dashboard.routers.traces.get_repo", return_value=repo):
+        response = client.get("/api/cogents/test/message-traces?range=1h&request_id=req-missing")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 0
+
+
+def test_message_traces_endpoint_maps_category_filters_to_dashboard_buckets():
+    app = create_app()
+    client = TestClient(app)
+
+    other_repo = _TraceRepoStub()
+    with patch("dashboard.routers.traces.get_repo", return_value=other_repo):
+        response = client.get("/api/cogents/test/message-traces?range=1h&category=other")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+    io_repo = _TraceRepoStub()
+    io_repo.inbound_channel.name = "io:web:request"
+    io_repo.message.payload = {"request_id": io_repo.request_id, "path": "docs"}
+    with patch("dashboard.routers.traces.get_repo", return_value=io_repo):
+        response = client.get("/api/cogents/test/message-traces?range=1h&category=io")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+    system_repo = _TraceRepoStub()
+    system_repo.inbound_channel.name = "system:tick:minute"
+    system_repo.message.payload = {"type": "system:tick:minute"}
+    with patch("dashboard.routers.traces.get_repo", return_value=system_repo):
+        response = client.get("/api/cogents/test/message-traces?range=1h&category=system")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
 
 
 def test_runs_endpoint_maps_message_id_into_legacy_event_field():

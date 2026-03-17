@@ -228,6 +228,8 @@ export interface TraceMessage {
   channel_id: string;
   channel_name: string;
   message_type: string | null;
+  trace_id: string | null;
+  request_id: string | null;
   sender_process: string | null;
   sender_process_name: string | null;
   payload: Record<string, unknown>;

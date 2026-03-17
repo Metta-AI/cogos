@@ -29,6 +29,8 @@ class TraceMessageOut(BaseModel):
     channel_id: str
     channel_name: str
     message_type: str | None = None
+    trace_id: str | None = None
+    request_id: str | None = None
     sender_process: str | None = None
     sender_process_name: str | None = None
     payload: dict[str, Any]
@@ -115,6 +117,33 @@ def _message_type(message: ChannelMessage) -> str | None:
     return None
 
 
+def _request_id(message: ChannelMessage) -> str | None:
+    payload = message.payload or {}
+    value = payload.get("request_id")
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _message_category(message: ChannelMessage, *, channel_names: dict[UUID, str]) -> str:
+    channel_name = channel_names.get(message.channel, "")
+    if channel_name.startswith("io:"):
+        return "io"
+    if channel_name.startswith(("system:", "process:")):
+        return "system"
+
+    mt = _message_type(message)
+    if mt:
+        if mt.startswith(("discord:", "email:", "web:")):
+            return "io"
+        if mt.startswith(("system:", "process:")):
+            return "system"
+
+    return "other"
+
+
 def _normalize_type_filters(values: list[str] | None) -> set[str]:
     if not values:
         return set()
@@ -128,6 +157,24 @@ def _matches_type_filter(message: ChannelMessage, allowed_types: set[str]) -> bo
     return message_type in allowed_types
 
 
+def _matches_category_filter(
+    message: ChannelMessage,
+    allowed_categories: set[str],
+    *,
+    channel_names: dict[UUID, str],
+) -> bool:
+    if not allowed_categories:
+        return True
+    return _message_category(message, channel_names=channel_names) in allowed_categories
+
+
+def _matches_request_filter(message: ChannelMessage, allowed_request_ids: set[str]) -> bool:
+    if not allowed_request_ids:
+        return True
+    request_id = _request_id(message)
+    return request_id in allowed_request_ids
+
+
 def _message_out(
     message: ChannelMessage,
     *,
@@ -139,6 +186,8 @@ def _message_out(
         channel_id=str(message.channel),
         channel_name=channel_names.get(message.channel, str(message.channel)),
         message_type=_message_type(message),
+        trace_id=str(message.trace_id) if message.trace_id else None,
+        request_id=_request_id(message),
         sender_process=str(message.sender_process) if message.sender_process else None,
         sender_process_name=process_names.get(message.sender_process) if message.sender_process else None,
         payload=message.payload or {},
@@ -207,6 +256,8 @@ def list_message_traces(
     range: TraceRange = Query("1h"),
     message_type: list[str] | None = Query(None),
     emitted_message_type: list[str] | None = Query(None),
+    category: list[str] | None = Query(None),
+    request_id: list[str] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ) -> MessageTracesResponse:
     repo = get_repo()
@@ -214,7 +265,12 @@ def list_message_traces(
     cutoff = datetime.now(timezone.utc) - _RANGE_TO_DELTA[range]
     source_type_filters = _normalize_type_filters(message_type)
     emitted_type_filters = _normalize_type_filters(emitted_message_type)
-    fetch_limit = max(limit * 20, 1000) if source_type_filters or emitted_type_filters else max(limit * 10, 500)
+    category_filters = _normalize_type_filters(category)
+    request_id_filters = _normalize_type_filters(request_id)
+    has_filters = source_type_filters or emitted_type_filters or category_filters or request_id_filters
+    fetch_limit = max(limit * 20, 1000) if has_filters else max(limit * 10, 500)
+    if request_id_filters:
+        fetch_limit = max(fetch_limit, 5000)
 
     processes = repo.list_processes(limit=1000)
     channels = repo.list_channels()
@@ -239,6 +295,10 @@ def list_message_traces(
         if created_at is not None and created_at < cutoff:
             continue
         if not _matches_type_filter(message, source_type_filters):
+            continue
+        if not _matches_category_filter(message, category_filters, channel_names=channel_names):
+            continue
+        if not _matches_request_filter(message, request_id_filters):
             continue
         if message.sender_process is None or deliveries_by_message.get(message.id):
             candidate_messages.append(message)
