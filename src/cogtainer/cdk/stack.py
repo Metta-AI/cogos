@@ -125,7 +125,6 @@ class CogtainerStack(Stack):
             CfnOutput(self, "SecretArn", value=self.database.secret.secret_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "SessionsBucket", value=self.storage.bucket.bucket_name)
-        CfnOutput(self, "WebGatewayUrl", value=self.compute.web_gateway_url.url)
         CfnOutput(
             self,
             "StatusManifest",
@@ -157,9 +156,6 @@ class CogtainerStack(Stack):
             manifest["dashboard"] = {
                 "url": f"https://{safe_name}.{config.domain}",
             }
-        manifest["web_gateway"] = {
-            "function_url": self.compute.web_gateway_url.url,
-        }
         return manifest
 
     def _create_discord_bridge(self, config: CogtainerConfig, safe_name: str) -> None:

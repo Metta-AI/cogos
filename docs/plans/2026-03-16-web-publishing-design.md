@@ -15,8 +15,7 @@ Deployed once per cogent via CloudFormation. These are AWS resources:
 | Resource | Purpose |
 |----------|---------|
 | **Dashboard (FastAPI)** | Already exists. Now also serves cogent web content at `/web/static/` and proxies `/web/api/` requests to the executor. Primary entry point for web content. |
-| **Web Gateway Lambda** | Python function + Function URL. Standalone entry point for `{name}.softmax-cogents.com` — validates Cloudflare Access JWT and serves the same content as the dashboard routes. Used when the cogent's subdomain points directly at a Lambda Function URL instead of the ALB. |
-| **Cloudflare DNS record** | Points `{name}.softmax-cogents.com` at either the ALB (dashboard) or the Lambda Function URL. Access policy already exists. |
+| **Cloudflare DNS record** | Points `{name}.softmax-cogents.com` at the dashboard ALB. Access policy already exists. |
 
 ### Layer 2: CogOS Runtime (image boot)
 
@@ -49,7 +48,7 @@ The cogent never knows how HTTP serving works. CogOS never knows what the cogent
 
 ### Request Flow
 
-There are two entry points that serve the same content:
+There is one public entry point for cogent web content:
 
 **Via Dashboard (primary):**
 ```
@@ -60,18 +59,7 @@ Browser
       └── /web/api/{path}: append to io:web:request channel → invoke executor → handler responds → return HTTP
 ```
 
-**Via Web Gateway Lambda (subdomain):**
-```
-Browser
-  → Cloudflare (Access auth via JWT + DNS)
-  → Web Gateway Lambda (per-cogent, Function URL)
-  → Validate Cloudflare Access JWT
-  → Route decision:
-      ├── Static: read file from Postgres file store (web/{path}) → return HTTP
-      └── Dynamic: append to io:web:request channel → invoke executor → handler responds → return HTTP
-```
-
-No Cloudflare caching in v1. Gateway sends `Cache-Control: no-store` on all responses. Caching is a future optimization.
+Cloudflare continues to front the dashboard domain, but the dashboard is the only HTTP serving path for cogent web content.
 
 ### Components
 
@@ -95,23 +83,7 @@ The dashboard already runs as an ECS service behind the ALB. Two new routes unde
 
 The `/web/` prefix keeps cogent web routes cleanly separated from the dashboard's `/api/cogents/{name}/...` routes, avoiding any routing conflicts.
 
-#### 2. Web Gateway Lambda (new, CogOS)
-
-A standalone Lambda per cogent for the subdomain path. Identical logic to the dashboard routes but runs independently behind a Function URL.
-
-**Auth:** Validates the Cloudflare Access JWT on every request using Cloudflare's public key endpoint (`https://{team}.cloudflareaccess.com/cdn-cgi/access/certs`). Rejects requests without a valid JWT.
-
-**Static path (`/*` except `/api/*`):**
-1. Map URL path to file store key: `GET /page.html` → `web/page.html`
-2. Lookup chain: `web/{path}` → `web/{path}/index.html` → 404
-3. `GET /` → `web/index.html`
-4. Read file from Postgres via RDS Data API
-5. Infer `Content-Type` from extension, default to `application/octet-stream`
-6. Return file content with `Cache-Control: no-store`
-
-**Dynamic path (`/api/*`):** Same flow as dashboard — append channel message, invoke executor, return response.
-
-#### 3. `web` Capability (new, CogOS)
+#### 2. `web` Capability (new, CogOS)
 
 A new built-in capability, analogous to `discord`. Provides the verbs a process needs to interact with the web.
 
@@ -127,7 +99,7 @@ A new built-in capability, analogous to `discord`. Provides the verbs a process 
 - `web.scope(ops=["respond"])` — API handling only, no publishing
 - `web.scope(path_prefix="dashboard/")` — restrict to a subdirectory
 
-#### 4. `io:web:request` Channel (new, CogOS)
+#### 3. `io:web:request` Channel (new, CogOS)
 
 A system channel created at boot (like `io:discord:dm`). Schema:
 
@@ -146,11 +118,11 @@ Handler processes subscribe to this channel to receive dynamic API requests.
 
 Only one process should be subscribed to `io:web:request` at a time. If multiple processes subscribe, each request gets delivered to all subscribers, and the first `web.respond()` call wins (subsequent calls for the same `request_id` are no-ops).
 
-#### 5. Response Mechanism
+#### 4. Response Mechanism
 
 No intermediate storage needed. The response flows back through the invocation chain:
 
-1. Caller (dashboard or gateway) invokes executor Lambda synchronously
+1. Caller (dashboard) invokes executor Lambda synchronously
 2. Executor runs handler process, injecting the web request as JSON in the user message
 3. Handler calls `web.respond(request_id, status, headers, body)`
 4. `web.respond()` captures the response in the executor's in-memory `_pending_responses` dict
@@ -163,7 +135,7 @@ No polling, no correlation tables, no intermediate channels for the response pat
 
 ### Dispatch
 
-For dynamic requests, both the dashboard and the gateway bypass the SQS → ingress scheduler path and invoke the executor directly. This is the right choice for synchronous HTTP — web requests shouldn't wait in a scheduler queue.
+For dynamic requests, the dashboard bypasses the SQS → ingress scheduler path and invokes the executor directly. This is the right choice for synchronous HTTP — web requests shouldn't wait in a scheduler queue.
 
 The channel append (`io:web:request`) still happens for:
 - Handler subscription semantics (delivery creation, RUNNABLE marking)
@@ -183,7 +155,7 @@ In v1, the handler process is a single daemon. Concurrent requests are handled a
 - In practice, LLM-based handlers are slow enough that concurrent requests will queue behind the executor's process dispatch.
 
 This is acceptable for v1. Mitigations:
-- The executor timeout prevents unbounded waiting — stale requests get 502'd by the gateway.
+- The executor timeout prevents unbounded waiting — stale requests get 502'd by the dashboard proxy.
 - Handlers that do expensive work should respond with 202 and use `procs.spawn()` for async work.
 - Future: support multiple handler instances (process pool) for parallelism.
 
@@ -196,20 +168,10 @@ This is acceptable for v1. Mitigations:
 - Uses `FileStore` and `Repository` from existing dashboard DB connection
 - Needs `EXECUTOR_FUNCTION_NAME` env var to invoke the executor Lambda
 
-### Web Gateway Lambda (cogtainer CDK stack)
-
-- Runtime: Python 3.12
-- Memory: 256 MB
-- Timeout: 60 seconds (must exceed executor timeout)
-- Function URL: enabled (provides HTTPS endpoint)
-- No VPC — uses RDS Data API like all other Lambdas in the stack
-- IAM: RDS Data API access (read file store, write channels), invoke executor Lambda
-
 ### Cloudflare DNS + Auth
 
-- Point `{name}.softmax-cogents.com` at the ALB (dashboard) or Lambda Function URL
+- Point `{name}.softmax-cogents.com` at the dashboard ALB
 - Cloudflare Access policy controls who can reach it (already exists for dashboard)
-- Gateway Lambda validates Cloudflare Access JWT on every request (public key from `https://{team}.cloudflareaccess.com/cdn-cgi/access/certs`)
 
 ### What Doesn't Change
 
@@ -226,7 +188,7 @@ A cogent publishes a dashboard and handles an API endpoint:
 ```python
 # Publish a dashboard
 web.publish("index.html", "<html>...<script src='app.js'></script>...</html>")
-web.publish("app.js", "fetch('/api/status').then(r => r.json()).then(render)")
+web.publish("app.js", "fetch('/web/api/status').then(r => r.json()).then(render)")
 web.publish("style.css", "body { font-family: sans-serif; }")
 ```
 
@@ -275,29 +237,18 @@ cog.make_default_coglet(
 
 Simple convention-based routing, no configuration needed:
 
-**Via Dashboard:**
-
 | URL Pattern | Behavior |
 |-------------|----------|
 | `/web/static/` | Serve `web/index.html` from file store |
 | `/web/static/{path}` | Serve `web/{path}` from file store, 404 if not found |
 | `/web/api/{path}` | Bridge to `io:web:request` channel, invoke executor |
 
-**Via Web Gateway Lambda (subdomain):**
-
-| URL Pattern | Behavior |
-|-------------|----------|
-| `/` | Serve `web/index.html` |
-| `/{path}` | Serve `web/{path}`, then try `web/{path}/index.html`, then 404 |
-| `/api/{path}` | Bridge to `io:web:request` channel, invoke executor |
-
-The dashboard routes live under `/web/` to avoid conflicts with the dashboard's own `/api/` namespace. The web gateway Lambda serves at the root since it has no other routes to conflict with.
+The dashboard routes live under `/web/` to avoid conflicts with the dashboard's own `/api/` namespace.
 
 ## Limitations (v1)
 
 - **Text-only static files** — binary content (images, PDFs) not supported via `web.publish()`. Cogents can link to external assets.
 - **Serial request handling** — one handler process, requests queue serially. Handlers should respond fast and spawn child processes for expensive work.
-- **6 MB payload limit** — Lambda Function URL limit applies to both request and response bodies.
 - **No CORS headers** — cogent's frontend JS must be served from the same subdomain to avoid CORS issues. Same-origin requests work without CORS headers.
 
 ## What This Doesn't Include (Future)

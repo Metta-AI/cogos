@@ -320,42 +320,6 @@ class ComputeConstruct(Construct):
             )
         )
 
-        # Web Gateway Lambda — serves static files and bridges API requests
-        web_gateway_role = iam.Role(
-            self,
-            "WebGatewayRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[lambda_basic],
-        )
-        for stmt in data_api_statements:
-            web_gateway_role.add_to_policy(stmt)
-        web_gateway_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["lambda:InvokeFunction"],
-                resources=[f"arn:aws:lambda:*:*:function:cogent-{safe_name}-executor"],
-            )
-        )
-
-        self.web_gateway = lambda_.Function(
-            self,
-            "WebGateway",
-            function_name=f"cogent-{safe_name}-web-gateway",
-            runtime=lambda_.Runtime.PYTHON_3_12,
-            handler="cogtainer.lambdas.web_gateway.handler.handler",
-            code=lambda_code,
-            memory_size=256,
-            timeout=Duration.seconds(60),
-            role=web_gateway_role,
-            environment={
-                **env,
-                "CF_TEAM_DOMAIN": "softmax",
-            },
-        )
-
-        self.web_gateway_url = self.web_gateway.add_function_url(
-            auth_type=lambda_.FunctionUrlAuthType.NONE,
-        )
-
         # ECS Task Role (for long-running tasks on shared cogent-polis cluster)
         task_role = iam.Role(
             self,
