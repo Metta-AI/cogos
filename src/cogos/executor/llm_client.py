@@ -206,7 +206,11 @@ class LLMClient:
                 "Bedrock throttled (model=%s), falling back to Anthropic API",
                 kwargs.get("modelId"),
             )
-            return self._call_anthropic(**kwargs)
+            try:
+                return self._call_anthropic(**kwargs)
+            except Exception as fallback_exc:
+                logger.warning("Anthropic fallback failed: %s", fallback_exc)
+                raise exc from fallback_exc
 
     def _converse_anthropic_primary(self, **kwargs: Any) -> dict:
         """Anthropic primary, Bedrock fallback on error."""

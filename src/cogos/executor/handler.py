@@ -821,11 +821,11 @@ def _is_supported_tool_name(name: object) -> bool:
 def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -> None:
     if not run.created_at:
         return
-    if run.created_at.tzinfo is None:
-        completed_at = datetime.now(UTC)
-    else:
-        completed_at = datetime.now(run.created_at.tzinfo)
-    latency_ms = int((completed_at - run.created_at).total_seconds() * 1000)
+    created_at = run.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    completed_at = datetime.now(UTC)
+    latency_ms = int((completed_at - created_at).total_seconds() * 1000)
     logger.info(
         "CogOS latency run->completion=%sms run=%s process=%s executor_duration_ms=%s",
         latency_ms,
