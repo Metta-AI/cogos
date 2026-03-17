@@ -11,6 +11,7 @@ import type {
   CogosHandler,
   CogosRun,
   CogosRunLogsResponse,
+  CogosOperation,
   EventType,
   Resource,
   Alert,
@@ -180,17 +181,19 @@ export async function toggleCrons(
 
 // ── CogOS API ───────────────────────────────────────────────────────────────
 
-export async function getCogosStatus(name: string): Promise<CogosStatus> {
-  return fetchJSON(`/api/cogents/${name}/cogos-status`);
+export async function getCogosStatus(name: string, epoch?: string): Promise<CogosStatus> {
+  const params = epoch ? `?epoch=${epoch}` : "";
+  return fetchJSON(`/api/cogents/${name}/cogos-status${params}`);
 }
 
 export async function getSetup(name: string): Promise<SetupResponse> {
   return fetchJSON(`/api/cogents/${name}/setup`);
 }
 
-export async function getProcesses(name: string): Promise<CogosProcess[]> {
+export async function getProcesses(name: string, epoch?: string): Promise<CogosProcess[]> {
+  const params = epoch ? `?epoch=${epoch}` : "";
   const r = await fetchJSON<{ processes: CogosProcess[] }>(
-    `/api/cogents/${name}/processes`,
+    `/api/cogents/${name}/processes${params}`,
   );
   return r.processes;
 }
@@ -406,11 +409,19 @@ export async function getHandlers(name: string): Promise<CogosHandler[]> {
   return r.handlers;
 }
 
-export async function getRuns(name: string): Promise<CogosRun[]> {
+export async function getRuns(name: string, epoch?: string): Promise<CogosRun[]> {
+  const params = epoch ? `?epoch=${epoch}` : "";
   const r = await fetchJSON<{ runs: CogosRun[] }>(
-    `/api/cogents/${name}/runs`,
+    `/api/cogents/${name}/runs${params}`,
   );
   return r.runs;
+}
+
+export async function getOperations(name: string): Promise<CogosOperation[]> {
+  const r = await fetchJSON<{ operations: CogosOperation[] }>(
+    `/api/cogents/${name}/operations`,
+  );
+  return r.operations;
 }
 
 export async function getRunLogs(

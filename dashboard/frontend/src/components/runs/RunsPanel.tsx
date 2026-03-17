@@ -12,6 +12,7 @@ import * as api from "@/lib/api";
 interface Props {
   runs: CogosRun[];
   cogentName?: string;
+  currentEpoch?: number;
 }
 
 type RunRow = CogosRun & Record<string, unknown>;
@@ -211,7 +212,7 @@ function makeColumns(
   ];
 }
 
-export function RunsPanel({ runs, cogentName }: Props) {
+export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
   const [logPreviewByRun, setLogPreviewByRun] = useState<Record<string, CogosRunLogsResponse>>({});
   const [loadingRunIds, setLoadingRunIds] = useState<Set<string>>(new Set());
@@ -310,6 +311,11 @@ export function RunsPanel({ runs, cogentName }: Props) {
         expandedRowIds={expandedRunIds}
         renderExpandedRow={(row) =>
           renderLogPreview(row, logPreviewByRun[row.id], loadingRunIds.has(row.id), copiedRunId, copyRunId, cogentName)
+        }
+        getRowStyle={(row) =>
+          currentEpoch != null && row.epoch < currentEpoch
+            ? { opacity: 0.5 }
+            : undefined
         }
       />
     </div>

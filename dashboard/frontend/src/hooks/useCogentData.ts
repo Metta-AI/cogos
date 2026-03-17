@@ -35,19 +35,21 @@ export function useCogentData(cogentName: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
+  const [showHistory, setShowHistory] = useState(false);
 
   const { connected, lastMessage } = useWebSocket(cogentName);
 
   const refresh = useCallback(async () => {
     if (!cogentName) return;
+    const epochParam = showHistory ? "all" : undefined;
     setLoading(true);
     const results = await Promise.allSettled([
-      api.getCogosStatus(cogentName),
-      api.getProcesses(cogentName),
+      api.getCogosStatus(cogentName, epochParam),
+      api.getProcesses(cogentName, epochParam),
       api.getFiles(cogentName),
       api.getCapabilities(cogentName),
       api.getHandlers(cogentName),
-      api.getRuns(cogentName),
+      api.getRuns(cogentName, epochParam),
       api.getMessageTraces(cogentName, timeRange, { limit: 100 }),
       api.getCrons(cogentName),
       api.getEventTypes(cogentName),
@@ -79,7 +81,7 @@ export function useCogentData(cogentName: string) {
       alerts: results[10].status === "fulfilled" ? results[10].value : [],
     }));
     setLoading(false);
-  }, [cogentName, timeRange]);
+  }, [cogentName, timeRange, showHistory]);
 
   // Initial fetch
   useEffect(() => {
@@ -130,14 +132,15 @@ export function useCogentData(cogentName: string) {
 
   // Poll cogos-status every 5s to keep scheduler tick fresh
   useEffect(() => {
+    const epochParam = showHistory ? "all" : undefined;
     const id = setInterval(async () => {
       try {
-        const cs = await api.getCogosStatus(cogentName);
+        const cs = await api.getCogosStatus(cogentName, epochParam);
         setData((prev) => ({ ...prev, cogosStatus: cs }));
       } catch { /* ignore */ }
     }, 5_000);
     return () => clearInterval(id);
-  }, [cogentName]);
+  }, [cogentName, showHistory]);
 
   // Fallback polling: if WS not connected after 5s, poll every 30s
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -169,5 +172,5 @@ export function useCogentData(cogentName: string) {
     }
   }, [connected]);
 
-  return { data, loading, error, refresh, timeRange, setTimeRange, connected };
+  return { data, loading, error, refresh, timeRange, setTimeRange, connected, showHistory, setShowHistory };
 }

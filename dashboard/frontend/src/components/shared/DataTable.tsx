@@ -17,6 +17,7 @@ interface DataTableProps<T> {
   getRowId?: (row: T, index: number) => string;
   expandedRowIds?: Set<string>;
   renderExpandedRow?: (row: T) => React.ReactNode;
+  getRowStyle?: (row: T) => React.CSSProperties | undefined;
 }
 
 type SortDir = "asc" | "desc";
@@ -29,6 +30,7 @@ export function DataTable<T extends Record<string, unknown>>({
   getRowId,
   expandedRowIds,
   renderExpandedRow,
+  getRowStyle,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -107,6 +109,7 @@ export function DataTable<T extends Record<string, unknown>>({
                     className={`border-b border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors ${
                       onRowClick ? "cursor-pointer" : ""
                     }`}
+                    style={getRowStyle?.(row)}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map((col) => (

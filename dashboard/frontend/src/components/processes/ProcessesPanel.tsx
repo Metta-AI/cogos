@@ -22,6 +22,7 @@ interface Props {
   files: CogosFile[];
   capabilities: CogosCapability[];
   eventTypes: EventType[];
+  currentEpoch?: number;
 }
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral" | "accent";
@@ -1983,7 +1984,7 @@ function ProcessFormEditor({
 
 /* ── Main Panel ── */
 
-export function ProcessesPanel({ processes, cogentName, onRefresh, resources, runs, files, capabilities, eventTypes }: Props) {
+export function ProcessesPanel({ processes, cogentName, onRefresh, resources, runs, files, capabilities, eventTypes, currentEpoch }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // "new" for create
   const [form, setForm] = useState<ProcessForm>(EMPTY_FORM);
@@ -2333,6 +2334,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                   background: isSelected ? "var(--bg-hover)" : "var(--bg-surface)",
                   borderBottom: "1px solid var(--border)",
                   paddingLeft: `${12 + depth * 20}px`,
+                  opacity: (currentEpoch != null && proc.epoch < currentEpoch) ? 0.5 : 1,
                 }}
                 role="button"
                 tabIndex={0}

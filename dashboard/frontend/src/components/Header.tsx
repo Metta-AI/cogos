@@ -23,6 +23,8 @@ interface HeaderProps {
   wsConnected: boolean;
   schedulerLastTick: string | null;
   ages: AgeInfo | null;
+  showHistory: boolean;
+  onShowHistoryChange: (show: boolean) => void;
 }
 
 function useTickAgo(schedulerLastTick: string | null): { text: string; ms: number } | null {
@@ -123,6 +125,8 @@ export function Header({
   wsConnected,
   schedulerLastTick,
   ages,
+  showHistory,
+  onShowHistoryChange,
 }: HeaderProps) {
   // Show spin for at least 400ms so the user sees feedback
   const [spinning, setSpinning] = useState(false);
@@ -280,6 +284,27 @@ export function Header({
             </button>
           ))}
         </div>
+
+        {/* History toggle */}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            fontSize: "10px",
+            fontFamily: "var(--font-mono)",
+            color: showHistory ? "var(--accent)" : "var(--text-muted)",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showHistory}
+            onChange={(e) => onShowHistoryChange(e.target.checked)}
+            style={{ margin: 0 }}
+          />
+          history
+        </label>
 
         {/* Reboot button */}
         <RebootButton cogentName={cogentName} onRefresh={onRefresh} />

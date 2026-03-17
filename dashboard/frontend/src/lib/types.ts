@@ -11,6 +11,7 @@ export interface StatusResponse {
 
 export interface CogosProcess {
   id: string;
+  epoch: number;
   name: string;
   mode: "daemon" | "one_shot";
   content: string;
@@ -110,6 +111,7 @@ export interface CogosHandler {
 
 export interface CogosRun {
   id: string;
+  epoch: number;
   process: string;
   process_name?: string;
   runner?: string | null;
@@ -176,6 +178,15 @@ export interface CogosStatus {
   recent_runs: Array<{ id: string; process_name: string; status: string; duration_ms: number | null; created_at: string }>;
   scheduler_last_tick: string | null;
   ages: AgeInfo | null;
+  reboot_epoch: number;
+}
+
+export interface CogosOperation {
+  id: string;
+  epoch: number;
+  type: string;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
 }
 
 export interface Execution {
