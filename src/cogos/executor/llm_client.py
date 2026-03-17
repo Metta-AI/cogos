@@ -194,16 +194,20 @@ class LLMClient:
             return self._converse_anthropic_primary(**kwargs)
         return self._converse_bedrock_primary(**kwargs)
 
+    # Bedrock error codes that should trigger Anthropic fallback.
+    _FALLBACK_ERROR_CODES = {"ThrottlingException", "ValidationException", "ServiceUnavailableException"}
+
     def _converse_bedrock_primary(self, **kwargs: Any) -> dict:
-        """Bedrock primary, Anthropic fallback on throttling."""
+        """Bedrock primary, Anthropic fallback on throttling or validation errors."""
         try:
             return self._bedrock.converse(**kwargs)
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code", "")
-            if error_code != "ThrottlingException" or self._anthropic is None:
+            if error_code not in self._FALLBACK_ERROR_CODES or self._anthropic is None:
                 raise
             logger.warning(
-                "Bedrock throttled (model=%s), falling back to Anthropic API",
+                "Bedrock %s (model=%s), falling back to Anthropic API",
+                error_code,
                 kwargs.get("modelId"),
             )
             try:

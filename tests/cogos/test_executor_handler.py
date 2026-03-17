@@ -967,3 +967,112 @@ else:
     # No LLM calls — Python executor runs code directly
     assert result_run.tokens_in == 0
     assert result_run.tokens_out == 0
+
+
+def test_spill_tool_result_short_text(tmp_path):
+    """Short output is returned inline without spilling."""
+    from cogos.executor.handler import _spill_tool_result
+    from cogos.files.store import FileStore
+    from uuid import uuid4
+
+    repo = _repo(tmp_path)
+    fs = FileStore(repo)
+    result = _spill_tool_result("short", file_store=fs, run_id=uuid4(), turn=1, tool_idx=0)
+    assert result == "short"
+
+
+def test_spill_tool_result_large_text(tmp_path):
+    """Large output is written to file store; inline text is a short preview."""
+    from cogos.executor.handler import _spill_tool_result
+    from cogos.files.store import FileStore
+    from uuid import uuid4
+
+    repo = _repo(tmp_path)
+    fs = FileStore(repo)
+    run_id = uuid4()
+    text = "A" * 10_000
+    result = _spill_tool_result(text, file_store=fs, run_id=run_id, turn=1, tool_idx=0, threshold=1000)
+    assert len(result) < len(text)
+    assert "files.read" in result
+    # Full content should be in the file store
+    key = f"run_output/{run_id}/1-0"
+    assert fs.get_content(key) == text
+
+
+def test_large_tool_output_spilled_to_file_store(monkeypatch, tmp_path):
+    """Large run_code output is spilled to the file store, not inlined in messages."""
+    repo = _repo(tmp_path)
+    process = Process(name="big-output", content="make stuff", status=ProcessStatus.RUNNING)
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig()
+
+    large_output = "X" * 10_000
+
+    responses = [
+        {
+            "output": {"message": {"role": "assistant", "content": [
+                {"toolUse": {"toolUseId": "t1", "name": "run_code", "input": {"code": "print('x'*10000)"}}},
+            ]}},
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+            "stopReason": "tool_use",
+        },
+        _text_response("done"),
+    ]
+
+    monkeypatch.setattr("cogos.sandbox.executor.SandboxExecutor.execute", lambda self, code: large_output)
+
+    fake = _FakeBedrock(responses)
+    result_run = executor_handler.execute_process(
+        process, {"process_id": str(process.id)}, run, config, repo,
+        bedrock_client=fake,
+    )
+
+    # The second call's messages should contain a short preview, not the full output
+    second_call = fake.calls[1]
+    tool_result_msg = second_call["messages"][-1]
+    tool_text = tool_result_msg["content"][0]["toolResult"]["content"][0]["text"]
+    assert len(tool_text) < len(large_output)
+    assert "files.read" in tool_text
+    assert "run_output/" in tool_text
+
+    # Full output should be in the file store
+    from cogos.files.store import FileStore
+    fs = FileStore(repo)
+    stored = fs.get_content(f"run_output/{run.id}/1-0")
+    assert stored == large_output
+
+
+def test_context_overflow_creates_critical_alert(monkeypatch, tmp_path):
+    """A ValidationException from Bedrock creates a context_overflow alert."""
+    from botocore.exceptions import ClientError
+
+    repo = _repo(tmp_path)
+    process = Process(name="overflower", content="do stuff", status=ProcessStatus.RUNNING)
+    repo.upsert_process(process)
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig()
+
+    # Patch to use our local repo and config
+    monkeypatch.setattr(executor_handler, "get_config", lambda: config)
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    # Patch LLMClient to raise ValidationException (context too long)
+    def _raise_validation(self_or_first=None, **kwargs):
+        raise ClientError(
+            {"Error": {"Code": "ValidationException", "Message": "Input is too long for model"}},
+            "Converse",
+        )
+
+    monkeypatch.setattr("cogos.executor.llm_client.LLMClient.converse", _raise_validation)
+
+    result = executor_handler.handler(
+        {"process_id": str(process.id), "run_id": str(run.id)},
+    )
+    assert result["statusCode"] == 500
+
+    alerts = repo.list_alerts()
+    overflow_alerts = [a for a in alerts if a.alert_type == "process:context_overflow"]
+    assert len(overflow_alerts) == 1
+    assert overflow_alerts[0].severity.value == "critical"
+    assert overflow_alerts[0].metadata["process_name"] == "overflower"

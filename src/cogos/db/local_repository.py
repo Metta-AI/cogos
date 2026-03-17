@@ -76,6 +76,7 @@ class LocalRepository:
         self._discord_guilds: dict[str, DiscordGuild] = {}
         self._discord_channels: dict[str, DiscordChannel] = {}
         self._meta: dict[str, dict[str, str]] = {}
+        self._alerts: dict[UUID, Any] = {}
 
         self._load()
 
@@ -1164,3 +1165,34 @@ class LocalRepository:
     def delete_discord_channel(self, channel_id: str) -> None:
         with self._writing(force=True):
             self._discord_channels.pop(channel_id, None)
+
+    # ── Alerts ────────────────────────────────────────────────
+
+    def create_alert(
+        self,
+        severity: str,
+        alert_type: str,
+        source: str,
+        message: str,
+        metadata: dict | None = None,
+    ) -> None:
+        from cogos.db.models.alert import Alert, AlertSeverity
+
+        alert = Alert(
+            severity=AlertSeverity(severity),
+            alert_type=alert_type,
+            source=source,
+            message=message,
+            metadata=metadata or {},
+        )
+        with self._writing():
+            self._alerts[alert.id] = alert
+
+    def list_alerts(self, *, resolved: bool = False) -> list:
+        self._maybe_reload()
+        from cogos.db.models.alert import Alert
+
+        alerts = list(self._alerts.values())
+        if not resolved:
+            alerts = [a for a in alerts if a.resolved_at is None]
+        return sorted(alerts, key=lambda a: a.created_at or datetime.min, reverse=True)

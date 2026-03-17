@@ -218,16 +218,65 @@ def test_resolve_returns_none_when_nothing_available(monkeypatch):
     assert _resolve_anthropic_api_key() is None
 
 
-def test_llm_client_non_throttle_error_propagates():
+def test_llm_client_non_fallback_error_propagates():
+    """Errors not in _FALLBACK_ERROR_CODES should propagate without fallback."""
     fake_bedrock = MagicMock()
     fake_bedrock.converse.side_effect = ClientError(
-        {"Error": {"Code": "ValidationException", "Message": "bad"}},
+        {"Error": {"Code": "AccessDeniedException", "Message": "forbidden"}},
         "Converse",
     )
     client = LLMClient(bedrock_client=fake_bedrock)
     client._anthropic = MagicMock()  # Even with fallback available
     with pytest.raises(ClientError):
         client.converse(modelId="test", messages=[], system=[])
+
+
+def test_llm_client_falls_back_on_validation_exception():
+    """ValidationException (e.g. context too long) should trigger Anthropic fallback."""
+    fake_bedrock = MagicMock()
+    fake_bedrock.converse.side_effect = ClientError(
+        {"Error": {"Code": "ValidationException", "Message": "Input is too long"}},
+        "Converse",
+    )
+
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.return_value = _FakeResponse()
+
+    client = LLMClient(bedrock_client=fake_bedrock)
+    client._anthropic = fake_anthropic_client
+
+    result = client.converse(
+        modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        messages=[{"role": "user", "content": [{"text": "hi"}]}],
+        system=[{"text": "You are helpful."}],
+        toolConfig={"tools": []},
+    )
+    assert result["output"]["message"]["content"][0]["text"] == "hello"
+    fake_anthropic_client.messages.create.assert_called_once()
+
+
+def test_llm_client_falls_back_on_service_unavailable():
+    """ServiceUnavailableException should trigger Anthropic fallback."""
+    fake_bedrock = MagicMock()
+    fake_bedrock.converse.side_effect = ClientError(
+        {"Error": {"Code": "ServiceUnavailableException", "Message": "try later"}},
+        "Converse",
+    )
+
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.return_value = _FakeResponse()
+
+    client = LLMClient(bedrock_client=fake_bedrock)
+    client._anthropic = fake_anthropic_client
+
+    result = client.converse(
+        modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        messages=[{"role": "user", "content": [{"text": "hi"}]}],
+        system=[{"text": "You are helpful."}],
+        toolConfig={"tools": []},
+    )
+    assert result["output"]["message"]["content"][0]["text"] == "hello"
+    fake_anthropic_client.messages.create.assert_called_once()
 
 
 # ── Anthropic-primary mode ──────────────────────────────────

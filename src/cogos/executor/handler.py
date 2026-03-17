@@ -48,6 +48,18 @@ def _estimate_cost(model_id: str, tokens_in: int, tokens_out: int) -> Decimal:
     return Decimal("0")
 
 
+TOOL_RESULT_SPILL_THRESHOLD = 4_000
+"""Character count above which run_code output is written to the file store
+instead of being inlined in the conversation.  The model receives a short
+preview + a file key it can read back with files.read().
+"""
+
+TOOL_RESULT_PREVIEW_CHARS = 1_000
+"""How many characters of a spilled tool result to include inline as a
+preview so the model has immediate context without reading the file.
+"""
+
+
 @dataclass(frozen=True)
 class ExecutorConfig:
     region: str = "us-east-1"
@@ -132,6 +144,35 @@ TOOL_CONFIG = {"tools": [
         }},
     }},
 ]}
+
+def _spill_tool_result(
+    text: str,
+    *,
+    file_store: Any,
+    run_id: UUID,
+    turn: int,
+    tool_idx: int,
+    threshold: int = TOOL_RESULT_SPILL_THRESHOLD,
+    preview_chars: int = TOOL_RESULT_PREVIEW_CHARS,
+) -> str:
+    """If *text* exceeds *threshold*, write it to the file store and return a
+    short preview + file key.  Otherwise return *text* unchanged.
+    """
+    if len(text) <= threshold:
+        return text
+    key = f"run_output/{run_id}/{turn}-{tool_idx}"
+    try:
+        file_store.upsert(key, text, source="executor")
+    except Exception:
+        logger.warning("Could not spill tool output to %s; truncating instead", key)
+        return text[:preview_chars] + f"\n\n... [output truncated — {len(text)} chars total] ..."
+    preview = text[:preview_chars]
+    return (
+        f"{preview}\n\n"
+        f"... [{len(text)} chars total — full output saved to @{{{key}}}] ...\n"
+        f"Use files.read(\"{key}\") to retrieve the complete output."
+    )
+
 
 VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 SUPPORTED_TOOL_NAMES = {
@@ -297,18 +338,36 @@ def handler(event: dict, context: Any = None) -> dict:
             "error": str(e)[:1000],
         })
 
+        alert_type = "process:run:failed"
+        alert_severity = "warning"
+        alert_meta: dict[str, Any] = {
+            "process_id": str(process.id),
+            "process_name": process.name,
+            "run_id": str(run.id),
+            "duration_ms": duration_ms,
+        }
+
+        # Detect context-overflow specifically so operators can act on it.
+        from botocore.exceptions import ClientError as _BotoClientError
+        if isinstance(e, _BotoClientError):
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = str(e).lower()
+            if error_code == "ValidationException" and (
+                "token" in error_msg or "too long" in error_msg or "context" in error_msg or "input" in error_msg
+            ):
+                alert_type = "process:context_overflow"
+                alert_severity = "critical"
+                alert_meta["tokens_in"] = run.tokens_in
+                alert_meta["tokens_out"] = run.tokens_out
+                alert_meta["model"] = run.model_version or ""
+
         try:
             repo.create_alert(
-                severity="warning",
-                alert_type="process:run:failed",
+                severity=alert_severity,
+                alert_type=alert_type,
                 source="executor",
                 message=f"Run failed for '{process.name}': {str(e)[:500]}",
-                metadata={
-                    "process_id": str(process.id),
-                    "process_name": process.name,
-                    "run_id": str(run.id),
-                    "duration_ms": duration_ms,
-                },
+                metadata=alert_meta,
             )
         except Exception:
             logger.debug("Could not create alert for failed run %s", run.id)
@@ -600,6 +659,7 @@ def execute_process(
                     if isinstance(block, dict) and "text" in block:
                         _publish_process_io(repo, process, "stdout", block["text"])
                 tool_results = []
+                tool_idx = 0
                 for block in output_message.get("content", []):
                     if "toolUse" not in block:
                         continue
@@ -647,10 +707,18 @@ def execute_process(
                         turn_number,
                         tool_name,
                     )
+                    context_result = _spill_tool_result(
+                        result,
+                        file_store=file_store,
+                        run_id=run.id,
+                        turn=turn_number,
+                        tool_idx=tool_idx,
+                    )
+                    tool_idx += 1
                     tool_results.append({
                         "toolResult": {
                             "toolUseId": tool_use["toolUseId"],
-                            "content": [{"text": result}],
+                            "content": [{"text": context_result}],
                         }
                     })
                 tool_result_message = {"role": "user", "content": tool_results}
