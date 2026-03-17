@@ -814,6 +814,17 @@ class Repository:
             )
         return [self._file_from_row(r) for r in self._rows_to_dicts(response)]
 
+    def update_file_version_content(self, file_id: UUID, version: int, content: str) -> bool:
+        response = self._execute(
+            "UPDATE cogos_file_version SET content = :content WHERE file = :file_id AND version = :version",
+            [
+                self._param("file_id", file_id),
+                self._param("version", version),
+                self._param("content", content),
+            ],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
+
     def update_file_includes(self, file_id: UUID, includes: list[str]) -> bool:
         response = self._execute(
             "UPDATE cogos_file SET includes = :includes::jsonb, updated_at = now() WHERE id = :id",
