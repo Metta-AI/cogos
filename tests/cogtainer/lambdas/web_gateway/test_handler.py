@@ -179,6 +179,7 @@ class TestHandlerStaticRequest:
         resp = _handle_static_request(mock_repo, "/dashboard")
         assert resp["statusCode"] == 200
         assert resp["body"] == "<html>index</html>"
+        assert resp["headers"]["content-type"] == "text/html"
         calls = mock_store.get_content.call_args_list
         assert calls[0].args[0] == "web/dashboard"
         assert calls[1].args[0] == "web/dashboard/index.html"
@@ -194,6 +195,20 @@ class TestHandlerStaticRequest:
 
         resp = _handle_static_request(mock_repo, "/nonexistent.html")
         assert resp["statusCode"] == 404
+
+    @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
+    def test_extensionless_html_serves_text_html(self, mock_store_cls):
+        from cogtainer.lambdas.web_gateway.handler import _handle_static_request
+
+        mock_repo = MagicMock()
+        mock_store = MagicMock()
+        mock_store_cls.return_value = mock_store
+        mock_store.get_content.return_value = "<html>hello</html>"
+
+        resp = _handle_static_request(mock_repo, "/nature-fact")
+        assert resp["statusCode"] == 200
+        assert resp["body"] == "<html>hello</html>"
+        assert resp["headers"]["content-type"] == "text/html"
 
 
 class TestHandlerBinaryStatic:
