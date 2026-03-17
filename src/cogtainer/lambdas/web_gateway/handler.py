@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import os
 import time
 from uuid import uuid4
@@ -12,6 +11,7 @@ import boto3
 from cogos.db.models.channel_message import ChannelMessage
 from cogos.db.repository import Repository
 from cogos.files.store import FileStore
+from cogos.io.web.serving import content_type_for_path, lookup_static_file
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,7 @@ _JWKS_TTL = 300
 
 
 def _content_type_for(path: str) -> str:
-    ct, _ = mimetypes.guess_type(path)
-    return ct or "application/octet-stream"
+    return content_type_for_path(path)
 
 
 def _is_api_request(path: str) -> bool:
@@ -109,22 +108,12 @@ def handler(event: dict, context=None) -> dict:
 
 def _handle_static_request(repo: Repository, path: str) -> dict:
     store = FileStore(repo)
-    file_key = _resolve_static_path(path)
-    content = store.get_content(file_key)
-
-    if content is None:
-        fallback = file_key.rstrip("/") + "/index.html"
-        content = store.get_content(fallback)
-        if content is None:
-            return _make_response(404, "not found")
-        file_key = fallback
-
-    ct = _content_type_for(file_key)
-
-    if isinstance(content, str) and content.startswith("base64:"):
-        return _make_response(200, content[7:], content_type=ct, is_base64=True)
-
-    return _make_response(200, content, content_type=ct)
+    web_file = lookup_static_file(store, path)
+    if web_file is None:
+        return _make_response(404, "not found")
+    if web_file.is_base64:
+        return _make_response(200, web_file.content, content_type=web_file.content_type, is_base64=True)
+    return _make_response(200, web_file.content, content_type=web_file.content_type)
 
 
 def _handle_api_request(

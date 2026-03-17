@@ -31,10 +31,13 @@ if not has_handler:
         idle_timeout_ms=300000,
     )
     h2 = cog.make_coglet("handler")  # returns coglet handle
-    coglet_runtime.run(h2, procs, subscribe=[
+    result = coglet_runtime.run(h2, procs, subscribe=[
         "io:discord:dm", "io:discord:mention", "io:discord:message",
     ])
-    print("Handler created and started")
+    if hasattr(result, 'error'):
+        print(f"ERROR spawning handler: {result.error}")
+    else:
+        print("Handler created and started")
     exit()
 print("Handler exists, checking status...")
 ```

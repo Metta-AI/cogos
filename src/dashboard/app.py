@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -135,21 +137,24 @@ def create_app() -> FastAPI:
 
     # --- Web static content from FileStore (DB) ---
     def _serve_web_file(path: str) -> Response:
-        import mimetypes
-
         from cogos.files.store import FileStore
+        from cogos.io.web.serving import lookup_static_file
         from dashboard.db import get_repo
 
-        if not path or path.endswith("/"):
-            path = (path or "") + "index.html"
-
         store = FileStore(get_repo())
-        content = store.get_content(f"web/{path}")
-        if content is None:
+        web_file = lookup_static_file(store, path)
+        if web_file is None:
             return JSONResponse(status_code=404, content={"detail": "not found"})
 
-        mime, _ = mimetypes.guess_type(path)
-        return Response(content=content, media_type=mime or "application/octet-stream")
+        body: str | bytes = web_file.content
+        if web_file.is_base64:
+            try:
+                body = base64.b64decode(web_file.content, validate=True)
+            except (binascii.Error, ValueError):
+                logger.warning("Invalid base64 web content for %s", web_file.key)
+                return JSONResponse(status_code=500, content={"detail": "invalid published content"})
+
+        return Response(content=body, media_type=web_file.content_type)
 
     @app.get("/web/static")
     async def web_static_root():
