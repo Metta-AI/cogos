@@ -133,9 +133,9 @@ def create_app() -> FastAPI:
         except WebSocketDisconnect:
             manager.disconnect(name, ws)
 
-    # --- Web content from FileStore (DB) ---
-    @app.get("/web/{path:path}")
-    async def web_content(path: str):
+    # --- Web static content from FileStore (DB) ---
+    @app.get("/web/static/{path:path}")
+    async def web_static(path: str):
         import mimetypes
 
         from cogos.files.store import FileStore
@@ -152,12 +152,9 @@ def create_app() -> FastAPI:
         mime, _ = mimetypes.guess_type(path)
         return Response(content=content, media_type=mime or "application/octet-stream")
 
-    # --- Executor proxy for non-dashboard /api/ paths ---
-    @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-    async def api_proxy(request: Request, path: str):
-        if path.startswith("cogents/"):
-            return JSONResponse(status_code=404, content={"detail": "not found"})
-
+    # --- Executor proxy for web API requests ---
+    @app.api_route("/web/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+    async def web_api_proxy(request: Request, path: str):
         import json
         from uuid import uuid4
 
