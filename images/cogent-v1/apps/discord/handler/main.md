@@ -64,6 +64,8 @@ discord.send(channel=channel_id, content=reply, reply_to=message_id)
 # discord.react(channel=channel_id, message_id=message_id, emoji="👍")
 
 # Option C — Escalate (when you lack capability or info):
+# reply = "On it — handing this off now!"
+# discord.send(channel=channel_id, content=reply, reply_to=message_id)
 # discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
 # channels.send("supervisor:help", {
 #     "process_name": "discord-handle-message",
@@ -90,17 +92,19 @@ print("Done")
 ## When to escalate vs respond directly
 
 **Respond directly** when:
+
 - General knowledge questions (time, greetings, simple facts)
 - System questions you CAN answer: use `procs.list()` for processes, `channels.list()` for channels
 - Simple conversation
 - User asks you to build/create a website or web page — use `web.publish(path, html_content)` to publish it, then share `web.url(path)` for the published page. Do NOT invent or guess the domain or route.
 
 **Escalate** when:
+
 - User needs a capability you don't have (email, web search, github, asana)
 - The request requires action beyond your scope
 - You don't know the answer and guessing would be wrong
 
-When escalating, react with ⬆️ and send to `supervisor:help` — do NOT send a text reply.
+When escalating, react with ⬆️, send a brief reply (e.g. "On it — handing this off now!"), and send to `supervisor:help`.
 
 ## Channel messages (not DM, not mention)
 
