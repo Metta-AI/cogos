@@ -1,8 +1,6 @@
 """Tests for LLMClient — Bedrock primary, Anthropic API fallback."""
 
-import json
 from dataclasses import dataclass
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,10 +11,9 @@ from cogos.executor.llm_client import (
     _anthropic_response_to_bedrock,
     _bedrock_messages_to_anthropic,
     _bedrock_model_to_anthropic,
-    _resolve_anthropic_api_key,
     _bedrock_tools_to_anthropic,
+    _resolve_anthropic_api_key,
 )
-
 
 # ── Model ID conversion ──────────────────────────────────────
 
@@ -231,3 +228,54 @@ def test_llm_client_non_throttle_error_propagates():
     client._anthropic = MagicMock()  # Even with fallback available
     with pytest.raises(ClientError):
         client.converse(modelId="test", messages=[], system=[])
+
+
+# ── Anthropic-primary mode ──────────────────────────────────
+
+
+def test_anthropic_primary_uses_anthropic_first():
+    fake_bedrock = MagicMock()
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.return_value = _FakeResponse()
+
+    client = LLMClient(bedrock_client=fake_bedrock, anthropic_api_key="sk-test", provider="anthropic")
+    client._anthropic = fake_anthropic_client
+
+    result = client.converse(
+        modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        messages=[{"role": "user", "content": [{"text": "hi"}]}],
+        system=[{"text": "You are helpful."}],
+        toolConfig={"tools": []},
+    )
+    assert result["output"]["message"]["content"][0]["text"] == "hello"
+    fake_anthropic_client.messages.create.assert_called_once()
+    fake_bedrock.converse.assert_not_called()
+
+
+def test_anthropic_primary_falls_back_to_bedrock_on_error():
+    fake_bedrock = MagicMock()
+    fake_bedrock.converse.return_value = {"output": {"message": {"role": "assistant", "content": [{"text": "ok"}]}}}
+
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.side_effect = Exception("rate limit")
+
+    client = LLMClient(bedrock_client=fake_bedrock, anthropic_api_key="sk-test", provider="anthropic")
+    client._anthropic = fake_anthropic_client
+
+    result = client.converse(
+        modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        messages=[{"role": "user", "content": [{"text": "hi"}]}],
+        system=[{"text": "You are helpful."}],
+    )
+    assert result["output"]["message"]["content"][0]["text"] == "ok"
+    fake_bedrock.converse.assert_called_once()
+
+
+def test_anthropic_primary_requires_api_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "cogos.executor.llm_client._resolve_anthropic_api_key",
+        lambda explicit_key=None: None,
+    )
+    with pytest.raises(RuntimeError, match="LLM_PROVIDER=anthropic"):
+        LLMClient(bedrock_client=MagicMock(), provider="anthropic")

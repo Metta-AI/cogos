@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from aws_cdk import Duration
-
 
 POLIS_ACCOUNT = "901289084804"
 POLIS_REGION = "us-east-1"
@@ -29,4 +28,5 @@ class CogtainerConfig:
     ecs_memory: int = 4096
     ecs_timeout_s: int = 3600
     ecr_repo_uri: str = ""
+    llm_provider: str = "bedrock"
     session_expiry_days: Duration = Duration.days(30)

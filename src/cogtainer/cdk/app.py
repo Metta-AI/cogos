@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import aws_cdk as cdk
 
-from cogtainer.cdk.config import CogtainerConfig, POLIS_ACCOUNT, POLIS_REGION
+from cogtainer.cdk.config import POLIS_ACCOUNT, POLIS_REGION, CogtainerConfig
 from cogtainer.cdk.stack import CogtainerStack
 
 
@@ -13,10 +13,12 @@ def main() -> None:
     cogent_name = app.node.try_get_context("cogent_name") or "default"
     certificate_arn = app.node.try_get_context("certificate_arn") or ""
     ecr_repo_uri = app.node.try_get_context("ecr_repo_uri") or ""
+    llm_provider = app.node.try_get_context("llm_provider") or "bedrock"
 
     config = CogtainerConfig(
         cogent_name=cogent_name,
         ecr_repo_uri=ecr_repo_uri,
+        llm_provider=llm_provider,
     )
 
     CogtainerStack(
