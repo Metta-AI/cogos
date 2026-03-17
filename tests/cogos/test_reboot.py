@@ -23,6 +23,62 @@ def test_reboot_clears_processes_and_creates_init(tmp_path):
     assert procs[0].executor == "python"
 
 
+def test_reboot_preserves_old_processes_in_previous_epoch(tmp_path):
+    from cogos.db.local_repository import ALL_EPOCHS
+    from cogos.db.models import Run, RunStatus
+    repo = LocalRepository(str(tmp_path))
+    old = Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING)
+    repo.upsert_process(old)
+    run = Run(process=old.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+
+    reboot(repo)
+
+    # Current epoch: only init
+    procs = repo.list_processes()
+    assert len(procs) == 1
+    assert procs[0].name == "init"
+
+    # All epochs: old + init
+    all_procs = repo.list_processes(epoch=ALL_EPOCHS)
+    assert len(all_procs) == 2
+    names = {p.name for p in all_procs}
+    assert names == {"scheduler", "init"}
+
+    # Old runs still visible in all epochs
+    all_runs = repo.list_runs(epoch=ALL_EPOCHS)
+    assert len(all_runs) == 1
+
+    # Current epoch runs: none
+    current_runs = repo.list_runs()
+    assert len(current_runs) == 0
+
+
+def test_reboot_logs_operation(tmp_path):
+    repo = LocalRepository(str(tmp_path))
+    repo.upsert_process(Process(name="init", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.COMPLETED))
+
+    reboot(repo)
+
+    ops = repo.list_operations()
+    assert len(ops) == 1
+    assert ops[0].type == "reboot"
+    assert ops[0].epoch == 1
+
+
+def test_reboot_epoch_increments(tmp_path):
+    repo = LocalRepository(str(tmp_path))
+
+    reboot(repo)
+    assert repo.reboot_epoch == 1
+
+    reboot(repo)
+    assert repo.reboot_epoch == 2
+
+    procs = repo.list_processes()
+    assert len(procs) == 1  # only the latest init
+
+
 def test_reboot_preserves_files(tmp_path):
     from cogos.files.store import FileStore
     repo = LocalRepository(str(tmp_path))

@@ -19,6 +19,7 @@ def test_reboot_endpoint(tmp_path):
         assert resp.status_code == 200
         data = resp.json()
         assert data["cleared_processes"] >= 1
+        assert "epoch" in data
 
     procs = repo.list_processes()
     assert len(procs) == 1
