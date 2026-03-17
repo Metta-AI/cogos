@@ -53,6 +53,8 @@ cogent <name> cogtainer status              # Check infrastructure status
 ```bash
 cogent <name> cogos image boot cogent-v1          # Upsert capabilities, files, processes into DB
 cogent <name> cogos image boot cogent-v1 --clean  # Wipe all tables first, then boot
+cogent <name> cogos reload -i cogent-v1 -y        # Reload config from image, preserving runtime data
+cogent <name> cogos reload -i cogent-v1 -y --full # Wipe ALL data (including runtime) and reload
 ```
 
 ### Dashboard
@@ -61,6 +63,7 @@ cogent <name> cogos image boot cogent-v1 --clean  # Wipe all tables first, then 
 cogent <name> dashboard deploy              # Fast path: Next.js build -> S3 -> restart ECS (~30s)
 cogent <name> dashboard deploy --docker     # Full path: rebuild Docker image + push ECR + restart
 cogent <name> dashboard deploy --skip-health  # Skip health check wait
+cogent <name> cogos dashboard reload          # Restart local dashboard (stop + start)
 ```
 
 ### Discord Bridge
