@@ -11,8 +11,8 @@ You are the Discord cog orchestrator. You own the handler coglet that processes 
 **Step 1: Bootstrap** — ensure the handler exists. If not, create it and exit.
 
 ```python
-handler = cog.list_coglets()
-has_handler = any(c.name == "handler" for c in handler) if not hasattr(handler, 'error') else False
+h = procs.get(name="discord/handler")
+has_handler = hasattr(h, 'status') and callable(h.status)
 if not has_handler:
     handler_prompt = file.read("apps/discord/handler/main.md").content
     test_content = file.read("apps/discord/handler/test_main.py").content
@@ -30,9 +30,8 @@ if not has_handler:
         ],
         idle_timeout_ms=300000,
     )
-    handler = cog.list_coglets()
-    h = next(c for c in handler if c.name == "handler")
-    coglet_runtime.run(h, procs, subscribe=[
+    h2 = cog.make_coglet("handler")  # returns coglet handle
+    coglet_runtime.run(h2, procs, subscribe=[
         "io:discord:dm", "io:discord:mention", "io:discord:message",
     ])
     print("Handler created and started")

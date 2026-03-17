@@ -16,7 +16,19 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+class _SandboxExit(Exception):
+    """Raised by exit() in sandbox code to stop execution cleanly."""
+    pass
+
+
+def _sandbox_exit():
+    """Stop sandbox execution. Used by processes to exit early."""
+    raise _SandboxExit()
+
+
 _SAFE_BUILTINS: dict[str, Any] = {
+    # Control flow
+    "exit": _sandbox_exit,
     # Output
     "print": print,
     "repr": repr,
@@ -173,6 +185,8 @@ class SandboxExecutor:
         try:
             with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
                 exec(code, namespace)  # noqa: S102
+        except _SandboxExit:
+            pass  # Clean exit requested by sandbox code
         except Exception:
             error = traceback.format_exc()
             stderr_buf.write(error)
