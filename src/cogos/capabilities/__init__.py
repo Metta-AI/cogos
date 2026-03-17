@@ -1021,4 +1021,26 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    {
+        "name": "web",
+        "description": "Publish web content and handle HTTP requests for the cogent's subdomain.",
+        "handler": "cogos.io.web.capability.WebCapability",
+        "instructions": (
+            "Use web to publish static files and handle HTTP API requests.\n"
+            "- web.publish(path, content) — publish a file at web/{path}\n"
+            "- web.unpublish(path) — remove a published file\n"
+            "- web.respond(request_id, status, headers, body) — respond to an API request\n"
+            "- web.list(prefix) — list published files\n"
+            "Static files are served at https://{cogent}.softmax-cogents.com/{path}.\n"
+            "API requests to /api/* are delivered via io:web:request channel."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["publish", "unpublish", "respond", "list"]}},
+                    "path_prefix": {"type": "string", "description": "Restrict to files under this prefix"},
+                },
+            },
+        },
+    },
 ]

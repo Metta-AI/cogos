@@ -125,6 +125,7 @@ class CogtainerStack(Stack):
             CfnOutput(self, "SecretArn", value=self.database.secret.secret_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "SessionsBucket", value=self.storage.bucket.bucket_name)
+        CfnOutput(self, "WebGatewayUrl", value=self.compute.web_gateway_url.url)
         CfnOutput(
             self,
             "StatusManifest",
@@ -156,6 +157,9 @@ class CogtainerStack(Stack):
             manifest["dashboard"] = {
                 "url": f"https://{safe_name}.{config.domain}",
             }
+        manifest["web_gateway"] = {
+            "function_url": self.compute.web_gateway_url.url,
+        }
         return manifest
 
     def _create_discord_bridge(self, config: CogtainerConfig, safe_name: str) -> None:
@@ -245,8 +249,8 @@ class CogtainerStack(Stack):
             self.compute.task_definition.task_role
         )
 
-        # Fargate service starts stopped by default. CLI flows can auto-start it
-        # after deploy when the Discord token is already configured.
+        # Default to 1 so CDK deploys don't kill a running bridge.
+        # update_cli saves/restores the count, but bare cdk deploys bypass that.
         sg = ec2.SecurityGroup(self, "DiscordSg", vpc=vpc, allow_all_outbound=True)
 
         self.discord_service = ecs.FargateService(
@@ -254,7 +258,7 @@ class CogtainerStack(Stack):
             service_name=f"cogent-{safe_name}-discord",
             cluster=cluster,
             task_definition=task_def,
-            desired_count=0,
+            desired_count=1,
             assign_public_ip=True,
             security_groups=[sg],
             vpc_subnets=ec2.SubnetSelection(
@@ -334,6 +338,7 @@ class CogtainerStack(Stack):
             "SESSIONS_BUCKET": self.storage.bucket.bucket_name,
             "DASHBOARD_ASSETS_S3": f"s3://{self.storage.bucket.bucket_name}/dashboard/frontend.tar.gz",
             "DASHBOARD_DOCKER_VERSION": docker_version,
+            "EXECUTOR_FUNCTION_NAME": f"cogent-{safe_name}-executor",
         }
 
         task_def.add_container(
@@ -394,6 +399,14 @@ class CogtainerStack(Stack):
             )
         )
         self.storage.bucket.grant_read_write(task_def.task_role)
+
+        # IAM: invoke executor Lambda for /api/ proxy
+        task_def.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[self.compute.executor.function_arn],
+            )
+        )
 
         # Fargate service
         sg = ec2.SecurityGroup(self, "DashSg", vpc=vpc)

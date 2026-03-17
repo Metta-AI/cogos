@@ -9,6 +9,9 @@ for ch_name in [
 ]:
     channels.create(ch_name)
 
+# ── Web request channel (created at boot so handlers can subscribe) ──
+channels.create("io:web:request")
+
 # ── Infrastructure ───────────────────────────────────────────
 
 scheduler_data = file.read("cogos/lib/scheduler.md")
@@ -35,7 +38,7 @@ else:
         capabilities={
             "me": None, "procs": None, "dir": None, "file": None,
             "discord": None, "channels": None, "secrets": None,
-            "stdlib": None, "alerts": None,
+            "stdlib": None, "alerts": None, "email": None, "web": None,
         },
         subscribe="supervisor:help")
     if hasattr(r, 'error'):

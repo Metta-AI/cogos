@@ -233,7 +233,13 @@ def handler(event: dict, context: Any = None) -> dict:
                 repo.update_process_status(process.id, ProcessStatus.COMPLETED)
 
         logger.info(f"Run {run_id} completed in {duration_ms}ms")
-        return {"statusCode": 200, "run_id": str(run_id)}
+        result = {"statusCode": 200, "run_id": str(run_id)}
+
+        web_request_id = event.get("web_request_id")
+        if web_request_id:
+            result["web_response"] = event.get("_web_response") or {"status": 204, "headers": {}, "body": ""}
+
+        return result
 
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -301,7 +307,22 @@ def handler(event: dict, context: Any = None) -> dict:
             repo.update_process_status(process.id, ProcessStatus.DISABLED)
 
         logger.error(f"Run {run_id} failed: {e}")
-        return {"statusCode": 500, "error": str(e)}
+        result = {"statusCode": 500, "error": str(e)}
+        web_request_id = event.get("web_request_id")
+        if web_request_id:
+            result["web_response"] = {"status": 502, "headers": {}, "body": json.dumps({"error": str(e)[:1000]})}
+        return result
+
+
+def _extract_web_response(vt: VariableTable, event_data: dict) -> None:
+    web_request_id = event_data.get("web_request_id")
+    if not web_request_id:
+        return
+    web_cap = vt.get("web")
+    if web_cap is not None and hasattr(web_cap, "get_pending_response"):
+        resp = web_cap.get_pending_response(web_request_id)
+        if resp:
+            event_data["_web_response"] = resp
 
 
 def _execute_python_process(
@@ -352,6 +373,7 @@ def _execute_python_process(
     run.tokens_in = 0
     run.tokens_out = 0
     run.scope_log = sandbox.scope_log
+    _extract_web_response(vt, event_data)
     return run
 
 
@@ -427,6 +449,9 @@ def execute_process(
     # Build user message from the triggering event only. Process instructions
     # already live in the system prompt, including any `@{file-key}` refs.
     user_text = ""
+    web_request = event_data.get("web_request")
+    if web_request:
+        user_text += f"Incoming web request:\n{json.dumps(web_request, indent=2)}\n"
     if event_data.get("payload"):
         user_text += f"Message payload: {json.dumps(event_data['payload'], indent=2)}\n"
     if not user_text.strip():
@@ -614,6 +639,7 @@ def execute_process(
         run.tokens_in = total_input_tokens
         run.tokens_out = total_output_tokens
         run.scope_log = sandbox.scope_log
+        _extract_web_response(vt, event_data)
         _record_step(
             "final_stop",
             {

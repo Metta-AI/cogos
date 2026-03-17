@@ -1,0 +1,181 @@
+<h2>Web Publishing Design (Final)</h2>
+<p class="subtitle">CogOS provides the bridge. The cogent decides what to build.</p>
+
+<div class="section">
+  <h3>Architecture</h3>
+  <div class="mockup">
+    <div class="mockup-header">Request Flow</div>
+    <div class="mockup-body" style="font-family:monospace;line-height:2;padding:1.5rem;font-size:0.85rem;">
+      <div style="color:#7aa2f7;font-weight:bold;">Browser</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#bb9af7;">  ▼ Cloudflare (Access JWT + DNS)</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#9ece6a;font-weight:bold;">  ▼ Web Gateway Lambda (per-cogent, Function URL, no VPC)</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼ Validate Cloudflare Access JWT</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ├─── <span style="color:#e0af68;">Static: /*</span></div>
+      <div style="color:#666;">  │    ▼ map URL → <span style="color:#e0af68;">web/{path}</span></div>
+      <div style="color:#666;">  │    ▼ lookup: web/{path} → web/{path}/index.html → 404</div>
+      <div style="color:#666;">  │    ▼ read from Postgres via <span style="color:#e0af68;">RDS Data API</span></div>
+      <div style="color:#666;">  │    ▼ return content + Cache-Control: no-store</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  └─── <span style="color:#f7768e;">Dynamic: /api/*</span></div>
+      <div style="color:#666;">       ▼ append to <span style="color:#f7768e;">io:web:request</span> channel (audit + delivery)</div>
+      <div style="color:#666;">       ▼ invoke executor Lambda <span style="color:#f7768e;">synchronously</span> (like awaiting a future)</div>
+      <div style="color:#666;">       ▼ executor runs handler process</div>
+      <div style="color:#666;">       ▼ handler calls <span style="color:#f7768e;">web.respond()</span> → captured in executor memory</div>
+      <div style="color:#666;">       ▼ executor returns response payload to gateway</div>
+      <div style="color:#666;">       ▼ gateway returns HTTP</div>
+      <div style="color:#666;margin-top:0.5rem;font-style:italic;">       No polling. No correlation table. Just a function call.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Three Layers</h3>
+
+  <div class="mockup" style="margin-bottom:1rem;">
+    <div class="mockup-header" style="background:#1a1b26;color:#f7768e;">Layer 1: AWS Infrastructure (cogtainer CDK stack)</div>
+    <div class="mockup-body" style="padding:1.2rem;font-size:0.85rem;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:0.6rem 1rem;align-items:start;">
+        <div style="color:#f7768e;font-weight:bold;">Gateway Lambda</div>
+        <div>Python 3.12, 512 MB, 60s timeout, Function URL, <strong>no VPC</strong> (RDS Data API). The only new AWS resource.</div>
+        <div style="color:#f7768e;font-weight:bold;">Cloudflare DNS</div>
+        <div>Points subdomain at Function URL. Access policy already exists. Gateway validates JWT.</div>
+        <div style="color:#f7768e;font-weight:bold;">IAM Role</div>
+        <div>RDS Data API (file store + channels), invoke executor Lambda.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="margin-bottom:1rem;">
+    <div class="mockup-header" style="background:#1a1b26;color:#9ece6a;">Layer 2: CogOS Runtime (image boot)</div>
+    <div class="mockup-body" style="padding:1.2rem;font-size:0.85rem;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:0.6rem 1rem;align-items:start;">
+        <div style="color:#9ece6a;font-weight:bold;">web capability</div>
+        <div>publish(), unpublish(), respond(), list() — registered in init/capabilities.py like discord.</div>
+        <div style="color:#9ece6a;font-weight:bold;">io:web:request</div>
+        <div>System channel for inbound HTTP requests. Created at boot like io:discord:dm.</div>
+      </div>
+      <p style="color:#666;margin-top:0.8rem;font-style:italic;">Every cogent gets these. A cogent that doesn't use web pays nothing.</p>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header" style="background:#1a1b26;color:#bb9af7;">Layer 3: Cogent Application (optional)</div>
+    <div class="mockup-body" style="padding:1.2rem;font-size:0.85rem;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:0.6rem 1rem;align-items:start;">
+        <div style="color:#bb9af7;font-weight:bold;">Web cog</div>
+        <div>Defined in apps/website/init/cog.py. Daemon subscribed via handlers=["io:web:request"].</div>
+        <div style="color:#bb9af7;font-weight:bold;">Handler prompt</div>
+        <div>Coglet's main.md — reads request, does work, calls web.respond(). Route logic lives here.</div>
+        <div style="color:#bb9af7;font-weight:bold;">Published files</div>
+        <div>Any process with web capability calls web.publish("path", content). Stored at web/* in file store.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Response Mechanism</h3>
+  <div class="mockup">
+    <div class="mockup-header">Synchronous invocation — no intermediate storage</div>
+    <div class="mockup-body" style="padding:1.2rem;font-size:0.85rem;font-family:monospace;line-height:2;">
+      <div><span style="color:#f7768e;">Gateway</span> invokes executor Lambda (synchronous, like a future)</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼</div>
+      <div><span style="color:#9ece6a;">Executor</span> runs handler process</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼</div>
+      <div><span style="color:#bb9af7;">Handler</span> calls web.respond(request_id, 200, headers, body)</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼ response captured in executor memory</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼</div>
+      <div><span style="color:#9ece6a;">Executor</span> returns response payload</div>
+      <div style="color:#666;">  │</div>
+      <div style="color:#666;">  ▼</div>
+      <div><span style="color:#f7768e;">Gateway</span> returns HTTP to browser</div>
+      <div style="color:#666;margin-top:1rem;">
+        No polling. No correlation table. No response channels.<br>
+        Same pattern as parent spawning child + recv() in CogOS.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Discord Analogy</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:1rem;font-size:0.85rem;font-family:monospace;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="border-bottom:1px solid #333;">
+          <th style="text-align:left;padding:0.5rem;color:#666;">Concept</th>
+          <th style="text-align:left;padding:0.5rem;color:#7aa2f7;">Discord</th>
+          <th style="text-align:left;padding:0.5rem;color:#9ece6a;">Web</th>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:0.5rem;color:#666;">IO Bridge</td>
+          <td style="padding:0.5rem;">Discord Bridge (Fargate)</td>
+          <td style="padding:0.5rem;">Web Gateway Lambda</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:0.5rem;color:#666;">Inbound Channel</td>
+          <td style="padding:0.5rem;">io:discord:dm</td>
+          <td style="padding:0.5rem;">io:web:request</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:0.5rem;color:#666;">Capability</td>
+          <td style="padding:0.5rem;">discord.send_message()</td>
+          <td style="padding:0.5rem;">web.respond() / web.publish()</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:0.5rem;color:#666;">Response path</td>
+          <td style="padding:0.5rem;">Fire-and-forget (post to Discord API)</td>
+          <td style="padding:0.5rem;">Return value through executor invocation</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:0.5rem;color:#666;">Dispatch</td>
+          <td style="padding:0.5rem;">append → SQS → ingress → executor</td>
+          <td style="padding:0.5rem;">append → gateway invokes executor directly</td>
+        </tr>
+        <tr>
+          <td style="padding:0.5rem;color:#666;">Handler</td>
+          <td style="padding:0.5rem;">discord cog handler coglet</td>
+          <td style="padding:0.5rem;">web cog handler coglet</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Concurrency (v1) + Limitations</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Concurrency</div>
+      <div class="mockup-body" style="padding:1rem;font-size:0.85rem;">
+        <p><strong>Serial handler.</strong> One daemon, requests queue.</p>
+        <p style="margin-top:0.5rem;">Mitigations:</p>
+        <ul style="margin:0.5rem 0;padding-left:1.5rem;line-height:1.8;">
+          <li>Executor timeout → 502 on crash/slow</li>
+          <li>Respond fast + spawn children (202)</li>
+          <li>Future: handler process pool</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">v1 Limitations</div>
+      <div class="mockup-body" style="padding:1rem;font-size:0.85rem;">
+        <ul style="margin:0;padding-left:1.5rem;line-height:1.8;">
+          <li>Text-only static files</li>
+          <li>Serial request handling</li>
+          <li>6 MB payload limit</li>
+          <li>Same-origin only (no CORS)</li>
+          <li>No caching (every req → Lambda)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
