@@ -39,6 +39,7 @@ def _build_lambda_package() -> str:
             "pip",
             "install",
             "pydantic",
+            "anthropic",
             "--target",
             build_dir,
             "--quiet",
@@ -248,6 +249,7 @@ class ComputeConstruct(Construct):
             environment={
                 **env,
                 "SANDBOX_FUNCTION_NAME": f"cogent-{safe_name}-sandbox",
+                "LLM_PROVIDER": config.llm_provider,
             },
         )
         self.ingress_queue.grant_send_messages(executor_role)

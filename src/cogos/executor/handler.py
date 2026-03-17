@@ -13,8 +13,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-
-
 from cogos.db.factory import create_repository
 from cogos.db.models import Process, ProcessStatus, Run, RunStatus
 from cogos.db.models.channel_message import ChannelMessage
@@ -33,6 +31,7 @@ class ExecutorConfig:
     db_name: str = ""
     max_turns: int = 20
     default_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    llm_provider: str = "bedrock"
 
 
 def get_config() -> ExecutorConfig:
@@ -43,6 +42,7 @@ def get_config() -> ExecutorConfig:
         db_name=os.environ.get("DB_NAME", ""),
         max_turns=int(os.environ.get("MAX_TURNS", "20")),
         default_model=os.environ.get("DEFAULT_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+        llm_provider=os.environ.get("LLM_PROVIDER", "bedrock"),
     )
 
 
@@ -335,8 +335,8 @@ def _execute_python_process(
     trace_id: UUID | None = None,
 ) -> Run:
     """Execute process by running resolved content as Python in the sandbox."""
-    from cogos.files.store import FileStore
     from cogos.files.references import extract_file_references
+    from cogos.files.store import FileStore
 
     file_store = FileStore(repo)
 
@@ -415,7 +415,7 @@ def execute_process(
         return _execute_python_process(process, event_data, run, config, repo, trace_id=trace_id)
 
     from cogos.executor.llm_client import LLMClient
-    llm = LLMClient(bedrock_client=bedrock_client, region=config.region)
+    llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider)
 
     # Build system prompt using the shared ContextEngine
     from cogos.files.context_engine import ContextEngine

@@ -153,11 +153,14 @@ def _resolve_anthropic_api_key(explicit_key: str | None = None) -> str | None:
 
 
 class LLMClient:
-    """Wraps Bedrock converse with optional Anthropic API fallback on throttling.
+    """Wraps Bedrock converse with Anthropic API support.
+
+    When provider='anthropic', uses Anthropic API as primary with Bedrock fallback.
+    When provider='bedrock' (default), uses Bedrock as primary with Anthropic
+    fallback on throttling.
 
     Key resolution order: explicit arg > ANTHROPIC_API_KEY env var >
-    cogent/polis/anthropic secret. Without a key, behaves identically to a
-    raw Bedrock client.
+    cogent/polis/anthropic secret.
     """
 
     def __init__(
@@ -166,7 +169,9 @@ class LLMClient:
         bedrock_client: Any | None = None,
         region: str = "us-east-1",
         anthropic_api_key: str | None = None,
+        provider: str = "bedrock",
     ) -> None:
+        self._provider = provider
         self._bedrock = bedrock_client or boto3.client(
             "bedrock-runtime",
             region_name=region,
@@ -178,12 +183,19 @@ class LLMClient:
             try:
                 import anthropic
                 self._anthropic = anthropic.Anthropic(api_key=api_key)
-                logger.info("Anthropic API fallback enabled")
+                logger.info("Anthropic API %s", "primary" if provider == "anthropic" else "fallback enabled")
             except ImportError:
-                logger.warning("anthropic package not installed — fallback disabled")
+                logger.warning("anthropic package not installed — Anthropic API disabled")
+        if provider == "anthropic" and self._anthropic is None:
+            raise RuntimeError("LLM_PROVIDER=anthropic but no API key found and/or anthropic package not installed")
 
     def converse(self, **kwargs: Any) -> dict:
-        """Call Bedrock converse, falling back to Anthropic API on throttling."""
+        if self._provider == "anthropic":
+            return self._converse_anthropic_primary(**kwargs)
+        return self._converse_bedrock_primary(**kwargs)
+
+    def _converse_bedrock_primary(self, **kwargs: Any) -> dict:
+        """Bedrock primary, Anthropic fallback on throttling."""
         try:
             return self._bedrock.converse(**kwargs)
         except ClientError as exc:
@@ -195,6 +207,18 @@ class LLMClient:
                 kwargs.get("modelId"),
             )
             return self._call_anthropic(**kwargs)
+
+    def _converse_anthropic_primary(self, **kwargs: Any) -> dict:
+        """Anthropic primary, Bedrock fallback on error."""
+        try:
+            return self._call_anthropic(**kwargs)
+        except Exception as exc:
+            logger.warning(
+                "Anthropic API failed (model=%s, error=%s), falling back to Bedrock",
+                kwargs.get("modelId"),
+                exc,
+            )
+            return self._bedrock.converse(**kwargs)
 
     def _call_anthropic(self, **kwargs: Any) -> dict:
         """Translate Bedrock converse kwargs → Anthropic Messages API call."""
