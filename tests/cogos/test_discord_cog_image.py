@@ -42,6 +42,11 @@ class TestDiscordCogImage:
         init_py = Path("images/cogent-v1/cogos/init.py").read_text()
         assert 'procs.spawn("scheduler"' not in init_py
 
+    def test_discord_handler_prompt_uses_web_url_helper(self):
+        prompt = Path("images/cogent-v1/apps/discord/handler/main.md").read_text()
+        assert "web.url(path)" in prompt
+        assert "Do NOT invent or guess the domain or route." in prompt
+
     def test_init_process_does_not_request_scheduler_capability(self):
         """The init process should not request the obsolete scheduler capability."""
         spec = load_image(Path("images/cogent-v1"))

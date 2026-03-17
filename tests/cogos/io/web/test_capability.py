@@ -242,3 +242,29 @@ class TestScopeNarrowing:
 
         result = scoped.publish("allowed/x.html", "ok")
         assert isinstance(result, PublishResult)
+
+
+class TestUrl:
+    def test_url_uses_explicit_override(self, cap, monkeypatch):
+        monkeypatch.setenv("WEB_BASE_URL", "https://example.com/custom/web/static/")
+
+        assert cap.url("page.html") == "https://example.com/custom/web/static/page.html"
+
+    def test_url_defaults_to_cogent_dashboard_static_path(self, cap, monkeypatch):
+        monkeypatch.delenv("WEB_BASE_URL", raising=False)
+        monkeypatch.delenv("USE_LOCAL_DB", raising=False)
+        monkeypatch.delenv("DASHBOARD_FE_PORT", raising=False)
+        monkeypatch.delenv("DASHBOARD_BE_PORT", raising=False)
+        monkeypatch.setenv("COGENT_NAME", "dr.gamma")
+        monkeypatch.setenv("COGENT_DOMAIN", "softmax-cogents.com")
+
+        assert cap.url("least-favorite-fruit") == (
+            "https://dr-gamma.softmax-cogents.com/web/static/least-favorite-fruit"
+        )
+
+    def test_url_prefers_local_frontend_port(self, cap, monkeypatch):
+        monkeypatch.delenv("WEB_BASE_URL", raising=False)
+        monkeypatch.setenv("USE_LOCAL_DB", "1")
+        monkeypatch.setenv("DASHBOARD_FE_PORT", "5200")
+
+        assert cap.url("demo") == "http://localhost:5200/web/static/demo"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from pydantic import BaseModel
 
@@ -35,7 +36,7 @@ class WebError(BaseModel):
 
 
 class WebCapability(Capability):
-    ALL_OPS = {"publish", "unpublish", "respond", "list"}
+    ALL_OPS = {"publish", "unpublish", "respond", "list", "url"}
 
     def __init__(self, repo, process_id, **kwargs):
         super().__init__(repo, process_id, **kwargs)
@@ -155,3 +156,31 @@ class WebCapability(Capability):
         files = store.list_files(prefix=full_prefix)
         paths = [f.key.removeprefix("web/") for f in files]
         return ListResult(files=paths)
+
+    def url(self, path: str = "") -> str:
+        """Return the public URL for a published static file or directory."""
+        self._check("url")
+
+        base_url = self._static_base_url()
+        normalized = path.strip().lstrip("/")
+        if not normalized:
+            return base_url
+        return f"{base_url}/{normalized}"
+
+    def _static_base_url(self) -> str:
+        override = (os.environ.get("WEB_BASE_URL") or "").strip().rstrip("/")
+        if override:
+            return override
+
+        if os.environ.get("USE_LOCAL_DB") == "1":
+            frontend_port = (os.environ.get("DASHBOARD_FE_PORT") or "").strip()
+            backend_port = (os.environ.get("DASHBOARD_BE_PORT") or "").strip()
+            if frontend_port:
+                return f"http://localhost:{frontend_port}/web/static"
+            if backend_port:
+                return f"http://localhost:{backend_port}/web/static"
+
+        cogent_name = (os.environ.get("COGENT_NAME") or "").strip()
+        safe_name = cogent_name.replace(".", "-") if cogent_name else "local"
+        domain = (os.environ.get("COGENT_DOMAIN") or "softmax-cogents.com").strip() or "softmax-cogents.com"
+        return f"https://{safe_name}.{domain}/web/static"

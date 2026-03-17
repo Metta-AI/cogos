@@ -1047,15 +1047,17 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "Use web to publish static files and handle HTTP API requests.\n"
             "- web.publish(path, content) — publish a file at web/{path}\n"
             "- web.unpublish(path) — remove a published file\n"
+            "- web.url(path?) — return the exact public /web/static URL for a published file or directory\n"
             "- web.respond(request_id, status, headers, body) — respond to an API request\n"
             "- web.list(prefix) — list published files\n"
-            "Static files are served at https://{cogent}.softmax-cogents.com/{path}.\n"
-            "API requests to /api/* are delivered via io:web:request channel."
+            "Static files are served under the cogent's public /web/static/* URL.\n"
+            "Use web.url(path) instead of guessing the hostname or route.\n"
+            "API requests to /web/api/* are delivered via io:web:request channel."
         ),
         "schema": {
             "scope": {
                 "properties": {
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["publish", "unpublish", "respond", "list"]}},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["publish", "unpublish", "respond", "list", "url"]}},
                     "path_prefix": {"type": "string", "description": "Restrict to files under this prefix"},
                 },
             },

@@ -92,6 +92,7 @@ class ComputeConstruct(Construct):
         env = {
             "COGENT_NAME": config.cogent_name,
             "COGENT_ID": config.cogent_name,
+            "COGENT_DOMAIN": config.domain,
             "DB_CLUSTER_ARN": db_cluster_arn,
             "DB_RESOURCE_ARN": db_cluster_arn,
             "DB_SECRET_ARN": db_secret_arn,
