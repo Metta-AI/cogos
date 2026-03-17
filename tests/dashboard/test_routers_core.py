@@ -36,6 +36,11 @@ def test_message_traces_route_registered(client: TestClient):
     assert resp.status_code != 404
 
 
+def test_request_flows_route_registered(client: TestClient):
+    resp = client.get("/api/cogents/test-cogent/request-flows")
+    assert resp.status_code != 404
+
+
 def test_cogos_status_with_mock_repo():
     mock_repo = MagicMock()
     mock_repo.list_processes.return_value = []

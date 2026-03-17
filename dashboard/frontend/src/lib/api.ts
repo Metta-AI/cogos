@@ -16,6 +16,7 @@ import type {
   Alert,
   SetupResponse,
   MessageTrace,
+  RequestFlow,
   CogosChannel,
   ChannelSendResult,
   ProcessLogsResponse,
@@ -77,6 +78,18 @@ export async function getMessageTraces(
     `/api/cogents/${name}/message-traces?${params.toString()}`,
   );
   return r.traces;
+}
+
+export async function getRequestFlows(
+  name: string,
+  range: TimeRange = "1h",
+  limit: number = 30,
+): Promise<RequestFlow[]> {
+  const params = new URLSearchParams({ range, limit: String(limit) });
+  const r = await fetchJSON<{ flows: RequestFlow[] }>(
+    `/api/cogents/${name}/request-flows?${params.toString()}`,
+  );
+  return r.flows;
 }
 
 export async function getChannels(

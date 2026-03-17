@@ -269,6 +269,82 @@ export interface MessageTrace {
   deliveries: TraceDelivery[];
 }
 
+export interface RequestFlowMessage {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  message_type: string | null;
+  sender_process: string | null;
+  sender_process_name: string | null;
+  payload: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface RequestFlowNode {
+  id: string;
+  kind: "request" | "process";
+  label: string;
+  depth: number;
+  status: string;
+  process_id: string | null;
+  process_name: string | null;
+  run_id: string | null;
+  runner: string | null;
+  handler_id: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cost_usd: number | null;
+  error: string | null;
+  channel_name: string | null;
+  message_type: string | null;
+}
+
+export interface RequestFlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  message_id: string;
+  delivery_id: string | null;
+  handler_id: string | null;
+  channel_id: string;
+  channel_name: string;
+  message_type: string | null;
+  status: string | null;
+  created_at: string | null;
+  delivered_at: string | null;
+}
+
+export interface RequestFlowTimelineEntry {
+  id: string;
+  kind: "request_received" | "handler_matched" | "run_started" | "run_completed" | "message_emitted";
+  timestamp: string | null;
+  title: string;
+  detail: string | null;
+  status: string | null;
+  node_id: string | null;
+  edge_id: string | null;
+}
+
+export interface RequestFlow {
+  request_id: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  method: string | null;
+  path: string | null;
+  total_runs: number;
+  total_edges: number;
+  total_messages: number;
+  root_message: RequestFlowMessage;
+  nodes: RequestFlowNode[];
+  edges: RequestFlowEdge[];
+  timeline: RequestFlowTimelineEntry[];
+}
+
 export interface Trigger {
   id: string;
   name: string;

@@ -11,6 +11,7 @@ import { CapabilitiesPanel } from "@/components/capabilities/CapabilitiesPanel";
 import { HandlersPanel } from "@/components/handlers/HandlersPanel";
 import { RunsPanel } from "@/components/runs/RunsPanel";
 import { TracePanel } from "@/components/traces/TracePanel";
+import { RequestFlowsPanel } from "@/components/requests/RequestFlowsPanel";
 import { ResourcesPanel } from "@/components/resources/ResourcesPanel";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { CronPanel } from "@/components/cron/CronPanel";
@@ -56,6 +57,12 @@ export default function DashboardPage() {
 
 function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string; activeTab: TabId; onTabChange: (tab: TabId) => void }) {
   const { data, loading, error, refresh, timeRange, setTimeRange, connected } = useCogentData(cogentName);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshNonce((value) => value + 1);
+    await refresh();
+  }, [refresh]);
 
   const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
   const stuckProcessCount = useMemo(() => {
@@ -89,7 +96,7 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
         statusText={statusText}
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         loading={loading}
         error={error}
         wsConnected={connected}
@@ -132,6 +139,9 @@ function Dashboard({ cogentName, activeTab, onTabChange }: { cogentName: string;
         )}
         {activeTab === "trace" && (
           <TracePanel traces={data.traces} cogentName={cogentName} timeRange={timeRange} onRefresh={refresh} />
+        )}
+        {activeTab === "requests" && (
+          <RequestFlowsPanel cogentName={cogentName} timeRange={timeRange} refreshNonce={refreshNonce} />
         )}
         {activeTab === "cron" && (
           <CronPanel crons={data.crons} cogentName={cogentName} onRefresh={refresh} />
