@@ -912,3 +912,58 @@ def test_no_tty_does_not_forward_to_global_io(monkeypatch, tmp_path):
     io_stderr = repo.get_channel_by_name("io:stderr")
     assert len(repo.list_channel_messages(io_stdout.id, limit=10)) == 0
     assert len(repo.list_channel_messages(io_stderr.id, limit=10)) == 0
+
+
+def test_python_executor_handles_web_request(monkeypatch, tmp_path):
+    """Python executor process can handle web requests via web.respond()."""
+    repo = _repo(tmp_path)
+
+    # Register web capability
+    web_cap_model = Capability(name="web", handler="cogos.io.web.capability.WebCapability")
+    repo.upsert_capability(web_cap_model)
+
+    process = Process(
+        name="web-handler",
+        mode=ProcessMode.DAEMON,
+        executor="python",
+        content='''
+req = event.get("web_request", {})
+request_id = event.get("web_request_id", "")
+path = req.get("path", "/")
+route = path.removeprefix("/api").strip("/")
+if route == "status":
+    web.respond(request_id, status=200, headers={"content-type": "application/json"}, body=json.dumps({"status": "ok"}))
+else:
+    web.respond(request_id, status=404, headers={"content-type": "application/json"}, body=json.dumps({"error": "not found"}))
+''',
+        status=ProcessStatus.RUNNING,
+    )
+    repo.upsert_process(process)
+
+    # Bind web capability to process
+    repo.create_process_capability(
+        ProcessCapability(process=process.id, capability=web_cap_model.id, name="web")
+    )
+
+    run = _make_run(repo, process)
+    config = executor_handler.ExecutorConfig()
+
+    result_run = executor_handler.execute_process(
+        process,
+        {
+            "process_id": str(process.id),
+            "web_request_id": "req-123",
+            "web_request": {
+                "method": "GET",
+                "path": "/api/status",
+                "query": {},
+                "headers": {},
+                "body": None,
+            },
+        },
+        run, config, repo,
+    )
+
+    # No LLM calls — Python executor runs code directly
+    assert result_run.tokens_in == 0
+    assert result_run.tokens_out == 0

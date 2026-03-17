@@ -76,11 +76,15 @@ def _make_response(
     body: str,
     content_type: str = "text/plain",
     headers: dict | None = None,
+    is_base64: bool = False,
 ) -> dict:
     h = {"content-type": content_type, "cache-control": "no-store"}
     if headers:
         h.update(headers)
-    return {"statusCode": status, "headers": h, "body": body}
+    resp = {"statusCode": status, "headers": h, "body": body}
+    if is_base64:
+        resp["isBase64Encoded"] = True
+    return resp
 
 
 def handler(event: dict, context=None) -> dict:
@@ -116,6 +120,10 @@ def _handle_static_request(repo: Repository, path: str) -> dict:
         file_key = fallback
 
     ct = _content_type_for(file_key)
+
+    if isinstance(content, str) and content.startswith("base64:"):
+        return _make_response(200, content[7:], content_type=ct, is_base64=True)
+
     return _make_response(200, content, content_type=ct)
 
 

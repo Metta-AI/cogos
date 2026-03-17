@@ -284,7 +284,7 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             mode=mode,
             content=default["files"].get(default["entrypoint"], ""),
             runner=default.get("runner", "lambda"),
-            executor="llm",
+            executor=default.get("executor", "llm"),
             model=default.get("model"),
             priority=float(default.get("priority", 0.0)),
             status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,

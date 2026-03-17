@@ -11,9 +11,10 @@ def _read(rel: str) -> str:
 
 cog = add_cog("website")
 cog.make_default_coglet(
-    entrypoint="main.md",
+    entrypoint="main.py",
     mode="daemon",
-    files={"main.md": _read("handler/main.md")},
+    executor="python",
+    files={"main.py": _read("handler/main.py")},
     capabilities=[
         "me", "procs", "dir", "file", "web", "channels",
         "stdlib",

@@ -14,6 +14,7 @@ IO_TYPES = {
     "discord": "static",
     "github": "github_app",
     "asana": "static",
+    "email": "cloudflare_ses",
 }
 
 _PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
@@ -94,6 +95,23 @@ def create(io_name: str | None, cogent_name: str | None):
         click.echo()
 
     click.echo(f"IO type: {io_type}")
+
+    if io_type == "cloudflare_ses":
+        from cogos.io.email.provision import provision_email
+        domain = os.environ.get("EMAIL_DOMAIN", "softmax-cogents.com")
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        try:
+            result = provision_email(cogent_name, domain=domain, region=region)
+            click.echo(f"\nEmail provisioned for {cogent_name}:")
+            click.echo(f"  Address:      {result['address']}")
+            click.echo(f"  Ingest URL:   {result['ingest_url']}")
+            click.echo(f"  CF rule ID:   {result.get('cf_rule_id', 'n/a')}")
+            click.echo(f"  SES verified: {result.get('ses_verified', False)}")
+        except Exception as e:
+            click.echo(f"Email provisioning failed: {e}", err=True)
+            sys.exit(1)
+        return
+
     click.echo(f"TODO: Implement {io_type} provisioning for {cogent_name}")
 
 
@@ -168,6 +186,20 @@ def send(io_name: str, cogent_name: str, message: str):
     click.echo(f"Sending test message to {cogent_name} via {io_name}...")
     click.echo(f"  message: {message}")
     click.echo()
+    if io_name == "email":
+        from cogos.io.email.sender import SesSender
+        domain = os.environ.get("EMAIL_DOMAIN", "softmax-cogents.com")
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        from_address = f"{cogent_name}@{domain}"
+        sender = SesSender(from_address=from_address, region=region)
+        try:
+            result = sender.send(to=from_address, subject="Test message", body=message)
+            click.echo(f"Sent: {result.get('MessageId', 'unknown')}")
+        except Exception as e:
+            click.echo(f"Send failed: {e}", err=True)
+            sys.exit(1)
+        return
+
     click.echo("TODO: Implement send for each IO type")
 
 

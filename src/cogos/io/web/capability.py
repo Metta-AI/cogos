@@ -82,16 +82,20 @@ class WebCapability(Capability):
         self,
         path: str,
         content: str,
+        content_encoding: str | None = None,
     ) -> PublishResult | WebError:
         if not path:
             return WebError(error="'path' is required")
         if not content:
             return WebError(error="'content' is required")
+        if content_encoding is not None and content_encoding != "base64":
+            return WebError(error="Unsupported encoding: only 'base64' is allowed")
         self._check("publish", path=path)
 
         store = FileStore(self.repo)
         key = f"web/{path}"
-        result = store.upsert(key, content, source="web")
+        stored_content = f"base64:{content}" if content_encoding == "base64" else content
+        result = store.upsert(key, stored_content, source="web")
 
         if result is None:
             existing = store.get(key)

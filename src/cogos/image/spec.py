@@ -104,7 +104,7 @@ def load_image(image_dir: Path) -> ImageSpec:
 
         def make_default_coglet(
             self, *, entrypoint, files, mode="daemon",
-            test_command="true", model=None,
+            test_command="true", model=None, executor="llm",
             capabilities=None, handlers=None,
             priority=0.0, runner="lambda",
             idle_timeout_ms=None,
@@ -122,6 +122,7 @@ def load_image(image_dir: Path) -> ImageSpec:
                 "mode": mode,
                 "test_command": test_command,
                 "model": model,
+                "executor": executor,
                 "capabilities": capabilities or [],
                 "handlers": handlers or [],
                 "priority": priority,

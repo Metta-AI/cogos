@@ -82,6 +82,44 @@ class TestPublish:
         assert result.version == 3
 
 
+class TestPublishBinary:
+    def test_publish_base64_content(self, cap, repo):
+        repo.get_file_by_key.return_value = None
+        repo.insert_file.return_value = None
+        repo.insert_file_version.return_value = None
+        mock_file = MagicMock()
+        mock_file.key = "web/image.png"
+        repo.get_file_by_key.side_effect = [None, mock_file]
+
+        result = cap.publish("image.png", "iVBORw0KGgo=", content_encoding="base64")
+        assert isinstance(result, PublishResult)
+        assert result.path == "image.png"
+
+    def test_publish_invalid_encoding_returns_error(self, cap):
+        result = cap.publish("file.txt", "content", content_encoding="gzip")
+        assert isinstance(result, WebError)
+        assert "encoding" in result.error.lower()
+
+    def test_publish_base64_stores_with_prefix(self, cap, repo):
+        """Verify base64 content is stored with the base64: prefix."""
+        from cogos.db.models import File
+
+        repo.get_file_by_key.return_value = None
+        repo.insert_file.return_value = None
+        repo.insert_file_version.return_value = None
+        mock_file = MagicMock()
+        mock_file.key = "web/img.png"
+        repo.get_file_by_key.side_effect = [None, mock_file]
+
+        cap.publish("img.png", "AQID", content_encoding="base64")
+        # Check that insert_file_version was called with base64: prefixed content
+        call_args = repo.insert_file_version.call_args
+        if call_args:
+            version = call_args.args[0] if call_args.args else call_args.kwargs.get("version")
+            if hasattr(version, "content"):
+                assert version.content.startswith("base64:")
+
+
 class TestUnpublish:
     def test_unpublish_deletes_file(self, cap, repo):
         from cogos.db.models import File

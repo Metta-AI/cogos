@@ -196,6 +196,36 @@ class TestHandlerStaticRequest:
         assert resp["statusCode"] == 404
 
 
+class TestHandlerBinaryStatic:
+    @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
+    def test_serves_base64_file(self, mock_store_cls):
+        from cogtainer.lambdas.web_gateway.handler import _handle_static_request
+
+        mock_repo = MagicMock()
+        mock_store = MagicMock()
+        mock_store_cls.return_value = mock_store
+        mock_store.get_content.return_value = "base64:iVBORw0KGgo="
+
+        resp = _handle_static_request(mock_repo, "/image.png")
+        assert resp["statusCode"] == 200
+        assert resp["body"] == "iVBORw0KGgo="
+        assert resp["isBase64Encoded"] is True
+        assert resp["headers"]["content-type"] == "image/png"
+
+    @patch("cogtainer.lambdas.web_gateway.handler.FileStore")
+    def test_serves_regular_file_unchanged(self, mock_store_cls):
+        from cogtainer.lambdas.web_gateway.handler import _handle_static_request
+
+        mock_repo = MagicMock()
+        mock_store = MagicMock()
+        mock_store_cls.return_value = mock_store
+        mock_store.get_content.return_value = "<html>hello</html>"
+
+        resp = _handle_static_request(mock_repo, "/index.html")
+        assert resp["statusCode"] == 200
+        assert resp.get("isBase64Encoded") is not True
+
+
 class TestHandlerApiRequest:
     @patch("cogtainer.lambdas.web_gateway.handler.boto3")
     def test_returns_503_no_channel(self, mock_boto):
