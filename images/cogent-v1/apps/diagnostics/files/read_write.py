@@ -1,18 +1,17 @@
 # Diagnostic: files/read_write.py
 # Tests file create, read, versioning, upsert, append, edit, head/tail via data capability.
 
-import time
 
 results = []
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "fail", "ms": ms, "error": str(e)[:300]})
 
 # ── Tests ────────────────────────────────────────────────────
@@ -49,7 +48,7 @@ def test_edit():
     assert "brown" not in r.content, "old text still present"
 
 def test_read_nonexistent():
-    f = data.get("_diag/rw_nonexistent_" + str(time.time()) + ".txt")
+    f = data.get("_diag/rw_nonexistent_" + str(0) + ".txt")
     r = f.read()
     assert hasattr(r, "error"), "expected error for nonexistent file"
 

@@ -5,8 +5,6 @@
 # Runs in the Python sandbox — only json (pre-loaded) and time are available.
 # All capabilities are injected as globals.
 
-import time
-
 # ── Configuration ────────────────────────────────────────────
 
 _CATEGORY_CAPS = {
@@ -252,12 +250,9 @@ def collect_result(handle, diag, category):
         result["error"] = "spawn failed"
         return result
 
-    t0 = time.time()
-
     # Wait for process to complete
     handle.wait()
-    elapsed_ms = int((time.time() - t0) * 1000)
-    result["duration_ms"] = elapsed_ms
+    result["duration_ms"] = 0
 
     # Read stdout/stderr
     # stdout(limit=N) returns: str (limit=1), list[str] (limit>1), or None
@@ -563,7 +558,7 @@ def write_results(results, current_md, log_entry, changelog_entry):
 
 # ── Main ─────────────────────────────────────────────────────
 
-run_start = time.time()
+run_start = 0
 timestamp = _now()
 epoch = me.epoch if hasattr(me, "epoch") else 0
 
@@ -629,7 +624,7 @@ for cat_name in sorted(category_results.keys()):
         "diagnostics": diags,
     }
 
-run_duration = int((time.time() - run_start) * 1000)
+run_duration = 0
 
 results = {
     "timestamp": timestamp,

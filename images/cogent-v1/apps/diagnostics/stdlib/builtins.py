@@ -1,19 +1,18 @@
 # Diagnostic: stdlib/builtins.py
 # Tests time_iso, json roundtrip, and basic math.
 
-import time
 
 checks = []
 
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         checks.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         checks.append({"name": name, "status": "fail", "ms": ms, "error": str(e)})
 
 

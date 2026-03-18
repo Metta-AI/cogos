@@ -1,18 +1,17 @@
 # Diagnostic: procs/spawn_lifecycle.py
 # Tests spawn, status, wait, stdout, stderr, kill.
 
-import time
 
 results = []
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "fail", "ms": ms, "error": str(e)[:300]})
 
 # ── Child scripts ────────────────────────────────────────────
@@ -22,7 +21,6 @@ print("hello from child")
 """
 
 SLOW_CHILD = """
-import time
 print("slow child starting")
 time.sleep(1)
 print("slow child done")
@@ -67,7 +65,7 @@ def test_stdout():
     assert "hello from child" in str(out), "expected 'hello from child' in stdout"
 
 def test_wait_blocks():
-    t0 = time.time()
+    t0 = 0
     handle = procs.spawn(
         "_diag/lifecycle_slow",
         content=SLOW_CHILD,
@@ -77,7 +75,7 @@ def test_wait_blocks():
     )
     assert not hasattr(handle, "error"), "spawn error: " + str(getattr(handle, "error", ""))
     handle.wait()
-    elapsed = time.time() - t0
+    elapsed = 0 - t0
     assert elapsed >= 0.5, "wait should block until child completes, elapsed: " + str(elapsed)
     status = handle.status()
     assert status == "completed", "expected completed after wait, got: " + str(status)

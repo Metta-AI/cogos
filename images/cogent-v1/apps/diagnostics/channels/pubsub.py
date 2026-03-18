@@ -1,18 +1,17 @@
 # Diagnostic: channels/pubsub.py
 # Tests create channel, send, read, list, schema validation.
 
-import time
 
 results = []
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "fail", "ms": ms, "error": str(e)[:300]})
 
 # ── Tests ────────────────────────────────────────────────────
@@ -51,7 +50,7 @@ def test_send_complex_payload():
     payload = {
         "type": "test",
         "data": {"nested": True, "items": [1, 2, 3]},
-        "ts": str(time.time()),
+        "ts": str(0),
     }
     channels.send("_diag:pubsub_test", payload)
     msgs = channels.read("_diag:pubsub_test", limit=1)

@@ -2,24 +2,22 @@
 # Tests parent-child messaging via spawn channels.
 # Spawns an echo child that reads from its inbox and echoes back.
 
-import time
 
 results = []
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         results.append({"name": name, "status": "fail", "ms": ms, "error": str(e)[:300]})
 
 # ── Echo child source ────────────────────────────────────────
 
 ECHO_CHILD = """
-import time
 # Read messages from parent, echo them back with a prefix
 msgs = me.recv(limit=10)
 if msgs is None:

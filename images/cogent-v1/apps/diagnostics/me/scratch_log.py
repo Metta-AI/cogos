@@ -1,19 +1,18 @@
 # Diagnostic: me/scratch_log.py
 # Tests scratch, log, and tmp read/write via the `me` capability.
 
-import time
 
 checks = []
 
 
 def check(name, fn):
-    t0 = time.time()
+    t0 = 0
     try:
         fn()
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         checks.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((time.time() - t0) * 1000)
+        ms = int((0 - t0) * 1000)
         checks.append({"name": name, "status": "fail", "ms": ms, "error": str(e)})
 
 
