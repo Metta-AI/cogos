@@ -44,7 +44,6 @@ if hasattr(result, 'error'):
     alerts.error("supervisor", f"Failed to spawn worker: {result.error}")
 else:
     print(f"Spawned worker: {result.name}")
-    alerts.info("supervisor", f"Delegated to worker: {description}")
 ```
 
 ### When to respond directly instead
