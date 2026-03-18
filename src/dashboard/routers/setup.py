@@ -7,6 +7,11 @@ from enum import Enum
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+import json
+
+import boto3
+from botocore.exceptions import ClientError
+
 from cogos.io.discord.setup import discord_secret_status, discord_service_status
 from dashboard.db import get_repo
 
@@ -322,6 +327,149 @@ def _build_discord_setup(name: str) -> ChannelSetup:
     )
 
 
+def _gemini_secret_status(
+    name: str,
+    region: str,
+) -> tuple[bool | None, str | None]:
+    secret_id = f"cogent/{name}/gemini"
+    sm = boto3.client("secretsmanager", region_name=region)
+    try:
+        resp = sm.get_secret_value(SecretId=secret_id)
+        data = json.loads(resp.get("SecretString", "{}"))
+        return bool(data.get("api_key")), None
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "ResourceNotFoundException":
+            return False, None
+        logger.warning("Gemini secret check failed for %s: %s", name, code or exc)
+        return None, code or type(exc).__name__
+    except Exception as exc:
+        logger.warning("Gemini secret check failed for %s: %s", name, exc)
+        return None, type(exc).__name__
+
+
+def _build_gemini_setup(name: str) -> ChannelSetup:
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    secret_path = f"cogent/{name}/gemini"
+
+    secret_configured, secret_check_error = _gemini_secret_status(name, region)
+
+    diagnostics: list[str] = []
+    if secret_check_error:
+        diagnostics.append(f"Gemini secret check unavailable: {secret_check_error}")
+
+    if secret_configured is True:
+        get_key_step = SetupStep(
+            key="get-api-key",
+            title="Get a Gemini API key",
+            description="Create an API key in Google AI Studio for image generation.",
+            status=SetupStatus.READY,
+            detail="A Gemini API key is already stored.",
+            action=SetupAction(
+                label="Open Google AI Studio",
+                href="https://aistudio.google.com/apikey",
+            ),
+        )
+        store_key_step = SetupStep(
+            key="store-api-key",
+            title="Store the API key",
+            description="The image generation capability reads the Gemini key from Secrets Manager.",
+            status=SetupStatus.READY,
+            detail=f"Key is present at {secret_path}.",
+        )
+    elif secret_configured is False:
+        get_key_step = SetupStep(
+            key="get-api-key",
+            title="Get a Gemini API key",
+            description="Create an API key in Google AI Studio for image generation.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail=(
+                "Go to Google AI Studio, create a new API key, and copy it.\n"
+                "The key is used for image generation (gemini-2.5-flash-image model)."
+            ),
+            action=SetupAction(
+                label="Open Google AI Studio",
+                href="https://aistudio.google.com/apikey",
+            ),
+        )
+        store_key_step = SetupStep(
+            key="store-api-key",
+            title="Store the API key",
+            description="Write the API key into polis secrets so the image capability can use it.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail=f"Expected secret path: {secret_path}.",
+            action=SetupAction(
+                label="Write Gemini API key",
+                command=f"""uv run polis secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
+            ),
+        )
+    else:
+        get_key_step = SetupStep(
+            key="get-api-key",
+            title="Get a Gemini API key",
+            description="Create an API key in Google AI Studio for image generation.",
+            status=SetupStatus.UNKNOWN,
+            detail="Live secret checks are unavailable.",
+            action=SetupAction(
+                label="Open Google AI Studio",
+                href="https://aistudio.google.com/apikey",
+            ),
+        )
+        store_key_step = SetupStep(
+            key="store-api-key",
+            title="Store the API key",
+            description="Write the API key into polis secrets so the image capability can use it.",
+            status=SetupStatus.UNKNOWN,
+            detail=f"Expected secret path: {secret_path}. Latest check error: {secret_check_error}.",
+            action=SetupAction(
+                label="Write Gemini API key",
+                command=f"""uv run polis secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
+            ),
+        )
+
+    test_step = SetupStep(
+        key="test-generation",
+        title="Test image generation",
+        description="Ask the cogent to generate an image via Discord or another channel to confirm it works.",
+        status=SetupStatus.MANUAL if secret_configured is True else SetupStatus.NEEDS_ACTION,
+        detail=(
+            "Try asking the cogent to generate an image."
+            if secret_configured is True
+            else "Finish the earlier steps first."
+        ),
+    )
+
+    ready = secret_configured is True
+    status = (
+        SetupStatus.READY
+        if ready
+        else SetupStatus.UNKNOWN
+        if any(s.status == SetupStatus.UNKNOWN for s in (get_key_step, store_key_step))
+        else SetupStatus.NEEDS_ACTION
+    )
+    summary = (
+        "Gemini API key is configured and ready for image generation."
+        if ready
+        else "Some live checks were unavailable."
+        if status == SetupStatus.UNKNOWN
+        else "Store a Gemini API key to enable image generation."
+    )
+
+    return ChannelSetup(
+        key="gemini",
+        title="Image Generation",
+        description="Configure the Gemini API key for AI image generation (used by the image capability).",
+        status=status,
+        summary=summary,
+        ready_for_test=ready,
+        steps=[get_key_step, store_key_step, test_step],
+        diagnostics=diagnostics,
+    )
+
+
 @router.get("/setup", response_model=SetupResponse)
 def get_setup(name: str) -> SetupResponse:
-    return SetupResponse(channels=[_build_discord_setup(name)])
+    return SetupResponse(channels=[
+        _build_discord_setup(name),
+        _build_gemini_setup(name),
+    ])

@@ -20,5 +20,5 @@ def get_gemini_client():
     if not api_key:
         from cogos.capabilities._secrets_helper import fetch_secret
 
-        api_key = fetch_secret("cogent/{cogent}/gemini")
+        api_key = fetch_secret("cogent/{cogent}/gemini", field="api_key")
     return genai.Client(api_key=api_key)
