@@ -11,7 +11,7 @@ Four deployable components:
 | **Lambda functions** | orchestrator, executor, dispatcher, ingress | `cogtainer update lambda` |
 | **Database schema** | Aurora PostgreSQL via RDS Data API | `cogtainer update rds` |
 | **Dashboard** | ECS Fargate on cogent-polis cluster | `dashboard deploy` |
-| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer create --watch` |
+| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer create` |
 
 ## Decision Tree
 
@@ -26,8 +26,8 @@ What changed? Run `git diff HEAD~1 --name-only` and match:
 | `dashboard/frontend/**` | `cogent <name> dashboard deploy` |
 | `src/dashboard/**` | `cogent <name> dashboard deploy --docker` |
 | Both frontend + backend | `cogent <name> dashboard deploy --docker` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent <name> cogtainer create --watch` |
-| `DOCKER_VERSION` changed | `cogent <name> cogtainer create --watch` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent <name> cogtainer create` |
+| `DOCKER_VERSION` changed | `cogent <name> cogtainer create` |
 
 ## Command Reference
 
@@ -43,7 +43,7 @@ cogent <name> cogtainer update all          # Lambda + RDS migrations + sync
 ### CDK Stack
 
 ```bash
-cogent <name> cogtainer create --watch      # Full CDK deploy (~3-5 min)
+cogent <name> cogtainer create              # Full CDK deploy (~3-5 min)
 cogent <name> cogtainer build               # Build + push executor Docker image to ECR
 cogent <name> cogtainer status              # Check infrastructure status
 ```
@@ -107,7 +107,7 @@ cogent <name> dashboard deploy --docker
 
 **Full infrastructure change** (CDK constructs, IAM, ALB):
 ```bash
-cogent <name> cogtainer create --watch
+cogent <name> cogtainer create
 cogent <name> cogos image boot cogent-v1
 ```
 

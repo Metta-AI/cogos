@@ -170,7 +170,7 @@ See [docs/deploy.md](docs/deploy.md) for the full deploy reference.
 cogent dr.alpha cogtainer update lambda       # Update Lambda code (~15s)
 cogent dr.alpha cogtainer update rds          # Run DB schema migrations
 cogent dr.alpha cogtainer update all          # Lambda + RDS + sync
-cogent dr.alpha cogtainer create --watch      # Full CDK stack deploy (ALB rules, IAM, etc.)
+cogent dr.alpha cogtainer create              # Full CDK stack deploy (ALB rules, IAM, etc.)
 ```
 
 ### Managing the Discord bridge (remote)
@@ -188,7 +188,7 @@ cogent dr.alpha cogos io discord status    # Check running/desired counts
 
 ```bash
 cogent dr.alpha dashboard create-pat
-cogent dr.alpha cogtainer create --watch      # Apply ALB bypass rule
+cogent dr.alpha cogtainer create              # Apply ALB bypass rule
 ```
 
 2. Test with curl:
