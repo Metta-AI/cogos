@@ -238,12 +238,19 @@ if not hasattr(prev_raw, "error"):
 
 changes = diff_results(prev, results)
 
-# Write reports
+# Write reports (use write not append — append has a DB column bug)
 data.get("current.json").write(json.dumps(results))
 data.get("current.md").write(make_md(results))
-data.get("log.md").append(make_log(results) + "\n")
+
+# For log and changelog, read existing content and prepend new entry
+log_existing = data.get("log.md").read()
+log_prev = log_existing.content if hasattr(log_existing, "content") else ""
+data.get("log.md").write(make_log(results) + "\n" + log_prev)
+
 if changes:
-    data.get("changelog.md").append("## " + timestamp + "\n" + "\n".join(changes) + "\n\n")
+    cl_existing = data.get("changelog.md").read()
+    cl_prev = cl_existing.content if hasattr(cl_existing, "content") else ""
+    data.get("changelog.md").write("## " + timestamp + "\n" + "\n".join(changes) + "\n\n" + cl_prev)
 
 print(str(passed) + "/" + str(total) + " passed")
 if changes:
