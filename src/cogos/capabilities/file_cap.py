@@ -10,6 +10,8 @@ from cogos.capabilities.files import (
     FileError,
     FileSearchResult,
     FileWriteResult,
+    GrepMatch,
+    GrepResult,
 )
 from cogos.files.store import FileStore
 
@@ -225,7 +227,7 @@ class DirCapability(Capability):
         f.append("more text")      -> append to file
     """
 
-    ALL_OPS = {"list", "get"}
+    ALL_OPS = {"list", "get", "grep", "glob", "tree"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         merged = {**existing, **requested}
@@ -244,6 +246,13 @@ class DirCapability(Capability):
         if prefix and not key.startswith(prefix):
             return prefix.rstrip("/") + "/" + key.lstrip("/")
         return key
+
+    def _check(self, op: str, **context: object) -> None:
+        if not self._scope:
+            return
+        allowed_ops = self._scope.get("ops")
+        if allowed_ops is not None and op not in allowed_ops:
+            raise PermissionError(f"Operation '{op}' not permitted")
 
     def list(
         self, prefix: str | None = None, limit: int = 50
@@ -265,8 +274,105 @@ class DirCapability(Capability):
         fc._scope = {"key": full_key}
         return fc
 
+    def grep(
+        self,
+        pattern: str,
+        prefix: str | None = None,
+        limit: int = 20,
+        context: int = 0,
+    ) -> list[GrepResult]:
+        """Regex search across file contents. Returns keys + matching lines."""
+        self._check("grep")
+        effective_prefix = (
+            self._full_key(prefix) if prefix else self._scope.get("prefix")
+        )
+        raw = self.repo.grep_files(pattern, prefix=effective_prefix, limit=100)
+
+        import re
+
+        results: list[GrepResult] = []
+        total_matches = 0
+        for key, content in raw:
+            if total_matches >= limit:
+                break
+            lines = content.split("\n")
+            matches: list[GrepMatch] = []
+            for i, line in enumerate(lines):
+                if total_matches >= limit:
+                    break
+                if re.search(pattern, line):
+                    before = lines[max(0, i - context) : i] if context > 0 else []
+                    after = (
+                        lines[i + 1 : i + 1 + context] if context > 0 else []
+                    )
+                    matches.append(
+                        GrepMatch(line=i, text=line, before=before, after=after)
+                    )
+                    total_matches += 1
+            if matches:
+                results.append(GrepResult(key=key, matches=matches))
+        return results
+
+    def glob(
+        self,
+        pattern: str,
+        limit: int = 50,
+    ) -> list[FileSearchResult]:
+        """Match file keys by glob pattern."""
+        self._check("glob")
+        prefix = self._scope.get("prefix")
+        keys = self.repo.glob_files(pattern, prefix=prefix, limit=limit)
+        return [FileSearchResult(id="", key=k) for k in keys]
+
+    def tree(
+        self,
+        prefix: str | None = None,
+        depth: int = 3,
+    ) -> str:
+        """Compact directory tree of file keys."""
+        self._check("tree")
+        effective_prefix = (
+            self._full_key(prefix) if prefix else self._scope.get("prefix")
+        )
+
+        store = FileStore(self.repo)
+        files = store.list_files(prefix=effective_prefix, limit=500)
+
+        # Build tree structure
+        tree_dict: dict = {}
+        strip = (
+            len(effective_prefix.rstrip("/") + "/") if effective_prefix else 0
+        )
+        for f in files:
+            rel = f.key[strip:]
+            parts = rel.split("/")
+            node = tree_dict
+            for p in parts[:depth]:
+                node = node.setdefault(p, {})
+
+        # Render
+        lines: list[str] = []
+        root_label = (
+            effective_prefix.rstrip("/") + "/" if effective_prefix else "/"
+        )
+        lines.append(root_label)
+
+        def _render(node: dict, indent: str) -> None:
+            items = sorted(node.items())
+            for i, (name, children) in enumerate(items):
+                is_last = i == len(items) - 1
+                connector = "└── " if is_last else "├── "
+                suffix = "/" if children else ""
+                lines.append(f"{indent}{connector}{name}{suffix}")
+                if children:
+                    extension = "    " if is_last else "│   "
+                    _render(children, indent + extension)
+
+        _render(tree_dict, "")
+        return "\n".join(lines)
+
     def __repr__(self) -> str:
         prefix = self._scope.get("prefix", "")
         if prefix:
-            return f"<Dir '{prefix}' list() get(key)>"
-        return "<DirCapability list() get(key)>"
+            return f"<Dir '{prefix}' list() get(key) grep(pattern) glob(pattern) tree()>"
+        return "<DirCapability list() get(key) grep(pattern) glob(pattern) tree()>"

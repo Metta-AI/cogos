@@ -174,4 +174,91 @@ class TestDirCapabilityScoping:
         assert narrower._scope["ops"] == {"list"}
 
     def test_all_ops(self):
-        assert DirCapability.ALL_OPS == {"list", "get"}
+        assert DirCapability.ALL_OPS == {"list", "get", "grep", "glob", "tree"}
+
+
+# ── DirCapability grep/glob/tree ───────────────────────────
+
+
+class TestDirGrepGlobTree:
+    def test_grep_returns_results(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/workspace/")
+        repo.grep_files.return_value = [
+            ("/workspace/main.py", "line1\n# TODO fix\nline3")
+        ]
+        results = scoped.grep("TODO")
+        assert len(results) == 1
+        assert results[0].key == "/workspace/main.py"
+        assert results[0].matches[0].line == 1
+        assert "TODO" in results[0].matches[0].text
+
+    def test_grep_respects_prefix_scope(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/workspace/")
+        repo.grep_files.return_value = []
+        scoped.grep("pattern")
+        repo.grep_files.assert_called_once_with(
+            "pattern", prefix="/workspace/", limit=100
+        )
+
+    def test_grep_with_context(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        repo.grep_files.return_value = [
+            ("file.py", "a\nb\nTODO fix\nd\ne")
+        ]
+        results = cap.grep("TODO", context=1)
+        m = results[0].matches[0]
+        assert m.before == ["b"]
+        assert m.after == ["d"]
+
+    def test_grep_denied_without_op(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(ops={"list"})
+        with pytest.raises(PermissionError):
+            scoped.grep("pattern")
+
+    def test_glob_returns_keys(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/workspace/")
+        repo.glob_files.return_value = ["/workspace/config.yaml"]
+        results = scoped.glob("*.yaml")
+        assert len(results) == 1
+        assert results[0].key == "/workspace/config.yaml"
+
+    def test_glob_respects_prefix_scope(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/workspace/")
+        repo.glob_files.return_value = []
+        scoped.glob("**/*.py")
+        repo.glob_files.assert_called_once_with(
+            "**/*.py", prefix="/workspace/", limit=50
+        )
+
+    def test_glob_denied_without_op(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(ops={"list"})
+        with pytest.raises(PermissionError):
+            scoped.glob("*.py")
+
+    def test_tree_returns_string(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(prefix="/ws/")
+        with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
+            store = mock_cls.return_value
+            from cogos.db.models import File
+
+            store.list_files.return_value = [
+                File(key="/ws/a.py"),
+                File(key="/ws/sub/b.py"),
+                File(key="/ws/sub/c.py"),
+            ]
+            result = scoped.tree()
+            assert "a.py" in result
+            assert "sub/" in result
+
+    def test_tree_denied_without_op(self, repo, pid):
+        cap = DirCapability(repo, pid)
+        scoped = cap.scope(ops={"list"})
+        with pytest.raises(PermissionError):
+            scoped.tree()
