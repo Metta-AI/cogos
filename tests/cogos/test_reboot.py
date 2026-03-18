@@ -43,8 +43,8 @@ def test_reboot_with_no_existing_processes(tmp_path):
 
 
 def test_image_declares_only_init_process(tmp_path):
-    from cogos.image.spec import load_image
     from cogos.image.apply import apply_image
+    from cogos.image.spec import load_image
 
     repo = LocalRepository(str(tmp_path))
     image_dir = Path(__file__).resolve().parents[2] / "images" / "cogent-v1"
@@ -53,9 +53,10 @@ def test_image_declares_only_init_process(tmp_path):
 
     procs = repo.list_processes()
     top_level = [p for p in procs if p.parent_process is None]
-    # init + cog processes (discord, recruiter, newsfromthefront, website)
-    assert len(top_level) == 5
-    init_proc = next(p for p in top_level if p.name == "init")
+    # Only init — cog processes are now spawned by init.py at runtime
+    assert len(top_level) == 1
+    init_proc = top_level[0]
+    assert init_proc.name == "init"
     assert init_proc.executor == "python"
     assert init_proc.priority >= 100
 
@@ -63,8 +64,8 @@ def test_image_declares_only_init_process(tmp_path):
 def test_spawn_with_multiple_subscribe(tmp_path):
     """Verify spawn() accepts a list of subscribe channels."""
     from cogos.capabilities.procs import ProcsCapability
-    from cogos.image.spec import ImageSpec
     from cogos.image.apply import apply_image
+    from cogos.image.spec import ImageSpec
 
     repo = LocalRepository(str(tmp_path))
     spec = ImageSpec(capabilities=[

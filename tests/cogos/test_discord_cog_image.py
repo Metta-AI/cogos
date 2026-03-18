@@ -42,11 +42,11 @@ class TestDiscordCogImage:
         init_py = Path("images/cogent-v1/cogos/init.py").read_text()
         assert 'procs.spawn("scheduler"' not in init_py
 
-    def test_init_kicks_discord_review_after_boot(self):
-        """Reload should wake the Discord root cog immediately to recreate its runtime children."""
+    def test_init_spawns_cog_processes_from_manifest(self):
+        """Init reads _boot/cog_processes.json and spawns all cog processes."""
         init_py = Path("images/cogent-v1/cogos/init.py").read_text()
-        assert '"discord-cog:review"' in init_py
-        assert 'channels.send("discord-cog:review", {"reason": "boot"})' in init_py
+        assert "_boot/cog_processes.json" in init_py
+        assert "_spawn_from_spec" in init_py
 
     def test_discord_handler_prompt_uses_web_url_helper(self):
         prompt = Path("images/cogent-v1/apps/discord/handler/main.md").read_text()
@@ -59,11 +59,19 @@ class TestDiscordCogImage:
         init_proc = next(p for p in spec.processes if p["name"] == "init")
         assert "scheduler" not in init_proc["capabilities"]
 
+    def test_init_holds_cog_capabilities_for_delegation(self):
+        """Init must hold cog and coglet_runtime to delegate them to cog processes."""
+        spec = load_image(Path("images/cogent-v1"))
+        init_proc = next(p for p in spec.processes if p["name"] == "init")
+        assert "cog" in init_proc["capabilities"]
+        assert "coglet_runtime" in init_proc["capabilities"]
+
 
 class TestDiscordCogApply:
-    def test_apply_creates_discord_process(self, tmp_path):
-        from cogos.image.apply import apply_image
+    def test_apply_does_not_create_cog_processes(self, tmp_path):
+        """Cog processes are now spawned by init.py, not apply_image."""
         from cogos.db.local_repository import LocalRepository
+        from cogos.image.apply import apply_image
 
         spec = load_image(Path("images/cogent-v1"))
         repo = LocalRepository(str(tmp_path))
@@ -71,13 +79,14 @@ class TestDiscordCogApply:
 
         procs = repo.list_processes(limit=100)
         proc_names = {p.name for p in procs}
-        assert "discord" in proc_names, f"Expected 'discord' process, got: {proc_names}"
+        assert "discord" not in proc_names, f"'discord' should not be created by apply_image, got: {proc_names}"
+        assert "discord/handler" not in proc_names
 
     def test_apply_creates_discord_coglet(self, tmp_path):
-        from cogos.image.apply import apply_image
-        from cogos.db.local_repository import LocalRepository
         from cogos.cog import load_coglet_meta
+        from cogos.db.local_repository import LocalRepository
         from cogos.files.store import FileStore
+        from cogos.image.apply import apply_image
 
         spec = load_image(Path("images/cogent-v1"))
         repo = LocalRepository(str(tmp_path))
@@ -89,18 +98,30 @@ class TestDiscordCogApply:
         assert meta.entrypoint == "main.py"
         assert meta.mode == "daemon"
 
-    def test_apply_creates_discord_handler(self, tmp_path):
-        """Handler child coglet is created at boot, not at runtime."""
-        from cogos.image.apply import apply_image
+    def test_apply_writes_boot_manifest(self, tmp_path):
+        """apply_image writes _boot/cog_processes.json for init.py to read."""
+        import json
+
         from cogos.db.local_repository import LocalRepository
+        from cogos.files.store import FileStore
+        from cogos.image.apply import apply_image
 
         spec = load_image(Path("images/cogent-v1"))
         repo = LocalRepository(str(tmp_path))
         apply_image(spec, repo)
 
-        procs = repo.list_processes(limit=100)
-        proc_names = {p.name for p in procs}
-        assert "discord/handler" in proc_names, f"Expected 'discord/handler', got: {proc_names}"
-        handler = next(p for p in procs if p.name == "discord/handler")
-        assert handler.model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        assert handler.mode.value == "daemon"
+        store = FileStore(repo)
+        raw = store.get_content("_boot/cog_processes.json")
+        assert raw is not None
+        manifest = json.loads(raw)
+        names = {entry["name"] for entry in manifest}
+        assert "discord" in names
+        assert "newsfromthefront" in names
+        assert "recruiter" in names
+        assert "website" in names
+
+        discord_entry = next(e for e in manifest if e["name"] == "discord")
+        assert discord_entry["mode"] == "daemon"
+        assert "discord-cog:review" in discord_entry["handlers"]
+        child_names = {c["name"] for c in discord_entry["children"]}
+        assert "discord/handler" in child_names
