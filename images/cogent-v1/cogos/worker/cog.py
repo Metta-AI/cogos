@@ -1,0 +1,10 @@
+from cogos.cog.cog import CogConfig
+
+config = CogConfig(
+    mode="one_shot",
+    capabilities=[
+        "discord", "channels", "stdlib", "dir", "file",
+        "web_search", "web_fetch", "web", "blob", "image",
+        "asana", "email", "github", "secrets",
+    ],
+)
