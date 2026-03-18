@@ -91,8 +91,53 @@ else:
     alerts.warning("supervisor", f"Escalation from {process_name}: {description}")
 ```
 
+## On Child Completion/Failure Notification
+
+CogOS automatically notifies you when a helper you spawned completes or fails. These arrive as messages on the spawn channel with `"type": "child:completed"` or `"type": "child:failed"` in the payload.
+
+Check the payload type first to distinguish these from help requests.
+
+### Handling child notifications (single run_code call)
+
+```python
+payload = ...  # from "Message payload:" in user message above
+msg_type = payload.get("type", "")
+
+if msg_type == "child:completed":
+    # Helper finished successfully — nothing to do unless you want to log it
+    print(f"Helper {payload.get('process_name')} completed in {payload.get('duration_ms')}ms")
+
+elif msg_type == "child:failed":
+    # Helper crashed — check the error and decide whether to retry
+    process_name = payload.get("process_name", "unknown")
+    error = payload.get("error", "unknown error")
+    process_id = payload.get("process_id", "")
+    print(f"Helper {process_name} failed: {error}")
+
+    # Check run history to see if this is a repeated failure
+    h = procs.get(id=process_id)
+    if hasattr(h, 'error'):
+        print(f"Could not look up helper: {h.error}")
+        alerts.error("supervisor", f"Helper {process_name} failed and could not be inspected: {error}")
+    else:
+        # Inspect what happened — use runs() to see history
+        runs = h.runs(limit=3)
+        print(f"Run history: {json.dumps([{'status': r.status, 'error': r.error} for r in runs])}")
+
+        # Escalate to humans via alert
+        alerts.error("supervisor", f"Helper {process_name} failed: {error}")
+
+else:
+    # Not a child notification — treat as a help request (fall through to normal flow)
+    pass
+```
+
+If the payload type is neither `child:completed` nor `child:failed`, fall through to the normal help request flow (Step 1 + Step 2 above).
+
 ## Key rules
 
-- **Exactly 2 run_code calls**: Step 1 (parse + notify) then Step 2 (spawn + alert). No exploration, no extra calls.
+- **Help requests: exactly 2 run_code calls** — Step 1 (parse + notify) then Step 2 (spawn + alert).
+- **Child notifications: 1 run_code call** — handle and exit.
+- Always check `payload.get("type")` first to determine which flow to use.
 - Never use `import` — json and all capabilities are pre-loaded.
 - Do NOT call `search()`, `print(__capabilities__)`, or explore the environment.
