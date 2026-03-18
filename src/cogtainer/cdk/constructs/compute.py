@@ -40,6 +40,7 @@ def _build_lambda_package() -> str:
             "install",
             "pydantic",
             "anthropic",
+            "asana",
             "--target",
             build_dir,
             "--quiet",
