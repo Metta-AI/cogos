@@ -515,6 +515,42 @@ export async function deleteAlert(name: string, id: string): Promise<void> {
   });
 }
 
+// ── Diagnostics ─────────────────────────────────────────────────────────────
+
+export interface DiagnosticCheck {
+  name: string;
+  status: "pass" | "fail";
+  ms: number;
+  error?: string;
+}
+
+export interface DiagnosticEntry {
+  name: string;
+  status: "pass" | "fail";
+  checks: DiagnosticCheck[];
+}
+
+export interface DiagnosticCategory {
+  status: "pass" | "fail";
+  diagnostics: DiagnosticEntry[];
+}
+
+export interface DiagnosticRun {
+  timestamp: string;
+  summary: { total: number; pass: number; fail: number };
+  categories: Record<string, DiagnosticCategory>;
+}
+
+export async function getDiagnosticsHistory(
+  name: string,
+  limit: number = 10,
+): Promise<DiagnosticRun[]> {
+  const r = await fetchJSON<{ runs: DiagnosticRun[] }>(
+    `/api/cogents/${name}/diagnostics/history?limit=${limit}`,
+  );
+  return r.runs;
+}
+
 // ── System ──────────────────────────────────────────────────────────────────
 
 export async function reboot(name: string): Promise<{ cleared: number }> {

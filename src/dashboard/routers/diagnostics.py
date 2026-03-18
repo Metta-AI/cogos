@@ -30,6 +30,25 @@ def get_diagnostics(name: str) -> dict:
         return {"status": "error", "message": "Invalid diagnostic data"}
 
 
+@router.get("/diagnostics/history")
+def get_diagnostics_history(name: str, limit: int = 10) -> dict:
+    """Return the last N diagnostic runs from file versions of current.json."""
+    store = FileStore(get_repo())
+    versions = store.history("data/diagnostics/current.json")
+    if not versions:
+        return {"runs": []}
+    # Sort descending by version number (newest first), take last N
+    versions.sort(key=lambda v: v.version, reverse=True)
+    runs = []
+    for v in versions[:limit]:
+        try:
+            data = json.loads(v.content)
+            runs.append(data)
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return {"runs": runs}
+
+
 @router.get("/diagnostics/changelog")
 def get_diagnostics_changelog(name: str) -> dict:
     """Return diagnostic changelog."""
