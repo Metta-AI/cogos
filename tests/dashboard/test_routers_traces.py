@@ -94,7 +94,7 @@ class _TraceRepoStub:
             created_at=now + timedelta(seconds=3),
         )
 
-    def list_processes(self, *, limit: int = 1000):
+    def list_processes(self, *, limit: int = 1000, status=None, epoch=None):
         return [self.process]
 
     def list_channels(self):
@@ -119,7 +119,7 @@ class _TraceRepoStub:
             deliveries = [delivery for delivery in deliveries if delivery.run == run_id]
         return deliveries[:limit]
 
-    def list_runs(self, *, process_id=None, limit: int = 50):
+    def list_runs(self, *, process_id=None, limit: int = 50, epoch=None):
         runs = [self.run]
         if process_id is not None:
             runs = [run for run in runs if run.process == process_id]
