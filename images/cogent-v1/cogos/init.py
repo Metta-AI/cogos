@@ -101,6 +101,7 @@ for ch_name in [
     "supervisor:help",
     "io:web:request",
     "github:discover",
+    "system:diagnostics",
 ]:
     channels.create(ch_name)
 
@@ -139,5 +140,8 @@ for m in manifests:
 # Kick cog orchestrators so they can set up child processes.
 channels.send("discord-cog:review", {"reason": "boot"})
 channels.send("system:tick:hour", {"reason": "boot"})
+
+# Run diagnostics on boot
+channels.send("system:diagnostics", {"reason": "boot"})
 
 print("Init complete")
