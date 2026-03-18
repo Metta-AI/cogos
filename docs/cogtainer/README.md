@@ -80,11 +80,8 @@ Both legacy (cogtainer-layer, from `schema.sql`) and CogOS tables (from `src/cog
 | `cogos_capability` | Capability definitions |
 | `cogos_process` | Process definitions and state |
 | `cogos_process_capability` | Process-capability associations |
-| `cogos_handler` | Event handlers |
-| `cogos_event` | CogOS event log |
-| `cogos_event_type` | Event type registry |
-| `cogos_event_delivery` | Event delivery tracking |
-| `cogos_event_outbox` | Outbound event queue |
+| `cogos_handler` | Channel subscription handlers |
+| `cogos_delivery` | Per-handler message delivery tracking |
 | `cogos_run` | CogOS execution runs |
 | `cogos_trace` | CogOS execution traces |
 | `cogos_meta` | CogOS metadata key-value store |

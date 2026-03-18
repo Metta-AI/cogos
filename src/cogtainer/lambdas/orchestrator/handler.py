@@ -73,10 +73,6 @@ def handler(event: dict, context) -> dict:
         logger.exception("Failed to log event to database")
         return {"statusCode": 500, "body": "event_log_failed"}
 
-    # Run a CogOS scheduler tick so handler processes react immediately
-    _cogos_scheduler_tick(config)
-
-
     # Handle task:run events directly — look up task, dispatch its program
     if brain_event.event_type == "task:run":
         return _handle_task_run(config, repo, brain_event, event_id)
@@ -258,77 +254,6 @@ def _dispatch_lambda(config, lambda_client, payload: str, program_name: str):
         Payload=payload.encode(),
     )
     logger.info(f"Dispatched to Lambda: {program_name}")
-
-
-def _cogos_scheduler_tick(config) -> None:
-    """Run one CogOS scheduler tick inline so event-driven processes react immediately."""
-    try:
-        from cogos.db.repository import Repository as CogosRepo
-        from cogos.capabilities.scheduler import SchedulerCapability
-
-        cogos_repo = CogosRepo.create()
-
-        from uuid import UUID as _UUID
-        scheduler = SchedulerCapability(cogos_repo, _UUID("00000000-0000-0000-0000-000000000000"))
-
-        # Match events to handlers
-        match_result = scheduler.match_messages()
-        if match_result.deliveries_created > 0:
-            logger.info(f"CogOS: matched {match_result.deliveries_created} deliveries")
-
-        # Reap idle daemon processes
-        scheduler.reap_idle_processes()
-
-        # Select and dispatch runnable processes
-        select_result = scheduler.select_processes(slots=5)
-        if not select_result.selected:
-            return
-
-        import os as _os
-        lambda_client = boto3.client("lambda", region_name=config.region)
-        safe_name = _os.environ.get("COGENT_NAME", "").replace(".", "-")
-        executor_fn = f"cogent-{safe_name}-executor"
-
-        dispatched = 0
-        for proc in select_result.selected:
-            dispatch_result = scheduler.dispatch_process(process_id=proc.id)
-            if hasattr(dispatch_result, "error"):
-                continue
-
-            event_payload = {}
-            if dispatch_result.message_id:
-                rows = cogos_repo._rows_to_dicts(cogos_repo._execute(
-                    "SELECT payload FROM cogos_channel_message WHERE id = :id",
-                    [cogos_repo._param("id", _UUID(dispatch_result.message_id))],
-                ))
-                if rows:
-                    raw = rows[0].get("payload", "{}")
-                    event_payload = json.loads(raw) if isinstance(raw, str) else (raw or {})
-
-            payload = {
-                "process_id": dispatch_result.process_id,
-                "run_id": dispatch_result.run_id,
-                "event_id": dispatch_result.message_id,
-                "trace_id": getattr(dispatch_result, "trace_id", None),
-                "dispatched_at_ms": int(time.time() * 1000),
-                "event_type": event_payload.get("event_type", ""),
-                "payload": event_payload,
-            }
-
-            try:
-                lambda_client.invoke(
-                    FunctionName=executor_fn,
-                    InvocationType="Event",
-                    Payload=json.dumps(payload),
-                )
-                dispatched += 1
-            except Exception:
-                logger.exception(f"CogOS: failed to invoke executor for {proc.name}")
-
-        if dispatched:
-            logger.info(f"CogOS: inline tick dispatched {dispatched} processes")
-    except Exception:
-        logger.debug("CogOS scheduler tick skipped", exc_info=True)
 
 
 def _dispatch_ecs(config, ecs_client, payload: str, program_name: str,

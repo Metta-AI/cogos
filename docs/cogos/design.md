@@ -105,19 +105,15 @@ For normal external messages such as Discord DMs:
 1. A producer appends a row to `cogos_channel_message`.
 2. Handlers bound to that channel are matched.
 3. The producer-side repository sends a coalesced, best-effort wake nudge to the per-cogent ingress queue.
-4. The ingress Lambda drains a batch, loads the corresponding committed channel messages, matches handlers, creates delivery rows idempotently, marks affected WAITING processes RUNNABLE, creates runs, and invokes executors immediately.
+4. The ingress Lambda selects RUNNABLE processes and dispatches them immediately. (Handler matching and delivery creation happen inline in step 2, not in the ingress Lambda.)
 
 ### Coalesced wakeups
 
 The queue message is only a wake signal. It is not the source of truth and does not carry authoritative work state.
 
-At higher message rates we do not want one queue message per channel message. Instead:
+At higher message rates we do not want one queue message per channel message. The current implementation uses SQS FIFO deduplication (timestamp-based `MessageDeduplicationId` with a shared `MessageGroupId`) for best-effort coalescing. The `cogos_ingress_wake` table exists (migration 005) but DB-based coalescing is not yet wired up in the Python code.
 
-- Postgres records the most recent ingress wake request in `cogos_ingress_wake`
-- wake requests are coalesced inside a short cooldown window
-- the ingress Lambda drains as many pending messages as it can in a batch
-
-This means bursts of channel messages still produce a small number of wake messages while pending deliveries remain the real pending-work set.
+The ingress Lambda drains as many pending messages as it can in a batch. Bursts of channel messages still produce a small number of wake messages while pending deliveries remain the real pending-work set.
 
 ### Backstop path
 
@@ -449,7 +445,7 @@ cogos/sandbox/
 
 ## Scheduler
 
-The scheduler is itself a daemon process. It registers for `system:tick:minute` messages and runs the scheduling loop using the `scheduler` capability.
+The scheduler runs as a Lambda (the dispatcher) invoked by EventBridge every 60 seconds. It uses the `scheduler` capability for message matching, process selection, and dispatch.
 
 ### Per-Tick Flow
 
@@ -463,7 +459,7 @@ The scheduler is itself a daemon process. It registers for `system:tick:minute` 
 
 ### System Tick Messages
 
-The dispatcher generates virtual tick messages (not written to channels):
+The dispatcher generates virtual tick messages via `apply_scheduled_messages()`, which writes them to channels using `emit_channel_message()`:
 - `system:tick:minute` -- every invocation
 - `system:tick:hour` -- when minute == 0
 
@@ -569,7 +565,7 @@ The executor uses `process.model` if set, otherwise falls back to a configurable
 
 All state lives in PostgreSQL, accessed via RDS Data API. Tables are prefixed with `cogos_` (process, handler, channel, channel_message, delivery, file, file_version, capability, process_capability, run, resource, resource_usage, schema, cron, conversation, alert, budget, trace).
 
-Channel messages are DB records matched by the scheduler -- no external event bus (EventBridge was eliminated).
+Channel messages are DB records matched by the scheduler -- no external event bus for CogOS-internal messaging (EventBridge was replaced by channels for inter-process communication). EventBridge is still used by the cogtainer layer for orchestrator triggers and dispatcher scheduling.
 
 ## Source Structure
 

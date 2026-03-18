@@ -94,7 +94,13 @@ class SchedulerCapability(Capability):
     """
 
     def match_messages(self) -> MatchResult:
-        """Find undelivered channel messages and create deliveries."""
+        """Reconciliation backstop: find undelivered channel messages and create deliveries.
+
+        The hot path is append_channel_message() in repository.py, which creates
+        deliveries inline at write time and nudges the ingress queue. This method
+        is called by the dispatcher (every 60s) to catch any messages that were
+        missed by the inline path.
+        """
         all_handlers = self.repo.list_handlers(enabled_only=True)
         channel_handlers = [h for h in all_handlers if h.channel is not None]
 
