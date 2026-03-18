@@ -963,6 +963,32 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    # ── Coglet Runtime ────────────────────────────────────────────
+    # coglet_runtime
+    {
+        "name": "coglet_runtime",
+        "description": "Run coglets as CogOS processes.",
+        "handler": "cogos.capabilities.coglet_runtime.CogletRuntimeCapability",
+        "instructions": (
+            "Use coglet_runtime to run coglets created by cog.make_coglet().\n"
+            "- result = coglet_runtime.run(coglet, procs, capabilities={...})\n"
+            "Returns a ProcessHandle for the spawned worker process."
+        ),
+        "schema": {
+            "run": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "coglet": {"type": "object", "description": "CogletManifest from cog.make_coglet()"},
+                        "procs": {"type": "object", "description": "ProcsCapability instance"},
+                        "capabilities": {"type": "object", "description": "Scoped capabilities to grant"},
+                    },
+                    "required": ["coglet", "procs"],
+                },
+                "output": {"type": "string", "description": "ProcessHandle for the spawned worker"},
+            },
+        },
+    },
     # ── System ──────────────────────────────────────────────────
     # stdlib, alerts, resources, secrets, schemas
     {

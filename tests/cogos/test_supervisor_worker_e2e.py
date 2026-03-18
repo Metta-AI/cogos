@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.cog_registry import CogRegistryCapability
+from cogos.capabilities.coglet_runtime import CogletRuntimeCapability
 from cogos.capabilities.procs import ProcsCapability
 from cogos.cog.runtime import CogletRuntime, CogManifest, CogletManifest
 from cogos.cog.cog import Cog, CogConfig
@@ -282,8 +283,8 @@ class TestSupervisorWorkerFlow:
         assert "github" not in caps2
         assert "channels" in caps2  # Always included
 
-    def test_coglet_runtime_runs_manifest(self, repo, worker_cog_dir):
-        """CogletRuntime.run_coglet accepts a CogletManifest and spawns it."""
+    def test_coglet_runtime_capability_runs_manifest(self, repo, worker_cog_dir):
+        """CogletRuntimeCapability.run accepts a CogletManifest and spawns it."""
         # Create a parent process
         parent = Process(
             name="test-parent",
@@ -301,21 +302,13 @@ class TestSupervisorWorkerFlow:
             entrypoint="main.md",
         )
 
-        # Create a CogletRuntime with a cog manifest
-        cog_manifest = CogManifest(
-            name="worker",
-            config=CogConfig(),
-            content="# Main",
-            entrypoint="main.md",
-        )
-        runtime = CogletRuntime(cog_manifest, cap_objects={})
-
-        # Run the coglet with explicit capabilities
+        # Use CogletRuntimeCapability
+        runtime_cap = CogletRuntimeCapability(repo, parent.id)
         procs = ProcsCapability(repo, parent.id)
-        result = runtime.run_coglet(manifest, procs, capabilities={})
+        result = runtime_cap.run(manifest, procs, capabilities={})
 
         assert hasattr(result, "id")
-        worker = repo.get_process_by_name("worker/test-worker")
+        worker = repo.get_process_by_name("test-worker")
         assert worker is not None
         assert worker.status == ProcessStatus.RUNNABLE
         assert "Test worker" in worker.content
