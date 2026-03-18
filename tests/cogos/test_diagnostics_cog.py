@@ -5,7 +5,7 @@ from pathlib import Path
 from cogos.cog.cog import Cog
 
 
-DIAGNOSTICS_DIR = Path(__file__).parent.parent.parent / "images" / "cogent-v1" / "cogos" / "diagnostics"
+DIAGNOSTICS_DIR = Path(__file__).parent.parent.parent / "images" / "cogent-v1" / "apps" / "diagnostics"
 
 
 class TestDiagnosticsCog:
