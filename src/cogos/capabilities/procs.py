@@ -326,7 +326,7 @@ class ProcsCapability(Capability):
                 sub_ch = self.repo.get_channel_by_name(sub_name)
                 if sub_ch is None:
                     return ProcessError(error=f"Subscribe channel '{sub_name}' not found")
-                self.repo.create_handler(Handler(process=child_id, channel=sub_ch.id))
+                self.repo.create_handler(Handler(process=child_id, channel=sub_ch.id, epoch=child_epoch))
 
         child = self.repo.get_process(child_id)
         return ProcessHandle(

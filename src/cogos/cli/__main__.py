@@ -443,7 +443,7 @@ def process_load(file_path: str):
             if not ch:
                 ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
                 repo.upsert_channel(ch)
-            h = HandlerModel(process=pid, channel=ch.id, enabled=True)
+            h = HandlerModel(process=pid, channel=ch.id, enabled=True, epoch=p.epoch)
             repo.create_handler(h)
             click.echo(f"    Handler added: {ch_name}")
 
@@ -513,7 +513,7 @@ def handler_add(process_name: str, channel_name: str):
     if not ch:
         ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
         repo.upsert_channel(ch)
-    h = HandlerModel(process=p.id, channel=ch.id, enabled=True)
+    h = HandlerModel(process=p.id, channel=ch.id, enabled=True, epoch=p.epoch)
     hid = repo.create_handler(h)
     click.echo(f"Handler created: {channel_name} -> {process_name} ({hid})")
 
