@@ -91,7 +91,7 @@ class GitHubCapability(Capability):
         github.list_contributions("octocat")
     """
 
-    ALL_OPS = {"search_repos", "get_user", "list_contributions", "get_repo"}
+    ALL_OPS = {"search_repos", "get_user", "list_contributions", "get_repo", "list_org_repos"}
 
     def __init__(self, repo, process_id) -> None:
         super().__init__(repo, process_id)
@@ -213,5 +213,25 @@ class GitHubCapability(Capability):
         except Exception as exc:
             return GitHubError(error=str(exc))
 
+    def list_org_repos(self, org: str, limit: int = 100) -> list[RepoSummary] | GitHubError:
+        """List repositories for a GitHub organization."""
+        self._check("list_org_repos")
+        try:
+            gh = self._get_client()
+            organization = gh.get_organization(org)
+            repos = organization.get_repos(sort="pushed", direction="desc")
+            return [
+                RepoSummary(
+                    full_name=r.full_name,
+                    description=r.description or "",
+                    stars=r.stargazers_count,
+                    language=r.language or "",
+                    url=r.html_url,
+                )
+                for r in list(repos)[:limit]
+            ]
+        except Exception as exc:
+            return GitHubError(error=str(exc))
+
     def __repr__(self) -> str:
-        return "<GitHubCapability search_repos() get_user() list_contributions() get_repo()>"
+        return "<GitHubCapability search_repos() get_user() list_contributions() get_repo() list_org_repos()>"

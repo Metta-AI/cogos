@@ -99,6 +99,7 @@ for ch_name in [
     "system:tick:minute", "system:tick:hour",
     "supervisor:help",
     "io:web:request",
+    "github:discover",
 ]:
     channels.create(ch_name)
 

@@ -138,6 +138,47 @@ class TestGetRepo:
             assert "hello" in result.topics
 
 
+class TestListOrgRepos:
+    @patch("cogos.capabilities.github_cap.fetch_secret", return_value="ghp_test")
+    def test_list_org_repos_success(self, mock_secret, repo, pid):
+        cap = GitHubCapability(repo, pid)
+        mock_repo = MagicMock()
+        mock_repo.full_name = "metta-ai/metta"
+        mock_repo.description = "Training framework"
+        mock_repo.stargazers_count = 50
+        mock_repo.language = "Python"
+        mock_repo.html_url = "https://github.com/metta-ai/metta"
+
+        with patch("cogos.capabilities.github_cap.Github") as MockGithub:
+            mock_gh = MagicMock()
+            mock_org = MagicMock()
+            mock_org.get_repos.return_value = [mock_repo]
+            mock_gh.get_organization.return_value = mock_org
+            MockGithub.return_value = mock_gh
+
+            results = cap.list_org_repos("metta-ai", limit=10)
+            assert len(results) == 1
+            assert isinstance(results[0], RepoSummary)
+            assert results[0].full_name == "metta-ai/metta"
+            mock_org.get_repos.assert_called_once_with(sort="pushed", direction="desc")
+
+    @patch("cogos.capabilities.github_cap.fetch_secret", return_value="ghp_test")
+    def test_list_org_repos_error(self, mock_secret, repo, pid):
+        cap = GitHubCapability(repo, pid)
+        with patch("cogos.capabilities.github_cap.Github") as MockGithub:
+            mock_gh = MagicMock()
+            mock_gh.get_organization.side_effect = RuntimeError("org not found")
+            MockGithub.return_value = mock_gh
+
+            result = cap.list_org_repos("nonexistent")
+            assert isinstance(result, GitHubError)
+
+    def test_list_org_repos_scoped_denied(self, repo, pid):
+        cap = GitHubCapability(repo, pid).scope(ops=["get_repo"])
+        with pytest.raises(PermissionError):
+            cap.list_org_repos("metta-ai")
+
+
 class TestListContributions:
     @patch("cogos.capabilities.github_cap.fetch_secret", return_value="ghp_test")
     def test_list_contributions_success(self, mock_secret, repo, pid):
