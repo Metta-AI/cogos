@@ -1,5 +1,24 @@
 # Agent Operations Guide
 
+## Which cogent to use
+
+Pick your test cogent based on `$USER`:
+
+| `$USER`        | Cogent       |
+|----------------|--------------|
+| `daveey`       | `dr.alpha`   |
+| `nishadsingh`  | `dr.gamma`   |
+
+All examples below use `$COGENT`. Set it once:
+
+```bash
+case "$USER" in
+  daveey)       export COGENT=dr.alpha ;;
+  nishadsingh)  export COGENT=dr.gamma ;;
+  *)            echo "Unknown user $USER — set COGENT manually"; exit 1 ;;
+esac
+```
+
 ## Testing a Cogent End-to-End
 
 ### DM a cogent via CLI (no Discord needed)
@@ -8,7 +27,7 @@ Inject a DM into the cogent's Discord handler:
 
 ```bash
 # Send a test DM
-cogent dr.alpha cogos channel send io:discord:dm --payload '{
+cogent $COGENT cogos channel send io:discord:dm --payload '{
   "content": "hello, what can you do?",
   "author": "testuser",
   "author_id": "000000000000000000",
@@ -26,20 +45,20 @@ Note: `message_id` must be a unique Discord snowflake (monotonically increasing 
 
 ```bash
 # Check handler stdout for processing output
-cogent dr.alpha cogos process get discord/handler
+cogent $COGENT cogos process get discord/handler
 
 # Check the conversation log
-cogent dr.alpha cogos file get data/discord/000000000000000000/recent.log
+cogent $COGENT cogos file get data/discord/000000000000000000/recent.log
 ```
 
 ### Verify the handler is alive
 
 ```bash
 # Handler should be "waiting" (daemon waiting for messages)
-cogent dr.alpha cogos status | grep discord
+cogent $COGENT cogos status | grep discord
 
 # If handler is missing or disabled, kick discord cog to re-spawn it:
-cogent dr.alpha cogos channel send discord-cog:review --payload '{"reason": "respawn handler"}'
+cogent $COGENT cogos channel send discord-cog:review --payload '{"reason": "respawn handler"}'
 ```
 
 ### Fix stale epochs after reboot
@@ -48,8 +67,8 @@ After reboot, child processes may have stale epochs. Fix with:
 
 ```bash
 PYTHONPATH=src python -c "
-import os; os.environ['COGENT_NAME'] = 'dr.alpha'
-from cogos.cli.__main__ import _ensure_db_env; _ensure_db_env('dr.alpha')
+import os; cogent = os.environ['COGENT']; os.environ['COGENT_NAME'] = cogent
+from cogos.cli.__main__ import _ensure_db_env; _ensure_db_env(cogent)
 import boto3; from cogos.db.repository import Repository
 repo = Repository(client=boto3.client('rds-data', region_name='us-east-1'), resource_arn=os.environ['DB_CLUSTER_ARN'], secret_arn=os.environ['DB_SECRET_ARN'], database=os.environ.get('DB_NAME', 'cogos'))
 epoch = repo.reboot_epoch
@@ -67,13 +86,13 @@ print('All updated to epoch', epoch)
 git push
 
 # 2. Deploy Lambda (executor + orchestrator + dispatcher)
-cogent dr.alpha cogtainer update lambda
+cogent $COGENT cogtainer update lambda
 
 # 3. Load image files into DB
-cogent dr.alpha cogos image boot
+cogent $COGENT cogos image boot
 
 # 4. Reboot (creates fresh init, spawns all cogs)
-cogent dr.alpha cogos reboot -y
+cogent $COGENT cogos reboot -y
 
 # 5. Wait ~90s for init + cogs to run
 
@@ -81,8 +100,8 @@ cogent dr.alpha cogos reboot -y
 # (see script above)
 
 # 7. Kick discord to spawn handler
-cogent dr.alpha cogos channel send discord-cog:review --payload '{"reason": "test"}'
+cogent $COGENT cogos channel send discord-cog:review --payload '{"reason": "test"}'
 
 # 8. Send test DM
-cogent dr.alpha cogos channel send io:discord:dm --payload '{"content": "hello!", "author": "test", "author_id": "0", "channel_id": "0", "message_id": "1484200000000000000", "is_dm": true, "is_mention": false}'
+cogent $COGENT cogos channel send io:discord:dm --payload '{"content": "hello!", "author": "test", "author_id": "0", "channel_id": "0", "message_id": "1484200000000000000", "is_dm": true, "is_mention": false}'
 ```
