@@ -102,7 +102,7 @@ def _package_lambda_code() -> bytes:
     deps_dir = tempfile.mkdtemp(prefix="lambda-deps-")
     lambda_deps = [
         "pydantic", "pydantic-settings", "pydantic-core", "annotated-types",
-        "Pillow", "google-genai", "anthropic",
+        "Pillow", "google-genai", "anthropic", "asana",
     ]
     subprocess.check_call(
         [
