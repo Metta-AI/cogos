@@ -14,5 +14,6 @@ add_process(
         "blob", "image",
         # Delegatable to supervisor → helpers:
         "asana", "email", "github", "web_search", "web_fetch", "web",
+        "cog_registry", "coglet_runtime",
     ],
 )
