@@ -14,6 +14,7 @@ from typing import Any
 from uuid import UUID
 
 from cogos.db.models import (
+    ALL_EPOCHS,
     Capability,
     Channel,
     ChannelMessage,
@@ -35,8 +36,6 @@ from cogos.db.models import (
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
 logger = logging.getLogger(__name__)
-
-ALL_EPOCHS = -1  # sentinel: return records from every epoch
 
 
 def _json_serial(obj: Any) -> Any:

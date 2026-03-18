@@ -8,8 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from cogos.db.local_repository import ALL_EPOCHS
-from cogos.db.models import Run
+from cogos.db.models import ALL_EPOCHS, Run
 from cogos.files.store import FileStore
 from dashboard.db import get_repo
 

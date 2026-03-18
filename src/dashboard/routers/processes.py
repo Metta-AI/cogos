@@ -7,8 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from cogos.db.local_repository import ALL_EPOCHS
-from cogos.db.models import Handler, Process, ProcessMode, ProcessStatus
+from cogos.db.models import ALL_EPOCHS, Handler, Process, ProcessMode, ProcessStatus
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore

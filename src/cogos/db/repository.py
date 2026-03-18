@@ -14,6 +14,7 @@ from uuid import UUID
 import boto3
 
 from cogos.db.models import (
+    ALL_EPOCHS,
     Alert,
     AlertSeverity,
     Budget,
@@ -46,8 +47,6 @@ from cogos.db.models import (
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
 logger = logging.getLogger(__name__)
-
-ALL_EPOCHS = -1
 
 
 class Repository:
@@ -337,6 +336,7 @@ class Repository:
                    clear_context = EXCLUDED.clear_context,
                    tty = EXCLUDED.tty,
                    metadata = EXCLUDED.metadata,
+                   epoch = EXCLUDED.epoch,
                    updated_at = now()
                RETURNING id, created_at, updated_at""",
             [

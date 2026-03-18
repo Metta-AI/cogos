@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from cogos.db.models import Process, ProcessMode, ProcessStatus
+from cogos.db.models import ALL_EPOCHS, Process, ProcessMode, ProcessStatus
 from cogos.db.models.operation import CogosOperation
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,6 @@ def reboot(repo) -> dict:
     Preserves: files, coglets, channels, schemas, resources, cron.
     Old processes/runs/handlers stay in previous epochs, invisible by default.
     """
-    from cogos.db.local_repository import ALL_EPOCHS
 
     # 1. Find and disable init (cascade disables children)
     init = repo.get_process_by_name("init")

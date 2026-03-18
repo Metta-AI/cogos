@@ -5,8 +5,7 @@ import logging
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from cogos.db.local_repository import ALL_EPOCHS
-from cogos.db.models import ProcessStatus
+from cogos.db.models import ALL_EPOCHS, ProcessStatus
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)

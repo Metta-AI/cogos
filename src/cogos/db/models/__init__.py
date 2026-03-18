@@ -11,7 +11,7 @@ from cogos.db.models.delivery import Delivery, DeliveryStatus
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 from cogos.db.models.file import File, FileVersion
 from cogos.db.models.handler import Handler
-from cogos.db.models.operation import CogosOperation
+from cogos.db.models.operation import ALL_EPOCHS, CogosOperation
 from cogos.db.models.process import Process, ProcessMode, ProcessStatus
 from cogos.db.models.process_capability import ProcessCapability
 from cogos.db.models.resource import Resource, ResourceType, ResourceUsage
@@ -28,6 +28,7 @@ __all__ = [
     "ChannelType",
     "BudgetPeriod",
     "Capability",
+    "ALL_EPOCHS",
     "CogosOperation",
     "Conversation",
     "ConversationStatus",

@@ -24,8 +24,7 @@ def test_reboot_clears_processes_and_creates_init(tmp_path):
 
 
 def test_reboot_preserves_old_processes_in_previous_epoch(tmp_path):
-    from cogos.db.local_repository import ALL_EPOCHS
-    from cogos.db.models import Run, RunStatus
+    from cogos.db.models import ALL_EPOCHS, Run, RunStatus
     repo = LocalRepository(str(tmp_path))
     old = Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING)
     repo.upsert_process(old)

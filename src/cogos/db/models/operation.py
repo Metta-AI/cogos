@@ -8,6 +8,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+ALL_EPOCHS = -1  # sentinel: return records from every epoch
+
 
 class CogosOperation(BaseModel):
     id: UUID = Field(default_factory=uuid4)
