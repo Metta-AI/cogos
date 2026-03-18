@@ -14,7 +14,7 @@ _CATEGORY_CAPS = {
     "channels":  ["channels"],
     "procs":     ["procs", "channels"],
     "me":        ["me"],
-    "scheduler": ["scheduler", "channels", "procs"],
+    "scheduler": ["channels", "procs"],
     "stdlib":    ["stdlib"],
     "discord":   ["discord"],
     "web":       ["web_fetch", "web_search"],
@@ -39,7 +39,7 @@ _CATEGORY_CAPS = {
 # Map capability names to injected globals
 _cap_objects = {
     "me": me, "procs": procs, "dir": dir, "file": file,
-    "channels": channels, "scheduler": scheduler, "stdlib": stdlib,
+    "channels": channels, "stdlib": stdlib,
     "discord": discord, "email": email, "asana": asana, "github": github,
     "web": web, "web_search": web_search, "web_fetch": web_fetch,
     "blob": blob, "image": image, "alerts": alerts, "data": data,
