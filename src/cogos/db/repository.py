@@ -1339,6 +1339,12 @@ class Repository:
         row = self._first_row(response)
         return self._run_from_row(row) if row else None
 
+    _RUN_SLIM_COLUMNS = (
+        "id, epoch, process, message, conversation, status, tokens_in, tokens_out, "
+        "cost_usd, duration_ms, error, model_version, result, trace_id, parent_trace_id, "
+        "metadata, created_at, completed_at"
+    )
+
     def list_runs(
         self,
         *,
@@ -1348,6 +1354,7 @@ class Repository:
         since: str | None = None,
         limit: int = 50,
         epoch: int | None = None,
+        slim: bool = False,
     ) -> list[Run]:
         effective_epoch = self.reboot_epoch if epoch is None else epoch
         conditions = []
@@ -1370,8 +1377,9 @@ class Repository:
             conditions.append("created_at >= :since::timestamptz")
             params.append(self._param("since", since))
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        columns = self._RUN_SLIM_COLUMNS if slim else "*"
         response = self._execute(
-            f"SELECT * FROM cogos_run{where} ORDER BY created_at DESC LIMIT :limit",
+            f"SELECT {columns} FROM cogos_run{where} ORDER BY created_at DESC LIMIT :limit",
             params,
         )
         return [self._run_from_row(r) for r in self._rows_to_dicts(response)]

@@ -277,7 +277,7 @@ def list_message_traces(
     handlers = repo.list_handlers()
     messages = repo.list_channel_messages(limit=fetch_limit)
     deliveries = repo.list_deliveries(limit=max(fetch_limit * 2, 1000))
-    runs = repo.list_runs(limit=max(fetch_limit * 2, 1000))
+    runs = repo.list_runs(limit=max(fetch_limit * 2, 1000), slim=True)
 
     process_names = {process.id: process.name for process in processes}
     process_runners = {process.id: process.runner for process in processes}
