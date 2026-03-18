@@ -91,50 +91,8 @@ else:
     alerts.warning("supervisor", f"Escalation from {process_name}: {description}")
 ```
 
-## On Child Exit Notification
-
-CogOS automatically notifies you when a helper you spawned exits. These arrive as messages on the spawn channel with `"type": "child:exited"` in the payload, along with an `exit_code` (0 = success, non-zero = failure) and the child's `process_id` and `run_id`.
-
-Check the payload type first to distinguish these from help requests.
-
-### Handling child exit (single run_code call)
-
-```python
-payload = ...  # from "Message payload:" in user message above
-msg_type = payload.get("type", "")
-
-if msg_type == "child:exited":
-    process_name = payload.get("process_name", "unknown")
-    process_id = payload.get("process_id", "")
-    exit_code = payload.get("exit_code", -1)
-    error = payload.get("error")
-
-    if exit_code == 0:
-        # Helper finished successfully
-        print(f"Helper {process_name} completed in {payload.get('duration_ms')}ms")
-    else:
-        # Helper failed — check run history and escalate
-        print(f"Helper {process_name} exited with code {exit_code}: {error}")
-
-        h = procs.get(id=process_id)
-        if hasattr(h, 'error'):
-            alerts.error("supervisor", f"Helper {process_name} failed (exit {exit_code}): {error}")
-        else:
-            runs = h.runs(limit=3)
-            print(f"Run history: {json.dumps([{'status': r.status, 'error': r.error} for r in runs])}")
-            alerts.error("supervisor", f"Helper {process_name} failed (exit {exit_code}): {error}")
-
-else:
-    # Not a child exit — treat as a help request (fall through to normal flow below)
-    pass
-```
-
-If the payload type is not `child:exited`, fall through to the normal help request flow (Step 1 + Step 2 above).
-
 ## Key rules
 
-- **Help requests: exactly 2 run_code calls** — Step 1 (parse + notify) then Step 2 (spawn + alert).
-- **Child exit notifications: 1 run_code call** — handle and exit.
-- Always check `payload.get("type")` first to determine which flow to use.
+- **Exactly 2 run_code calls**: Step 1 (parse + notify) then Step 2 (spawn + alert). No exploration, no extra calls.
 - Never use `import` — json and all capabilities are pre-loaded.
 - Do NOT call `search()`, `print(__capabilities__)`, or explore the environment.
