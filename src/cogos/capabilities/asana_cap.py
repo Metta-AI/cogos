@@ -58,7 +58,7 @@ class AsanaCapability(Capability):
         asana.list_tasks("project-id")
     """
 
-    ALL_OPS = {"create_task", "update_task", "list_tasks", "add_comment"}
+    ALL_OPS = {"create_task", "update_task", "list_tasks", "my_tasks", "add_comment"}
 
     def __init__(self, repo, process_id) -> None:
         super().__init__(repo, process_id)
@@ -97,9 +97,7 @@ class AsanaCapability(Capability):
         if allowed_projects is not None:
             project = context.get("project", "")
             if project and str(project) not in allowed_projects:
-                raise PermissionError(
-                    f"Project '{project}' not in allowed list: {allowed_projects}"
-                )
+                raise PermissionError(f"Project '{project}' not in allowed list: {allowed_projects}")
 
     def create_task(
         self,
@@ -146,6 +144,63 @@ class AsanaCapability(Capability):
         except Exception as exc:
             return AsanaError(error=str(exc))
 
+    def my_tasks(self, workspace: str | None = None, limit: int = 50) -> list[TaskSummary] | AsanaError:
+        """List all tasks assigned to the authenticated user."""
+        self._check("my_tasks")
+        try:
+            client = self._get_client()
+            users_api = asana.UserTaskListsApi(client)
+            tasks_api = asana.TasksApi(client)
+            me = asana.UsersApi(client).get_user("me")
+            me_data = me.get("data", me) if isinstance(me, dict) else me
+            me_gid = me_data["gid"] if isinstance(me_data, dict) else me_data.gid
+            ws_gid = workspace
+            if not ws_gid:
+                if isinstance(me_data, dict):
+                    workspaces = me_data.get("workspaces", [])
+                else:
+                    workspaces = getattr(me_data, "workspaces", [])
+                if workspaces:
+                    ws = workspaces[0]
+                    ws_gid = ws["gid"] if isinstance(ws, dict) else ws.gid
+                else:
+                    return AsanaError(error="No workspaces found")
+            utl = users_api.get_user_task_list_for_user(me_gid, {"workspace": ws_gid})
+            utl_data = utl.get("data", utl) if isinstance(utl, dict) else utl
+            utl_gid = utl_data["gid"] if isinstance(utl_data, dict) else utl_data.gid
+            opts = {"limit": limit, "opt_fields": "name,completed,assignee.name,due_on"}
+            tasks = tasks_api.get_tasks_for_user_task_list(utl_gid, opts)
+            result = []
+            items = tasks.get("data", tasks) if isinstance(tasks, dict) else tasks
+            for t in items:
+                if isinstance(t, dict):
+                    assignee_obj = t.get("assignee")
+                    assignee_name = assignee_obj.get("name", "") if isinstance(assignee_obj, dict) else ""
+                    result.append(
+                        TaskSummary(
+                            id=t["gid"],
+                            name=t.get("name", ""),
+                            assignee=assignee_name,
+                            due_on=t.get("due_on") or "",
+                            completed=t.get("completed", False),
+                        )
+                    )
+                else:
+                    assignee_obj = getattr(t, "assignee", None)
+                    assignee_name = getattr(assignee_obj, "name", "") if assignee_obj else ""
+                    result.append(
+                        TaskSummary(
+                            id=str(t.gid),
+                            name=getattr(t, "name", ""),
+                            assignee=assignee_name,
+                            due_on=getattr(t, "due_on", "") or "",
+                            completed=getattr(t, "completed", False),
+                        )
+                    )
+            return result
+        except Exception as exc:
+            return AsanaError(error=str(exc))
+
     def list_tasks(self, project: str, limit: int = 50) -> list[TaskSummary] | AsanaError:
         """List tasks in a project."""
         self._check("list_tasks", project=project)
@@ -160,23 +215,27 @@ class AsanaCapability(Capability):
                 if isinstance(t, dict):
                     assignee_obj = t.get("assignee")
                     assignee_name = assignee_obj.get("name", "") if isinstance(assignee_obj, dict) else ""
-                    result.append(TaskSummary(
-                        id=t["gid"],
-                        name=t.get("name", ""),
-                        assignee=assignee_name,
-                        due_on=t.get("due_on") or "",
-                        completed=t.get("completed", False),
-                    ))
+                    result.append(
+                        TaskSummary(
+                            id=t["gid"],
+                            name=t.get("name", ""),
+                            assignee=assignee_name,
+                            due_on=t.get("due_on") or "",
+                            completed=t.get("completed", False),
+                        )
+                    )
                 else:
                     assignee_obj = getattr(t, "assignee", None)
                     assignee_name = getattr(assignee_obj, "name", "") if assignee_obj else ""
-                    result.append(TaskSummary(
-                        id=str(t.gid),
-                        name=getattr(t, "name", ""),
-                        assignee=assignee_name,
-                        due_on=getattr(t, "due_on", "") or "",
-                        completed=getattr(t, "completed", False),
-                    ))
+                    result.append(
+                        TaskSummary(
+                            id=str(t.gid),
+                            name=getattr(t, "name", ""),
+                            assignee=assignee_name,
+                            due_on=getattr(t, "due_on", "") or "",
+                            completed=getattr(t, "completed", False),
+                        )
+                    )
             return result
         except Exception as exc:
             return AsanaError(error=str(exc))

@@ -878,6 +878,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "- asana.create_task(project, name, notes?, assignee?, due_on?) — create a task\n"
             "- asana.update_task(task_id, **fields) — update a task\n"
             "- asana.list_tasks(project, limit=50) — list tasks in a project\n"
+            "- asana.my_tasks(workspace?, limit=50) — list all tasks assigned to me across all projects\n"
             "- asana.add_comment(task_id, text) — add a comment to a task\n"
             "API key is managed internally. Uses Asana PAT for authentication."
         ),
@@ -885,7 +886,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "scope": {
                 "properties": {
                     "projects": {"type": "array", "items": {"type": "string"}, "description": "Allowed project GIDs"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["create_task", "update_task", "list_tasks", "add_comment"]}},
+                    "ops": {"type": "array", "items": {"type": "string", "enum": ["create_task", "update_task", "list_tasks", "my_tasks", "add_comment"]}},
                 },
             },
             "create_task": {
@@ -921,6 +922,22 @@ BUILTIN_CAPABILITIES: list[dict] = [
                         "project": {"type": "string"}, "limit": {"type": "integer", "default": 50},
                     },
                     "required": ["project"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "assignee": {"type": "string"}, "due_on": {"type": "string"}, "completed": {"type": "boolean"}},
+                    },
+                },
+            },
+            "my_tasks": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "workspace": {"type": "string", "description": "Workspace GID (auto-detected if omitted)"},
+                        "limit": {"type": "integer", "default": 50},
+                    },
                 },
                 "output": {
                     "type": "array",
