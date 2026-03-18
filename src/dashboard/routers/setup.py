@@ -1,16 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from enum import Enum
 
-from fastapi import APIRouter
-from pydantic import BaseModel
-
-import json
-
 import boto3
 from botocore.exceptions import ClientError
+from fastapi import APIRouter
+from pydantic import BaseModel
 
 from cogos.io.discord.setup import discord_secret_status, discord_service_status
 from dashboard.db import get_repo
@@ -467,6 +465,148 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
     )
 
 
+def _asana_secret_status(
+    name: str,
+    region: str,
+) -> tuple[bool | None, str | None]:
+    secret_id = f"cogent/{name}/asana"
+    sm = boto3.client("secretsmanager", region_name=region)
+    try:
+        resp = sm.get_secret_value(SecretId=secret_id)
+        data = json.loads(resp.get("SecretString", "{}"))
+        return bool(data.get("access_token")), None
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "ResourceNotFoundException":
+            return False, None
+        logger.warning("Asana secret check failed for %s: %s", name, code or exc)
+        return None, code or type(exc).__name__
+    except Exception as exc:
+        logger.warning("Asana secret check failed for %s: %s", name, exc)
+        return None, type(exc).__name__
+
+
+def _build_asana_setup(name: str) -> ChannelSetup:
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    secret_path = f"cogent/{name}/asana"
+
+    secret_configured, secret_check_error = _asana_secret_status(name, region)
+
+    diagnostics: list[str] = []
+    if secret_check_error:
+        diagnostics.append(f"Asana secret check unavailable: {secret_check_error}")
+
+    if secret_configured is True:
+        get_token_step = SetupStep(
+            key="get-access-token",
+            title="Get an Asana Personal Access Token",
+            description="Create a Personal Access Token in Asana Developer Console.",
+            status=SetupStatus.READY,
+            detail="An Asana access token is already stored.",
+            action=SetupAction(
+                label="Open Asana Developer Console",
+                href="https://app.asana.com/0/developer-console",
+            ),
+        )
+        store_token_step = SetupStep(
+            key="store-access-token",
+            title="Store the access token",
+            description="The Asana capability reads the token from Secrets Manager.",
+            status=SetupStatus.READY,
+            detail=f"Token is present at {secret_path}.",
+        )
+    elif secret_configured is False:
+        get_token_step = SetupStep(
+            key="get-access-token",
+            title="Get an Asana Personal Access Token",
+            description="Create a Personal Access Token in Asana Developer Console.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail=(
+                "Go to Asana Developer Console, click 'Create new token', "
+                "give it a name, and copy the token value.\n"
+                "The token is used by both the Asana capability (task management) "
+                "and the Asana IO adapter (polling for assignments)."
+            ),
+            action=SetupAction(
+                label="Open Asana Developer Console",
+                href="https://app.asana.com/0/developer-console",
+            ),
+        )
+        store_token_step = SetupStep(
+            key="store-access-token",
+            title="Store the access token",
+            description="Write the access token into polis secrets so the Asana capability can use it.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail=f"Expected secret path: {secret_path}.",
+            action=SetupAction(
+                label="Write Asana access token",
+                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
+            ),
+        )
+    else:
+        get_token_step = SetupStep(
+            key="get-access-token",
+            title="Get an Asana Personal Access Token",
+            description="Create a Personal Access Token in Asana Developer Console.",
+            status=SetupStatus.UNKNOWN,
+            detail="Live secret checks are unavailable.",
+            action=SetupAction(
+                label="Open Asana Developer Console",
+                href="https://app.asana.com/0/developer-console",
+            ),
+        )
+        store_token_step = SetupStep(
+            key="store-access-token",
+            title="Store the access token",
+            description="Write the access token into polis secrets so the Asana capability can use it.",
+            status=SetupStatus.UNKNOWN,
+            detail=f"Expected secret path: {secret_path}. Latest check error: {secret_check_error}.",
+            action=SetupAction(
+                label="Write Asana access token",
+                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
+            ),
+        )
+
+    test_step = SetupStep(
+        key="test-asana",
+        title="Test the integration",
+        description="Use the Asana capability to list tasks or create a test task in a project.",
+        status=SetupStatus.MANUAL if secret_configured is True else SetupStatus.NEEDS_ACTION,
+        detail=(
+            "Try asking the cogent to list Asana tasks in a project."
+            if secret_configured is True
+            else "Finish the earlier steps first."
+        ),
+    )
+
+    ready = secret_configured is True
+    status = (
+        SetupStatus.READY
+        if ready
+        else SetupStatus.UNKNOWN
+        if any(s.status == SetupStatus.UNKNOWN for s in (get_token_step, store_token_step))
+        else SetupStatus.NEEDS_ACTION
+    )
+    summary = (
+        "Asana access token is configured and ready."
+        if ready
+        else "Some live checks were unavailable."
+        if status == SetupStatus.UNKNOWN
+        else "Store an Asana Personal Access Token to enable task management."
+    )
+
+    return ChannelSetup(
+        key="asana",
+        title="Asana",
+        description="Configure the Asana Personal Access Token for task management and assignment polling.",
+        status=status,
+        summary=summary,
+        ready_for_test=ready,
+        steps=[get_token_step, store_token_step, test_step],
+        diagnostics=diagnostics,
+    )
+
+
 def _build_profile_setup(name: str) -> ChannelSetup:
     profile_key = "whoami/profile.md"
     profile_exists = False
@@ -533,4 +673,5 @@ def get_setup(name: str) -> SetupResponse:
         _build_profile_setup(name),
         _build_discord_setup(name),
         _build_gemini_setup(name),
+        _build_asana_setup(name),
     ])
