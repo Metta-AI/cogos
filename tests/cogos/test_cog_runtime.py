@@ -1,4 +1,4 @@
-"""Tests for CogRuntime — spawning cogs and coglets from directory structure."""
+"""Tests for CogletRuntime — spawning cogs and coglets from directory structure."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cogos.cog.cog import Cog, CogConfig
-from cogos.cog.runtime import CogManifest, CogletManifest, CogRuntime
+from cogos.cog.runtime import CogManifest, CogletManifest, CogletRuntime
 
 
 # ---------------------------------------------------------------------------
@@ -41,8 +41,8 @@ def _make_cog(tmp_path, *, name="mycog", config=None, coglets=None):
 
 
 def _make_runtime(cog, cap_objects=None):
-    """Create a CogRuntime from a filesystem Cog."""
-    return CogRuntime.from_cog(cog, cap_objects or {})
+    """Create a CogletRuntime from a filesystem Cog."""
+    return CogletRuntime.from_cog(cog, cap_objects or {})
 
 
 def _mock_cap(name="cap"):
@@ -97,7 +97,7 @@ class TestCogManifest:
 
 
 # ---------------------------------------------------------------------------
-# CogRuntime.run_cog
+# CogletRuntime.run_cog
 # ---------------------------------------------------------------------------
 
 class TestRunCog:
@@ -220,7 +220,7 @@ class TestRunCog:
 
 
 # ---------------------------------------------------------------------------
-# CogRuntime.run_coglet
+# CogletRuntime.run_coglet
 # ---------------------------------------------------------------------------
 
 class TestRunCoglet:

@@ -1,4 +1,4 @@
-"""CogRuntime — spawns cogs and coglets from directory structure.
+"""CogletRuntime — spawns cogs and coglets from directory structure.
 
 Works with two kinds of cog data:
 - Filesystem ``Cog`` objects (used by load_image at build time)
@@ -114,10 +114,10 @@ class CogManifest:
 
 
 # ---------------------------------------------------------------------------
-# CogRuntime
+# CogletRuntime
 # ---------------------------------------------------------------------------
 
-class CogRuntime:
+class CogletRuntime:
     """Spawns cog main coglets and child coglets with scoped capabilities.
 
     Accepts either a filesystem ``Cog`` or a ``CogManifest``.
@@ -128,7 +128,7 @@ class CogRuntime:
         self.cap_objects = cap_objects
 
     @classmethod
-    def from_cog(cls, cog: Cog, cap_objects: dict[str, Any]) -> CogRuntime:
+    def from_cog(cls, cog: Cog, cap_objects: dict[str, Any]) -> CogletRuntime:
         """Create from a filesystem Cog object."""
         return cls(CogManifest.from_cog(cog), cap_objects)
 
@@ -157,16 +157,34 @@ class CogRuntime:
             detached=True,
         )
 
-    def run_coglet(self, name: str, procs: Any) -> Any:
-        """Spawn a child coglet by name. Returns ProcessHandle."""
+    def run_coglet(
+        self,
+        name_or_manifest: str | CogletManifest,
+        procs: Any,
+        capabilities: dict | None = None,
+    ) -> Any:
+        """Spawn a child coglet by name or manifest. Returns ProcessHandle.
+
+        If *capabilities* is provided it is used as-is instead of building
+        capabilities from the coglet config.
+        """
         m = self.manifest
-        cl = m.coglets.get(name)
-        if cl is None:
-            raise FileNotFoundError(
-                f"Coglet '{name}' not found in cog '{m.name}'"
-            )
-        caps = self._build_capabilities(cl.config)
-        self._add_scoped_dir_and_data(caps, m.name)
+        if isinstance(name_or_manifest, str):
+            name = name_or_manifest
+            cl = m.coglets.get(name)
+            if cl is None:
+                raise FileNotFoundError(
+                    f"Coglet '{name}' not found in cog '{m.name}'"
+                )
+        else:
+            cl = name_or_manifest
+            name = cl.name
+
+        if capabilities is not None:
+            caps = dict(capabilities)
+        else:
+            caps = self._build_capabilities(cl.config)
+            self._add_scoped_dir_and_data(caps, m.name)
 
         return procs.spawn(
             name=f"{m.name}/{name}",
