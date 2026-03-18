@@ -378,6 +378,12 @@ class CogtainerStack(Stack):
         )
         task_def.task_role.add_to_policy(
             iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/gemini-*"],
+            )
+        )
+        task_def.task_role.add_to_policy(
+            iam.PolicyStatement(
                 actions=["ecs:DescribeServices"],
                 resources=["*"],
             )
