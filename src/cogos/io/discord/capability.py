@@ -140,10 +140,12 @@ class DiscordCapability(Capability):
         thread_id: str | None = None,
         reply_to: str | None = None,
         files: list[str | dict] | None = None,
+        react: str | None = None,
     ) -> SendResult | DiscordError:
         """Send a message to a Discord channel.
 
         files can be blob keys (str) or dicts with url/filename.
+        react is an optional emoji to add as a reaction to the sent message.
         """
         if not channel or not content:
             return DiscordError(error="'channel' and 'content' are required")
@@ -154,6 +156,8 @@ class DiscordCapability(Capability):
             body["thread_id"] = thread_id
         if reply_to:
             body["reply_to"] = reply_to
+        if react:
+            body["react"] = react
         if files:
             file_specs = []
             for f in files:
@@ -220,16 +224,19 @@ class DiscordCapability(Capability):
         except Exception as e:
             return DiscordError(error=str(e))
 
-    def dm(self, user_id: str, content: str, *, files: list[str | dict] | None = None) -> SendResult | DiscordError:
+    def dm(self, user_id: str, content: str, *, files: list[str | dict] | None = None, react: str | None = None) -> SendResult | DiscordError:
         """Send a direct message to a user.
 
         files can be blob keys (str) or dicts with url/filename.
+        react is an optional emoji to add as a reaction to the sent message.
         """
         if not user_id or not content:
             return DiscordError(error="'user_id' and 'content' are required")
         self._check("dm")
 
         body: dict = {"type": "dm", "user_id": user_id, "content": content}
+        if react:
+            body["react"] = react
         if files:
             file_specs = []
             for f in files:

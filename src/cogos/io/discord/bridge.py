@@ -500,6 +500,16 @@ class DiscordBridge:
             receive_to_send_ms,
         )
 
+    async def _maybe_react(self, message, body: dict) -> None:
+        """Add a reaction to a sent message if the payload contains a 'react' emoji."""
+        react = body.get("react")
+        if not react or message is None:
+            return
+        try:
+            await message.add_reaction(react)
+        except Exception:
+            logger.warning("Failed to add reaction %s to message %s", react, message.id, exc_info=True)
+
     async def _handle_message(self, body: dict, channel):
         content = body.get("content", "")
         if content:
@@ -528,17 +538,19 @@ class DiscordBridge:
 
         discord_files = await self._download_files(file_specs)
 
+        sent_message = None
         if discord_files:
             first_chunk = content[:2000] if content else None
-            await target.send(content=first_chunk, files=discord_files, reference=reference)
+            sent_message = await target.send(content=first_chunk, files=discord_files, reference=reference)
             remaining = content[2000:] if content and len(content) > 2000 else ""
             for c in chunk_message(remaining):
                 await target.send(c)
         elif content:
             chunks = chunk_message(content)
-            await target.send(chunks[0], reference=reference)
+            sent_message = await target.send(chunks[0], reference=reference)
             for c in chunks[1:]:
                 await target.send(c)
+        await self._maybe_react(sent_message, body)
         self._log_reply_send_latency(body, msg_type="message", target_id=target.id)
         self._log_trace_summary(body, msg_type="message", target_id=target.id)
 
@@ -585,15 +597,19 @@ class DiscordBridge:
             self._stop_typing(dm_channel.id)
             file_specs = body.get("files") or []
             discord_files = await self._download_files(file_specs)
+            sent_message = None
             if discord_files:
                 first_chunk = content[:2000] if content else None
-                await dm_channel.send(content=first_chunk, files=discord_files)
+                sent_message = await dm_channel.send(content=first_chunk, files=discord_files)
                 remaining = content[2000:] if content and len(content) > 2000 else ""
                 for c in chunk_message(remaining):
                     await dm_channel.send(c)
             else:
-                for c in chunk_message(content):
+                chunks = chunk_message(content)
+                sent_message = await dm_channel.send(chunks[0])
+                for c in chunks[1:]:
                     await dm_channel.send(c)
+            await self._maybe_react(sent_message, body)
             self._log_reply_send_latency(body, msg_type="dm", target_id=dm_channel.id)
             self._log_trace_summary(body, msg_type="dm", target_id=dm_channel.id)
         except Exception:

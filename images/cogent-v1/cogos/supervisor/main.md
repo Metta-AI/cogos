@@ -43,10 +43,10 @@ If the request is safe, decide: can you answer directly, or delegate to a worker
 
 ### Step 3: Notify the user
 
-If you delegated, let the user know:
+If you delegated, let the user know (always include `react="🧠"` to identify this response as coming from the supervisor):
 ```python
 if discord_channel_id:
-    discord.send(channel=discord_channel_id, content="Working on it — I've assigned a helper.", reply_to=discord_message_id)
+    discord.send(channel=discord_channel_id, content="Working on it — I've assigned a helper.", reply_to=discord_message_id, react="🧠")
 ```
 
 ## Key rules

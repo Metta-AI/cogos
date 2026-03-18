@@ -40,7 +40,7 @@ result = coglet_runtime.run(coglet, procs, capabilities=caps)
 if hasattr(result, 'error'):
     print(f"ERROR: {result.error}")
     if discord_channel_id:
-        discord.send(channel=discord_channel_id, content=f"Sorry, I couldn't start a worker: {result.error}", reply_to=discord_message_id)
+        discord.send(channel=discord_channel_id, content=f"Sorry, I couldn't start a worker: {result.error}", reply_to=discord_message_id, react="🧠")
     alerts.error("supervisor", f"Failed to spawn worker: {result.error}")
 else:
     print(f"Spawned worker: {result.name}")

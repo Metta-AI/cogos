@@ -27,6 +27,7 @@ class CogConfig(BaseModel):
     capabilities: list = Field(default_factory=list)
     handlers: list[str] = Field(default_factory=list)
     idle_timeout_ms: int | None = None
+    emoji: str = ""
 
 
 # ---------------------------------------------------------------------------

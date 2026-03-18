@@ -11,18 +11,23 @@ def make_coglet(reason: str, cog_dir: Path = None):
 
     Returns (CogletManifest, required_capabilities).
     """
-    # Read the worker template
+    # Read the worker template and cog config
     template = ""
+    cog_config = CogConfig(mode="one_shot")
     if cog_dir is not None:
         template_path = cog_dir / "main.md"
         if template_path.exists():
             template = template_path.read_text()
+        # Load parent cog config to inherit emoji
+        from cogos.cog.cog import _load_config
+        parent_config = _load_config(cog_dir)
+        cog_config = CogConfig(mode="one_shot", emoji=parent_config.emoji)
 
     content = template + "\n\n## Task\n\n" + reason
 
     manifest = CogletManifest(
         name="worker-task",
-        config=CogConfig(mode="one_shot"),
+        config=cog_config,
         content=content,
         entrypoint="main.md",
     )

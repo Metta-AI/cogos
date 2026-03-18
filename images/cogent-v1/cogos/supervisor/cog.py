@@ -3,6 +3,7 @@ from cogos.cog.cog import CogConfig
 config = CogConfig(
     mode="daemon",
     priority=8.0,
+    emoji="🧠",
     capabilities=[
         "me", "procs", "dir", "file", "discord", "channels",
         "secrets", "stdlib", "alerts", "asana", "email", "github",

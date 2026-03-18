@@ -19,10 +19,11 @@ You have two tools: `search` and `run_code`.
 
 ## Reporting
 
-Reply on Discord if discord_channel_id was provided:
+Reply on Discord if discord_channel_id was provided. Always include `react="🔧"` to identify this response as coming from a worker:
 ```python
-discord.send(channel=discord_channel_id, content="Done! [summary]", reply_to=discord_message_id)
+discord.send(channel=discord_channel_id, content="Done! [summary]", reply_to=discord_message_id, react="🔧")
 ```
+The react emoji for this worker is 🔧. Always use it.
 
 If you cannot complete the task, escalate:
 ```python
