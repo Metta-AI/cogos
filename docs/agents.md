@@ -1,0 +1,88 @@
+# Agent Operations Guide
+
+## Testing a Cogent End-to-End
+
+### DM a cogent via CLI (no Discord needed)
+
+Inject a DM into the cogent's Discord handler:
+
+```bash
+# Send a test DM
+cogent dr.alpha cogos channel send io:discord:dm --payload '{
+  "content": "hello, what can you do?",
+  "author": "testuser",
+  "author_id": "000000000000000000",
+  "channel_id": "000000000000000000",
+  "message_id": "1484000000000000000",
+  "is_dm": true,
+  "is_mention": false,
+  "timestamp": "2026-03-18T12:00:00Z"
+}'
+```
+
+Note: `message_id` must be a unique Discord snowflake (monotonically increasing 18-digit number). Increment it for each test message.
+
+### Check the response
+
+```bash
+# Check handler stdout for processing output
+cogent dr.alpha cogos process get discord/handler
+
+# Check the conversation log
+cogent dr.alpha cogos file get data/discord/000000000000000000/recent.log
+```
+
+### Verify the handler is alive
+
+```bash
+# Handler should be "waiting" (daemon waiting for messages)
+cogent dr.alpha cogos status | grep discord
+
+# If handler is missing or disabled, kick discord cog to re-spawn it:
+cogent dr.alpha cogos channel send discord-cog:review --payload '{"reason": "respawn handler"}'
+```
+
+### Fix stale epochs after reboot
+
+After reboot, child processes may have stale epochs. Fix with:
+
+```bash
+PYTHONPATH=src python -c "
+import os; os.environ['COGENT_NAME'] = 'dr.alpha'
+from cogos.cli.__main__ import _ensure_db_env; _ensure_db_env('dr.alpha')
+import boto3; from cogos.db.repository import Repository
+repo = Repository(client=boto3.client('rds-data', region_name='us-east-1'), resource_arn=os.environ['DB_CLUSTER_ARN'], secret_arn=os.environ['DB_SECRET_ARN'], database=os.environ.get('DB_NAME', 'cogos'))
+epoch = repo.reboot_epoch
+repo._execute('UPDATE cogos_handler SET epoch = :e WHERE epoch < :e', [repo._param('e', epoch)])
+repo._execute('UPDATE cogos_process SET epoch = :e WHERE epoch < :e', [repo._param('e', epoch)])
+repo._execute('UPDATE cogos_process_capability SET epoch = :e WHERE epoch < :e', [repo._param('e', epoch)])
+print('All updated to epoch', epoch)
+"
+```
+
+### Full deploy + test cycle
+
+```bash
+# 1. Push code
+git push
+
+# 2. Deploy Lambda (executor + orchestrator + dispatcher)
+cogent dr.alpha cogtainer update lambda
+
+# 3. Load image files into DB
+cogent dr.alpha cogos image boot
+
+# 4. Reboot (creates fresh init, spawns all cogs)
+cogent dr.alpha cogos reboot -y
+
+# 5. Wait ~90s for init + cogs to run
+
+# 6. Fix epochs (until epoch inheritance is fixed in deploy pipeline)
+# (see script above)
+
+# 7. Kick discord to spawn handler
+cogent dr.alpha cogos channel send discord-cog:review --payload '{"reason": "test"}'
+
+# 8. Send test DM
+cogent dr.alpha cogos channel send io:discord:dm --payload '{"content": "hello!", "author": "test", "author_id": "0", "channel_id": "0", "message_id": "1484200000000000000", "is_dm": true, "is_mention": false}'
+```
