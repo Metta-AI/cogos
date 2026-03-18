@@ -11,18 +11,22 @@ _cap_objects = {
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
 }
 # Optional capabilities — may not be injected into init's sandbox
-for _opt_name in ["cog_registry", "coglet_runtime"]:
-    try:
-        _cap_objects[_opt_name] = eval(_opt_name)
-    except NameError:
-        pass
+try:
+    _cap_objects["cog_registry"] = cog_registry
+except NameError:
+    pass
+try:
+    _cap_objects["coglet_runtime"] = coglet_runtime
+except NameError:
+    pass
 
 def _build_caps(cap_list, cog_name):
     """Build capabilities dict from a CogConfig capabilities list."""
     caps = {}
     for entry in cap_list:
         if isinstance(entry, str):
-            caps[entry] = _cap_objects.get(entry)
+            # Pass None for unscoped — spawn resolves by name from DB
+            caps[entry] = None
         elif isinstance(entry, dict):
             name = entry["name"]
             alias = entry.get("alias", name)
@@ -31,7 +35,7 @@ def _build_caps(cap_list, cog_name):
             if cap_obj is not None and config and hasattr(cap_obj, "scope"):
                 caps[alias] = cap_obj.scope(**config)
             else:
-                caps[alias] = cap_obj
+                caps[alias] = None
     # Add scoped dir and data for cog isolation
     dir_cap = _cap_objects.get("dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
