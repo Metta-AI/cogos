@@ -19,11 +19,15 @@ class ImageSpec:
 
 
 def image_file_prefixes(image_dir: Path) -> list[str]:
-    """Return the top-level directory prefixes that an image owns as file keys."""
-    _STRUCTURAL_DIRS = {"init", "apps"}
+    """Return the top-level directory prefixes that an image owns as file keys.
+
+    Excludes ``web/`` because runtime-published content (via ``web.publish()``)
+    also lives under that prefix and must survive reloads.
+    """
+    _SKIP_DIRS = {"init", "apps", "web"}
     prefixes: list[str] = []
     for child in sorted(image_dir.iterdir()):
-        if child.is_dir() and child.name not in _STRUCTURAL_DIRS:
+        if child.is_dir() and child.name not in _SKIP_DIRS:
             prefixes.append(child.name + "/")
     return prefixes
 
