@@ -939,6 +939,30 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    # ── Cog Registry ───────────────────────────────────────────
+    # cog_registry
+    {
+        "name": "cog_registry",
+        "description": "Access to Cog objects for dynamic coglet creation.",
+        "handler": "cogos.capabilities.cog_registry.CogRegistryCapability",
+        "instructions": (
+            "Use cog_registry to load cog objects and create dynamic coglets.\n"
+            "- cog = cog_registry.get_or_make_cog(path) — load a cog by path\n"
+            "- coglet, caps = cog.make_coglet(reason) — create a coglet for a task\n"
+        ),
+        "schema": {
+            "get_or_make_cog": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Cog directory path"},
+                    },
+                    "required": ["path"],
+                },
+                "output": {"type": "string", "description": "Cog object with make_coglet()"},
+            },
+        },
+    },
     # ── System ──────────────────────────────────────────────────
     # stdlib, alerts, resources, secrets, schemas
     {
