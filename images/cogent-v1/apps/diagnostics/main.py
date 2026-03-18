@@ -24,6 +24,26 @@ _CAPS = {
 
 _SKIP = {"main.py", "cog.py"}
 
+# Capture all names available in runner scope for passing to diagnostic exec
+_RUNNER_NS = {
+    "json": json, "print": print, "exit": exit,
+    "len": len, "range": range, "str": str, "int": int,
+    "float": float, "bool": bool, "list": list, "dict": dict,
+    "tuple": tuple, "set": set, "type": type,
+    "isinstance": isinstance, "hasattr": hasattr, "getattr": getattr,
+    "setattr": setattr, "repr": repr, "sorted": sorted,
+    "enumerate": enumerate, "zip": zip, "map": map, "filter": filter,
+    "min": min, "max": max, "sum": sum, "abs": abs, "round": round,
+    "True": True, "False": False, "None": None,
+    "Exception": Exception, "AssertionError": AssertionError,
+    "ValueError": ValueError, "TypeError": TypeError, "KeyError": KeyError,
+    "me": me, "stdlib": stdlib, "data": data,
+    "procs": procs, "dir": dir, "file": file, "channels": channels,
+    "discord": discord, "email": email, "asana": asana, "github": github,
+    "web": web, "web_search": web_search, "web_fetch": web_fetch,
+    "blob": blob, "image": image, "alerts": alerts,
+}
+
 def _now():
     t = stdlib.time.gmtime()
     return (str(t.tm_year) + "-" + str(t.tm_mon).zfill(2) + "-"
@@ -67,10 +87,8 @@ def run_one(cat, diag):
 
     code = content_result.content
 
-    # Build namespace — inherit runner's globals for builtins access
-    ns = dict(globals())
-    # Override with category-scoped capabilities
-    ns.update({"me": me, "stdlib": stdlib, "data": data})
+    # Build namespace from captured runner scope
+    ns = dict(_RUNNER_NS)
 
     # Add category-specific caps
     caps = _CAPS.get(cat, {})
