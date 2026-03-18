@@ -162,32 +162,20 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
     assert child.status == ProcessStatus.RUNNABLE
 
 
-def test_idle_reaping_cleans_up_child(tmp_path):
-    """Child daemon with idle_timeout_ms gets reaped after timeout expires."""
+def test_idle_reaping_is_noop(tmp_path):
+    """Idle reaping is a no-op — daemons stay alive until killed."""
     repo = _repo(tmp_path)
     scheduler = SchedulerCapability(repo, UUID(int=0))
 
-    # Create a child daemon with short idle timeout
     child = Process(
         name="discord-dm:42",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
         runner="lambda",
-        idle_timeout_ms=1_000,  # 1 second
+        idle_timeout_ms=1,
     )
     repo.upsert_process(child)
 
-    # Create a completed run from 5 seconds ago
-    run = Run(process=child.id, status=RunStatus.COMPLETED)
-    run_id = repo.create_run(run)
-    repo.complete_run(run_id, status=RunStatus.COMPLETED, duration_ms=50)
-
-    # Backdate
-    r = repo.get_run(run_id)
-    r.created_at = datetime.now(timezone.utc) - timedelta(seconds=5)
-    repo._runs[run_id] = r
-
-    # Reap
     result = scheduler.reap_idle_processes()
-    assert result.reaped_count == 1
-    assert repo.get_process(child.id).status == ProcessStatus.COMPLETED
+    assert result.reaped_count == 0
+    assert repo.get_process(child.id).status == ProcessStatus.WAITING
