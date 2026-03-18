@@ -19,11 +19,25 @@ logger.setLevel(logging.INFO)
 
 INGEST_SECRET = os.environ.get("EMAIL_INGEST_SECRET", "")
 
-_cfn = boto3.client("cloudformation")
-_rds = boto3.client("rds-data")
+_cfn = None
+_rds = None
 
 # Cache: cogent_name -> (cluster_arn, secret_arn, db_name)
 _db_cache: dict[str, tuple[str, str, str]] = {}
+
+
+def _get_cfn():
+    global _cfn
+    if _cfn is None:
+        _cfn = boto3.client("cloudformation")
+    return _cfn
+
+
+def _get_rds():
+    global _rds
+    if _rds is None:
+        _rds = boto3.client("rds-data")
+    return _rds
 
 
 def _resolve_db(cogent_name: str) -> tuple[str, str, str]:
@@ -37,7 +51,7 @@ def _resolve_db(cogent_name: str) -> tuple[str, str, str]:
 
     safe_name = cogent_name.replace(".", "-")
     stack_name = f"cogent-{safe_name}-cogtainer"
-    resp = _cfn.describe_stacks(StackName=stack_name)
+    resp = _get_cfn().describe_stacks(StackName=stack_name)
     outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
 
     cluster_arn = outputs["ClusterArn"]
@@ -54,7 +68,7 @@ def _insert_event(cogent_name: str, event_type: str, source: str, payload: dict)
     event_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
-    _rds.execute_statement(
+    _get_rds().execute_statement(
         resourceArn=cluster_arn,
         secretArn=secret_arn,
         database=db_name,
