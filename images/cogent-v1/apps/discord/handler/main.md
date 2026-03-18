@@ -80,27 +80,62 @@ elif not is_dm and not is_mention:
         wl.write(json.dumps(waterline))
         print("SKIP: channel message not addressed to me")
     else:
-        # Mentions us — proceed. Fetch conversation history from Discord API.
+        # Mentions us — proceed. Load history, refetch from Discord API if stale.
+        log_handle = data.get(f"{conv_key}/recent.log")
+        log_data = log_handle.read()
+        log_content = "" if hasattr(log_data, 'error') else log_data.content.strip()
+
+        # Detect staleness: compare current message timestamp with last processed.
+        # Discord snowflake IDs encode timestamps: ts_ms = (id >> 22) + 1420070400000
+        last_log_msg = waterline.get("last_log_msg")
+        if log_content and last_log_msg:
+            cur_ts = (int(message_id) >> 22) + 1420070400000
+            log_ts = (int(last_log_msg) >> 22) + 1420070400000
+            stale = (cur_ts - log_ts) > 600000  # >10 min gap
+        else:
+            stale = True
+
+        if stale:
+            history_msgs = discord.history(channel_id=channel_id, limit=50)
+            if isinstance(history_msgs, list) and history_msgs:
+                lines = []
+                for msg in history_msgs:
+                    lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
+                history = "\n".join(lines)
+                log_handle.write(history)
+            else:
+                history = log_content
+        else:
+            history = log_content
+        print(f"HISTORY:\n{history}")
+        print(f"\nNEW: {author}: {content}")
+else:
+    # DM or @mention — always respond. Load history, refetch from Discord API if stale.
+    log_handle = data.get(f"{conv_key}/recent.log")
+    log_data = log_handle.read()
+    log_content = "" if hasattr(log_data, 'error') else log_data.content.strip()
+
+    # Detect staleness: compare current message timestamp with last processed.
+    last_log_msg = waterline.get("last_log_msg")
+    if log_content and last_log_msg:
+        cur_ts = (int(message_id) >> 22) + 1420070400000
+        log_ts = (int(last_log_msg) >> 22) + 1420070400000
+        stale = (cur_ts - log_ts) > 600000  # >10 min gap
+    else:
+        stale = True
+
+    if stale:
         history_msgs = discord.history(channel_id=channel_id, limit=50)
         if isinstance(history_msgs, list) and history_msgs:
             lines = []
             for msg in history_msgs:
                 lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
             history = "\n".join(lines)
+            log_handle.write(history)
         else:
-            history = ""
-        print(f"HISTORY:\n{history}")
-        print(f"\nNEW: {author}: {content}")
-else:
-    # DM or @mention — always respond. Fetch conversation history from Discord API.
-    history_msgs = discord.history(channel_id=channel_id, limit=50)
-    if isinstance(history_msgs, list) and history_msgs:
-        lines = []
-        for msg in history_msgs:
-            lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
-        history = "\n".join(lines)
+            history = log_content
     else:
-        history = ""
+        history = log_content
     print(f"HISTORY:\n{history}")
     print(f"\nNEW: {author}: {content}")
 ```
@@ -129,11 +164,14 @@ reply = "your response here"
 #     "discord_author_id": author_id,
 # })
 
-# Update waterline BEFORE sending to Discord.
+# Update conversation log and waterline BEFORE sending to Discord.
 # This prevents double-sends if write() fails and the LLM retries.
+log_handle = data.get(f"{conv_key}/recent.log")
+log_handle.write(history + f"\n{author}: {content}\nassistant: {reply}")
 seen = waterline.get("seen", [])
 seen.append(message_id)
 waterline["seen"] = seen[-100:]
+waterline["last_log_msg"] = message_id
 wl = data.get(f"{conv_key}/waterline.json")
 wl.write(json.dumps(waterline))
 
