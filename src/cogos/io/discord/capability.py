@@ -34,10 +34,12 @@ class DiscordMessage(BaseModel):
     message_id: str | None = None
     is_dm: bool = False
     is_mention: bool = False
+    is_bot: bool = False
     attachments: list[dict] | None = None
     thread_id: str | None = None
     reference_message_id: str | None = None
     message_type: str | None = None
+    timestamp: str | None = None
 
 
 class DiscordError(BaseModel):
