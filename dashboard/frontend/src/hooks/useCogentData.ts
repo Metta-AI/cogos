@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as api from "@/lib/api";
 import type {
   DashboardData,
@@ -142,35 +142,11 @@ export function useCogentData(cogentName: string) {
     return () => clearInterval(id);
   }, [cogentName, showHistory]);
 
-  // Fallback polling: if WS not connected after 5s, poll every 30s
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const connectedRef = useRef(connected);
-  connectedRef.current = connected;
-
+  // Auto-refresh every 30s — workaround until WS broadcast is wired up (#90)
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!connectedRef.current) {
-        pollingRef.current = setInterval(() => {
-          if (!connectedRef.current) {
-            refresh();
-          }
-        }, 30000);
-      }
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeout);
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
+    const id = setInterval(() => { refresh(); }, 30_000);
+    return () => clearInterval(id);
   }, [refresh]);
-
-  // Stop polling once WS connects
-  useEffect(() => {
-    if (connected && pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, [connected]);
 
   return { data, loading, error, refresh, timeRange, setTimeRange, connected, showHistory, setShowHistory };
 }
