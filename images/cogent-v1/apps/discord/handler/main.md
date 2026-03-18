@@ -42,6 +42,13 @@ wl_data = wl.read()
 waterline = json.loads(wl_data.content) if not hasattr(wl_data, 'error') else {}
 if message_id in waterline.get("seen", []):
     print("SKIP: already processed")
+elif not is_dm and not is_mention and "<@" in content:
+    # Message @mentions someone else — not for us, skip silently
+    seen = waterline.get("seen", [])
+    seen.append(message_id)
+    waterline["seen"] = seen[-100:]
+    wl.write(json.dumps(waterline))
+    print("SKIP: message mentions another user/bot")
 else:
     # 4. Read conversation history for context
     log_handle = data.get(f"{conv_key}/recent.log")
@@ -111,6 +118,8 @@ When escalating, react with ⬆️, send a brief reply (e.g. "On it — handing 
 ## Channel messages (not DM, not mention)
 
 Only respond if the message is clearly intended for you. General chat between users → update waterline silently and exit.
+
+**If `is_mention` is false but the content contains `<@` (an @mention for someone else), update waterline and exit silently.** This means the message was directed at another bot or user, not you.
 
 ## Key rules
 
