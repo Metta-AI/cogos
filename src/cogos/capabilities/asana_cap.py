@@ -88,11 +88,23 @@ class AsanaCapability(Capability):
     """
 
     ALL_OPS = {
-        "create_task", "update_task", "list_tasks", "my_tasks", "add_comment",
-        "get_task", "delete_task", "search_tasks",
-        "list_projects", "get_project", "list_workspaces",
-        "list_sections", "add_to_section", "add_followers", "set_parent",
-        "find_user", "tasks_for_user",
+        "create_task",
+        "update_task",
+        "list_tasks",
+        "my_tasks",
+        "add_comment",
+        "get_task",
+        "delete_task",
+        "search_tasks",
+        "list_projects",
+        "get_project",
+        "list_workspaces",
+        "list_sections",
+        "add_to_section",
+        "add_followers",
+        "set_parent",
+        "find_user",
+        "tasks_for_user",
     }
 
     def __init__(self, repo, process_id) -> None:
@@ -171,7 +183,7 @@ class AsanaCapability(Capability):
                 body["data"]["assignee"] = assignee
             if due_on:
                 body["data"]["due_on"] = due_on
-            task = api.create_task(body)
+            task = api.create_task(body, {})
             data = task.get("data", task) if isinstance(task, dict) else task
             gid = data["gid"] if isinstance(data, dict) else data.gid
             task_name = data.get("name", name) if isinstance(data, dict) else getattr(data, "name", name)
@@ -187,7 +199,7 @@ class AsanaCapability(Capability):
             client = self._get_client()
             api = asana.TasksApi(client)
             body = {"data": fields}
-            task = api.update_task(body, task_id)
+            task = api.update_task(body, task_id, {})
             data = task.get("data", task) if isinstance(task, dict) else task
             gid = data["gid"] if isinstance(data, dict) else data.gid
             name = data.get("name", "") if isinstance(data, dict) else getattr(data, "name", "")
@@ -203,7 +215,7 @@ class AsanaCapability(Capability):
             client = self._get_client()
             users_api = asana.UserTaskListsApi(client)
             tasks_api = asana.TasksApi(client)
-            me = asana.UsersApi(client).get_user("me")
+            me = asana.UsersApi(client).get_user("me", {"opt_fields": "gid,workspaces.gid"})
             me_data = me.get("data", me) if isinstance(me, dict) else me
             me_gid = me_data["gid"] if isinstance(me_data, dict) else me_data.gid
             ws_gid = workspace
@@ -217,7 +229,7 @@ class AsanaCapability(Capability):
                     ws_gid = ws["gid"] if isinstance(ws, dict) else ws.gid
                 else:
                     return AsanaError(error="No workspaces found")
-            utl = users_api.get_user_task_list_for_user(me_gid, {"workspace": ws_gid})
+            utl = users_api.get_user_task_list_for_user(me_gid, ws_gid, {})
             utl_data = utl.get("data", utl) if isinstance(utl, dict) else utl
             utl_gid = utl_data["gid"] if isinstance(utl_data, dict) else utl_data.gid
             opts = {"limit": limit, "opt_fields": "name,completed,assignee.name,due_on"}
@@ -299,7 +311,7 @@ class AsanaCapability(Capability):
             client = self._get_client()
             api = asana.StoriesApi(client)
             body = {"data": {"text": text}}
-            story = api.create_story_for_task(body, task_id)
+            story = api.create_story_for_task(body, task_id, {})
             data = story.get("data", story) if isinstance(story, dict) else story
             gid = data["gid"] if isinstance(data, dict) else data.gid
             return CommentResult(id=str(gid), task_id=task_id)
@@ -460,9 +472,7 @@ class AsanaCapability(Capability):
         except Exception as exc:
             return AsanaError(error=str(exc))
 
-    def list_projects(
-        self, workspace: str | None = None, limit: int = 50
-    ) -> list[ProjectSummary] | AsanaError:
+    def list_projects(self, workspace: str | None = None, limit: int = 50) -> list[ProjectSummary] | AsanaError:
         """List projects, optionally filtered by workspace."""
         self._check("list_projects")
         try:
@@ -534,7 +544,12 @@ class AsanaCapability(Capability):
                 team = getattr(team_obj, "name", "") if team_obj else ""
 
             return ProjectDetail(
-                id=str(gid), name=name, notes=notes, status=status, url=url, team=team,
+                id=str(gid),
+                name=name,
+                notes=notes,
+                status=status,
+                url=url,
+                team=team,
             )
         except Exception as exc:
             return AsanaError(error=str(exc))
@@ -581,8 +596,8 @@ class AsanaCapability(Capability):
         try:
             client = self._get_client()
             api = asana.SectionsApi(client)
-            body = {"data": {"task": task_id}}
-            api.add_task_for_section(body, section_id)
+            opts = {"body": {"data": {"task": task_id}}}
+            api.add_task_for_section(section_id, opts)
             return {"ok": True}
         except Exception as exc:
             return AsanaError(error=str(exc))
@@ -594,7 +609,7 @@ class AsanaCapability(Capability):
             client = self._get_client()
             api = asana.TasksApi(client)
             body = {"data": {"followers": followers}}
-            task = api.add_followers_for_task(body, task_id)
+            task = api.add_followers_for_task(body, task_id, {})
             data = task.get("data", task) if isinstance(task, dict) else task
             gid = data["gid"] if isinstance(data, dict) else data.gid
             name = data.get("name", "") if isinstance(data, dict) else getattr(data, "name", "")
@@ -610,7 +625,7 @@ class AsanaCapability(Capability):
             client = self._get_client()
             api = asana.TasksApi(client)
             body = {"data": {"parent": parent_id}}
-            task = api.set_parent_for_task(body, task_id)
+            task = api.set_parent_for_task(body, task_id, {})
             data = task.get("data", task) if isinstance(task, dict) else task
             gid = data["gid"] if isinstance(data, dict) else data.gid
             name = data.get("name", "") if isinstance(data, dict) else getattr(data, "name", "")
@@ -625,8 +640,8 @@ class AsanaCapability(Capability):
         try:
             client = self._get_client()
             api = asana.TypeaheadApi(client)
-            opts = {"resource_type": "user", "query": query, "count": 10}
-            results = api.typeahead_for_workspace(workspace, opts)
+            opts = {"query": query, "count": 10}
+            results = api.typeahead_for_workspace(workspace, "user", opts)
             items = results.get("data", results) if isinstance(results, dict) else results
             out = []
             for u in items:
@@ -638,7 +653,12 @@ class AsanaCapability(Capability):
         except Exception as exc:
             return AsanaError(error=str(exc))
 
-    def tasks_for_user(self, user_id: str, workspace: str | None = None, limit: int = 50) -> list[TaskSummary] | AsanaError:
+    def tasks_for_user(
+        self,
+        user_id: str,
+        workspace: str | None = None,
+        limit: int = 50,
+    ) -> list[TaskSummary] | AsanaError:
         """List tasks assigned to a specific user by their Asana GID."""
         self._check("tasks_for_user")
         try:
@@ -646,7 +666,7 @@ class AsanaCapability(Capability):
             users_api = asana.UserTaskListsApi(client)
             tasks_api = asana.TasksApi(client)
             if not workspace:
-                me = asana.UsersApi(client).get_user("me")
+                me = asana.UsersApi(client).get_user("me", {"opt_fields": "gid,workspaces.gid"})
                 me_data = me.get("data", me) if isinstance(me, dict) else me
                 if isinstance(me_data, dict):
                     workspaces = me_data.get("workspaces", [])
@@ -657,7 +677,7 @@ class AsanaCapability(Capability):
                     workspace = ws["gid"] if isinstance(ws, dict) else ws.gid
                 else:
                     return AsanaError(error="No workspaces found")
-            utl = users_api.get_user_task_list_for_user(user_id, {"workspace": workspace})
+            utl = users_api.get_user_task_list_for_user(user_id, workspace, {})
             utl_data = utl.get("data", utl) if isinstance(utl, dict) else utl
             utl_gid = utl_data["gid"] if isinstance(utl_data, dict) else utl_data.gid
             opts = {"limit": limit, "opt_fields": "name,completed,assignee.name,due_on"}
@@ -668,11 +688,27 @@ class AsanaCapability(Capability):
                 if isinstance(t, dict):
                     assignee_obj = t.get("assignee")
                     assignee_name = assignee_obj.get("name", "") if isinstance(assignee_obj, dict) else ""
-                    result.append(TaskSummary(id=t["gid"], name=t.get("name", ""), assignee=assignee_name, due_on=t.get("due_on") or "", completed=t.get("completed", False)))
+                    result.append(
+                        TaskSummary(
+                            id=t["gid"],
+                            name=t.get("name", ""),
+                            assignee=assignee_name,
+                            due_on=t.get("due_on") or "",
+                            completed=t.get("completed", False),
+                        )
+                    )
                 else:
                     assignee_obj = getattr(t, "assignee", None)
                     assignee_name = getattr(assignee_obj, "name", "") if assignee_obj else ""
-                    result.append(TaskSummary(id=str(t.gid), name=getattr(t, "name", ""), assignee=assignee_name, due_on=getattr(t, "due_on", "") or "", completed=getattr(t, "completed", False)))
+                    result.append(
+                        TaskSummary(
+                            id=str(t.gid),
+                            name=getattr(t, "name", ""),
+                            assignee=assignee_name,
+                            due_on=getattr(t, "due_on", "") or "",
+                            completed=getattr(t, "completed", False),
+                        )
+                    )
             return result
         except Exception as exc:
             return AsanaError(error=str(exc))
