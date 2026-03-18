@@ -242,19 +242,97 @@ def update_lambda(ctx: click.Context, profile: str | None):
     click.echo(f"  Lambda: {time.monotonic() - t0:.1f}s")
 
 
+def _find_ecs_service(ecs_client, safe_name: str, service_type: str = "dashboard") -> str | None:
+    """Find an ECS service for a cogent by type (dashboard or discord)."""
+    cluster = "cogent-polis"
+    try:
+        service_arns = ecs_client.list_services(cluster=cluster)["serviceArns"]
+    except Exception:
+        return None
+
+    for arn in service_arns:
+        svc_name = arn.rsplit("/", 1)[-1]
+        if safe_name not in svc_name:
+            continue
+        if service_type == "dashboard" and ("DashService" in svc_name or "dashboard" in svc_name):
+            return arn
+        if service_type == "discord" and "discord" in svc_name:
+            return arn
+    return None
+
+
+def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> str:
+    """Verify ECR tag exists, update task definition with new image, return new task def ARN."""
+    from polis.aws import POLIS_ACCOUNT_ID
+
+    repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
+    new_image = f"{repo_uri}:{tag}"
+    click.echo(f"  Image: {new_image}")
+
+    # Verify the tag exists in ECR
+    ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
+    try:
+        ecr_client.describe_images(
+            repositoryName="cogent",
+            imageIds=[{"imageTag": tag}],
+        )
+        click.echo(f"  ECR tag '{tag}': {click.style('found', fg='green')}")
+    except Exception:
+        # Determine the right workflow name from the tag prefix
+        prefix = tag.split("-")[0] if "-" in tag else tag
+        raise click.ClickException(
+            f"ECR tag '{tag}' not found in cogent repo. "
+            f"Check CI build status: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-{prefix}.yml"
+        )
+
+    svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=[service_arn])["services"][0]
+    task_def_arn = svc_desc["taskDefinition"]
+    task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
+
+    containers = task_def["containerDefinitions"]
+    containers[0]["image"] = new_image
+
+    register_kwargs = {
+        "family": task_def["family"],
+        "containerDefinitions": containers,
+        "taskRoleArn": task_def.get("taskRoleArn", ""),
+        "executionRoleArn": task_def.get("executionRoleArn", ""),
+        "networkMode": task_def.get("networkMode", "awsvpc"),
+        "requiresCompatibilities": task_def.get("requiresCompatibilities", ["FARGATE"]),
+        "cpu": task_def.get("cpu", "256"),
+        "memory": task_def.get("memory", "512"),
+    }
+    if "runtimePlatform" in task_def:
+        register_kwargs["runtimePlatform"] = task_def["runtimePlatform"]
+
+    new_td = ecs_client.register_task_definition(**register_kwargs)
+    new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
+    click.echo(f"  Task definition: {new_td_arn.split('/')[-1]}")
+    return new_td_arn
+
+
 @update.command("ecs")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--skip-health", is_flag=True, help="Skip waiting for service stability")
-@click.option("--tag", default=None, help="ECR image tag to deploy (e.g. executor-abc1234, executor-latest)")
+@click.option("--tag", default=None, help="ECR image tag to deploy (e.g. dashboard-abc1234, dashboard-latest)")
 @click.pass_context
 def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: str | None):
-    """Force new ECS deployment (new container).
+    """Force new ECS deployment for the dashboard service.
 
     \b
     Use --tag to deploy a specific CI-built image:
-      cogent <name> cogtainer update ecs --tag executor-abc1234
-      cogent <name> cogtainer update ecs --tag executor-latest
+      cogent <name> cogtainer update ecs --tag dashboard-abc1234
+      cogent <name> cogtainer update ecs --tag dashboard-latest
+
+    Tags prefixed with 'executor-' are rejected — executors run as
+    Lambda, not ECS. Use 'cogtainer update lambda' instead.
     """
+    if tag and tag.startswith("executor-"):
+        raise click.ClickException(
+            "Executor images run as Lambda, not ECS. "
+            "Use 'cogtainer update lambda' to deploy executor code."
+        )
+
     name = get_cogent_name(ctx)
     session = _get_session(profile)
     safe_name = name.replace(".", "-")
@@ -262,21 +340,7 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
 
     ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
 
-    # Find dashboard service for this cogent in the shared polis cluster
-    try:
-        service_arns = ecs_client.list_services(cluster=cluster_name)["serviceArns"]
-    except Exception:
-        click.echo(f"  No ECS cluster '{cluster_name}' found.")
-        return
-
-    # Match the dashboard service for this cogent
-    service_arn = None
-    for arn in service_arns:
-        svc_name = arn.rsplit("/", 1)[-1]
-        if safe_name in svc_name and ("DashService" in svc_name or "dashboard" in svc_name):
-            service_arn = arn
-            break
-
+    service_arn = _find_ecs_service(ecs_client, safe_name, "dashboard")
     if not service_arn:
         click.echo(f"  No dashboard ECS service found for cogent-{name} in {cluster_name}.")
         return
@@ -291,51 +355,8 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
         "forceNewDeployment": True,
     }
 
-    # If --tag specified, verify the image exists in ECR then update task definition
     if tag:
-        from polis.aws import POLIS_ACCOUNT_ID
-
-        repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
-        new_image = f"{repo_uri}:{tag}"
-        click.echo(f"  Image: {new_image}")
-
-        # Verify the tag exists in ECR before deploying
-        ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
-        try:
-            ecr_client.describe_images(
-                repositoryName="cogent",
-                imageIds=[{"imageTag": tag}],
-            )
-            click.echo(f"  ECR tag '{tag}': {click.style('found', fg='green')}")
-        except Exception:
-            raise click.ClickException(
-                f"ECR tag '{tag}' not found in cogent repo. "
-                "Check CI build status: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-executor.yml"
-            )
-
-        svc_desc = ecs_client.describe_services(cluster=cluster_name, services=[service_arn])["services"][0]
-        task_def_arn = svc_desc["taskDefinition"]
-        task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
-
-        containers = task_def["containerDefinitions"]
-        containers[0]["image"] = new_image
-
-        register_kwargs = {
-            "family": task_def["family"],
-            "containerDefinitions": containers,
-            "taskRoleArn": task_def.get("taskRoleArn", ""),
-            "executionRoleArn": task_def.get("executionRoleArn", ""),
-            "networkMode": task_def.get("networkMode", "awsvpc"),
-            "requiresCompatibilities": task_def.get("requiresCompatibilities", ["FARGATE"]),
-            "cpu": task_def.get("cpu", "256"),
-            "memory": task_def.get("memory", "512"),
-        }
-        if "runtimePlatform" in task_def:
-            register_kwargs["runtimePlatform"] = task_def["runtimePlatform"]
-
-        new_td = ecs_client.register_task_definition(**register_kwargs)
-        new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
-        click.echo(f"  Task definition: {new_td_arn.split('/')[-1]}")
+        new_td_arn = _update_ecs_image(ecs_client, session, service_arn, tag)
         update_kwargs["taskDefinition"] = new_td_arn
 
     ecs_client.update_service(**update_kwargs)

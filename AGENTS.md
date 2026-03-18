@@ -181,16 +181,22 @@ Docker images are built automatically by GitHub Actions on push to main when rel
 
 Workflows can also be triggered manually via `gh workflow run`.
 
-All `cogtainer update` commands automatically check that an ECR image exists for the current git commit and warn if it doesn't. The `--tag` flag on `update ecs` hard-errors if the tag is missing.
+All `cogtainer update` commands check that a CI-built ECR image exists for the current commit and warn if it doesn't. Use `cogtainer await` to wait for CI before deploying.
+
+**Executor** images run as Lambda (not ECS). **Dashboard** images run as ECS. Don't mix them up — `update ecs --tag executor-*` is rejected with an error.
 
 ```bash
-# Deploy CI-built image for current commit
-cogent dr.alpha cogtainer update ecs --tag executor-latest    # Latest from main
-cogent dr.alpha cogtainer update ecs --tag executor-abc1234   # Specific SHA
+# Wait for CI to finish building
+cogent <name> cogtainer await                          # Wait for executor-<sha>
+cogent <name> cogtainer await --prefix dashboard       # Wait for dashboard-<sha>
+cogent <name> cogtainer await --tag dashboard-latest   # Wait for specific tag
 
-# If the image doesn't exist yet, wait for CI
-gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-executor.yml --limit 3
-gh run watch <run-id> --repo Metta-AI/cogents-v1 --exit-status
+# Deploy dashboard image to ECS
+cogent <name> cogtainer update ecs --tag dashboard-latest
+cogent <name> cogtainer update ecs --tag dashboard-abc1234
+
+# Deploy executor code to Lambda (no Docker needed)
+cogent <name> cogtainer update lambda
 ```
 
 Local builds (`cogtainer build`, `dashboard deploy --docker`) still work when needed.
@@ -206,7 +212,8 @@ See [docs/deploy.md](docs/deploy.md) for the full reference. Match what changed 
 | `src/cogos/db/migrations/**` | `cogent <name> cogtainer update rds` |
 | `dashboard/frontend/**` only | `cogent <name> dashboard deploy` |
 | `src/dashboard/**` (backend) | `cogent <name> dashboard deploy --docker` |
-| `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; then `cogent <name> cogtainer update ecs --tag executor-latest` |
+| `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; executor runs as Lambda, no ECS deploy needed |
+| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `cogent <name> cogtainer update ecs --tag dashboard-latest` |
 | `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent <name> cogtainer create` |
 
 Common sequences:
