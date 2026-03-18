@@ -204,17 +204,8 @@ class DiscordBridge:
         """Sync a guild and its channels to the DB."""
         from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
-        repo = self._get_repo()
-        repo.upsert_discord_guild(DiscordGuild(
-            guild_id=str(guild.id),
-            cogent_name=self.cogent_name,
-            name=guild.name,
-            icon_url=guild.icon.url if guild.icon else None,
-            member_count=guild.member_count,
-        ))
-
-        for ch in guild.channels:
-            repo.upsert_discord_channel(DiscordChannel(
+        channels = [
+            DiscordChannel(
                 channel_id=str(ch.id),
                 guild_id=str(guild.id),
                 name=ch.name,
@@ -222,12 +213,32 @@ class DiscordBridge:
                 category=ch.category.name if ch.category else None,
                 channel_type=ch.type.name,
                 position=ch.position,
-            ))
-        logger.info("Synced guild %s: %d channels", guild.name, len(guild.channels))
+            )
+            for ch in guild.channels
+        ]
+        guild_model = DiscordGuild(
+            guild_id=str(guild.id),
+            cogent_name=self.cogent_name,
+            name=guild.name,
+            icon_url=guild.icon.url if guild.icon else None,
+            member_count=guild.member_count,
+        )
 
-    def _on_channel_delete(self, channel) -> None:
-        repo = self._get_repo()
-        repo.delete_discord_channel(str(channel.id))
+        def _do_sync():
+            repo = self._get_repo()
+            repo.upsert_discord_guild(guild_model)
+            for ch in channels:
+                repo.upsert_discord_channel(ch)
+
+        await asyncio.get_event_loop().run_in_executor(None, _do_sync)
+        logger.info("Synced guild %s: %d channels", guild.name, len(channels))
+
+    async def _on_channel_delete(self, channel) -> None:
+        channel_id = str(channel.id)
+        def _do_delete():
+            repo = self._get_repo()
+            repo.delete_discord_channel(channel_id)
+        await asyncio.get_event_loop().run_in_executor(None, _do_delete)
 
     def _setup_handlers(self):
         @self.client.event
@@ -248,7 +259,7 @@ class DiscordBridge:
 
         @self.client.event
         async def on_guild_channel_delete(channel):
-            self._on_channel_delete(channel)
+            await self._on_channel_delete(channel)
 
         @self.client.event
         async def on_guild_join(guild):
