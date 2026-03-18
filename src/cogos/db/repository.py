@@ -325,6 +325,8 @@ class Repository:
                        :clear_context, :tty, :metadata::jsonb, :epoch)
                ON CONFLICT (name) DO UPDATE SET
                    mode = EXCLUDED.mode, content = EXCLUDED.content,
+                   priority = EXCLUDED.priority,
+                   status = EXCLUDED.status,
                    resources = EXCLUDED.resources, runner = EXCLUDED.runner,
                    executor = EXCLUDED.executor,
                    preemptible = EXCLUDED.preemptible, model = EXCLUDED.model,
