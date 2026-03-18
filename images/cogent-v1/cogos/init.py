@@ -9,8 +9,13 @@ _cap_objects = {
     "stdlib": stdlib, "alerts": alerts, "blob": blob, "image": image,
     "asana": asana, "email": email, "github": github,
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
-    "cog_registry": cog_registry, "coglet_runtime": coglet_runtime,
 }
+# Optional capabilities — may not be injected into init's sandbox
+for _opt_name in ["cog_registry", "coglet_runtime"]:
+    try:
+        _cap_objects[_opt_name] = eval(_opt_name)
+    except NameError:
+        pass
 
 def _build_caps(cap_list, cog_name):
     """Build capabilities dict from a CogConfig capabilities list."""
