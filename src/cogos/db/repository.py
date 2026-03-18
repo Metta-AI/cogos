@@ -962,6 +962,70 @@ class Repository:
             updated_at=self._ts(row, "updated_at"),
         )
 
+    @staticmethod
+    def _glob_to_regex(pattern: str) -> str:
+        """Convert a glob pattern to a Postgres regex.
+
+        * = one path segment (no slashes)
+        ** = any depth (including slashes)
+        ? = single character
+        """
+        import re
+
+        parts: list[str] = []
+        i = 0
+        while i < len(pattern):
+            c = pattern[i]
+            if c == "*" and i + 1 < len(pattern) and pattern[i + 1] == "*":
+                parts.append(".*")
+                i += 2
+                if i < len(pattern) and pattern[i] == "/":
+                    i += 1  # skip trailing slash after **
+                continue
+            elif c == "*":
+                parts.append("[^/]*")
+                i += 1
+                continue
+            elif c == "?":
+                parts.append("[^/]")
+                i += 1
+                continue
+            else:
+                parts.append(re.escape(c))
+                i += 1
+        return "^" + "".join(parts) + "$"
+
+    def glob_files(
+        self, pattern: str, *, prefix: str | None = None, limit: int = 200
+    ) -> list[str]:
+        """Match file keys by glob pattern. Returns list of matching keys."""
+        regex = self._glob_to_regex(pattern)
+        if prefix:
+            response = self._execute(
+                """SELECT f.key FROM cogos_file f
+                   WHERE f.key ~ :regex
+                     AND f.key LIKE :prefix
+                   ORDER BY f.key
+                   LIMIT :limit""",
+                [
+                    self._param("regex", regex),
+                    self._param("prefix", prefix + "%"),
+                    self._param("limit", limit),
+                ],
+            )
+        else:
+            response = self._execute(
+                """SELECT f.key FROM cogos_file f
+                   WHERE f.key ~ :regex
+                   ORDER BY f.key
+                   LIMIT :limit""",
+                [
+                    self._param("regex", regex),
+                    self._param("limit", limit),
+                ],
+            )
+        return [r["key"] for r in self._rows_to_dicts(response)]
+
     # ═══════════════════════════════════════════════════════════
     # FILE VERSIONS
     # ═══════════════════════════════════════════════════════════
