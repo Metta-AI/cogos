@@ -107,6 +107,30 @@ def diag_procs():
 
     return checks
 
+def diag_child_exit():
+    """Test child exit notification and handle.runs()."""
+    checks = []
+
+    def test_spawn_recv_wired():
+        h = procs.spawn("_diag/exit/test", content='print("child done")', executor="python", mode="one_shot", capabilities={})
+        if hasattr(h, "error"):
+            raise Exception(str(h.error))
+        msgs = h.recv(limit=5)
+        if not isinstance(msgs, list):
+            raise Exception("recv returned " + str(type(msgs)))
+    checks.append(check("spawn_recv_wired", test_spawn_recv_wired))
+
+    def test_handle_runs():
+        h = procs.get(name="_diag/exit/test")
+        if hasattr(h, "error"):
+            raise Exception(str(h.error))
+        runs = h.runs(limit=3)
+        if not isinstance(runs, list):
+            raise Exception("runs returned " + str(type(runs)))
+    checks.append(check("handle_runs", test_handle_runs))
+
+    return checks
+
 def diag_me():
     """Test me process scope scratch/log/tmp."""
     checks = []
@@ -244,6 +268,7 @@ ALL_DIAGNOSTICS = {
     "files": diag_files,
     "channels": diag_channels,
     "procs": diag_procs,
+    "child_exit": diag_child_exit,
     "me": diag_me,
     "stdlib": diag_stdlib,
     "discord": diag_discord,
