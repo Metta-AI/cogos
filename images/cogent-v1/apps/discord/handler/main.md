@@ -158,7 +158,8 @@ reply = "your response here"
 # discord.react(channel=channel_id, message_id=message_id, emoji="👍")
 
 # Option C — Escalate (when you lack capability or info):
-# reply = "On it — handing this off now!"
+# Do NOT send a text reply like "On it" or "Working on it" — just react and escalate silently.
+# discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
 # channels.send("supervisor:help", {
 #     "process_name": "discord-handle-message",
 #     "description": "what the user asked for",
@@ -169,6 +170,7 @@ reply = "your response here"
 #     "discord_message_id": message_id,
 #     "discord_author_id": author_id,
 # })
+# Then exit — do NOT send a text message. The supervisor will reply when done.
 
 # Update conversation log and waterline BEFORE sending to Discord.
 # This prevents double-sends if write() fails and the LLM retries.
@@ -204,7 +206,7 @@ print("Done")
 - The request requires action beyond your scope
 - You don't know the answer and guessing would be wrong
 
-When escalating, react with ⬆️, send a brief reply (e.g. "On it — handing this off now!"), and send to `supervisor:help`.
+When escalating, react with ⬆️ on the original message and send to `supervisor:help`. Do NOT send a text reply — the reaction is the acknowledgment. The supervisor will reply when done.
 
 ## Channel messages (not DM, not mention)
 
