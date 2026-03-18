@@ -59,14 +59,6 @@ def _now():
     return stdlib.time_iso()
 
 
-def _read_file(key):
-    """Read a file, returning content string or None on error."""
-    result = file.read(key)
-    if hasattr(result, "error"):
-        return None
-    return result.content
-
-
 def _caps_for_diagnostic(category, diag_name):
     """Build a capabilities dict for a diagnostic based on its category.
 
@@ -136,15 +128,15 @@ def discover_diagnostics():
     """
     diagnostics = {}
 
-    # dir.list() returns list of FileSearchResult with .key attribute
-    # The key is the full path including the scoped prefix
-    all_files = dir.list(limit=500)
+    # source is a DirCapability scoped to where this cog's files live
+    # (cogos/diagnostics/ in the FileStore)
+    all_files = source.list(limit=500)
     if not isinstance(all_files, list):
-        print("WARN: dir.list() returned unexpected type: " + str(type(all_files)))
+        print("WARN: source.list() returned unexpected type: " + str(type(all_files)))
         return diagnostics
 
     # Get the scoped prefix so we can strip it to get relative paths
-    prefix = dir._scope.get("prefix", "") if hasattr(dir, "_scope") else ""
+    prefix = source._scope.get("prefix", "") if hasattr(source, "_scope") else ""
 
     for entry in all_files:
         key = entry.key if hasattr(entry, "key") else str(entry)
@@ -195,8 +187,9 @@ def spawn_diagnostic(category, diag):
 
     Returns (handle, diag_info) or (None, diag_info) on error.
     """
-    diag_path = "cogs/diagnostics/" + diag["path"]
-    content = _read_file(diag_path)
+    # Use source.get() which auto-prepends the scoped prefix (cogos/diagnostics/)
+    content_result = source.get(diag["path"]).read()
+    content = content_result.content if hasattr(content_result, 'content') else None
     if content is None:
         print("WARN: could not read " + diag_path)
         return None, diag
@@ -341,8 +334,8 @@ def run_md_verification(handle, diag, category):
 
     Returns updated checks list and status, or None if no verify block.
     """
-    diag_path = "cogs/diagnostics/" + diag["path"]
-    content = _read_file(diag_path)
+    content_result = source.get(diag["path"]).read()
+    content = content_result.content if hasattr(content_result, 'content') else None
     if content is None:
         return None
 

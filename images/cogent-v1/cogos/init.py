@@ -69,6 +69,10 @@ def _spawn_cog(manifest):
     content = "@{whoami/index.md}\n\n" + content
 
     caps = _build_caps(config.get("capabilities", []), cog_name)
+    # Add source dir scoped to where the cog's files live in the FileStore
+    dir_cap = _cap_objects.get("dir")
+    if dir_cap is not None and hasattr(dir_cap, "scope"):
+        caps["source:dir"] = dir_cap.scope(prefix=prefix + "/" + cog_name + "/")
 
     subscribe = config.get("handlers") if config.get("handlers") else None
 
