@@ -1,6 +1,8 @@
 """ProcessHandle — universal interface for interacting with a process."""
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +16,18 @@ class MessageInfo(BaseModel):
     payload: dict[str, Any]
     sender_process: str
     created_at: str | None = None
+
+
+class RunInfo(BaseModel):
+    status: str
+    error: str | None = None
+    duration_ms: int | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: Decimal = Decimal("0")
+    result: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class ProcessHandle:
@@ -165,6 +179,24 @@ class ProcessHandle:
             return None
         texts = [m.payload.get("text", "") if isinstance(m.payload, dict) else str(m.payload) for m in msgs]
         return texts[0] if limit == 1 else texts
+
+    def runs(self, limit: int = 10) -> list[RunInfo]:
+        """Return recent run history for this process."""
+        runs = self._repo.list_runs(process_id=self._process.id, limit=limit)
+        return [
+            RunInfo(
+                status=r.status.value,
+                error=r.error,
+                duration_ms=r.duration_ms,
+                tokens_in=r.tokens_in,
+                tokens_out=r.tokens_out,
+                cost_usd=r.cost_usd,
+                result=r.result,
+                created_at=r.created_at,
+                completed_at=r.completed_at,
+            )
+            for r in runs
+        ]
 
     def __repr__(self) -> str:
         return f"<ProcessHandle {self.name} ({self.id[:8]})>"

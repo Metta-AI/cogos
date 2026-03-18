@@ -94,6 +94,9 @@ def run_and_complete(
             "duration_ms": duration_ms,
         })
 
+        from cogos.executor.handler import _notify_parent_on_exit
+        _notify_parent_on_exit(repo, process, run, exit_code=0, duration_ms=duration_ms)
+
         # Transition process state — respect out-of-band status changes
         current = repo.get_process(process.id)
         if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
@@ -128,6 +131,9 @@ def run_and_complete(
             "process_name": process.name,
             "error": str(e)[:1000],
         })
+
+        from cogos.executor.handler import _notify_parent_on_exit
+        _notify_parent_on_exit(repo, process, run, exit_code=1, duration_ms=duration_ms, error=str(e))
 
         # Retry logic — respect out-of-band status changes
         current = repo.get_process(process.id)

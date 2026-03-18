@@ -1,11 +1,13 @@
-"""Tests for ProcessHandle — send, recv, kill, status, wait."""
+"""Tests for ProcessHandle — send, recv, kill, status, wait, runs."""
+from datetime import datetime, UTC
+from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.process_handle import ProcessHandle
-from cogos.db.models import Channel, ChannelMessage, ChannelType, Process, ProcessMode, ProcessStatus
+from cogos.capabilities.process_handle import ProcessHandle, RunInfo
+from cogos.db.models import Channel, ChannelMessage, ChannelType, Process, ProcessMode, ProcessStatus, Run, RunStatus
 
 
 @pytest.fixture
@@ -115,3 +117,49 @@ class TestWait:
         spec = ProcessHandle.wait_all([h1, h2])
         assert spec["type"] == "wait_all"
         assert len(spec["process_ids"]) == 2
+
+
+class TestRuns:
+    def test_runs_returns_run_info(self, repo, parent_id, child_process):
+        now = datetime.now(UTC)
+        repo.list_runs.return_value = [
+            Run(
+                process=child_process.id,
+                status=RunStatus.COMPLETED,
+                duration_ms=1500,
+                tokens_in=100,
+                tokens_out=50,
+                cost_usd=Decimal("0.001"),
+                result={"answer": 42},
+                created_at=now,
+                completed_at=now,
+            ),
+            Run(
+                process=child_process.id,
+                status=RunStatus.FAILED,
+                duration_ms=900,
+                error="timeout",
+                created_at=now,
+            ),
+        ]
+        handle = ProcessHandle(
+            repo=repo, caller_process_id=parent_id, process=child_process,
+            send_channel=None, recv_channel=None,
+        )
+        runs = handle.runs(limit=3)
+
+        repo.list_runs.assert_called_once_with(process_id=child_process.id, limit=3)
+        assert len(runs) == 2
+        assert isinstance(runs[0], RunInfo)
+        assert runs[0].status == "completed"
+        assert runs[0].result == {"answer": 42}
+        assert runs[1].status == "failed"
+        assert runs[1].error == "timeout"
+
+    def test_runs_empty(self, repo, parent_id, child_process):
+        repo.list_runs.return_value = []
+        handle = ProcessHandle(
+            repo=repo, caller_process_id=parent_id, process=child_process,
+            send_channel=None, recv_channel=None,
+        )
+        assert handle.runs() == []

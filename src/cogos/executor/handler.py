@@ -289,6 +289,8 @@ def handler(event: dict, context: Any = None) -> dict:
             "duration_ms": duration_ms,
         })
 
+        _notify_parent_on_exit(repo, process, run, exit_code=0, duration_ms=duration_ms)
+
         # Transition process state — respect out-of-band status changes
         current = repo.get_process(process.id)
         if current and current.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
@@ -374,8 +376,12 @@ def handler(event: dict, context: Any = None) -> dict:
         except Exception:
             logger.debug("Could not create alert for failed run %s", run.id)
 
-        # Notify parent process via spawn channel so it can handle the failure
-        _notify_parent_on_failure(repo, process, run, str(e))
+        # Notify parent process via spawn channel
+        _exit_code = 3 if final_status == RunStatus.THROTTLED else 1
+        _notify_parent_on_exit(
+            repo, process, run,
+            exit_code=_exit_code, duration_ms=duration_ms, error=str(e),
+        )
 
         # Retry logic — respect out-of-band status changes
         current = repo.get_process(process.id)
@@ -922,10 +928,16 @@ def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -
     )
 
 
-def _notify_parent_on_failure(
-    repo: Repository, process: Process, run: Run, error: str,
+def _notify_parent_on_exit(
+    repo: Repository,
+    process: Process,
+    run: Run,
+    *,
+    exit_code: int,
+    duration_ms: int,
+    error: str | None = None,
 ) -> None:
-    """If the process has a parent, send a failure message on the spawn channel."""
+    """Notify the parent process that this child exited (success or failure)."""
     if not process.parent_process:
         return
     try:
@@ -936,20 +948,23 @@ def _notify_parent_on_failure(
                 channel=ch.id,
                 sender_process=process.id,
                 payload={
-                    "type": "child:failed",
+                    "type": "child:exited",
+                    "exit_code": exit_code,
                     "process_name": process.name,
                     "process_id": str(process.id),
                     "run_id": str(run.id),
-                    "error": error[:1000],
+                    "duration_ms": duration_ms,
+                    "error": error[:1000] if error else None,
+                    "result": run.result,
                 },
             ))
             logger.info(
-                "Notified parent %s of child %s failure",
-                process.parent_process, process.name,
+                "Notified parent %s of child %s exit (code=%s)",
+                process.parent_process, process.name, exit_code,
             )
     except Exception:
         logger.warning(
-            "Failed to notify parent of child %s failure",
+            "Failed to notify parent of child %s exit",
             process.name, exc_info=True,
         )
 

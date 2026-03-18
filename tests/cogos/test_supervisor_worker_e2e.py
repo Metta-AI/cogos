@@ -166,11 +166,19 @@ class TestSupervisorWorkerFlow:
             return run
 
         # run_local_tick may execute both supervisor AND the newly-spawned worker
-        # in the same tick (since worker starts RUNNABLE). Use separate ticks.
+        # in the same tick (since worker starts RUNNABLE). The child:exited
+        # notification will also re-wake the supervisor, so it needs to handle
+        # both help requests and exit notifications.
         call_count = [0]
+        supervisor_spawned = [False]
         def tick_execute(process, event_data, run, config, repo, **kwargs):
             call_count[0] += 1
             if process.name == "supervisor":
+                if supervisor_spawned[0]:
+                    # Re-woken by child:exited — just ack and return
+                    run.result = {"child_exit_handled": True}
+                    return run
+                supervisor_spawned[0] = True
                 return supervisor_execute(process, event_data, run, config, repo, **kwargs)
             # Worker: verify content and complete
             assert process.name == "worker-task"
@@ -182,9 +190,9 @@ class TestSupervisorWorkerFlow:
         executed = run_local_tick(
             repo, None, execute_fn=tick_execute
         )
-        # Both supervisor and worker may run in one tick
-        assert executed >= 1
-        assert call_count[0] >= 1
+        # Supervisor + worker + supervisor (re-woken by child:exited)
+        assert executed >= 2
+        assert call_count[0] >= 2
 
         # Verify supervisor went back to waiting
         sup = repo.get_process(supervisor.id)
