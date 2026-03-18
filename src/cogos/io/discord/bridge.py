@@ -266,14 +266,6 @@ class DiscordBridge:
                 return
             if message.author.bot:
                 return
-            # In guild channels, skip messages that @mention another bot but not us.
-            # This prevents processing commands directed at other cogents in shared guilds.
-            if not isinstance(message.channel, discord.DMChannel) and message.mentions:
-                mentions_other_bot = any(u.bot and u != self.client.user for u in message.mentions)
-                mentions_us = self.client.user in message.mentions
-                if mentions_other_bot and not mentions_us:
-                    logger.debug("Skipping message that mentions another bot: %s", message.content[:80])
-                    return
             await self._relay_to_db(message)
 
     def _get_or_create_channel(self, repo, channel_name: str):
