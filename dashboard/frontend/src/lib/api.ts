@@ -190,6 +190,26 @@ export async function getSetup(name: string): Promise<SetupResponse> {
   return fetchJSON(`/api/cogents/${name}/setup`);
 }
 
+export interface IdentitySecrets {
+  cogent_name: string;
+  discord_handle: string;
+  discord_user_id: string;
+}
+
+export async function getIdentity(name: string): Promise<IdentitySecrets> {
+  return fetchJSON(`/api/cogents/${name}/identity`);
+}
+
+export async function putIdentity(name: string, body: IdentitySecrets): Promise<IdentitySecrets> {
+  const resp = await fetch(`/api/cogents/${name}/identity`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...headers() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
 export async function getProcesses(name: string, epoch?: string): Promise<CogosProcess[]> {
   const params = epoch ? `?epoch=${epoch}` : "";
   const r = await fetchJSON<{ processes: CogosProcess[] }>(

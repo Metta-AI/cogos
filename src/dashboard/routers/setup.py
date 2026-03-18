@@ -673,3 +673,67 @@ def get_setup(name: str) -> SetupResponse:
         _build_gemini_setup(name),
         _build_asana_setup(name),
     ])
+
+
+# ── Identity secrets API ─────────────────────────────────────
+
+
+class IdentitySecrets(BaseModel):
+    cogent_name: str = ""
+    discord_handle: str = ""
+    discord_user_id: str = ""
+
+
+def _read_secret_value(secret_id: str, region: str) -> str:
+    """Read a plain string secret. Returns empty string on failure."""
+    sm = boto3.client("secretsmanager", region_name=region)
+    try:
+        resp = sm.get_secret_value(SecretId=secret_id)
+        raw = resp.get("SecretString", "")
+        # Unwrap JSON-encoded strings (e.g. "\"dr.alpha\"" → "dr.alpha")
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, str):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return raw
+    except Exception:
+        return ""
+
+
+def _write_secret_value(secret_id: str, value: str, region: str) -> None:
+    """Write a plain string as a JSON-encoded secret."""
+    sm = boto3.client("secretsmanager", region_name=region)
+    encoded = json.dumps(value)
+    try:
+        sm.put_secret_value(SecretId=secret_id, SecretString=encoded)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+            sm.create_secret(Name=secret_id, SecretString=encoded)
+        else:
+            raise
+
+
+@router.get("/identity", response_model=IdentitySecrets)
+def get_identity(name: str) -> IdentitySecrets:
+    """Read identity secrets for a cogent."""
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    return IdentitySecrets(
+        cogent_name=_read_secret_value(f"cogent/{name}/identity/name", region),
+        discord_handle=_read_secret_value(f"cogent/{name}/discord/handle", region),
+        discord_user_id=_read_secret_value(f"cogent/{name}/discord/user_id", region),
+    )
+
+
+@router.put("/identity", response_model=IdentitySecrets)
+def put_identity(name: str, body: IdentitySecrets) -> IdentitySecrets:
+    """Write identity secrets for a cogent."""
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    if body.cogent_name:
+        _write_secret_value(f"cogent/{name}/identity/name", body.cogent_name, region)
+    if body.discord_handle:
+        _write_secret_value(f"cogent/{name}/discord/handle", body.discord_handle, region)
+    if body.discord_user_id:
+        _write_secret_value(f"cogent/{name}/discord/user_id", body.discord_user_id, region)
+    return get_identity(name)
