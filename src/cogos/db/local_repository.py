@@ -1074,6 +1074,7 @@ class LocalRepository:
         since: str | None = None,
         limit: int = 50,
         epoch: int | None = None,
+        slim: bool = False,
     ) -> list[Run]:
         self._maybe_reload()
         effective_epoch = self._reboot_epoch if epoch is None else epoch

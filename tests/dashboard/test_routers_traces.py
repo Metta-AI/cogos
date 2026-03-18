@@ -119,7 +119,7 @@ class _TraceRepoStub:
             deliveries = [delivery for delivery in deliveries if delivery.run == run_id]
         return deliveries[:limit]
 
-    def list_runs(self, *, process_id=None, limit: int = 50, epoch=None):
+    def list_runs(self, *, process_id=None, limit: int = 50, epoch=None, slim: bool = False):
         runs = [self.run]
         if process_id is not None:
             runs = [run for run in runs if run.process == process_id]

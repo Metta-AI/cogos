@@ -22,7 +22,7 @@ def _cron_to_item(c: Cron) -> CronItem:
     return CronItem(
         id=str(c.id),
         cron_expression=c.expression,
-        channel_name=c.event_type,
+        channel_name=c.channel_name,
         enabled=c.enabled,
         metadata=c.payload or {},
         created_at=str(c.created_at) if c.created_at else None,
@@ -42,7 +42,7 @@ def create_cron(name: str, body: CronCreate) -> CronItem:
     repo = get_repo()
     cron = Cron(
         expression=body.cron_expression,
-        event_type=body.channel_name,
+        channel_name=body.channel_name,
         enabled=body.enabled,
         payload=body.metadata or {},
     )
