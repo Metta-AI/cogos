@@ -721,6 +721,44 @@ class LocalRepository:
         files.sort(key=lambda f: f.key)
         return files[:limit]
 
+    def grep_files(
+        self, pattern: str, *, prefix: str | None = None, limit: int = 100
+    ) -> list[tuple[str, str]]:
+        """Search active file versions by regex pattern. Returns (key, content) tuples."""
+        import re
+
+        self._maybe_reload()
+        results: list[tuple[str, str]] = []
+        for f in sorted(self._files.values(), key=lambda f: f.key):
+            if prefix and not f.key.startswith(prefix):
+                continue
+            fv = self.get_active_file_version(f.id)
+            if fv and re.search(pattern, fv.content):
+                results.append((f.key, fv.content))
+                if len(results) >= limit:
+                    break
+        return results
+
+    def glob_files(
+        self, pattern: str, *, prefix: str | None = None, limit: int = 200
+    ) -> list[str]:
+        """Match file keys by glob pattern. Returns list of matching keys."""
+        from cogos.db.repository import Repository
+
+        import re
+
+        regex = Repository._glob_to_regex(pattern)
+        self._maybe_reload()
+        results: list[str] = []
+        for f in sorted(self._files.values(), key=lambda f: f.key):
+            if prefix and not f.key.startswith(prefix):
+                continue
+            if re.match(regex, f.key):
+                results.append(f.key)
+                if len(results) >= limit:
+                    break
+        return results
+
     def update_file_includes(self, file_id: UUID, includes: list[str]) -> bool:
         with self._writing():
             file = self._files.get(file_id)
