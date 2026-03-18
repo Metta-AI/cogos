@@ -10,7 +10,7 @@ import time
 # ── Configuration ────────────────────────────────────────────
 
 _CATEGORY_CAPS = {
-    "files":     ["file", "dir", "files"],
+    "files":     ["file", "dir"],
     "channels":  ["channels"],
     "procs":     ["procs", "channels"],
     "me":        ["me"],
@@ -24,7 +24,7 @@ _CATEGORY_CAPS = {
     "asana":     ["asana"],
     "github":    ["github"],
     "alerts":    ["alerts"],
-    "includes/files":       ["file", "dir", "files"],
+    "includes/files":       ["file", "dir"],
     "includes/channels":    ["channels"],
     "includes/procs":       ["procs", "channels"],
     "includes/code_mode":   ["file", "dir"],
@@ -32,13 +32,13 @@ _CATEGORY_CAPS = {
     "includes/image":       ["image", "blob"],
     "includes/discord":     ["discord"],
     "includes/email":       ["email"],
-    "includes/shell":       ["file", "dir", "files", "channels", "procs"],
+    "includes/shell":       ["file", "dir", "channels", "procs"],
     "includes/memory":      ["file", "dir"],
 }
 
 # Map capability names to injected globals
 _cap_objects = {
-    "me": me, "procs": procs, "dir": dir, "file": file, "files": files,
+    "me": me, "procs": procs, "dir": dir, "file": file,
     "channels": channels, "scheduler": scheduler, "stdlib": stdlib,
     "discord": discord, "email": email, "asana": asana, "github": github,
     "web": web, "web_search": web_search, "web_fetch": web_fetch,
