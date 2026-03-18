@@ -21,18 +21,17 @@ Discord reply info:
 - discord_author_id: {discord_author_id}
 """
 coglet, required_caps = worker_cog.make_coglet(task)
+print(f"Created coglet, required capabilities: {required_caps}")
 ```
 
-3. Inspect the required capabilities. Decide which to grant and scope them:
+3. Grant capabilities. Pass `None` for each — the system resolves them by name:
 ```python
-# Build scoped capabilities from what the worker requested
 caps = {}
 for cap_name in required_caps:
-    cap_obj = __capabilities__.get(cap_name)
-    if cap_obj is not None:
-        caps[cap_name] = cap_obj
+    caps[cap_name] = None
 # Always include channels for escalation
-caps["channels"] = channels
+caps["channels"] = None
+print(f"Granting capabilities: {list(caps.keys())}")
 ```
 
 4. Run the coglet:
