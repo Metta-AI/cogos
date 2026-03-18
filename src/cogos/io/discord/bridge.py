@@ -260,6 +260,7 @@ class DiscordBridge:
             for guild in self.client.guilds:
                 await self._sync_guild(guild)
             self.client.loop.create_task(self._poll_replies())
+            self.client.loop.create_task(self._poll_api_requests())
 
         @self.client.event
         async def on_guild_channel_create(channel):
@@ -674,6 +675,153 @@ class DiscordBridge:
                     except Exception:
                         logger.exception("Failed to download file: %s", url)
         return files
+
+    # ------------------------------------------------------------------
+    # API request poller
+    # ------------------------------------------------------------------
+
+    async def _poll_api_requests(self):
+        """Poll io:discord:api:request for API requests and dispatch them."""
+        logger.info("Starting API request poller")
+        seen_requests: set[str] = set()
+
+        while True:
+            try:
+                repo = self._get_repo()
+                ch = self._get_or_create_channel(repo, "io:discord:api:request")
+                if ch is None:
+                    await asyncio.sleep(2)
+                    continue
+
+                messages = repo.list_channel_messages(ch.id, limit=50)
+                for msg in messages:
+                    msg_id = str(msg.id)
+                    if msg_id in seen_requests:
+                        continue
+                    seen_requests.add(msg_id)
+
+                    payload = msg.payload or {}
+                    request_id = payload.get("request_id", msg_id)
+                    method = payload.get("method")
+
+                    if method == "history":
+                        try:
+                            await self._handle_history_request(repo, payload)
+                        except Exception:
+                            logger.exception(
+                                "Failed to handle history request %s", request_id
+                            )
+                            self._write_api_response(
+                                repo, request_id, "error", error="internal error"
+                            )
+                    else:
+                        logger.warning(
+                            "Unknown API request method: %s (request_id=%s)",
+                            method,
+                            request_id,
+                        )
+                        self._write_api_response(
+                            repo,
+                            request_id,
+                            "error",
+                            error=f"unknown method: {method}",
+                        )
+
+                # Keep seen_requests bounded
+                if len(seen_requests) > 1000:
+                    # Keep the most recent 500
+                    to_drop = len(seen_requests) - 500
+                    it = iter(seen_requests)
+                    for _ in range(to_drop):
+                        seen_requests.discard(next(it))
+
+            except Exception:
+                logger.exception("API request poll error")
+
+            await asyncio.sleep(2)
+
+    async def _handle_history_request(self, repo, request: dict):
+        """Handle a 'history' API request by fetching messages from Discord."""
+        request_id = request.get("request_id", "")
+        channel_id = request.get("channel_id")
+        limit = request.get("limit", 50)
+        before = request.get("before")
+        after = request.get("after")
+
+        if not channel_id:
+            self._write_api_response(
+                repo, request_id, "error", error="missing channel_id"
+            )
+            return
+
+        # Fetch the Discord channel
+        channel = self.client.get_channel(int(channel_id))
+        if channel is None:
+            try:
+                channel = await self.client.fetch_channel(int(channel_id))
+            except Exception:
+                self._write_api_response(
+                    repo, request_id, "error", error=f"channel {channel_id} not found"
+                )
+                return
+
+        # Build history kwargs
+        kwargs: dict = {"limit": min(int(limit), 100)}
+        if before:
+            kwargs["before"] = discord.Object(id=int(before))
+        if after:
+            kwargs["after"] = discord.Object(id=int(after))
+
+        history_messages = []
+        async for msg in channel.history(**kwargs):
+            payload = _make_message_payload(
+                msg,
+                "discord:history",
+                is_dm=isinstance(msg.channel, discord.DMChannel),
+                is_mention=False,
+            )
+            history_messages.append(payload)
+
+        # Reverse to oldest-first
+        history_messages.reverse()
+
+        self._write_api_response(
+            repo, request_id, "ok", messages=history_messages
+        )
+
+    def _write_api_response(
+        self,
+        repo,
+        request_id: str,
+        status: str,
+        *,
+        messages: list | None = None,
+        error: str | None = None,
+    ):
+        """Write an API response to io:discord:api:response channel."""
+        from cogos.db.models import ChannelMessage
+
+        ch = self._get_or_create_channel(repo, "io:discord:api:response")
+        if ch is None:
+            logger.error("Failed to create io:discord:api:response channel")
+            return
+
+        payload: dict = {
+            "request_id": request_id,
+            "status": status,
+        }
+        if messages is not None:
+            payload["messages"] = messages
+        if error is not None:
+            payload["error"] = error
+
+        repo.append_channel_message(
+            ChannelMessage(
+                channel=ch.id,
+                sender_process=None,
+                payload=payload,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Entry point
