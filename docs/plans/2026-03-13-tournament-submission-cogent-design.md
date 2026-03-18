@@ -2,7 +2,7 @@
 
 **Goal:** Support tournament submissions where the uploaded artifact is thin, while the real policy logic runs in the live cogent.
 
-**Architecture:** Add an explicit bootstrap step ahead of the policy websocket connection. Bootstrap is a normal short-lived CogOS process that starts an episode-scoped remote policy host, waits for readiness, and returns a websocket endpoint. The episode host serves the existing tournament `PreparePolicy` / `BatchStep` websocket protocol for one episode, then exits on completion, disconnect, or lease expiry.
+**Architecture:** The submitted artifact is a `MultiAgentPolicy` proxy with a hardcoded cogent endpoint. On `PreparePolicy`, the proxy calls the cogent's bootstrap endpoint, which starts an episode-scoped policy host and returns a websocket URL. The proxy connects and forwards `BatchStep` calls over that connection. The tournament runner sees a normal policy and requires no changes.
 
 **Tech Stack:** CogOS app/process model, ECS/Fargate, websocket policy transport, episode-scoped auth tokens, stable ingress routing
 
@@ -22,88 +22,70 @@ What we actually want is a **tournament submission cogent design** where:
 
 Today, that boundary is not modeled explicitly in CogOS.
 
-Relevant constraints:
-- the tournament policy protocol already uses websocket for `PreparePolicy` and `BatchStep`
-- `PreparePolicyResponse` is empty, so endpoint negotiation cannot happen inside the policy protocol
-- the websocket client needs the URL before it sends `PreparePolicy`
-- the current `ecs` runner is one-shot: dispatch a task, execute a run, and exit
-- an episode-scoped live policy host needs readiness, endpoint registration, health, and teardown semantics
-
 ## Non-Goals
 
 - replacing the tournament policy websocket protocol
 - running live LLM inference directly on every `BatchStep`
 - treating the tournament policy host as infrastructure outside the app/process model
 - forcing tournament submission to be a snapshot of the cogent rather than the live cogent itself
+- requiring changes to the tournament runner or policy protocol
 
-## Proposed Shape
+## Submitted Artifact: The Proxy Policy
 
-### 1. Bootstrap before websocket connect
+The tournament submission is a `MultiAgentPolicy` implementation that acts as a thin proxy to the live cogent. From the tournament runner's perspective, it is a normal policy. Internally, it handles all bootstrap and connection logic.
 
-The tournament runner, or a thin submitted proxy, should perform a bootstrap call before opening the policy websocket.
+The proxy has a hardcoded endpoint for the live cogent (e.g., `https://cogent.example.com/bootstrap`).
 
-Bootstrap returns:
-- `ws_url`
-- auth token or signed path
-- episode id
-- lease expiry or TTL
+On `PreparePolicy`:
+1. Calls the cogent's bootstrap endpoint with episode context
+2. Receives back `ws_url`, auth token, episode id, and lease TTL
+3. Opens a websocket connection to the episode host
 
-This keeps endpoint discovery outside `policy.proto`, which matches the current protocol shape.
+On `BatchStep`:
+- Forwards the request to the episode host over the websocket connection
+- Returns the response to the tournament runner
 
-### 2. Bootstrap is a normal short-lived CogOS process
+On teardown / episode end:
+- Closes the websocket connection cleanly
 
-Bootstrap should be a standard app-defined process, not a special out-of-band control plane.
+This design means the tournament runner needs no changes. It loads a `MultiAgentPolicy`, calls `PreparePolicy`, calls `BatchStep` — the proxy handles everything else.
 
-Responsibilities:
-- receive episode bootstrap request
-- derive episode metadata and auth
-- start the episode host
-- wait for readiness
-- return the websocket endpoint
+## The Bootstrap Endpoint
 
-### 3. Episode host is ECS, not Lambda
+The cogent exposes a bootstrap endpoint that the proxy policy calls during `PreparePolicy`.
 
-The episode host should be an ECS task, not Lambda.
+The bootstrap endpoint:
+- receives an episode bootstrap request from the proxy
+- derives episode metadata and auth
+- starts an episode-scoped policy host (see below)
+- waits for the host to signal readiness
+- returns the websocket endpoint, auth token, episode id, and lease TTL
 
-Reasoning:
-- the current tournament transport expects a long-lived websocket server for the duration of the episode
-- Lambda would imply a different architecture entirely: API Gateway websocket, per-message Lambda invocations, and externalized connection state
+This should be a standard app-defined CogOS process — a normal short-lived process, not a special out-of-band control plane.
+
+## The Episode Host
+
+The episode host is what sits on the other side of the websocket connection returned by bootstrap. It serves the existing `PreparePolicy` / `BatchStep` websocket protocol for one episode, backed by the live cogent's actual policy logic.
+
+### Why ECS, not Lambda
+
+- The tournament transport expects a long-lived websocket server for the duration of the episode
+- Lambda would imply a different architecture: API Gateway websocket, per-message invocations, externalized connection state
 - ECS matches the desired lifecycle directly: serve one episode, then die
 
-### 4. Prefer a stable front door
+### Lifecycle
 
-Bootstrap should ideally return a routed endpoint such as `wss://.../episodes/<token>` rather than a raw task IP.
+1. Bootstrap process starts an ECS task for the episode host
+2. Episode host initializes, loads policy state from the cogent
+3. Episode host registers readiness (signals back to bootstrap)
+4. Episode host serves `PreparePolicy` / `BatchStep` over websocket
+5. Episode host exits on: episode completion, client disconnect, failure, or lease expiry
 
-This keeps:
-- TLS
-- auth
-- routing
-- task replacement
+### Stable front door
 
-under CogOS control instead of leaking task networking details to the tournament side.
+The bootstrap endpoint should return a routed endpoint such as `wss://.../episodes/<token>` rather than a raw task IP.
 
-### 5. Keep this app-defined
-
-This should remain part of app space, for example under an app like `apps/cvc`.
-
-That app can own:
-- policy code
-- policy state
-- bootstrap process
-- episode-host process definition
-- channels for readiness, logs, and lifecycle events
-- slower adaptation and analysis processes outside the hot path
-
-## Lifecycle
-
-1. Tournament runner builds episode setup context.
-2. Bootstrap request is sent to the live cogent.
-3. A short-lived CogOS process handles bootstrap.
-4. Bootstrap starts an episode-scoped policy host.
-5. Policy host registers readiness and endpoint.
-6. Bootstrap returns the websocket endpoint.
-7. Tournament runner connects and uses normal `PreparePolicy` / `BatchStep`.
-8. Policy host exits on episode completion, disconnect, failure, or lease expiry.
+This keeps TLS, auth, routing, and task replacement under CogOS control instead of leaking task networking details to the proxy.
 
 ## CogOS Modeling Options
 
@@ -121,7 +103,7 @@ Cons:
 
 ### Option B: Leased ECS runner
 
-Keep `runner=\"ecs\"`, but add lease and heartbeat semantics so a process can remain alive for the duration of an episode.
+Keep `runner="ecs"`, but add lease and heartbeat semantics so a process can remain alive for the duration of an episode.
 
 Pros:
 - smaller surface area
@@ -131,32 +113,45 @@ Cons:
 - risks overloading the current one-shot `ecs` meaning
 - still needs service-like concepts: readiness, heartbeat, endpoint registration, expiry
 
-## Recommended Direction
+### Recommended direction
 
 Use the same Fargate substrate, but model the episode host explicitly as a leased or persistent process rather than pretending it is just a normal one-shot ECS run with a longer timeout.
 
-In practice that means:
-- bootstrap remains a normal short-lived process
-- episode host is a long-lived-but-temporary process with readiness and TTL
-- endpoint discovery happens before the websocket connection
-- the live cogent remains the owner of the real policy behavior
+## App-Level Ownership
 
-## Dependencies Outside This Repo
+This should remain part of app space, for example under an app like `apps/cvc`.
 
-The tournament side likely needs a first-class bootstrap seam ahead of websocket connection.
+That app can own:
+- the proxy policy code (the submitted artifact)
+- the bootstrap endpoint / process
+- the episode host process definition
+- policy state and model weights
+- channels for readiness, logs, and lifecycle events
+- slower adaptation and analysis processes outside the hot path
 
-Important current constraints in `m1`:
-- the websocket client connects before `PreparePolicy`
-- `PreparePolicyResponse` cannot carry endpoint negotiation
-- bundle-loaded `MultiAgentPolicy` construction does not currently receive the full prepare request
+## Full Lifecycle
 
-That means the clean solution is to add an explicit bootstrap hook in the tournament runner, not to hide endpoint negotiation inside the policy protocol.
+1. Tournament runner loads the submitted `MultiAgentPolicy` proxy.
+2. Tournament runner calls `PreparePolicy` on the proxy.
+3. Proxy calls the live cogent's bootstrap endpoint.
+4. A short-lived CogOS process handles bootstrap: starts an episode host, waits for readiness.
+5. Bootstrap returns `ws_url`, auth token, episode id, lease TTL to the proxy.
+6. Proxy opens websocket to the episode host.
+7. Tournament runner calls `BatchStep` on the proxy; proxy forwards over websocket.
+8. Episode host exits on episode completion, disconnect, failure, or lease expiry.
+
+## Open Questions
+
+- What policy state does the episode host need, and how does it get it? (Model weights, cached embeddings, episode history — loaded from S3? Streamed from the cogent?)
+- What does the bootstrap endpoint's request schema look like? (Episode id, map, opponent info, any tournament metadata?)
+- Does the episode host need to call back to the cogent during the episode (e.g., for slow reasoning or adaptation), or does it run autonomously once bootstrapped?
+- How does the cogent manage concurrent episodes? (Multiple episode hosts running simultaneously, resource limits, queueing?)
 
 ## Acceptance Criteria
 
-- CogOS has a clear design for tournament submission backed by a live cogent
-- a short-lived bootstrap process can start an episode host and return a ready websocket endpoint
-- the episode host serves the existing websocket policy protocol for one episode
-- the episode host is cleaned up on disconnect, completion, failure, or TTL expiry
-- the design stays inside app/process space and preserves capability scoping
-- the design clearly supports the intended use case: submit a thin tournament policy while the real policy logic runs in the live cogent
+- The submitted tournament artifact is a `MultiAgentPolicy` proxy that requires no tournament-side changes
+- The proxy can call a bootstrap endpoint on the live cogent and receive a ready websocket endpoint
+- The episode host serves the existing websocket policy protocol for one episode
+- The episode host is cleaned up on disconnect, completion, failure, or TTL expiry
+- The design stays inside app/process space and preserves capability scoping
+- The design clearly supports the intended use case: submit a thin tournament policy while the real policy logic runs in the live cogent
