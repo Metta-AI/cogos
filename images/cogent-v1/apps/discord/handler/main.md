@@ -37,6 +37,7 @@ content = "..."
 message_id = "..."
 is_dm = True  # or False
 is_mention = False  # or True
+reference_message_id = None  # from payload, set if this is a reply to another message
 
 # 2. Read identity from profile
 profile_data = file.read("whoami/profile.md")
@@ -95,20 +96,26 @@ elif not is_dm and not is_mention:
         else:
             stale = True
 
+        def fmt_history(msgs):
+            lines = []
+            for m in msgs:
+                ref = m.get("reference_message_id")
+                prefix = f"[reply to {ref}] " if ref else ""
+                lines.append(f"[{m.get('message_id', '?')}] {prefix}{m.get('author', '?')}: {m.get('content', '')}")
+            return "\n".join(lines)
+
         if stale:
             history_msgs = discord.history(channel_id=channel_id, limit=50)
             if isinstance(history_msgs, list) and history_msgs:
-                lines = []
-                for msg in history_msgs:
-                    lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
-                history = "\n".join(lines)
+                history = fmt_history(history_msgs)
                 log_handle.write(history)
             else:
                 history = log_content
         else:
             history = log_content
         print(f"HISTORY:\n{history}")
-        print(f"\nNEW: {author}: {content}")
+        reply_prefix = f"[reply to {reference_message_id}] " if reference_message_id else ""
+        print(f"\nNEW: [{message_id}] {reply_prefix}{author}: {content}")
 else:
     # DM or @mention — always respond. Load history, refetch from Discord API if stale.
     log_handle = data.get(f"{conv_key}/recent.log")
@@ -124,20 +131,26 @@ else:
     else:
         stale = True
 
+    def fmt_history(msgs):
+        lines = []
+        for m in msgs:
+            ref = m.get("reference_message_id")
+            prefix = f"[reply to {ref}] " if ref else ""
+            lines.append(f"[{m.get('message_id', '?')}] {prefix}{m.get('author', '?')}: {m.get('content', '')}")
+        return "\n".join(lines)
+
     if stale:
         history_msgs = discord.history(channel_id=channel_id, limit=50)
         if isinstance(history_msgs, list) and history_msgs:
-            lines = []
-            for msg in history_msgs:
-                lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
-            history = "\n".join(lines)
+            history = fmt_history(history_msgs)
             log_handle.write(history)
         else:
             history = log_content
     else:
         history = log_content
     print(f"HISTORY:\n{history}")
-    print(f"\nNEW: {author}: {content}")
+    reply_prefix = f"[reply to {reference_message_id}] " if reference_message_id else ""
+    print(f"\nNEW: [{message_id}] {reply_prefix}{author}: {content}")
 ```
 
 ### Step 2: Respond and update state (single run_code call)
