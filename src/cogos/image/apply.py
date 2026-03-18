@@ -114,65 +114,7 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
         repo.upsert_channel(ch)
         counts["channels"] += 1
 
-    # 7. Processes (with capability bindings and handlers)
-    for proc_dict in spec.processes:
-        mode = ProcessMode(proc_dict.get("mode", "one_shot"))
-        p = Process(
-            name=proc_dict["name"],
-            mode=mode,
-            content=proc_dict.get("content", ""),
-            runner=proc_dict.get("runner", "lambda"),
-            executor=proc_dict.get("executor", "llm"),
-            model=proc_dict.get("model"),
-            priority=float(proc_dict.get("priority", 0.0)),
-            status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
-            metadata=proc_dict.get("metadata") or {},
-            idle_timeout_ms=proc_dict.get("idle_timeout_ms"),
-        )
-        pid = repo.upsert_process(p)
-
-        # Bind capabilities
-        for cap_entry in proc_dict.get("capabilities", []):
-            if isinstance(cap_entry, dict):
-                cap_name = cap_entry["name"]
-                cap_config = cap_entry.get("config")
-                cap_alias = cap_entry.get("alias", cap_name)
-            else:
-                cap_name = cap_entry
-                cap_config = None
-                cap_alias = cap_name
-            cap = repo.get_capability_by_name(cap_name)
-            if cap:
-                pc = ProcessCapability(
-                    process=pid, capability=cap.id,
-                    name=cap_alias, config=cap_config,
-                )
-                repo.create_process_capability(pc)
-
-        # Create handlers — channel-based
-        for ch_name in proc_dict.get("handlers", []):
-            ch = repo.get_channel_by_name(ch_name)
-            if ch is None:
-                ch = Channel(
-                    name=ch_name,
-                    channel_type=ChannelType.NAMED,
-                )
-                repo.upsert_channel(ch)
-                ch = repo.get_channel_by_name(ch_name)
-            h = Handler(process=pid, channel=ch.id, enabled=True)
-            repo.create_handler(h)
-
-        # Create per-process stdio channels
-        for stream in ("stdin", "stdout", "stderr"):
-            io_ch_name = f"process:{proc_dict['name']}:{stream}"
-            if repo.get_channel_by_name(io_ch_name) is None:
-                repo.upsert_channel(Channel(
-                    name=io_ch_name, owner_process=pid, channel_type=ChannelType.NAMED,
-                ))
-
-        counts["processes"] += 1
-
-    # 8. Coglets
+    # 7. Coglets
     from cogos.capabilities.coglet_factory import _load_meta, _save_meta
     from cogos.coglet import CogletMeta, write_file_tree
     counts["coglets"] = 0
@@ -226,22 +168,17 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
 
         counts["coglets"] += 1
 
-    # 9. Cogs — save metadata + file trees, write boot manifest for init.py
+    # 8. Cogs — save metadata + file trees, write boot manifest for init.py
     # Process creation is deferred to init.py so it can pass the supervisor
     # channel to every child process at spawn time.
+    # IMPORTANT: The manifest must be written BEFORE creating the init process
+    # (section 9) to avoid a race where the dispatcher picks up init before
+    # the manifest is ready.
     from cogos.cog import (
         CogMeta as CogMetaModel,
-    )
-    from cogos.cog import (
-        load_coglet_meta as _load_cog_coglet_meta,
-    )
-    from cogos.cog import (
         save_cog_meta as _save_cog_meta,
-    )
-    from cogos.cog import (
+        load_coglet_meta as _load_cog_coglet_meta,
         save_coglet_meta as _save_cog_coglet_meta,
-    )
-    from cogos.cog import (
         write_file_tree as _write_cog_file_tree,
     )
     counts["cogs"] = 0
@@ -333,6 +270,68 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
         counts["cogs"] += 1
 
     fs.upsert("_boot/cog_processes.json", json.dumps(boot_manifest, indent=2))
+
+    # 9. Processes (with capability bindings and handlers)
+    # IMPORTANT: This must come AFTER the boot manifest is written (section 8)
+    # because the init process becomes RUNNABLE immediately and the dispatcher
+    # may pick it up before apply_image returns. Init reads the manifest, so
+    # it must exist before init is created.
+    for proc_dict in spec.processes:
+        mode = ProcessMode(proc_dict.get("mode", "one_shot"))
+        p = Process(
+            name=proc_dict["name"],
+            mode=mode,
+            content=proc_dict.get("content", ""),
+            runner=proc_dict.get("runner", "lambda"),
+            executor=proc_dict.get("executor", "llm"),
+            model=proc_dict.get("model"),
+            priority=float(proc_dict.get("priority", 0.0)),
+            status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
+            metadata=proc_dict.get("metadata") or {},
+            idle_timeout_ms=proc_dict.get("idle_timeout_ms"),
+        )
+        pid = repo.upsert_process(p)
+
+        # Bind capabilities
+        for cap_entry in proc_dict.get("capabilities", []):
+            if isinstance(cap_entry, dict):
+                cap_name = cap_entry["name"]
+                cap_config = cap_entry.get("config")
+                cap_alias = cap_entry.get("alias", cap_name)
+            else:
+                cap_name = cap_entry
+                cap_config = None
+                cap_alias = cap_name
+            cap = repo.get_capability_by_name(cap_name)
+            if cap:
+                pc = ProcessCapability(
+                    process=pid, capability=cap.id,
+                    name=cap_alias, config=cap_config,
+                )
+                repo.create_process_capability(pc)
+
+        # Create handlers — channel-based
+        for ch_name in proc_dict.get("handlers", []):
+            ch = repo.get_channel_by_name(ch_name)
+            if ch is None:
+                ch = Channel(
+                    name=ch_name,
+                    channel_type=ChannelType.NAMED,
+                )
+                repo.upsert_channel(ch)
+                ch = repo.get_channel_by_name(ch_name)
+            h = Handler(process=pid, channel=ch.id, enabled=True)
+            repo.create_handler(h)
+
+        # Create per-process stdio channels
+        for stream in ("stdin", "stdout", "stderr"):
+            io_ch_name = f"process:{proc_dict['name']}:{stream}"
+            if repo.get_channel_by_name(io_ch_name) is None:
+                repo.upsert_channel(Channel(
+                    name=io_ch_name, owner_process=pid, channel_type=ChannelType.NAMED,
+                ))
+
+        counts["processes"] += 1
 
     # 10. Disable stale top-level processes not in this image
     image_process_names = {p["name"] for p in spec.processes} | cog_process_names
