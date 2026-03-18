@@ -170,24 +170,59 @@ The CDK app is at `src/polis/cdk/app.py` and deploys two stacks:
 
 See [docs/polis/cli.md](docs/polis/cli.md) for full reference.
 
-### Deploying the dashboard
+### CI Docker builds (GitHub Actions)
+
+Docker images are built automatically by GitHub Actions on push to main when relevant files change. No local Docker builds needed for routine deploys.
+
+| Image | Trigger paths | Tag format |
+|-------|--------------|------------|
+| Executor | `src/cogtainer/docker/**`, `src/cogos/**`, `src/cogents/**`, `pyproject.toml` | `executor-{sha}`, `executor-latest` |
+| Dashboard | `dashboard/**`, `src/dashboard/**` | `dashboard-{sha}`, `dashboard-latest` |
+
+Workflows can also be triggered manually via `gh workflow run`.
+
+All `cogtainer update` commands automatically check that an ECR image exists for the current git commit and warn if it doesn't. The `--tag` flag on `update ecs` hard-errors if the tag is missing.
 
 ```bash
-cogent dr.alpha dashboard deploy              # Build frontend, push to ECR, restart ECS
-cogent dr.alpha dashboard deploy --docker     # Force Docker image rebuild
+# Deploy CI-built image for current commit
+cogent dr.alpha cogtainer update ecs --tag executor-latest    # Latest from main
+cogent dr.alpha cogtainer update ecs --tag executor-abc1234   # Specific SHA
+
+# If the image doesn't exist yet, wait for CI
+gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-executor.yml --limit 3
+gh run watch <run-id> --repo Metta-AI/cogents-v1 --exit-status
 ```
 
-This builds the Next.js static export, packages it with the FastAPI backend into a Docker image, pushes to ECR (`901289084804.dkr.ecr.us-east-1.amazonaws.com/cogent`), and restarts the ECS Fargate service. The dashboard is served at `https://{safe-name}.softmax-cogents.com`.
+Local builds (`cogtainer build`, `dashboard deploy --docker`) still work when needed.
 
-### Deploying Lambda + DB migrations
+### Deploying a cogent (decision tree)
 
-See [docs/deploy.md](docs/deploy.md) for the full deploy reference.
+See [docs/deploy.md](docs/deploy.md) for the full reference. Match what changed to the right command:
+
+| What changed | Command |
+|---|---|
+| `images/**` only | `cogent <name> cogos image boot cogent-v1` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `cogent <name> cogtainer update lambda` |
+| `src/cogos/db/migrations/**` | `cogent <name> cogtainer update rds` |
+| `dashboard/frontend/**` only | `cogent <name> dashboard deploy` |
+| `src/dashboard/**` (backend) | `cogent <name> dashboard deploy --docker` |
+| `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; then `cogent <name> cogtainer update ecs --tag executor-latest` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent <name> cogtainer create` |
+
+Common sequences:
 
 ```bash
-cogent dr.alpha cogtainer update lambda       # Update Lambda code (~15s)
-cogent dr.alpha cogtainer update rds          # Run DB schema migrations
-cogent dr.alpha cogtainer update all          # Lambda + RDS + sync
-cogent dr.alpha cogtainer create              # Full CDK stack deploy (ALB rules, IAM, etc.)
+# Executor code change
+cogent dr.alpha cogtainer update lambda
+cogent dr.alpha cogos image boot cogent-v1    # if image also changed
+
+# Schema migration + executor change
+cogent dr.alpha cogtainer update rds
+cogent dr.alpha cogtainer update lambda
+
+# Full infrastructure change (CDK constructs, IAM, ALB)
+cogent dr.alpha cogtainer create
+cogent dr.alpha cogos image boot cogent-v1
 ```
 
 ### Managing the Discord bridge (remote)

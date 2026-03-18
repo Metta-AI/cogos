@@ -20,6 +20,44 @@ DEFAULT_REGION = "us-east-1"
 _PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
 
+def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor") -> str | None:
+    """Check that an ECR image exists for the current git commit.
+
+    Returns the matching tag if found, or None. Prints a warning if no image
+    matches the current commit.
+    """
+    import subprocess
+
+    try:
+        sha_short = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        return None
+
+    expected_tag = f"{prefix}-{sha_short}"
+
+    ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
+    try:
+        ecr_client.describe_images(
+            repositoryName="cogent",
+            imageIds=[{"imageTag": expected_tag}],
+        )
+        click.echo(f"  ECR image for HEAD ({sha_short}): {click.style('found', fg='green')}")
+        return expected_tag
+    except Exception:
+        click.echo(
+            click.style(
+                f"  Warning: No ECR image found for current commit ({sha_short}).\n"
+                f"  Expected tag: {expected_tag}\n"
+                f"  Check CI: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-{prefix}.yml\n"
+                f"  The deployed code may not match the running container.",
+                fg="yellow",
+            )
+        )
+        return None
+
+
 class UpdateGroup(DefaultCommandGroup):
     """Update group that defaults to 'all'."""
 
@@ -164,6 +202,7 @@ def update_lambda(ctx: click.Context, profile: str | None):
     safe_name = name.replace(".", "-")
 
     click.echo(f"Updating cogent-{name} Lambda functions...")
+    _check_ecr_image_for_commit(session, "executor")
 
     zip_bytes = _package_lambda_code()
     pkg_time = time.monotonic() - t0
@@ -252,13 +291,27 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
         "forceNewDeployment": True,
     }
 
-    # If --tag specified, update the task definition to use that image
+    # If --tag specified, verify the image exists in ECR then update task definition
     if tag:
         from polis.aws import POLIS_ACCOUNT_ID
 
         repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
         new_image = f"{repo_uri}:{tag}"
         click.echo(f"  Image: {new_image}")
+
+        # Verify the tag exists in ECR before deploying
+        ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
+        try:
+            ecr_client.describe_images(
+                repositoryName="cogent",
+                imageIds=[{"imageTag": tag}],
+            )
+            click.echo(f"  ECR tag '{tag}': {click.style('found', fg='green')}")
+        except Exception:
+            raise click.ClickException(
+                f"ECR tag '{tag}' not found in cogent repo. "
+                "Check CI build status: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-executor.yml"
+            )
 
         svc_desc = ecs_client.describe_services(cluster=cluster_name, services=[service_arn])["services"][0]
         task_def_arn = svc_desc["taskDefinition"]
