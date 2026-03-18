@@ -5,13 +5,12 @@
 results = []
 
 def check(name, fn):
-    t0 = 0
     try:
         fn()
-        ms = int((0 - t0) * 1000)
+        ms = 0
         results.append({"name": name, "status": "pass", "ms": ms})
     except Exception as e:
-        ms = int((0 - t0) * 1000)
+        ms = 0
         results.append({"name": name, "status": "fail", "ms": ms, "error": str(e)[:300]})
 
 # ── Tests ────────────────────────────────────────────────────

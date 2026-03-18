@@ -60,21 +60,24 @@ class TestDiagnosticsCog:
         main = DIAGNOSTICS_DIR / "main.py"
         ast.parse(main.read_text())
 
-    def test_category_caps_covers_all_dirs(self):
-        """Verify that every subdirectory has an entry in _CATEGORY_CAPS."""
+    def test_caps_covers_all_dirs(self):
+        """Verify that every subdirectory has an entry in _CAPS."""
         import re
         main_content = (DIAGNOSTICS_DIR / "main.py").read_text()
-        # Extract all keys from _CATEGORY_CAPS dict
-        caps_keys = set(re.findall(r'"([^"]+)":\s*\[', main_content))
+        # Extract all keys from _CAPS dict
+        caps_keys = set(re.findall(r'"([^"]+)":\s*\{', main_content))
 
         for subdir in DIAGNOSTICS_DIR.iterdir():
             if not subdir.is_dir() or subdir.name.startswith("."):
                 continue
+            # Only check dirs that contain .py diagnostics (runner skips .md)
+            py_files = list(subdir.rglob("*.py"))
+            if not py_files:
+                continue
             name = subdir.name
-            # Check either exact match or prefix match (includes/*)
             has_entry = name in caps_keys or any(
                 k.startswith(name + "/") for k in caps_keys
             )
             assert has_entry, (
-                f"Directory {name}/ has no entry in _CATEGORY_CAPS"
+                f"Directory {name}/ has no entry in _CAPS"
             )

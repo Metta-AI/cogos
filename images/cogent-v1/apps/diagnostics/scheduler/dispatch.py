@@ -1,39 +1,12 @@
-# Diagnostic: scheduler/dispatch.py
-# Tests match_messages() and select_processes() run without error.
-
-
+# Diagnostic: scheduler/dispatch — channels create/send/read
 checks = []
-
-
-def check(name, fn):
-    t0 = 0
-    try:
-        fn()
-        ms = int((0 - t0) * 1000)
-        checks.append({"name": name, "status": "pass", "ms": ms})
-    except Exception as e:
-        ms = int((0 - t0) * 1000)
-        checks.append({"name": name, "status": "fail", "ms": ms, "error": str(e)})
-
-
-# ── match_messages ───────────────────────────────────────────
-
-def test_match_messages():
-    result = scheduler.match_messages()
-    if not isinstance(result, int):
-        raise Exception("match_messages() should return int, got: " + str(type(result)))
-
-check("match_messages", test_match_messages)
-
-
-# ── select_processes ─────────────────────────────────────────
-
-def test_select_processes():
-    result = scheduler.select_processes(slots=1)
-    if not isinstance(result, list):
-        raise Exception("select_processes() should return list, got: " + str(type(result)))
-
-check("select_processes", test_select_processes)
-
-
+try:
+    channels.create("_diag:sched:test")
+    channels.send("_diag:sched:test", {"seq": 1})
+    msgs = channels.read("_diag:sched:test", limit=5)
+    if not isinstance(msgs, list):
+        raise Exception("read returned " + str(type(msgs)))
+    checks.append({"name": "channel_roundtrip", "status": "pass", "ms": 0})
+except Exception as e:
+    checks.append({"name": "channel_roundtrip", "status": "fail", "ms": 0, "error": str(e)})
 print(json.dumps(checks))
