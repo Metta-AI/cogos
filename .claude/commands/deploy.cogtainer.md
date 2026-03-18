@@ -31,7 +31,7 @@ If the change doesn't require a cogtainer deploy, tell the user and suggest the 
 ```bash
 # Full CDK stack deploy (creates/updates all infra: Lambda, ECS, RDS, ALB, etc.)
 # This is slow (~3-5 min). Only use when infra definition changed.
-cogent <name> cogtainer create --watch
+cogent <name> cogtainer create
 
 # Build and push executor Docker image to ECR (without CDK deploy)
 cogent <name> cogtainer build
@@ -54,7 +54,7 @@ cogent <name> cogtainer status
 
 ## When to use `cogtainer create` vs `cogtainer update`
 
-- **`cogtainer create --watch`**: CDK stack changes — new resources, IAM policy changes, ALB rules, ECS task def changes, env var changes in CDK. This runs `cdk deploy`.
+- **`cogtainer create`**: CDK stack changes — new resources, IAM policy changes, ALB rules, ECS task def changes, env var changes in CDK. This runs `cdk deploy`.
 - **`cogtainer update lambda`**: Only Python code in `src/cogos/` changed. Zips and uploads to existing Lambda.
 - **`cogtainer update ecs`**: Need to restart ECS tasks (e.g. after ECR image push). Does NOT rebuild image.
 - **`cogtainer build` + `cogtainer update ecs`**: Executor Docker image changed (new dependencies, Dockerfile changes).

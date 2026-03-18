@@ -178,9 +178,8 @@ def status_cmd(ctx: click.Context):
 
 @cogtainer.command("create")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
-@click.option("--watch", "-w", is_flag=True, help="Wait for stack to complete")
 @click.pass_context
-def create_cmd(ctx: click.Context, profile: str | None, watch: bool):
+def create_cmd(ctx: click.Context, profile: str | None):
     """Deploy a cogent's cogtainer infrastructure in the polis account."""
     import os
     import subprocess
@@ -230,9 +229,6 @@ def create_cmd(ctx: click.Context, profile: str | None, watch: bool):
         "--app", "python -m cogtainer.cdk.app",
         "--require-approval", "never",
     ]
-    if watch:
-        cmd.append("--watch")
-
     env = {**os.environ, "AWS_PROFILE": profile}
     deploy = subprocess.Popen(cmd, env=env)
     uploaded_assets = False
