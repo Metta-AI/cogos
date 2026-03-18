@@ -1,13 +1,12 @@
 """Tests for the newsfromthefront app image loading and wiring."""
 
 from pathlib import Path
-from uuid import uuid4
 
+from cogos.cog import load_cog_meta, load_coglet_meta
 from cogos.db.local_repository import LocalRepository
 from cogos.files.store import FileStore
-from cogos.cog import load_coglet_meta, load_cog_meta
-from cogos.image.spec import load_image
 from cogos.image.apply import apply_image
+from cogos.image.spec import load_image
 
 
 def test_cogent_v1_newsfromthefront_cog_declared():
@@ -91,8 +90,11 @@ def test_cogent_v1_newsfromthefront_cog_apply(tmp_path):
     assert coglet_meta.entrypoint == "newsfromthefront.py"
     assert coglet_meta.mode == "daemon"
 
-    # Process should be registered
-    procs = repo.list_processes(limit=100)
-    proc = next((p for p in procs if p.name == "newsfromthefront"), None)
-    assert proc is not None
-    assert proc.mode.value == "daemon"
+    # Process creation is deferred to init.py — verify boot manifest instead
+    raw = store.get_content("_boot/cog_processes.json")
+    assert raw is not None
+    import json
+    manifest = json.loads(raw)
+    entry = next((e for e in manifest if e["name"] == "newsfromthefront"), None)
+    assert entry is not None
+    assert entry["mode"] == "daemon"

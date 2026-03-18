@@ -173,8 +173,8 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
         counts["processes"] += 1
 
     # 8. Coglets
-    from cogos.coglet import CogletMeta, write_file_tree
     from cogos.capabilities.coglet_factory import _load_meta, _save_meta
+    from cogos.coglet import CogletMeta, write_file_tree
     counts["coglets"] = 0
     for coglet_dict in spec.coglets:
         name = coglet_dict["name"]
@@ -226,16 +226,27 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
 
         counts["coglets"] += 1
 
-    # 9. Cogs — create cog meta + default coglet + auto-start process
+    # 9. Cogs — save metadata + file trees, write boot manifest for init.py
+    # Process creation is deferred to init.py so it can pass the supervisor
+    # channel to every child process at spawn time.
     from cogos.cog import (
         CogMeta as CogMetaModel,
-        save_cog_meta as _save_cog_meta,
+    )
+    from cogos.cog import (
         load_coglet_meta as _load_cog_coglet_meta,
+    )
+    from cogos.cog import (
+        save_cog_meta as _save_cog_meta,
+    )
+    from cogos.cog import (
         save_coglet_meta as _save_cog_coglet_meta,
+    )
+    from cogos.cog import (
         write_file_tree as _write_cog_file_tree,
     )
     counts["cogs"] = 0
     cog_process_names: set[str] = set()
+    boot_manifest: list[dict] = []
     for cog_dict in spec.cogs:
         cog_name = cog_dict["name"]
         _save_cog_meta(fs, cog_name, CogMetaModel(name=cog_name))
@@ -245,8 +256,7 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             counts["cogs"] += 1
             continue
 
-        # Create or update the default coglet under the cog
-        coglet_name = cog_name  # default coglet shares the cog's name
+        coglet_name = cog_name
         existing_meta = _load_cog_coglet_meta(fs, cog_name, coglet_name)
         if existing_meta is not None:
             existing_meta.test_command = default.get("test_command", "true")
@@ -270,64 +280,29 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             _write_cog_file_tree(fs, cog_name, coglet_name, "main", default["files"])
             _save_cog_coglet_meta(fs, cog_name, coglet_name, meta)
 
-        # Register the default coglet as an auto-started process.
-        # The cog capability is auto-scoped to this cog.
         proc_name = cog_name
         cog_process_names.add(proc_name)
-        mode = ProcessMode(default["mode"])
 
-        # Build capability list: inject cog (scoped) + coglet_runtime
-        caps = list(default.get("capabilities") or [])
+        manifest_entry: dict = {
+            "name": proc_name,
+            "cog_name": cog_name,
+            "mode": default["mode"],
+            "content_file": f"cogs/{cog_name}/coglets/{coglet_name}/main/{default['entrypoint']}",
+            "executor": default.get("executor", "llm"),
+            "model": default.get("model"),
+            "runner": default.get("runner", "lambda"),
+            "priority": float(default.get("priority", 0.0)),
+            "idle_timeout_ms": default.get("idle_timeout_ms"),
+            "capabilities": default.get("capabilities") or [],
+            "handlers": default.get("handlers") or [],
+            "children": [],
+        }
 
-        p = Process(
-            name=proc_name,
-            mode=mode,
-            content=default["files"].get(default["entrypoint"], ""),
-            runner=default.get("runner", "lambda"),
-            executor=default.get("executor", "llm"),
-            model=default.get("model"),
-            priority=float(default.get("priority", 0.0)),
-            status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
-            idle_timeout_ms=default.get("idle_timeout_ms"),
-        )
-        pid = repo.upsert_process(p)
-
-        for cap_entry in caps:
-            if isinstance(cap_entry, dict):
-                cap_name = cap_entry["name"]
-                cap_config = cap_entry.get("config")
-                cap_alias = cap_entry.get("alias", cap_name)
-            else:
-                cap_name = cap_entry
-                cap_config = None
-                cap_alias = cap_name
-            # Auto-scope the cog capability to this cog
-            if cap_name == "cog":
-                cap_config = {"cog_name": cog_name}
-            cap = repo.get_capability_by_name(cap_name)
-            if cap:
-                pc = ProcessCapability(
-                    process=pid, capability=cap.id,
-                    name=cap_alias, config=cap_config,
-                )
-                repo.create_process_capability(pc)
-
-        for ch_name in default.get("handlers") or []:
-            ch = repo.get_channel_by_name(ch_name)
-            if ch is None:
-                ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
-                repo.upsert_channel(ch)
-                ch = repo.get_channel_by_name(ch_name)
-            h = Handler(process=pid, channel=ch.id, enabled=True)
-            repo.create_handler(h)
-
-        # Process child coglets declared via cog.make_coglet()
         for child in cog_dict.get("coglets") or []:
             child_name = child["name"]
             coglet_proc_name = f"{cog_name}/{child_name}"
             cog_process_names.add(coglet_proc_name)
 
-            # Write coglet metadata and files
             child_meta = CogletMeta(
                 name=child_name,
                 test_command=child.get("test_command", "true"),
@@ -340,49 +315,24 @@ def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]
             _write_cog_file_tree(fs, cog_name, child_name, "main", child["files"])
             _save_cog_coglet_meta(fs, cog_name, child_name, child_meta)
 
-            # Register as a process
-            child_mode = ProcessMode(child["mode"])
-            cp = Process(
-                name=coglet_proc_name,
-                mode=child_mode,
-                content=child["files"].get(child["entrypoint"], ""),
-                runner=child.get("runner", "lambda"),
-                executor=child.get("executor", "llm"),
-                model=child.get("model"),
-                priority=float(child.get("priority", 0.0)),
-                status=ProcessStatus.WAITING if child_mode == ProcessMode.DAEMON else ProcessStatus.RUNNABLE,
-                parent_process=pid,
-                idle_timeout_ms=child.get("idle_timeout_ms"),
-            )
-            child_pid = repo.upsert_process(cp)
+            manifest_entry["children"].append({
+                "name": coglet_proc_name,
+                "cog_name": cog_name,
+                "mode": child["mode"],
+                "content_file": f"cogs/{cog_name}/coglets/{child_name}/main/{child['entrypoint']}",
+                "executor": child.get("executor", "llm"),
+                "model": child.get("model"),
+                "runner": child.get("runner", "lambda"),
+                "priority": float(child.get("priority", 0.0)),
+                "idle_timeout_ms": child.get("idle_timeout_ms"),
+                "capabilities": child.get("capabilities") or [],
+                "handlers": child.get("handlers") or [],
+            })
 
-            for cap_entry in child.get("capabilities") or []:
-                if isinstance(cap_entry, dict):
-                    cap_name = cap_entry["name"]
-                    cap_config = cap_entry.get("config")
-                    cap_alias = cap_entry.get("alias", cap_name)
-                else:
-                    cap_name = cap_entry
-                    cap_config = None
-                    cap_alias = cap_name
-                cap = repo.get_capability_by_name(cap_name)
-                if cap:
-                    pc = ProcessCapability(
-                        process=child_pid, capability=cap.id,
-                        name=cap_alias, config=cap_config,
-                    )
-                    repo.create_process_capability(pc)
-
-            for ch_name in child.get("handlers") or []:
-                ch = repo.get_channel_by_name(ch_name)
-                if ch is None:
-                    ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
-                    repo.upsert_channel(ch)
-                    ch = repo.get_channel_by_name(ch_name)
-                h = Handler(process=child_pid, channel=ch.id, enabled=True)
-                repo.create_handler(h)
-
+        boot_manifest.append(manifest_entry)
         counts["cogs"] += 1
+
+    fs.upsert("_boot/cog_processes.json", json.dumps(boot_manifest, indent=2))
 
     # 10. Disable stale top-level processes not in this image
     image_process_names = {p["name"] for p in spec.processes} | cog_process_names

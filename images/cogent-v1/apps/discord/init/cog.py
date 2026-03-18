@@ -22,7 +22,7 @@ cog.make_default_coglet(
     files={"main.py": _read("discord.py"), "main.md": _read("discord.md")},
     capabilities=[
         "me", "procs", "dir", "file", "discord", "channels",
-        "stdlib", "cog", "coglet_runtime", "image", "blob", "secrets",
+        "stdlib", "cog", "coglet_runtime", "image", "blob", "secrets", "web",
         {"name": "dir", "alias": "data", "config": {"prefix": "data/discord/"}},
     ],
     handlers=[

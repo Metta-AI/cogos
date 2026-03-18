@@ -7,25 +7,6 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.coglet import (
-    CogletMeta,
-    LogEntry,
-    PatchInfo,
-    TestResult,
-    apply_diff,
-    delete_file_tree,
-    read_file_tree,
-    run_tests,
-    write_file_tree,
-)
-from cogos.capabilities.coglet_factory import (
-    CogletError,
-    CogletInfo,
-    CogletFactoryCapability,
-    DeleteResult,
-    _load_meta,
-    _save_meta,
-)
 from cogos.capabilities.coglet import (
     CogletCapability,
     CogletStatus,
@@ -35,9 +16,26 @@ from cogos.capabilities.coglet import (
     PatchSummary,
     TestResultInfo,
 )
+from cogos.capabilities.coglet_factory import (
+    CogletError,
+    CogletFactoryCapability,
+    CogletInfo,
+    DeleteResult,
+    _load_meta,
+    _save_meta,
+)
+from cogos.coglet import (
+    CogletMeta,
+    LogEntry,
+    PatchInfo,
+    apply_diff,
+    delete_file_tree,
+    read_file_tree,
+    run_tests,
+    write_file_tree,
+)
 from cogos.db.local_repository import LocalRepository
 from cogos.files.store import FileStore
-
 
 # ---------------------------------------------------------------------------
 # Model tests
@@ -744,8 +742,8 @@ class TestCapabilityRegistration:
 
     def test_coglet_capability_registered_and_bound(self, tmp_path):
         """Register a coglets capability and bind it to a process via the image system."""
-        from cogos.image.spec import ImageSpec
         from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
         spec = ImageSpec(
@@ -820,9 +818,9 @@ class TestCogletE2E:
         4. Merge patch
         5. Verify main updated, version bumped, tests pass
         """
-        from cogos.image.spec import ImageSpec
-        from cogos.image.apply import apply_image
         from cogos.coglet import read_file_tree
+        from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
 
@@ -917,8 +915,8 @@ class TestCogletE2E:
 
     def test_image_coglet_idempotent_update(self, tmp_path):
         """Applying image twice with same coglet name updates rather than duplicates."""
-        from cogos.image.spec import ImageSpec
         from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
 
@@ -997,8 +995,8 @@ class TestCogletMetaRuntimeFields:
 class TestApplyImageCogletRuntimeFields:
     def test_apply_image_coglet_preserves_runtime_fields(self, tmp_path):
         """Create coglet via image spec, verify meta has runtime fields."""
-        from cogos.image.spec import ImageSpec
         from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
         spec = ImageSpec(coglets=[{
@@ -1032,8 +1030,8 @@ class TestApplyImageCogletRuntimeFields:
 class TestCogletRun:
     def _setup_executable_coglet(self, tmp_path):
         """Create a repo with procs capability registered and an executable coglet."""
-        from cogos.image.spec import ImageSpec
         from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
         # Register procs capability via image
@@ -1064,13 +1062,14 @@ class TestCogletRun:
 
     def test_coglet_run_returns_process_handle(self, tmp_path):
         """Create executable coglet, call run(), verify ProcessHandle returned."""
-        from cogos.capabilities.procs import ProcsCapability
         from cogos.capabilities.process_handle import ProcessHandle
+        from cogos.capabilities.procs import ProcsCapability
 
         repo, coglet_id = self._setup_executable_coglet(tmp_path)
 
         # Create a parent process that holds the procs capability
-        from cogos.db.models import Process, ProcessMode, ProcessStatus, ProcessCapability as PCModel
+        from cogos.db.models import Process, ProcessMode, ProcessStatus
+        from cogos.db.models import ProcessCapability as PCModel
         parent = Process(
             name="parent",
             mode=ProcessMode.ONE_SHOT,
@@ -1125,10 +1124,11 @@ class TestCogletRun:
 
 class TestRecruiterCoglets:
     def test_recruiter_cog_created_on_image_apply(self, tmp_path):
-        from cogos.image.spec import load_image
-        from cogos.image.apply import apply_image
-        from cogos.cog import load_cog_meta, load_coglet_meta
         from pathlib import Path
+
+        from cogos.cog import load_cog_meta, load_coglet_meta
+        from cogos.image.apply import apply_image
+        from cogos.image.spec import load_image
 
         repo = LocalRepository(str(tmp_path))
         image_dir = Path(__file__).resolve().parents[2] / "images" / "cogent-v1"
@@ -1148,7 +1148,8 @@ class TestRecruiterCoglets:
         assert coglet_meta.entrypoint == "recruiter.py"
         assert coglet_meta.mode == "daemon"
 
-        # Process should be registered
-        procs = repo.list_processes(limit=100)
-        proc = next((p for p in procs if p.name == "recruiter"), None)
-        assert proc is not None
+        # Process creation is deferred to init.py — verify boot manifest
+        raw = store.get_content("_boot/cog_processes.json")
+        manifest = json.loads(raw)
+        entry = next((e for e in manifest if e["name"] == "recruiter"), None)
+        assert entry is not None

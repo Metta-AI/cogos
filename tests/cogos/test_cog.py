@@ -7,26 +7,21 @@ from uuid import uuid4
 
 import pytest
 
+from cogos.capabilities.cog import CogCapability
+from cogos.capabilities.coglet_runtime import CogletRun, CogletRuntimeCapability
 from cogos.cog import (
     Coglet,
     CogletError,
     CogletStatus,
-    CogMeta,
     MergeResult,
     PatchResult,
     TestResultInfo,
     load_cog_meta,
     load_coglet_meta,
     read_file_tree,
-    save_cog_meta,
-    write_file_tree,
 )
-from cogos.coglet import CogletMeta
-from cogos.capabilities.cog import CogCapability
-from cogos.capabilities.coglet_runtime import CogletRun, CogletRuntimeCapability
 from cogos.db.local_repository import LocalRepository
 from cogos.files.store import FileStore
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -196,8 +191,8 @@ class TestCogletPatchWorkflow:
 class TestCogletRuntime:
     def _setup(self, tmp_path):
         """Create a repo with procs capability, a cog, and an executable coglet."""
-        from cogos.image.spec import ImageSpec
         from cogos.image.apply import apply_image
+        from cogos.image.spec import ImageSpec
 
         repo = LocalRepository(str(tmp_path))
         spec = ImageSpec(capabilities=[
@@ -215,9 +210,10 @@ class TestCogletRuntime:
         return repo, coglet
 
     def test_run_returns_coglet_run(self, tmp_path):
-        from cogos.capabilities.procs import ProcsCapability
         from cogos.capabilities.process_handle import ProcessHandle
-        from cogos.db.models import Process, ProcessMode, ProcessStatus, ProcessCapability as PCModel
+        from cogos.capabilities.procs import ProcsCapability
+        from cogos.db.models import Process, ProcessMode, ProcessStatus
+        from cogos.db.models import ProcessCapability as PCModel
 
         repo, coglet = self._setup(tmp_path)
 
@@ -261,16 +257,20 @@ class TestAddCog:
         assert "recruiter" in cog_names
         assert "newsfromthefront" in cog_names
 
-    def test_cog_apply_creates_process(self, tmp_path):
-        from cogos.image.spec import load_image
+    def test_cog_apply_writes_boot_manifest(self, tmp_path):
+        import json
+
+        from cogos.files.store import FileStore
         from cogos.image.apply import apply_image
+        from cogos.image.spec import load_image
 
         repo = LocalRepository(str(tmp_path))
         spec = load_image(Path("images/cogent-v1"))
         apply_image(spec, repo)
 
-        # Both cogs should have auto-started processes
-        procs = repo.list_processes(limit=100)
-        proc_names = {p.name for p in procs}
-        assert "recruiter" in proc_names
-        assert "newsfromthefront" in proc_names
+        fs = FileStore(repo)
+        raw = fs.get_content("_boot/cog_processes.json")
+        manifest = json.loads(raw)
+        names = {e["name"] for e in manifest}
+        assert "recruiter" in names
+        assert "newsfromthefront" in names
