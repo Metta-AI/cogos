@@ -14,8 +14,9 @@ import pytest
 from cogos.capabilities.cog_registry import CogRegistryCapability
 from cogos.capabilities.coglet_runtime import CogletRuntimeCapability
 from cogos.capabilities.procs import ProcsCapability
-from cogos.cog.runtime import CogletRuntime, CogManifest, CogletManifest
-from cogos.cog.cog import Cog, CogConfig
+from cogos.cog.runtime import CogManifest, CogletManifest
+from cogos.cog.cog import CogConfig
+from cogos.files.store import FileStore
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import (
     Channel,
@@ -40,23 +41,14 @@ def repo(tmp_path):
 
 
 @pytest.fixture
-def worker_cog_dir(tmp_path):
-    """Create a minimal worker cog directory."""
-    worker_dir = tmp_path / "image" / "cogos" / "worker"
-    worker_dir.mkdir(parents=True)
-
-    (worker_dir / "cog.py").write_text(
-        "from cogos.cog.cog import CogConfig\n"
-        "config = CogConfig(mode='one_shot', capabilities=['channels'])\n"
-    )
-
-    (worker_dir / "main.md").write_text(
+def worker_cog_files(repo):
+    """Populate worker cog files in FileStore (same as image boot does)."""
+    fs = FileStore(repo)
+    fs.create("cogos/worker/main.md",
         "# Worker\n\n"
         "You are a worker. Complete the task below.\n"
     )
-
-    (worker_dir / "make_coglet.py").write_text(
-        "from pathlib import Path\n"
+    fs.create("cogos/worker/make_coglet.py",
         "from cogos.cog.cog import CogConfig\n"
         "from cogos.cog.runtime import CogletManifest\n"
         "\n"
@@ -76,8 +68,7 @@ def worker_cog_dir(tmp_path):
         "        caps.append('github')\n"
         "    return manifest, caps\n"
     )
-
-    return tmp_path / "image"
+    return fs
 
 
 # ── Helper: create supervisor process ─────────────────────
@@ -117,7 +108,7 @@ def _setup_supervisor(repo):
 class TestSupervisorWorkerFlow:
     """Full escalation → supervisor → worker → completion flow."""
 
-    def test_full_flow(self, repo, worker_cog_dir):
+    def test_full_flow(self, repo, worker_cog_files):
         """A process escalates → supervisor wakes → creates worker → worker completes."""
         supervisor, help_channel = _setup_supervisor(repo)
 
@@ -149,10 +140,8 @@ class TestSupervisorWorkerFlow:
             assert process.name == "supervisor"
 
             # Supervisor loads worker cog and creates coglet
-            cog_registry = CogRegistryCapability(
-                repo, process.id, base_dir=worker_cog_dir / "cogos"
-            )
-            worker_cog = cog_registry.get_or_make_cog("worker")
+            cog_registry = CogRegistryCapability(repo, process.id)
+            worker_cog = cog_registry.get_or_make_cog("cogos/worker")
             coglet, required_caps = worker_cog.make_coglet(
                 "Create a github issue for bug #42\n"
                 "discord_channel_id: 123\n"
@@ -215,7 +204,7 @@ class TestSupervisorWorkerFlow:
         assert len(runs) == 1
         assert runs[0].status == RunStatus.COMPLETED
 
-    def test_supervisor_screens_threat(self, repo, worker_cog_dir):
+    def test_supervisor_screens_threat(self, repo, worker_cog_files):
         """Supervisor refuses a malicious request."""
         supervisor, help_channel = _setup_supervisor(repo)
 
@@ -262,9 +251,10 @@ class TestSupervisorWorkerFlow:
         sup = repo.get_process(supervisor.id)
         assert sup.status == ProcessStatus.WAITING
 
-    def test_make_coglet_includes_template(self, worker_cog_dir):
+    def test_make_coglet_includes_template(self, repo, worker_cog_files):
         """Worker cog's make_coglet includes the template and task."""
-        cog = Cog(worker_cog_dir / "cogos" / "worker")
+        cap = CogRegistryCapability(repo, uuid4())
+        cog = cap.get_or_make_cog("cogos/worker")
         coglet, caps = cog.make_coglet("Do something important")
 
         assert "Worker" in coglet.content  # From template
@@ -272,9 +262,10 @@ class TestSupervisorWorkerFlow:
         assert "Do something important" in coglet.content
         assert "channels" in caps
 
-    def test_make_coglet_detects_capabilities(self, worker_cog_dir):
+    def test_make_coglet_detects_capabilities(self, repo, worker_cog_files):
         """Worker cog's make_coglet picks capabilities from keywords."""
-        cog = Cog(worker_cog_dir / "cogos" / "worker")
+        cap = CogRegistryCapability(repo, uuid4())
+        cog = cap.get_or_make_cog("cogos/worker")
 
         _, caps1 = cog.make_coglet("Create a github pull request")
         assert "github" in caps1
@@ -283,7 +274,7 @@ class TestSupervisorWorkerFlow:
         assert "github" not in caps2
         assert "channels" in caps2  # Always included
 
-    def test_coglet_runtime_capability_runs_manifest(self, repo, worker_cog_dir):
+    def test_coglet_runtime_capability_runs_manifest(self, repo):
         """CogletRuntimeCapability.run accepts a CogletManifest and spawns it."""
         # Create a parent process
         parent = Process(
