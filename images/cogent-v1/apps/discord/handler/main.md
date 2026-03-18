@@ -80,40 +80,27 @@ elif not is_dm and not is_mention:
         wl.write(json.dumps(waterline))
         print("SKIP: channel message not addressed to me")
     else:
-        # Mentions us — proceed. Backfill from Discord API if log empty.
-        log_handle = data.get(f"{conv_key}/recent.log")
-        log_data = log_handle.read()
-        if hasattr(log_data, 'error') or not log_data.content.strip():
-            history_msgs = discord.history(channel_id=channel_id, limit=50)
-            if isinstance(history_msgs, list) and history_msgs:
-                lines = []
-                for msg in history_msgs:
-                    lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
-                history = "\n".join(lines)
-                log_handle.write(history)
-            else:
-                history = ""
-        else:
-            history = log_data.content
-        print(f"HISTORY:\n{history}")
-        print(f"\nNEW: {author}: {content}")
-else:
-    # DM or @mention — always respond. Backfill from Discord API if log empty.
-    log_handle = data.get(f"{conv_key}/recent.log")
-    log_data = log_handle.read()
-    if hasattr(log_data, 'error') or not log_data.content.strip():
-        # No local log — backfill from Discord API
+        # Mentions us — proceed. Fetch conversation history from Discord API.
         history_msgs = discord.history(channel_id=channel_id, limit=50)
         if isinstance(history_msgs, list) and history_msgs:
             lines = []
             for msg in history_msgs:
                 lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
             history = "\n".join(lines)
-            log_handle.write(history)
         else:
             history = ""
+        print(f"HISTORY:\n{history}")
+        print(f"\nNEW: {author}: {content}")
+else:
+    # DM or @mention — always respond. Fetch conversation history from Discord API.
+    history_msgs = discord.history(channel_id=channel_id, limit=50)
+    if isinstance(history_msgs, list) and history_msgs:
+        lines = []
+        for msg in history_msgs:
+            lines.append(msg.get("author", "?") + ": " + msg.get("content", ""))
+        history = "\n".join(lines)
     else:
-        history = log_data.content
+        history = ""
     print(f"HISTORY:\n{history}")
     print(f"\nNEW: {author}: {content}")
 ```
@@ -142,10 +129,8 @@ reply = "your response here"
 #     "discord_author_id": author_id,
 # })
 
-# Update conversation log and waterline BEFORE sending to Discord.
+# Update waterline BEFORE sending to Discord.
 # This prevents double-sends if write() fails and the LLM retries.
-log_handle = data.get(f"{conv_key}/recent.log")
-log_handle.write(history + f"\n{author}: {content}\nassistant: {reply}")
 seen = waterline.get("seen", [])
 seen.append(message_id)
 waterline["seen"] = seen[-100:]
