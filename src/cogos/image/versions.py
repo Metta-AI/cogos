@@ -47,3 +47,45 @@ def resolve_versions(
         if key not in KNOWN_COMPONENTS:
             raise ValueError(f"Unknown component: {key}")
     return {**defaults, **overrides}
+
+
+class ArtifactMissing(Exception):
+    pass
+
+_ECR_COMPONENTS = {
+    "executor": "executor-{sha}",
+    "dashboard": "dashboard-{sha}",
+    "discord_bridge": "discord-bridge-{sha}",
+}
+
+_S3_COMPONENTS = {
+    "lambda": "lambda/{sha}/lambda.zip",
+    "dashboard_frontend": "dashboard/{sha}/frontend.tar.gz",
+}
+
+_SKIP_VERIFY = {"cogos"}
+
+
+def verify_artifacts(
+    components: dict[str, str],
+    *,
+    ecr_client,
+    s3_client,
+    artifacts_bucket: str,
+    ecr_repo: str = "cogent",
+) -> None:
+    for name, sha in components.items():
+        if sha == "local" or name in _SKIP_VERIFY:
+            continue
+        if name in _ECR_COMPONENTS:
+            tag = _ECR_COMPONENTS[name].format(sha=sha)
+            try:
+                ecr_client.describe_images(repositoryName=ecr_repo, imageIds=[{"imageTag": tag}])
+            except Exception:
+                raise ArtifactMissing(f"{name}: ECR image '{ecr_repo}:{tag}' not found")
+        if name in _S3_COMPONENTS:
+            key = _S3_COMPONENTS[name].format(sha=sha)
+            try:
+                s3_client.head_object(Bucket=artifacts_bucket, Key=key)
+            except Exception:
+                raise ArtifactMissing(f"{name}: S3 artifact 's3://{artifacts_bucket}/{key}' not found")

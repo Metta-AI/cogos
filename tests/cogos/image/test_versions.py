@@ -1,7 +1,8 @@
 """Tests for version manifest model and resolution."""
 import json
 import pytest
-from cogos.image.versions import VersionManifest, resolve_versions
+from unittest.mock import MagicMock
+from cogos.image.versions import VersionManifest, resolve_versions, verify_artifacts, ArtifactMissing
 
 
 def test_manifest_roundtrip():
@@ -47,3 +48,47 @@ def test_resolve_rejects_unknown_component():
     defaults = {"executor": "aaa"}
     with pytest.raises(ValueError, match="Unknown component"):
         resolve_versions(defaults, overrides={"bogus": "zzz"})
+
+
+def test_verify_all_present(tmp_path):
+    components = {"executor": "abc", "dashboard": "def", "dashboard_frontend": "ghi",
+                  "discord_bridge": "pqr", "lambda": "jkl", "cogos": "mno"}
+    ecr = MagicMock()
+    ecr.describe_images = MagicMock(return_value={})
+    s3 = MagicMock()
+    s3.head_object = MagicMock(return_value={})
+    verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+
+
+def test_verify_ecr_missing():
+    components = {"executor": "abc", "dashboard": "def", "dashboard_frontend": "ghi",
+                  "discord_bridge": "pqr", "lambda": "jkl", "cogos": "mno"}
+    ecr = MagicMock()
+    ecr.describe_images = MagicMock(side_effect=Exception("not found"))
+    s3 = MagicMock()
+    s3.head_object = MagicMock(return_value={})
+    with pytest.raises(ArtifactMissing, match="executor"):
+        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+
+
+def test_verify_s3_missing():
+    components = {"executor": "abc", "dashboard": "def", "dashboard_frontend": "ghi",
+                  "discord_bridge": "pqr", "lambda": "jkl", "cogos": "mno"}
+    ecr = MagicMock()
+    ecr.describe_images = MagicMock(return_value={})
+    s3 = MagicMock()
+
+    def _head(Bucket, Key):
+        if "lambda" in Key:
+            raise Exception("not found")
+        return {}
+
+    s3.head_object = MagicMock(side_effect=_head)
+    with pytest.raises(ArtifactMissing, match="lambda"):
+        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+
+
+def test_verify_skipped_for_local():
+    components = {"executor": "local", "dashboard": "local", "dashboard_frontend": "local",
+                  "discord_bridge": "local", "lambda": "local", "cogos": "local"}
+    verify_artifacts(components, ecr_client=None, s3_client=None, artifacts_bucket="test-bucket")
