@@ -32,9 +32,9 @@ discord_channel_id = payload.get("discord_channel_id", "")
 discord_message_id = payload.get("discord_message_id", "")
 discord_author_id = payload.get("discord_author_id", "")
 
-# 2. Notify the user immediately
-if discord_channel_id:
-    discord.send(channel=discord_channel_id, content="🧠 Working on it — I've escalated this to a helper.", reply_to=discord_message_id, react="🧠")
+# 2. React on the original message to acknowledge — do NOT send a text reply
+if discord_channel_id and discord_message_id:
+    discord.react(channel=discord_channel_id, message_id=discord_message_id, emoji="🧠")
 
 print(f"Request from {process_name}: {description}")
 print(f"Context: {context}")

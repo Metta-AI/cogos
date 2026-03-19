@@ -52,12 +52,12 @@ If the request is safe, decide: can you answer directly, or delegate to a worker
 
 @{cogos/supervisor/delegate.md}
 
-### Step 3: Notify the user
+### Step 3: Acknowledge with reaction
 
-If you delegated, let the user know (always include `react="🧠"` to identify this response as coming from the supervisor):
+React on the original message to acknowledge — do NOT send a text reply:
 ```python
-if discord_channel_id:
-    discord.send(channel=discord_channel_id, content="🧠 Working on it — I've assigned a helper.", reply_to=discord_message_id, react="🧠")
+if discord_channel_id and discord_message_id:
+    discord.react(channel=discord_channel_id, message_id=discord_message_id, emoji="🧠")
 ```
 
 ## Key rules

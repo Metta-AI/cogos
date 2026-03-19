@@ -123,27 +123,31 @@ def handler(event: dict, context) -> dict:
 
 
 def _recover_stuck_daemons(repo) -> None:
-    """Reset daemon processes stuck in RUNNING with no active run."""
+    """Reset processes stuck in RUNNING with no active run."""
     from cogos.db.models import ProcessMode, ProcessStatus, RunStatus
 
     running = repo.list_processes(status=ProcessStatus.RUNNING)
     for proc in running:
-        if proc.mode != ProcessMode.DAEMON:
-            continue
         runs = repo.list_runs(process_id=proc.id, limit=1)
         if not runs or runs[0].status != RunStatus.RUNNING:
-            repo.update_process_status(proc.id, ProcessStatus.WAITING)
-            logger.info("Recovered stuck daemon %s: running -> waiting", proc.name)
+            if proc.mode == ProcessMode.DAEMON:
+                next_status = ProcessStatus.WAITING
+            else:
+                # One-shot processes with no active run are dead — disable them
+                next_status = ProcessStatus.DISABLED
+            repo.update_process_status(proc.id, next_status)
+            alert_type = "scheduler:stuck_daemon" if proc.mode == ProcessMode.DAEMON else "scheduler:stuck_process"
+            logger.info("Recovered stuck %s %s: running -> %s", proc.mode.value, proc.name, next_status.value)
             try:
                 repo.create_alert(
                     severity="warning",
-                    alert_type="scheduler:stuck_daemon",
+                    alert_type=alert_type,
                     source="dispatcher",
-                    message=f"Recovered stuck daemon '{proc.name}': was running with no active run, reset to waiting",
+                    message=f"Recovered stuck {proc.mode.value} '{proc.name}': was running with no active run, set to {next_status.value}",
                     metadata={"process_id": str(proc.id), "process_name": proc.name},
                 )
             except Exception:
-                logger.debug("Could not create alert for stuck daemon %s", proc.name)
+                logger.debug("Could not create alert for stuck process %s", proc.name)
 
 
 def _wake_waiting_with_pending(repo) -> None:
