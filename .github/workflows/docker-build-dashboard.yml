@@ -42,7 +42,7 @@ jobs:
           npm ci
           npx next build
           mkdir -p /tmp/frontend-pkg
-          cp -r .next/standalone/* /tmp/frontend-pkg/
+          cp -a .next/standalone/. /tmp/frontend-pkg/
           [ -d .next/static ] && mkdir -p /tmp/frontend-pkg/.next && cp -r .next/static /tmp/frontend-pkg/.next/static
           [ -d public ] && cp -r public /tmp/frontend-pkg/public
           tar czf /tmp/frontend.tar.gz -C /tmp/frontend-pkg .
