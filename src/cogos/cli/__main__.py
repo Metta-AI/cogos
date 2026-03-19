@@ -17,11 +17,10 @@ _bedrock_session = None
 
 
 def _ensure_db_env(cogent_name: str) -> None:
-    """Set DB env vars from CloudFormation stack outputs in the polis account."""
+    """Set DB env vars from the shared polis Aurora cluster."""
     if os.environ.get("USE_LOCAL_DB") == "1":
         return
 
-    # Freeze original credentials before switching to polis
     global _bedrock_session
     import boto3
     orig = boto3.Session()
@@ -34,10 +33,8 @@ def _ensure_db_env(cogent_name: str) -> None:
             aws_session_token=frozen.token,
         )
 
+    from polis import naming
     from polis.aws import get_polis_session, set_org_profile
-
-    safe_name = cogent_name.replace(".", "-")
-    stack_name = f"cogent-{safe_name}-cogtainer"
 
     try:
         set_org_profile()
@@ -48,24 +45,19 @@ def _ensure_db_env(cogent_name: str) -> None:
     cf = session.client("cloudformation", region_name="us-east-1")
 
     try:
-        resp = cf.describe_stacks(StackName=stack_name)
+        resp = cf.describe_stacks(StackName=naming.polis_stack_name())
     except Exception:
         return
     outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
 
-    if "ClusterArn" in outputs:
-        os.environ.setdefault("DB_RESOURCE_ARN", outputs["ClusterArn"])
-        os.environ.setdefault("DB_CLUSTER_ARN", outputs["ClusterArn"])
-    if "SecretArn" in outputs:
-        os.environ.setdefault("DB_SECRET_ARN", outputs["SecretArn"])
-    else:
-        resources = cf.list_stack_resources(StackName=stack_name)
-        for r in resources.get("StackResourceSummaries", []):
-            if "Secret" in r["LogicalResourceId"] and "Attachment" not in r["LogicalResourceId"]:
-                if r["PhysicalResourceId"].startswith("arn:aws:secretsmanager:"):
-                    os.environ.setdefault("DB_SECRET_ARN", r["PhysicalResourceId"])
-                    break
-    os.environ.setdefault("DB_NAME", "cogent")
+    if "SharedDbClusterArn" in outputs:
+        os.environ.setdefault("DB_RESOURCE_ARN", outputs["SharedDbClusterArn"])
+        os.environ.setdefault("DB_CLUSTER_ARN", outputs["SharedDbClusterArn"])
+    if "SharedDbSecretArn" in outputs:
+        os.environ.setdefault("DB_SECRET_ARN", outputs["SharedDbSecretArn"])
+
+    safe_name = cogent_name.replace(".", "-").replace("-", "_")
+    os.environ.setdefault("DB_NAME", f"cogent_{safe_name}")
 
     creds = session.get_credentials().get_frozen_credentials()
     os.environ["AWS_ACCESS_KEY_ID"] = creds.access_key

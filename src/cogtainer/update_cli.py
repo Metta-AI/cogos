@@ -83,7 +83,7 @@ def _get_session(profile: str | None = None) -> boto3.Session:
 
 
 def _ensure_db_env(name: str, profile: str | None = None) -> None:
-    """Ensure DB_CLUSTER_ARN and DB_SECRET_ARN are set from CloudFormation stack in polis."""
+    """Ensure DB_CLUSTER_ARN and DB_SECRET_ARN are set from the shared polis Aurora cluster."""
     if os.environ.get("DB_CLUSTER_ARN") and os.environ.get("DB_SECRET_ARN"):
         return
 
@@ -92,28 +92,19 @@ def _ensure_db_env(name: str, profile: str | None = None) -> None:
     set_org_profile(profile)
     session, _ = get_polis_session()
 
-    safe_name = name.replace(".", "-")
-    stack_name = f"cogent-{safe_name}-cogtainer"
     cf = session.client("cloudformation", region_name=DEFAULT_REGION)
 
-    resp = cf.describe_stacks(StackName=stack_name)
+    resp = cf.describe_stacks(StackName=naming.polis_stack_name())
     outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
 
-    if "ClusterArn" in outputs:
-        os.environ["DB_CLUSTER_ARN"] = outputs["ClusterArn"]
-    if "SecretArn" in outputs:
-        os.environ["DB_SECRET_ARN"] = outputs["SecretArn"]
+    if "SharedDbClusterArn" in outputs:
+        os.environ["DB_CLUSTER_ARN"] = outputs["SharedDbClusterArn"]
+    if "SharedDbSecretArn" in outputs:
+        os.environ["DB_SECRET_ARN"] = outputs["SharedDbSecretArn"]
 
-    # SecretArn may not be a stack output yet — look it up from resources
-    if not os.environ.get("DB_SECRET_ARN"):
-        resources = cf.list_stack_resources(StackName=stack_name)
-        for r in resources.get("StackResourceSummaries", []):
-            if "Secret" in r["LogicalResourceId"] and "Attachment" not in r["LogicalResourceId"]:
-                if r["PhysicalResourceId"].startswith("arn:aws:secretsmanager:"):
-                    os.environ["DB_SECRET_ARN"] = r["PhysicalResourceId"]
-                    break
+    safe_name = name.replace(".", "-").replace("-", "_")
+    os.environ.setdefault("DB_NAME", f"cogent_{safe_name}")
 
-    # Export polis credentials so Repository's boto3 client can access RDS Data API
     creds = session.get_credentials().get_frozen_credentials()
     os.environ["AWS_ACCESS_KEY_ID"] = creds.access_key
     os.environ["AWS_SECRET_ACCESS_KEY"] = creds.secret_key

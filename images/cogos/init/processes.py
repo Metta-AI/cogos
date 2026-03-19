@@ -4,7 +4,7 @@
 add_process(
     "init",
     mode="daemon",
-    content="@{cogos/init.py}",
+    content="@{mnt/boot/cogos/init.py}",
     executor="python",
     runner="lambda",
     priority=100.0,
