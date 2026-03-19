@@ -1,6 +1,6 @@
-Create a Graphite PR with auto-merge, test, and announce to Discord #cogents.
+Create a Graphite PR with auto-merge, wait for it to land, and announce to Discord #cogents.
 
-**Announce at start:** "Submitting via Graphite: sync → branch → test → submit → announce"
+**Announce at start:** "Submitting via Graphite: sync → branch → test → submit → await merge → announce"
 
 ## Steps
 
@@ -14,11 +14,15 @@ Create a Graphite PR with auto-merge, test, and announce to Discord #cogents.
    - If tests fail, stop and show the failures. Do NOT submit broken code. Ask the user how to proceed.
 5. Run `gt submit -m` to push the branch and create a PR with auto-merge enabled
    - If submit fails, check `gt status` and resolve issues
-6. Build a short summary of what was submitted:
-   - Use `gt log` or `git log main..HEAD --oneline` to list the commits in the PR
-   - Include the PR URL from the `gt submit` output
+6. **Wait for the PR to merge.** Poll with `gh pr view <number> --json state,mergeStateStatus,mergeable,statusCheckRollup` every 30 seconds.
+   - If CI checks fail: read the failing check logs with `gh run view`, diagnose the issue, fix it, commit, and `gt submit -m` again
+   - If there are merge conflicts: rebase onto main (`gt sync -f`, resolve conflicts, `gt submit -m`)
+   - If the PR is stuck (not progressing after 5 minutes), investigate and report to the user
+   - Once `state` is `MERGED`, continue to the next step
+7. Run `gt sync -f` to pull the merged changes back to local main
+8. Build a short summary of what was merged:
    - Write a 1-3 sentence human-readable summary of the changes
-7. Post the summary to Discord #cogents using the webhook:
+9. Post the summary to Discord #cogents using the webhook:
    ```bash
    WEBHOOK_URL=$(aws secretsmanager get-secret-value --secret-id "discord/channel-webhook/cogents" --query SecretString --output text --profile softmax)
    curl -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" \
@@ -28,4 +32,4 @@ Create a Graphite PR with auto-merge, test, and announce to Discord #cogents.
    - Include the PR as a markdown hyperlink: `[PR #123](<https://github.com/...>)` — angle brackets suppress Discord's embed preview
    - If the work is tied to an Asana task, include it as a hyperlink too: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
    - If the webhook secret doesn't exist, try `discord/agent-webhook-url` as fallback
-8. Print the summary locally so the user can see what was announced
+10. Print the summary locally so the user can see what was announced
