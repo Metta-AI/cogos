@@ -572,7 +572,9 @@ class PolisStack(cdk.Stack):
         self.status_table.grant_read_data(task_def.task_role)
 
         # IAM: RDS Data API on *
-        task_def.task_role.add_to_policy(
+        role = task_def.task_role
+        assert isinstance(role, iam.Role)
+        role.add_to_policy(
             iam.PolicyStatement(
                 actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
                 resources=["*"],
@@ -580,7 +582,7 @@ class PolisStack(cdk.Stack):
         )
 
         # IAM: Secrets Manager GetSecretValue on *
-        task_def.task_role.add_to_policy(
+        role.add_to_policy(
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
                 resources=["*"],

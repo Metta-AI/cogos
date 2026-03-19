@@ -18,10 +18,11 @@ def _load_deploy_config() -> dict[str, Any]:
         return _config_cache
     if _CONFIG_PATH.is_file():
         with open(_CONFIG_PATH) as f:
-            _config_cache = yaml.safe_load(f) or {}
+            result: dict[str, Any] = yaml.safe_load(f) or {}
     else:
-        _config_cache = {}
-    return _config_cache
+        result = {}
+    _config_cache = result
+    return result
 
 
 def deploy_config(key: str, default: str) -> str:

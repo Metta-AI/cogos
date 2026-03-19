@@ -140,7 +140,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         )
 
     # Persona config step
-    if has_persona:
+    if has_persona and persona_data is not None:
         persona_detail = f"Display name: {persona_data.get('display_name', name)}"
         if persona_data.get("default_channels"):
             persona_detail += f", default channels: {', '.join(persona_data['default_channels'])}"
