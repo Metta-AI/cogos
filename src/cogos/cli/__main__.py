@@ -36,6 +36,9 @@ def _ensure_db_env(cogent_name: str) -> None:
     from polis import naming
     from polis.aws import get_polis_session, set_org_profile
 
+    safe_name = cogent_name.replace(".", "-")
+    db_name = f"cogent_{safe_name.replace('-', '_')}"
+
     try:
         set_org_profile()
         session, _ = get_polis_session()
@@ -55,9 +58,7 @@ def _ensure_db_env(cogent_name: str) -> None:
         os.environ.setdefault("DB_CLUSTER_ARN", outputs["SharedDbClusterArn"])
     if "SharedDbSecretArn" in outputs:
         os.environ.setdefault("DB_SECRET_ARN", outputs["SharedDbSecretArn"])
-
-    safe_name = cogent_name.replace(".", "-").replace("-", "_")
-    os.environ.setdefault("DB_NAME", f"cogent_{safe_name}")
+    os.environ.setdefault("DB_NAME", db_name)
 
     creds = session.get_credentials().get_frozen_credentials()
     os.environ["AWS_ACCESS_KEY_ID"] = creds.access_key
