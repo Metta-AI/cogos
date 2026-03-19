@@ -118,6 +118,7 @@ _SAFE_BUILTINS: dict[str, Any] = {
     "KeyError": KeyError,
     "IndexError": IndexError,
     "AttributeError": AttributeError,
+    "NameError": NameError,
     "RuntimeError": RuntimeError,
     "StopIteration": StopIteration,
     "NotImplementedError": NotImplementedError,
@@ -184,6 +185,7 @@ class SandboxExecutor:
         self.vt = variable_table
         self._scope_log: list[dict] = []
         self._user_state: dict[str, Any] = {}
+        self.error: str | None = None
 
     @property
     def scope_log(self) -> list[dict]:
@@ -202,7 +204,10 @@ class SandboxExecutor:
         namespace.update(self._user_state)
 
         # Re-inject capability proxies (always override user state)
-        namespace.update(self.vt.as_dict())
+        # Filter out capabilities whose names collide with safe builtins
+        for k, v in self.vt.as_dict().items():
+            if k not in _SAFE_BUILTINS:
+                namespace[k] = v
 
         stdout_buf = io.StringIO()
         stderr_buf = io.StringIO()
@@ -215,6 +220,7 @@ class SandboxExecutor:
         except Exception:
             error = traceback.format_exc()
             stderr_buf.write(error)
+            self.error = error
 
         # Persist user-defined variables for the next call.
         # Exclude builtins, capability proxies, and internal keys.

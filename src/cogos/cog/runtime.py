@@ -29,6 +29,10 @@ class CogletManifest:
     content: str
     entrypoint: str
 
+    def short_name(self) -> str:
+        """Return a compact name suitable for use as a process name prefix."""
+        return self.name
+
 
 @dataclass
 class CogManifest:

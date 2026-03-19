@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import random
+import string
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +12,12 @@ from cogos.capabilities.base import Capability
 from cogos.cog.runtime import CogletManifest
 
 logger = logging.getLogger(__name__)
+
+
+def _unique_name(coglet: CogletManifest) -> str:
+    """Return coglet short_name with a random 5-char suffix."""
+    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
+    return f"{coglet.short_name()}-{suffix}"
 
 
 class CogletRuntimeCapability(Capability):
@@ -50,7 +58,7 @@ class CogletRuntimeCapability(Capability):
         caps = dict(capabilities) if capabilities else {}
 
         return procs.spawn(
-            name=coglet.name,
+            name=_unique_name(coglet),
             content=coglet.content,
             mode=coglet.config.mode,
             priority=coglet.config.priority,

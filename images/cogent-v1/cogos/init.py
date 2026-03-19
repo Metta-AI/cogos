@@ -118,7 +118,8 @@ def _spawn_cog(manifest):
         detached=True,
     )
     if hasattr(r, 'error'):
-        print("WARN: spawn " + cog_name + " failed: " + str(r.error))
+        print("ERROR: spawn " + cog_name + " failed: " + str(r.error))
+        alerts.error("boot:spawn_failed", "Failed to spawn cog '" + cog_name + "': " + str(r.error))
         return None
     return r
 

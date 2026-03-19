@@ -132,6 +132,22 @@ def run_and_complete(
             "error": str(e)[:1000],
         })
 
+        try:
+            repo.create_alert(
+                severity="warning",
+                alert_type="process:run:failed",
+                source="local_executor",
+                message=f"Run failed for '{process.name}': {str(e)[:500]}",
+                metadata={
+                    "process_id": str(process.id),
+                    "process_name": process.name,
+                    "run_id": str(run.id),
+                    "duration_ms": duration_ms,
+                },
+            )
+        except Exception:
+            logger.debug("Could not create alert for failed run %s", run.id)
+
         from cogos.executor.handler import _notify_parent_on_exit
         _notify_parent_on_exit(repo, process, run, exit_code=1, duration_ms=duration_ms, error=str(e))
 

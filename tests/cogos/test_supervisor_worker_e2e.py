@@ -307,7 +307,9 @@ class TestSupervisorWorkerFlow:
         result = runtime_cap.run(manifest, procs, capabilities={})
 
         assert hasattr(result, "id")
-        worker = repo.get_process_by_name("test-worker")
+        worker = repo.get_process(result._process.id)
         assert worker is not None
+        assert worker.name.startswith("test-worker-")
+        assert len(worker.name) == len("test-worker-") + 5  # 5-char suffix
         assert worker.status == ProcessStatus.RUNNABLE
         assert "Test worker" in worker.content

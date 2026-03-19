@@ -195,7 +195,7 @@ class LLMClient:
         return self._converse_bedrock_primary(**kwargs)
 
     # Bedrock error codes that should trigger Anthropic fallback.
-    _FALLBACK_ERROR_CODES = {"ThrottlingException", "ValidationException", "ServiceUnavailableException"}
+    _FALLBACK_ERROR_CODES = {"ThrottlingException", "ValidationException", "ServiceUnavailableException", "ResourceNotFoundException"}
 
     def _converse_bedrock_primary(self, **kwargs: Any) -> dict:
         """Bedrock primary, Anthropic fallback on throttling or validation errors."""

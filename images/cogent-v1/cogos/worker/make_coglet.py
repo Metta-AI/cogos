@@ -1,9 +1,19 @@
 """Factory for creating worker coglets from a task description."""
 
+import re
 from pathlib import Path
 
 from cogos.cog.cog import CogConfig
 from cogos.cog.runtime import CogletManifest
+
+
+def _slugify(reason: str, max_words: int = 5) -> str:
+    """Turn a task description into a short kebab-case slug."""
+    # Strip markdown, punctuation, and extra whitespace
+    text = re.sub(r"[^a-zA-Z0-9\s]", " ", reason.split("\n")[0])
+    words = text.lower().split()[:max_words]
+    slug = "-".join(words) if words else "task"
+    return f"worker-{slug}"
 
 
 def make_coglet(reason: str, cog_dir: Path = None):
@@ -26,7 +36,7 @@ def make_coglet(reason: str, cog_dir: Path = None):
     content = template + "\n\n## Task\n\n" + reason
 
     manifest = CogletManifest(
-        name="worker-task",
+        name=_slugify(reason),
         config=cog_config,
         content=content,
         entrypoint="main.md",

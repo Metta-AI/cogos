@@ -500,6 +500,24 @@ def _execute_python_process(
     run.tokens_out = 0
     run.scope_log = sandbox.scope_log
     _extract_web_response(vt, event_data)
+
+    # Detect sandbox crash and create alert so failures aren't silent
+    if sandbox.error:
+        try:
+            repo.create_alert(
+                severity="critical",
+                alert_type="process:sandbox_crash",
+                source="executor",
+                message=f"Python sandbox crashed for '{process.name}': {sandbox.error[:500]}",
+                metadata={
+                    "process_id": str(process.id),
+                    "process_name": process.name,
+                    "run_id": str(run.id),
+                },
+            )
+        except Exception:
+            logger.debug("Could not create sandbox crash alert for %s", process.name)
+
     return run
 
 
