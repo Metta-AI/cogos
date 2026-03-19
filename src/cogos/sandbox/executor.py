@@ -26,6 +26,22 @@ def _sandbox_exit():
     raise _SandboxExit()
 
 
+_ALLOWED_MODULES = frozenset({
+    "math", "random", "re", "datetime", "time", "collections", "itertools",
+    "functools", "operator", "string", "textwrap", "decimal", "fractions",
+    "statistics", "hashlib", "hmac", "base64", "copy", "pprint",
+    "dataclasses", "enum", "typing", "uuid", "urllib.parse",
+})
+
+
+def _safe_import(name: str, globals=None, locals=None, fromlist=(), level=0):
+    """Import that only allows a curated set of stdlib modules."""
+    top = name.split(".")[0]
+    if top not in _ALLOWED_MODULES and name not in _ALLOWED_MODULES:
+        raise ImportError(f"Module '{name}' is not available in the sandbox. Allowed: {sorted(_ALLOWED_MODULES)}")
+    return __import__(name, globals, locals, fromlist, level)
+
+
 def _safe_getattr(obj, name, *default):
     """getattr that blocks dunder attribute access from sandbox code."""
     if isinstance(name, str) and name.startswith("__") and name.endswith("__"):
@@ -56,6 +72,8 @@ def _safe_help(obj=None):
 _SAFE_BUILTINS: dict[str, Any] = {
     # Control flow
     "exit": _sandbox_exit,
+    # Import (curated stdlib only)
+    "__import__": _safe_import,
     # Output
     "print": print,
     "repr": repr,

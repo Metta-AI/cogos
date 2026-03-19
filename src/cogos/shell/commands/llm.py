@@ -92,7 +92,7 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
     proc_name = f"shell-{ts}"
 
     # Prepend the shell system prompt (includes code_mode, files, channels, procs docs)
-    shell_prompt = "@{cogos/includes/shell.md}\n\n"
+    shell_prompt = "@{mnt/boot/cogos/includes/shell.md}\n\n"
     full_content = shell_prompt + content
 
     process = Process(
@@ -443,7 +443,7 @@ def register(reg: CommandRegistry) -> None:
             name = key.rsplit("/", 1)[-1].rsplit(".", 1)[0]
 
         # Prepend shell system prompt
-        full_content = "@{cogos/includes/shell.md}\n\n" + content
+        full_content = "@{mnt/boot/cogos/includes/shell.md}\n\n" + content
 
         proc = Process(
             name=name,
