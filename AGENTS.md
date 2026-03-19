@@ -62,11 +62,12 @@ polis cogents list               # All cogents with CPU/memory/channels
 
 ## AWS Infrastructure
 
-- **Organization**: o-n7g18rzou1
-- **Polis account**: 901289084804 (us-east-1)
-- **ECR**: 901289084804.dkr.ecr.us-east-1.amazonaws.com/cogent
-- **Domain**: (configured in `~/.cogos/config.yml`)
-- **Auth profile**: (configured in `~/.cogos/config.yml`)
+Polis infrastructure details (account IDs, ECR URL, domain, SSO profile) are configured in `~/.cogos/config.yml` with fallbacks in `src/polis/config.py`. Use the CLI to discover them:
+
+```bash
+polis status        # Show infrastructure details
+polis cogents list  # Show all cogent instances
+```
 
 ## Secret Path Conventions
 
@@ -153,7 +154,7 @@ cogent local cogos dashboard reload            # restart (stop + start)
 
 # Foreground (opens browser):
 cogent local dashboard serve --db local        # local JSON DB
-cogent <name> dashboard serve --db prod        # live polis DB
+cogent <name> dashboard serve --db prod          # live polis DB
 ```
 
 `cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.

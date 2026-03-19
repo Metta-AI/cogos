@@ -5,7 +5,7 @@ This is how your file store is organized. Use `dir.list(prefix)` to explore.
 ```
 whoami/                     Who you are
   index.md                    Identity, role, principles
-  softmax.md                  Company context
+  softmax.md                  Organization context
 
 cogos/                      CogOS system files
   docs/                       How CogOS works (you are here)

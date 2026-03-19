@@ -29,8 +29,8 @@ child = procs.spawn("worker", content="do the thing", capabilities={
 Capabilities are injected by grant name — a process can hold multiple grants of the same capability type with different scopes:
 
 ```
-email_me       → email scoped to ["daveey@gmail.com"]
-email_team     → email scoped to ["team@company.com"]
+email_me       → email scoped to ["me@example.com"]
+email_team     → email scoped to ["team@example.com"]
 workspace      → dir scoped to "/workspace/"
 audit_log      → file_version scoped to "/logs/audit", ops=["add"]
 ```

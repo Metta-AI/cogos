@@ -5,6 +5,7 @@ import click
 
 from cli.dashboard import dashboard
 from cli.local_dev import apply_local_checkout_env
+from polis.config import deploy_config
 
 # Known top-level commands — used to detect cogent name argument
 _COMMANDS = {"dashboard", "cogtainer", "memory", "run", "cogos", "status", "shell", "--help", "-h"}
@@ -31,7 +32,7 @@ def main(ctx: click.Context):
 
     \b
     Usage: cogent <name> <command> [options]
-    Example: cogent dr.alpha cogtainer create
+    Example: cogent my-cogent cogtainer create
     """
     ctx.ensure_object(dict)
     if "COGENT_ID" in os.environ:
@@ -79,7 +80,9 @@ def shell_cmd(ctx: click.Context):
     """Interactive CogOS shell."""
     from cogos.shell import CogentShell
 
-    cogent_name = ctx.obj.get("cogent_id", "dr.alpha")
+    cogent_name = ctx.obj.get("cogent_id") or deploy_config("default_cogent", "")
+    if not cogent_name:
+        raise click.UsageError("No cogent specified. Use: cogent <name> shell, set COGENT_ID, or set default_cogent in ~/.cogos/config.yml")
     CogentShell(cogent_name).run()
 
 

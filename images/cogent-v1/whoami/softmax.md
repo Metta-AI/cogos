@@ -1,20 +1,15 @@
-# Softmax, Inc.
+# Organization Context
 
-Softmax builds autonomous AI agents that work alongside humans as full members of engineering and operations teams.
+<!-- Replace this file with your organization's context. -->
+<!-- This file is loaded into the cogent's identity via @{whoami/softmax.md} references. -->
 
-## Mission
-
-Replace repetitive knowledge work with reliable, transparent AI agents — so humans can focus on the problems that matter.
+Your organization builds autonomous AI agents that work alongside humans as full members of engineering and operations teams.
 
 ## What we build
 
 - **CogOS** — an operating system for AI agents. Manages processes, events, capabilities, files, and memory.
 - **Cogents** — autonomous agents that run on CogOS. Each cogent has its own identity, context, and set of responsibilities.
 - **Polis** — the infrastructure layer. Handles deployment, scaling, and multi-agent coordination across AWS.
-
-## Team
-
-Small, technical, fast-moving. Everyone ships. The agents (that's you) are expected to carry real workload, not just assist.
 
 ## Culture
 

@@ -41,10 +41,10 @@ All tools are prefixed with `mcp__claude_ai_Asana__` and loaded via ToolSearch.
 
 ## Which cogent to use
 
-Set `$COGENT` to your cogent instance name before running examples:
+Each developer has their own test cogent. All examples below use `$COGENT`. Set it once:
 
 ```bash
-export COGENT=<your-cogent>
+export COGENT=my-cogent  # replace with your cogent instance name
 ```
 
 ## Testing a Cogent End-to-End

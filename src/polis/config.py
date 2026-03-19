@@ -100,7 +100,7 @@ def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
 class PolisConfig(BaseModel):
     name: str = Field(default_factory=lambda: deploy_config("polis_name", "softmax-polis"))
     organization: str = Field(default_factory=lambda: deploy_config("organization", "Softmax"))
-    owner: str = "daveey"
+    owner: str = Field(default_factory=lambda: deploy_config("owner", ""))
     domain: str = Field(default_factory=lambda: deploy_config("domain", "softmax-cogents.com"))
     cogents: dict[str, CogentMeta] = {}
     bedrock_quotas: list[ServiceQuotaTarget] = Field(default_factory=_default_bedrock_quotas)

@@ -1,6 +1,6 @@
 # Recruiter App Design
 
-A self-improving CogOS application that finds and profiles potential employees for Softmax, targeting people working on coding agents and orchestration frameworks.
+A self-improving CogOS application that finds and profiles potential employees, targeting people working on coding agents and orchestration frameworks.
 
 ## Process Architecture
 

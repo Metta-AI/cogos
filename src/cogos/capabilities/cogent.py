@@ -14,7 +14,7 @@ class CogentCapability(Capability):
     """Cogent identity — name and metadata.
 
     Usage:
-        cogent.name        # "dr.alpha"
+        cogent.name        # "my-cogent"
         cogent.profile()   # markdown string with identity fields
     """
 
@@ -24,7 +24,7 @@ class CogentCapability(Capability):
 
     @property
     def name(self) -> str:
-        """The cogent's name (e.g. 'dr.alpha')."""
+        """The cogent's name."""
         return self._name
 
     def profile(self) -> str:

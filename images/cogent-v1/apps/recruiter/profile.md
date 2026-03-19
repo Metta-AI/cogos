@@ -16,7 +16,7 @@ You receive the candidate handle via your spawn channel. Read their record from 
 Generate a self-contained HTML file (no external dependencies) that covers:
 
 - **Header**: Name, handles, one-line summary
-- **Why This Person**: 2-3 paragraphs on what makes them interesting for Softmax
+- **Why This Person**: 2-3 paragraphs on what makes them interesting for the team
 - **Technical Work**: Their most notable projects, with analysis of architecture and quality
 - **Writing & Communication**: Summary of their best writing with key insights
 - **Evidence**: Links to repos, posts, talks, with brief annotations

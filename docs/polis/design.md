@@ -61,7 +61,7 @@ A single `PolisStack` with these resources:
 
 ### Route53 Hosted Zone
 
-- Domain for cogent DNS (configured via `deploy_config`)
+- Domain for cogent DNS (from `~/.cogos/config.yml`)
 - Cogent accounts create subdomains via cross-account delegation
 
 ### DynamoDB Table (`cogent-status`)
@@ -193,10 +193,10 @@ class CogentMeta(BaseModel):
     personality: str | None = None
 
 class PolisConfig(BaseModel):
-    name: str              # e.g., "my-polis"
-    organization: str      # e.g., "MyOrg"
-    owner: str
-    domain: str            # e.g., "my-cogents.com"
+    name: str              # from config: polis_name
+    organization: str      # from config: organization
+    owner: str             # from config: owner
+    domain: str            # from config: domain
     cogents: dict[str, CogentMeta]
 ```
 

@@ -22,7 +22,7 @@ aws sso login --profile <your-profile>
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--profile` | (from deploy config) | AWS SSO profile for org-level operations |
+| `--profile` | (from `~/.cogos/config.yml`) | AWS SSO profile for org-level operations |
 
 ## Stack Management
 
@@ -73,7 +73,7 @@ Example output:
 ┏━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Resource    ┃ Status  ┃ Details                                         ┃
 ┡━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ ECR         │ active  │ 901289084804.dkr.ecr.us-east-1.amazonaws.com/…  │
+│ ECR         │ active  │ <account-id>.dkr.ecr.us-east-1.amazonaws.com/…  │
 │ ECS Cluster │ active  │ 2 running tasks                                 │
 │ DynamoDB    │ active  │ 3 items                                         │
 └─────────────┴─────────┴─────────────────────────────────────────────────┘

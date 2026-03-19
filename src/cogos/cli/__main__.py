@@ -109,13 +109,20 @@ def _output_single(data: dict) -> None:
             click.echo(f"  {key}: {value}")
 
 
+def _default_cogent() -> str:
+    from polis.config import deploy_config
+    return deploy_config("default_cogent", "")
+
+
 @click.group()
-@click.option("--cogent", "-c", envvar="COGENT_ID", default="dr.alpha",
-              help="Cogent name (default: dr.alpha)")
+@click.option("--cogent", "-c", envvar="COGENT_ID", default=_default_cogent,
+              help="Cogent name (from COGENT_ID env or default_cogent in ~/.cogos/config.yml)")
 @click.pass_context
 def cogos(ctx: click.Context, cogent: str):
     """CogOS — management CLI for processes, files, capabilities, and channels."""
     ctx.ensure_object(dict)
+    if not cogent:
+        raise click.UsageError("No cogent specified. Use --cogent/-c, set COGENT_ID, or set default_cogent in ~/.cogos/config.yml")
     ctx.obj["cogent_name"] = cogent
     if cogent == "local":
         apply_local_checkout_env()
