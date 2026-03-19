@@ -13,6 +13,25 @@ def test_healthz():
     assert resp.json() == {"ok": True}
 
 
+def test_lifespan_runs_cogos_migrations():
+    """Dashboard startup should apply CogOS SQL migrations."""
+    calls = {}
+
+    def fake_migrations(repo, on_error=None):
+        calls["repo"] = repo
+        return 5
+
+    fake_repo = MagicMock()
+    with patch("cogos.db.migrations.apply_cogos_sql_migrations", fake_migrations), patch(
+        "dashboard.db.get_repo", return_value=fake_repo
+    ):
+        app = create_app()
+        with TestClient(app):
+            pass  # triggers lifespan
+
+    assert calls["repo"] is fake_repo
+
+
 def test_web_static_extensionless_html_renders_in_browser():
     app = create_app()
     client = TestClient(app)

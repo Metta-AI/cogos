@@ -50,6 +50,21 @@ def _verify_admin_key(key: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Apply CogOS SQL migrations on startup to ensure cogos_* tables exist
+    try:
+        from cogos.db.migrations import apply_cogos_sql_migrations
+
+        from dashboard.db import get_repo
+
+        repo = get_repo()
+        statements = apply_cogos_sql_migrations(
+            repo,
+            on_error=lambda name, exc: logger.warning("Migration %s: %s", name, exc),
+        )
+        if statements:
+            logger.info("Applied %d CogOS migration statements on startup", statements)
+    except Exception:
+        logger.warning("CogOS migrations failed on startup", exc_info=True)
     yield
 
 

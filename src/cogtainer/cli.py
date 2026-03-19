@@ -298,7 +298,7 @@ def create_cmd(ctx: click.Context, profile: str | None):
 
     # Apply database schema
     click.echo("Applying database schema...")
-    from cogos.db.migrations import apply_schema
+    from cogos.db.migrations import apply_cogos_sql_migrations, apply_schema
     schema_ready = False
     try:
         apply_schema()
@@ -306,6 +306,22 @@ def create_cmd(ctx: click.Context, profile: str | None):
         click.echo("Database schema applied.")
     except Exception as e:
         click.echo(f"Warning: schema apply failed: {e}")
+
+    # Apply CogOS SQL migrations (cogos_* tables)
+    if schema_ready:
+        try:
+            from cogos.db.repository import Repository
+
+            repo = Repository.create(
+                resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+                secret_arn=os.environ.get("DB_SECRET_ARN"),
+                database=os.environ.get("DB_NAME", "cogent"),
+                region=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
+            )
+            statements = apply_cogos_sql_migrations(repo)
+            click.echo(f"CogOS migrations applied ({statements} statements).")
+        except Exception as e:
+            click.echo(f"Warning: CogOS migrations failed: {e}")
 
     if schema_ready:
         try:
