@@ -205,11 +205,16 @@ class CogletRuntime:
     # ------------------------------------------------------------------
 
     def _build_capabilities(self, config: CogConfig) -> dict[str, Any]:
-        """Build capabilities dict from config.capabilities list."""
+        """Build capabilities dict from config.capabilities list.
+
+        Always returns dict(name, Capability) — no aliases, no None values.
+        """
         caps: dict[str, Any] = {}
         for entry in config.capabilities:
             if isinstance(entry, str):
-                caps[entry] = self.cap_objects.get(entry)
+                cap_obj = self.cap_objects.get(entry)
+                if cap_obj is not None:
+                    caps[entry] = cap_obj
             elif isinstance(entry, dict):
                 cap_name = entry["name"]
                 alias = entry.get("alias", cap_name)
@@ -217,7 +222,7 @@ class CogletRuntime:
                 cap_obj = self.cap_objects.get(cap_name)
                 if cap_obj is not None and cap_config and hasattr(cap_obj, "scope"):
                     caps[alias] = cap_obj.scope(**cap_config)
-                else:
+                elif cap_obj is not None:
                     caps[alias] = cap_obj
         return caps
 

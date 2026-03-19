@@ -5,10 +5,11 @@ config = CogConfig(
     priority=8.0,
     emoji="🧠",
     capabilities=[
-        "me", "procs", "dir", "file", "discord", "channels",
+        "me", "procs", "file", "discord", "channels",
         "secrets", "stdlib", "alerts", "asana", "email", "github",
         "web_search", "web_fetch", "web", "blob", "image",
         "cog_registry", "coglet_runtime",
+        {"name": "dir", "alias": "root"},
     ],
     handlers=["supervisor:help"],
 )

@@ -185,7 +185,7 @@ wl.write(json.dumps(waterline))
 
 # Send LAST — after state is saved, so retries won't double-send.
 # react="💬" identifies this response as coming from the discord handler
-discord.send(channel=channel_id, content=reply, reply_to=message_id, react="💬")
+discord.send(channel=channel_id, content="💬 " + reply, reply_to=message_id, react="💬")
 # For escalation, also: discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
 print("Done")
 ```

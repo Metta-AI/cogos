@@ -22,12 +22,16 @@ except NameError:
     pass
 
 def _build_caps(cap_list, cog_name):
-    """Build capabilities dict from a CogConfig capabilities list."""
+    """Build capabilities dict from a CogConfig capabilities list.
+
+    Always returns dict(name, Capability) — no aliases, no None values.
+    """
     caps = {}
     for entry in cap_list:
         if isinstance(entry, str):
-            # Pass None for unscoped — spawn resolves by name from DB
-            caps[entry] = None
+            cap_obj = _cap_objects.get(entry)
+            if cap_obj is not None:
+                caps[entry] = cap_obj
         elif isinstance(entry, dict):
             name = entry["name"]
             alias = entry.get("alias", name)
@@ -35,8 +39,8 @@ def _build_caps(cap_list, cog_name):
             cap_obj = _cap_objects.get(name)
             if cap_obj is not None and config and hasattr(cap_obj, "scope"):
                 caps[alias] = cap_obj.scope(**config)
-            else:
-                caps[alias] = None
+            elif cap_obj is not None:
+                caps[alias] = cap_obj
     # Add scoped dir and data for cog isolation
     dir_cap = _cap_objects.get("dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
@@ -70,7 +74,7 @@ def _spawn_cog(manifest):
     # Add source dir scoped to where the cog's files live in the FileStore
     dir_cap = _cap_objects.get("dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
-        caps["source:dir"] = dir_cap.scope(prefix=prefix + "/" + cog_name + "/")
+        caps["source"] = dir_cap.scope(prefix=prefix + "/" + cog_name + "/")
 
     subscribe = config.get("handlers") if config.get("handlers") else None
 

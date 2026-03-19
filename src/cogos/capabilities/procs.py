@@ -188,19 +188,14 @@ class ProcsCapability(Capability):
         validated_caps: list[tuple[str, UUID, dict | None]] = []
 
         for grant_name, cap_instance in (capabilities or {}).items():
-            # Support "alias:capability" syntax — e.g. "data:dir" exposes dir as data
-            if ":" in grant_name:
-                grant_name, cap_lookup = grant_name.split(":", 1)
-            else:
-                cap_lookup = grant_name
-
             if cap_instance is not None:
                 cap_type_name = type(cap_instance).__name__.lower().replace("capability", "")
                 cap = self.repo.get_capability_by_name(cap_type_name)
                 child_scope = getattr(cap_instance, "_scope", None) or None
             else:
-                cap_type_name = cap_lookup
-                cap = self.repo.get_capability_by_name(cap_lookup)
+                # Fallback: resolve capability type by grant name
+                cap_type_name = grant_name
+                cap = self.repo.get_capability_by_name(grant_name)
                 child_scope = None
 
             if not cap or not cap.enabled:

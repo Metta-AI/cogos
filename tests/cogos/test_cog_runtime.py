@@ -197,14 +197,14 @@ class TestRunCog:
         assert caps["me"] is me_cap
         assert caps["discord"] is discord_cap
 
-    def test_missing_string_capability_is_none(self, tmp_path):
+    def test_missing_string_capability_is_skipped(self, tmp_path):
         cog = _make_cog(tmp_path, config={"capabilities": ["nonexistent"]})
         procs = _mock_procs()
         rt = _make_runtime(cog)
         rt.run_cog(procs)
 
         caps = procs.spawn.call_args.kwargs["capabilities"]
-        assert caps["nonexistent"] is None
+        assert "nonexistent" not in caps
 
     def test_dict_capability_with_alias_and_scope(self, tmp_path):
         dir_cap = _mock_cap("dir")
