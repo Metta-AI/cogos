@@ -139,6 +139,7 @@ for ch_name in [
     "system:diagnostics",
     "system:alerts",
     "supervisor:alerts",
+    "triage:proposals",
 ]:
     channels.create(ch_name)
 
