@@ -16,7 +16,6 @@ from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
-from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
 
@@ -46,7 +45,6 @@ class CogtainerStack(Stack):
         safe_name = config.cogent_name.replace(".", "-")
         self.dashboard_service: ecs.FargateService | None = None
         self.dashboard_url: str | None = None
-        self.discord_service: ecs.FargateService | None = None
         cdk.Tags.of(self).add("cogent_name", config.cogent_name)
         cdk.Tags.of(self).add("cogent_safe_name", safe_name)
 
@@ -106,13 +104,16 @@ class CogtainerStack(Stack):
             ingress_queue=self.compute.ingress_queue,
         )
 
-        # 7. Discord bridge (Fargate on shared cogent-polis cluster)
-        self._create_discord_bridge(config, safe_name)
-
-        # Pass Discord reply queue URL to executor Lambda for cogos discord capability
+        # 7. Shared Discord reply queue (polis-level)
+        polis_discord_queue = sqs.Queue.from_queue_arn(
+            self, "PolisDiscordQueue",
+            f"arn:aws:sqs:{config.region}:{config.account}:cogent-polis-discord-replies",
+        )
+        polis_discord_queue.grant_send_messages(self.compute.orchestrator)
+        polis_discord_queue.grant_send_messages(self.compute.executor)
+        polis_discord_queue.grant_send_messages(self.compute.task_definition.task_role)
         self.compute.executor.add_environment(
-            "DISCORD_REPLY_QUEUE_URL",
-            self.discord_reply_queue.queue_url,
+            "DISCORD_REPLY_QUEUE_URL", polis_discord_queue.queue_url,
         )
 
         # 8. Dashboard (ALB + Fargate on shared cogent-polis cluster)
@@ -134,14 +135,9 @@ class CogtainerStack(Stack):
 
     def _status_manifest(self, config: CogtainerConfig, safe_name: str) -> dict[str, Any]:
         """Return the canonical status manifest for watcher/runtime resolution."""
-        assert self.discord_service is not None
         manifest: dict[str, Any] = {
             "version": 1,
             "cogent_name": config.cogent_name,
-            "discord": {
-                "service_arn": self.discord_service.service_arn,
-                "container_name": "bridge",
-            },
             "executor": {
                 "task_definition_arn": self.compute.task_definition.task_definition_arn,
                 "container_name": "Executor",
@@ -159,116 +155,9 @@ class CogtainerStack(Stack):
             }
         return manifest
 
-    def _create_discord_bridge(self, config: CogtainerConfig, safe_name: str) -> None:
-        """Create the Discord bridge SQS queue + Fargate service."""
-        vpc = ec2.Vpc.from_lookup(self, "DiscordVpc", is_default=True)
-        cluster = ecs.Cluster.from_cluster_attributes(
-            self,
-            "DiscordPolisCluster",
-            cluster_name="cogent-polis",
-            vpc=vpc,
-            security_groups=[],
-        )
-
-        # SQS queue for outbound replies (capability → bridge → Discord)
-        self.discord_reply_queue = sqs.Queue(
-            self,
-            "DiscordReplyQueue",
-            queue_name=f"cogent-{safe_name}-discord-replies",
-            visibility_timeout=Duration.seconds(60),
-            retention_period=Duration.days(1),
-        )
-
-        # Bot token from Secrets Manager (existing secret stores {"access_token": "..."})
-        bot_token_secret = secretsmanager.Secret.from_secret_name_v2(
-            self,
-            "DiscordBotToken",
-            secret_name=f"cogent/{config.cogent_name}/discord",
-        )
-
-        # Task definition
-        task_def = ecs.FargateTaskDefinition(
-            self,
-            "DiscordTaskDef",
-            family=f"cogent-{safe_name}-discord",
-            cpu=256,
-            memory_limit_mib=512,
-        )
-
-        task_def.add_container(
-            "bridge",
-            image=ecs.ContainerImage.from_asset(
-                _PROJECT_ROOT,
-                file="src/cogos/io/discord/Dockerfile",
-                platform=cdk.aws_ecr_assets.Platform.LINUX_AMD64,
-            ),
-            environment={
-                "COGENT_NAME": config.cogent_name,
-                "DB_RESOURCE_ARN": self.database.cluster_arn,
-                "DB_SECRET_ARN": self.database.secret.secret_arn if self.database.secret else "",
-                "DB_NAME": "cogent",
-                "DISCORD_REPLY_QUEUE_URL": self.discord_reply_queue.queue_url,
-                "COGOS_INGRESS_QUEUE_URL": self.compute.ingress_queue.queue_url,
-                "AWS_REGION": config.region,
-                "SESSIONS_BUCKET": self.storage.bucket.bucket_name,
-            },
-            secrets={
-                "DISCORD_BOT_TOKEN": ecs.Secret.from_secrets_manager(bot_token_secret, field="access_token"),
-            },
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="discord-bridge"),
-        )
-
-        # IAM: DB Data API
-        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
-            iam.PolicyStatement(
-                actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
-                resources=[self.database.cluster_arn],
-            )
-        )
-        if self.database.secret:
-            task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
-                iam.PolicyStatement(
-                    actions=["secretsmanager:GetSecretValue"],
-                    resources=[self.database.secret.secret_arn],
-                )
-            )
-
-        # IAM: SQS reply queue (receive for polling, send for capability)
-        self.discord_reply_queue.grant_consume_messages(task_def.task_role)
-        self.compute.ingress_queue.grant_send_messages(task_def.task_role)
-
-        # IAM: S3 blob store access for attachments
-        self.storage.bucket.grant_read_write(task_def.task_role, "blobs/*")
-
-        # Grant the executor/orchestrator lambdas permission to send to the reply queue
-        self.discord_reply_queue.grant_send_messages(self.compute.orchestrator)
-        self.discord_reply_queue.grant_send_messages(self.compute.executor)
-
-        # Also grant the ECS executor task role send access
-        self.discord_reply_queue.grant_send_messages(self.compute.task_definition.task_role)
-
-        # Default to 1 so CDK deploys don't kill a running bridge.
-        # update_cli saves/restores the count, but bare cdk deploys bypass that.
-        sg = ec2.SecurityGroup(self, "DiscordSg", vpc=vpc, allow_all_outbound=True)
-
-        self.discord_service = ecs.FargateService(
-            self,
-            "DiscordService",
-            service_name=f"cogent-{safe_name}-discord",
-            cluster=cluster,
-            task_definition=task_def,
-            desired_count=1,
-            assign_public_ip=True,
-            security_groups=[sg],
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PUBLIC,
-                one_per_az=True,
-            ),
-        )
-
-        CfnOutput(self, "DiscordReplyQueueUrl", value=self.discord_reply_queue.queue_url)
-
-    def _create_dashboard(self, config: CogtainerConfig, safe_name: str, certificate_arn: str) -> None:
+    def _create_dashboard(
+        self, config: CogtainerConfig, safe_name: str, certificate_arn: str
+    ) -> None:
         """Create the dashboard ALB + Fargate service."""
         vpc = ec2.Vpc.from_lookup(self, "DashVpc", is_default=True)
         cluster = ecs.Cluster.from_cluster_attributes(

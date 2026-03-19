@@ -10,15 +10,16 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
+POLIS_BRIDGE_SERVICE = "cogent-polis-discord"
+
 
 def discord_secret_status(
-    name: str,
     region: str,
     *,
     session: boto3.Session | None = None,
 ) -> tuple[bool | None, str | None]:
-    """Return whether the Discord token secret exists and contains an access token."""
-    secret_id = f"cogent/{name}/discord"
+    """Return whether the shared polis Discord token exists."""
+    secret_id = "polis/discord"
     sm = session.client("secretsmanager", region_name=region) if session else boto3.client(
         "secretsmanager",
         region_name=region,
@@ -31,28 +32,52 @@ def discord_secret_status(
         code = exc.response.get("Error", {}).get("Code", "")
         if code == "ResourceNotFoundException":
             return False, None
-        logger.warning("Discord secret check failed for %s: %s", name, code or exc)
+        logger.warning("Discord secret check failed: %s", code or exc)
         return None, code or type(exc).__name__
     except Exception as exc:
-        logger.warning("Discord secret check failed for %s: %s", name, exc)
+        logger.warning("Discord secret check failed: %s", exc)
         return None, type(exc).__name__
 
 
-def discord_service_status(
+def discord_persona_status(
     name: str,
     region: str,
     *,
     session: boto3.Session | None = None,
+) -> tuple[dict | None, str | None]:
+    """Return persona config for a cogent from Secrets Manager."""
+    secret_id = f"cogent/{name}/discord"
+    sm = session.client("secretsmanager", region_name=region) if session else boto3.client(
+        "secretsmanager",
+        region_name=region,
+    )
+    try:
+        resp = sm.get_secret_value(SecretId=secret_id)
+        data = json.loads(resp.get("SecretString", "{}"))
+        return data, None
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "ResourceNotFoundException":
+            return None, None
+        logger.warning("Discord persona check failed for %s: %s", name, code or exc)
+        return None, code or type(exc).__name__
+    except Exception as exc:
+        logger.warning("Discord persona check failed for %s: %s", name, exc)
+        return None, type(exc).__name__
+
+
+def discord_service_status(
+    region: str,
+    *,
+    session: boto3.Session | None = None,
 ) -> tuple[dict[str, int | str | bool | None], str | None]:
-    """Return ECS status for the Discord bridge service."""
-    safe_name = name.replace(".", "-")
-    service_name = f"cogent-{safe_name}-discord"
+    """Return ECS status for the shared polis Discord bridge service."""
     ecs = session.client("ecs", region_name=region) if session else boto3.client(
         "ecs",
         region_name=region,
     )
     try:
-        resp = ecs.describe_services(cluster="cogent-polis", services=[service_name])
+        resp = ecs.describe_services(cluster="cogent-polis", services=[POLIS_BRIDGE_SERVICE])
         services = resp.get("services", [])
         if not services:
             return {
@@ -72,7 +97,7 @@ def discord_service_status(
         }, None
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
-        logger.warning("Discord service check failed for %s: %s", name, code or exc)
+        logger.warning("Discord service check failed: %s", code or exc)
         return {
             "bridge_service_exists": None,
             "bridge_status": None,
@@ -81,7 +106,7 @@ def discord_service_status(
             "bridge_pending_count": None,
         }, code or type(exc).__name__
     except Exception as exc:
-        logger.warning("Discord service check failed for %s: %s", name, exc)
+        logger.warning("Discord service check failed: %s", exc)
         return {
             "bridge_service_exists": None,
             "bridge_status": None,

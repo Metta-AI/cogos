@@ -59,18 +59,20 @@ def handler(event, context):
             manifest = load_status_manifest(stack)
             cogent_name = manifest["cogent_name"]
             existing = existing_by_name.get(cogent_name) or existing_by_stack.get(stack_name, {})
-            items.append(
-                resolve_runtime_status(
-                    ecs_client=ecs,
-                    cloudwatch_client=cw,
-                    stack_name=stack_name,
-                    stack_status=stack_status,
-                    manifest=manifest,
-                    existing=existing,
-                    channels=channels_map.get(cogent_name, {}),
-                    updated_at=now,
-                )
+            item = resolve_runtime_status(
+                ecs_client=ecs,
+                cloudwatch_client=cw,
+                stack_name=stack_name,
+                stack_status=stack_status,
+                manifest=manifest,
+                existing=existing,
+                channels=channels_map.get(cogent_name, {}),
+                updated_at=now,
             )
+            persona = _read_discord_persona(sm_client, cogent_name)
+            if persona:
+                item["discord_persona"] = persona
+            items.append(item)
             seen_names.add(cogent_name)
         except Exception:
             logger.exception("Error polling stack %s", stack_name)
@@ -111,6 +113,23 @@ def _load_existing_status_items(table) -> list[dict]:
             break
         params["ExclusiveStartKey"] = last_key
     return items
+
+
+def _read_discord_persona(sm_client, cogent_name: str) -> dict | None:
+    """Read discord persona config from Secrets Manager for a cogent."""
+    try:
+        resp = sm_client.get_secret_value(SecretId=f"cogent/{cogent_name}/discord")
+        data = json.loads(resp["SecretString"])
+        persona = {}
+        for key in ("display_name", "avatar_url", "color", "default_channels"):
+            if key in data:
+                persona[key] = data[key]
+        return persona if persona else None
+    except sm_client.exceptions.ResourceNotFoundException:
+        return None
+    except Exception:
+        logger.exception("Error reading discord persona for %s", cogent_name)
+        return None
 
 
 def _poll_channels(sm_client) -> dict[str, dict[str, str]]:

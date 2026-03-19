@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cogos.io.discord.setup import discord_secret_status, discord_service_status
+from cogos.io.discord.setup import discord_persona_status, discord_secret_status, discord_service_status
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
@@ -56,23 +56,6 @@ class SetupResponse(BaseModel):
 
 def _build_discord_setup(name: str) -> ChannelSetup:
     region = os.environ.get("AWS_REGION", "us-east-1")
-    safe_name = name.replace(".", "-")
-    secret_path = f"cogent/{name}/discord"
-    service_name = f"cogent-{safe_name}-discord"
-    create_bot_instructions = (
-        "In Discord Developer Portal:\n"
-        "1. Open the app and go to Bot.\n"
-        "2. If needed, click Add Bot or Reset Token so you have a bot user and token.\n"
-        "3. Enable Message Content Intent.\n"
-        "4. Go to Installation and enable Guild Install.\n"
-        "5. Add scopes: bot and applications.commands.\n"
-        "6. Choose permissions and use the generated install link to invite the bot to your test server.\n"
-        "If your server is missing from the picker, your Discord account cannot install apps there."
-    )
-    create_bot_if_missing = (
-        "If the bot is not in your server yet, use these steps:\n"
-        f"{create_bot_instructions}"
-    )
 
     cogos_initialized = True
     cogos_error = None
@@ -86,9 +69,6 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         capability_enabled = any(cap.name == "discord" and cap.enabled for cap in caps)
 
         handlers = repo.list_handlers()
-        # Check for channel-based handlers for discord
-        dm_handler_enabled = False
-        mention_handler_enabled = False
         for h in handlers:
             if not h.enabled:
                 continue
@@ -96,28 +76,34 @@ def _build_discord_setup(name: str) -> ChannelSetup:
             if h.channel:
                 ch = repo.get_channel(h.channel)
                 ch_name = ch.name if ch else None
-            if ch_name in ("io:discord:dm", "discord:dm"):
+            if ch_name and (":dm" in ch_name):
                 dm_handler_enabled = True
-            elif ch_name in ("io:discord:mention", "discord:mention"):
+            elif ch_name and (":mention" in ch_name):
                 mention_handler_enabled = True
     except Exception as exc:
         logger.warning("CogOS setup check failed for %s: %s", name, exc)
         cogos_initialized = False
         cogos_error = type(exc).__name__
 
-    secret_configured, secret_check_error = discord_secret_status(name, region)
-    service_status, service_check_error = discord_service_status(name, region)
+    # Shared bot token (polis-level)
+    secret_configured, secret_check_error = discord_secret_status(region)
+    # Shared bridge service (polis-level)
+    service_status, service_check_error = discord_service_status(region)
     bridge_running = (
         service_status["bridge_running_count"] is not None
         and int(service_status["bridge_running_count"]) > 0
     )
+    # Per-cogent persona config
+    persona_data, persona_error = discord_persona_status(name, region)
+    has_persona = persona_data is not None and bool(persona_data.get("display_name"))
+
     wiring_ready = (
         cogos_initialized
         and capability_enabled
         and dm_handler_enabled
         and mention_handler_enabled
     )
-    ready_for_test = wiring_ready and secret_configured is True and bridge_running
+    ready_for_test = wiring_ready and secret_configured is True and bridge_running and has_persona
 
     diagnostics: list[str] = []
     if cogos_error:
@@ -126,12 +112,14 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         diagnostics.append(f"Discord secret check unavailable: {secret_check_error}")
     if service_check_error:
         diagnostics.append(f"Discord service check unavailable: {service_check_error}")
+    if persona_error:
+        diagnostics.append(f"Discord persona check unavailable: {persona_error}")
 
     if wiring_ready:
         cogos_step = SetupStep(
             key="cogos-defaults",
             title="Load CogOS defaults",
-            description="Fresh cogtainer bring-up needs the default CogOS image so the Discord capability and handlers exist.",
+            description="The CogOS image provides the Discord capability and handlers.",
             status=SetupStatus.READY,
             detail="Discord capability, DM handler, and mention handler are loaded.",
         )
@@ -142,7 +130,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         cogos_step = SetupStep(
             key="cogos-defaults",
             title="Load CogOS defaults",
-            description="Fresh cogtainer bring-up needs the default CogOS image so the Discord capability and handlers exist.",
+            description="The CogOS image provides the Discord capability and handlers.",
             status=SetupStatus.NEEDS_ACTION,
             detail=detail,
             action=SetupAction(
@@ -151,127 +139,53 @@ def _build_discord_setup(name: str) -> ChannelSetup:
             ),
         )
 
-    if secret_configured is True:
-        create_bot_step = SetupStep(
-            key="create-bot",
-            title="Create and invite the bot",
-            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
+    # Persona config step
+    if has_persona:
+        persona_detail = f"Display name: {persona_data.get('display_name', name)}"
+        if persona_data.get("default_channels"):
+            persona_detail += f", default channels: {', '.join(persona_data['default_channels'])}"
+        persona_step = SetupStep(
+            key="persona-config",
+            title="Configure Discord persona",
+            description="Set display name, avatar, color, and default channels for this cogent.",
             status=SetupStatus.READY,
-            detail=(
-                "A Discord token is already stored, so the bot was probably created.\n"
-                f"{create_bot_if_missing}"
-            ),
-            action=SetupAction(
-                label="Open Discord Developer Portal",
-                href="https://discord.com/developers/applications",
-            ),
-        )
-    elif secret_configured is False:
-        create_bot_step = SetupStep(
-            key="create-bot",
-            title="Create and invite the bot",
-            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
-            status=SetupStatus.NEEDS_ACTION,
-            detail=(
-                "This dashboard cannot verify Discord-side configuration, and there is no token stored yet.\n"
-                f"{create_bot_instructions}"
-            ),
-            action=SetupAction(
-                label="Open Discord Developer Portal",
-                href="https://discord.com/developers/applications",
-            ),
+            detail=persona_detail,
         )
     else:
-        create_bot_step = SetupStep(
-            key="create-bot",
-            title="Create and invite the bot",
-            description="Create the Discord app, confirm the bot user exists, turn on Message Content Intent, and invite it to the server where you want to test.",
-            status=SetupStatus.UNKNOWN,
-            detail=(
-                "Live token checks are unavailable, so this step cannot be confirmed from the dashboard.\n"
-                f"{create_bot_if_missing}"
-            ),
+        persona_step = SetupStep(
+            key="persona-config",
+            title="Configure Discord persona",
+            description="Set display name, avatar, color, and default channels for this cogent.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail="No persona config found. The bridge uses this to create a mentionable role and webhook persona.",
             action=SetupAction(
-                label="Open Discord Developer Portal",
-                href="https://discord.com/developers/applications",
+                label="Set persona config",
+                command=(
+                    f"uv run polis secrets set cogent/{name}/discord "
+                    f"""--value '{{"display_name":"{name}","avatar_url":"","color":0,"default_channels":[]}}'"""
+                ),
             ),
         )
 
-    if secret_configured is True:
-        secret_step = SetupStep(
-            key="store-token",
-            title="Store the bot token",
-            description="The Discord bridge reads the bot token from Secrets Manager.",
-            status=SetupStatus.READY,
-            detail=f"Token is present at {secret_path}.",
-        )
-    elif secret_configured is False:
-        secret_step = SetupStep(
-            key="store-token",
-            title="Store the bot token",
-            description="Write the bot token into polis secrets so the bridge can log in.",
-            status=SetupStatus.NEEDS_ACTION,
-            detail=f"Expected secret path: {secret_path}.",
-            action=SetupAction(
-                label="Write Discord token",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_BOT_TOKEN"}}'""",
-            ),
-        )
-    else:
-        secret_step = SetupStep(
-            key="store-token",
-            title="Store the bot token",
-            description="Write the bot token into polis secrets so the bridge can log in.",
-            status=SetupStatus.UNKNOWN,
-            detail=f"Expected secret path: {secret_path}. Latest check error: {secret_check_error}.",
-            action=SetupAction(
-                label="Write Discord token",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_BOT_TOKEN"}}'""",
-            ),
-        )
-
+    # Shared bridge status step
     if bridge_running:
         bridge_step = SetupStep(
-            key="start-bridge",
-            title="Start the Discord bridge",
-            description="The Discord bridge runs as its own ECS service.",
+            key="bridge-status",
+            title="Shared Discord bridge",
+            description="The shared Discord bridge runs as a polis-level ECS service.",
             status=SetupStatus.READY,
-            detail=f"{service_name} is running.",
-        )
-    elif service_status["bridge_service_exists"] is False:
-        bridge_step = SetupStep(
-            key="start-bridge",
-            title="Start the Discord bridge",
-            description="The Discord bridge runs as its own ECS service.",
-            status=SetupStatus.NEEDS_ACTION,
-            detail=f"{service_name} does not exist yet.",
-            action=SetupAction(
-                label="Deploy cogtainer stack",
-                command=f"uv run cogent {name} cogtainer update stack",
-            ),
-        )
-    elif service_status["bridge_service_exists"] is True:
-        bridge_step = SetupStep(
-            key="start-bridge",
-            title="Start the Discord bridge",
-            description="The Discord bridge runs as its own ECS service.",
-            status=SetupStatus.NEEDS_ACTION,
-            detail=f"{service_name} exists but is not running.",
-            action=SetupAction(
-                label="Start Discord bridge",
-                command=f"uv run cogent {name} cogos discord start",
-            ),
+            detail="cogent-polis-discord is running.",
         )
     else:
         bridge_step = SetupStep(
-            key="start-bridge",
-            title="Start the Discord bridge",
-            description="The Discord bridge runs as its own ECS service.",
-            status=SetupStatus.UNKNOWN,
-            detail=f"Service status checks are unavailable. Expected service name: {service_name}.",
+            key="bridge-status",
+            title="Shared Discord bridge",
+            description="The shared Discord bridge runs as a polis-level ECS service.",
+            status=SetupStatus.NEEDS_ACTION,
+            detail="cogent-polis-discord is not running.",
             action=SetupAction(
-                label="Check bridge status",
-                command=f"uv run cogent {name} cogos discord status",
+                label="Deploy polis stack",
+                command="uv run polis deploy",
             ),
         )
 
@@ -279,45 +193,42 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         test_step = SetupStep(
             key="send-test-message",
             title="Send a test message",
-            description="Once the bridge is live, DM the bot directly or @mention it in a server channel.",
+            description=f"Mention @cogent:{name} in a server channel or DM the bot.",
             status=SetupStatus.MANUAL,
-            detail="Plain channel chatter will not trigger it.",
+            detail="The shared bridge routes messages by role mention.",
         )
     else:
         test_step = SetupStep(
             key="send-test-message",
             title="Send a test message",
-            description="Once the bridge is live, DM the bot directly or @mention it in a server channel.",
+            description=f"Mention @cogent:{name} in a server channel or DM the bot.",
             status=SetupStatus.NEEDS_ACTION,
-            detail="Finish the earlier steps first. Plain channel chatter will not trigger it.",
+            detail="Finish the earlier steps first.",
         )
 
     status = (
         SetupStatus.READY
         if ready_for_test
         else SetupStatus.UNKNOWN
-        if any(step.status == SetupStatus.UNKNOWN for step in (create_bot_step, secret_step, bridge_step))
+        if any(step.status == SetupStatus.UNKNOWN for step in (persona_step, bridge_step))
         else SetupStatus.NEEDS_ACTION
     )
     summary = (
         "Discord is ready for end-to-end testing."
         if ready_for_test
-        else "Some live checks were unavailable, but the setup steps below still apply."
-        if status == SetupStatus.UNKNOWN
-        else "Finish the remaining Discord setup steps, then DM the bot or @mention it."
+        else "Finish the remaining Discord setup steps."
     )
 
     return ChannelSetup(
         key="discord",
         title="Discord",
-        description="Configure the Discord bridge, token, and default inbound wiring for this cogent.",
+        description="Configure this cogent's Discord persona. The shared bridge handles routing and delivery.",
         status=status,
         summary=summary,
         ready_for_test=ready_for_test,
         steps=[
             cogos_step,
-            create_bot_step,
-            secret_step,
+            persona_step,
             bridge_step,
             test_step,
         ],
@@ -611,24 +522,17 @@ def _build_profile_setup(name: str) -> ChannelSetup:
     region = os.environ.get("AWS_REGION", "us-east-1")
 
     cogent_name = _read_secret_value(f"cogent/{name}/identity/name", region)
-    discord_handle = _read_secret_value(f"cogent/{name}/discord/handle", region)
-    discord_user_id = _read_secret_value(f"cogent/{name}/discord/user_id", region)
-
     has_name = bool(cogent_name)
-    has_discord = bool(discord_handle) and bool(discord_user_id)
-    all_set = has_name and has_discord
 
     detail_lines = [
         f"- **Cogent Name:** {cogent_name or '(not set)'}",
-        f"- **Discord Handle:** {discord_handle or '(not set)'}",
-        f"- **Discord User ID:** {discord_user_id or '(not set)'}",
     ]
 
-    if all_set:
+    if has_name:
         edit_step = SetupStep(
             key="edit-profile",
             title="Edit cogent profile",
-            description="Update name and Discord identity fields.",
+            description="Update the cogent's name.",
             status=SetupStatus.READY,
             detail="\n".join(detail_lines),
         )
@@ -636,25 +540,25 @@ def _build_profile_setup(name: str) -> ChannelSetup:
         edit_step = SetupStep(
             key="edit-profile",
             title="Edit cogent profile",
-            description="Set the cogent's name and Discord identity. These are stored in Secrets Manager and read by capabilities at runtime.",
+            description="Set the cogent's name in Secrets Manager.",
             status=SetupStatus.NEEDS_ACTION,
             detail="\n".join(detail_lines),
         )
 
-    status = SetupStatus.READY if all_set else SetupStatus.NEEDS_ACTION
+    status = SetupStatus.READY if has_name else SetupStatus.NEEDS_ACTION
     summary = (
         "Cogent identity is configured."
-        if all_set
-        else "Set the cogent's name and Discord identity in Secrets Manager."
+        if has_name
+        else "Set the cogent's name in Secrets Manager."
     )
 
     return ChannelSetup(
         key="profile",
         title="Profile",
-        description="Configure the cogent's identity — name and Discord handle/user ID.",
+        description="Configure the cogent's identity.",
         status=status,
         summary=summary,
-        ready_for_test=all_set,
+        ready_for_test=has_name,
         steps=[edit_step],
     )
 
@@ -674,8 +578,6 @@ def get_setup(name: str) -> SetupResponse:
 
 class IdentitySecrets(BaseModel):
     cogent_name: str = ""
-    discord_handle: str = ""
-    discord_user_id: str = ""
 
 
 def _read_secret_value(secret_id: str, region: str) -> str:
@@ -715,8 +617,6 @@ def get_identity(name: str) -> IdentitySecrets:
     region = os.environ.get("AWS_REGION", "us-east-1")
     return IdentitySecrets(
         cogent_name=_read_secret_value(f"cogent/{name}/identity/name", region),
-        discord_handle=_read_secret_value(f"cogent/{name}/discord/handle", region),
-        discord_user_id=_read_secret_value(f"cogent/{name}/discord/user_id", region),
     )
 
 
@@ -726,8 +626,4 @@ def put_identity(name: str, body: IdentitySecrets) -> IdentitySecrets:
     region = os.environ.get("AWS_REGION", "us-east-1")
     if body.cogent_name:
         _write_secret_value(f"cogent/{name}/identity/name", body.cogent_name, region)
-    if body.discord_handle:
-        _write_secret_value(f"cogent/{name}/discord/handle", body.discord_handle, region)
-    if body.discord_user_id:
-        _write_secret_value(f"cogent/{name}/discord/user_id", body.discord_user_id, region)
     return get_identity(name)

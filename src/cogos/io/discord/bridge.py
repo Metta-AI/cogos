@@ -1,7 +1,8 @@
-"""Discord bridge: gateway relay writing inbound messages to cogos DB.
+"""Discord bridge: multi-tenant gateway relay for all cogents.
 
-Runs as a Fargate service. Connects to the Discord gateway, writes inbound
-messages as cogos events, and long-polls an SQS queue for outbound replies.
+Runs as a single Fargate service. Connects to the Discord gateway once,
+routes inbound messages to per-cogent DB channels via MessageRouter,
+and long-polls a shared SQS queue for outbound replies sent via webhooks.
 """
 
 from __future__ import annotations
@@ -17,15 +18,17 @@ import aiohttp
 import boto3
 import discord
 
-from cogos.io.access import get_io_token
 from cogos.io.discord.chunking import chunk_message
+from cogos.io.discord.lifecycle import CogentPersona, LifecycleManager
 from cogos.io.discord.markdown import convert_markdown
+from cogos.io.discord.registry import CogentDiscordConfig, load_cogent_configs
+from cogos.io.discord.router import MessageRouter
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Message payload builder
+# Message payload builder (pure utility — unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -106,16 +109,21 @@ def _reply_queue_latency_ms(body: dict) -> int | None:
 
 
 # ---------------------------------------------------------------------------
-# Bridge class
+# Multi-tenant Bridge class
 # ---------------------------------------------------------------------------
 
 
 class DiscordBridge:
-    """Relays Discord messages to cogos DB and SQS replies back to Discord."""
+    """Multi-tenant relay: routes Discord messages to per-cogent DBs
+    and sends outbound replies via cogent-specific webhooks."""
 
     def __init__(self):
-        self.cogent_name = os.environ["COGENT_NAME"]
-        self.bot_token = self._get_bot_token()
+        self.bot_token = os.environ.get("DISCORD_BOT_TOKEN", "")
+        if not self.bot_token:
+            raise RuntimeError(
+                "No Discord token found. Set DISCORD_BOT_TOKEN env var."
+            )
+
         self.reply_queue_url = os.environ.get(
             "DISCORD_REPLY_QUEUE_URL",
             os.environ.get("REPLY_QUEUE_URL", ""),
@@ -123,17 +131,25 @@ class DiscordBridge:
         self.region = os.environ.get("AWS_REGION", "us-east-1")
 
         self._sqs_client = boto3.client("sqs", region_name=self.region)
-        self._repo = None  # lazy init
         from cogos import get_sessions_bucket
         self._blob_bucket = get_sessions_bucket()
         self._s3_client = boto3.client("s3", region_name=self.region) if self._blob_bucket else None
 
+        # Per-cogent state
+        self._configs: dict[str, CogentDiscordConfig] = {}  # cogent_name -> config
+        self._repos: dict[str, object] = {}  # cogent_name -> repository (lazy)
+        self._lifecycle = LifecycleManager()
+        self._router = MessageRouter(self._lifecycle)
+
         # Typing indicator tasks keyed by channel_id
         self._typing_tasks: dict[int, asyncio.Task] = {}
 
-        # Pending DM tracker: dm_channel_id -> (message_id, author_id, received_at)
-        self._pending_dms: dict[str, tuple[str, str, float]] = {}
+        # Pending DM tracker: dm_channel_id -> (message_id, author_id, received_at, cogent_name)
+        self._pending_dms: dict[str, tuple[str, str, float, str]] = {}
         self._alerted_dm_ids: set[str] = set()
+
+        # Track which webhook/bot sent which message for reaction routing
+        self._sent_message_owners: dict[int, str] = {}  # discord_message_id -> cogent_name
 
         intents = discord.Intents.default()
         intents.message_content = True
@@ -143,38 +159,526 @@ class DiscordBridge:
         self.client = discord.Client(intents=intents)
         self._setup_handlers()
 
-    def _get_repo(self):
-        if self._repo is None:
-            from cogos.db.factory import create_repository
+    # ------------------------------------------------------------------
+    # Per-cogent repository management
+    # ------------------------------------------------------------------
 
-            self._repo = create_repository()
-        return self._repo
+    def _get_repo(self, cogent_name: str):
+        """Get or create a repository for the given cogent."""
+        if cogent_name in self._repos:
+            return self._repos[cogent_name]
 
-    def _create_alert(self, severity: str, alert_type: str, message: str, metadata: dict | None = None) -> None:
-        """Create an alert in the DB (best-effort, never raises)."""
+        cfg = self._configs.get(cogent_name)
+        if cfg is None:
+            raise RuntimeError(f"No config for cogent {cogent_name}")
+
+        from cogos.db.factory import create_repository
+
+        repo = create_repository(
+            resource_arn=cfg.db_resource_arn,
+            secret_arn=cfg.db_secret_arn,
+            database=cfg.db_name,
+        )
+        self._repos[cogent_name] = repo
+        return repo
+
+    def _create_alert(
+        self, cogent_name: str, severity: str, alert_type: str, message: str, metadata: dict | None = None
+    ) -> None:
+        """Create an alert in the cogent's DB (best-effort, never raises)."""
         try:
-            repo = self._get_repo()
+            repo = self._get_repo(cogent_name)
             repo.create_alert(
                 severity=severity,
                 alert_type=alert_type,
-                source=f"discord:bridge:{self.cogent_name}",
+                source=f"discord:bridge:{cogent_name}",
                 message=message,
                 metadata=metadata or {},
             )
         except Exception:
-            logger.exception("Failed to create alert: %s %s", alert_type, message)
+            logger.exception("Failed to create alert for %s: %s %s", cogent_name, alert_type, message)
 
-    def _get_bot_token(self) -> str:
-        token = os.environ.get("DISCORD_BOT_TOKEN")
-        if token:
-            return token
-        token = get_io_token("discord")
-        if not token:
-            raise RuntimeError(
-                f"No Discord token found for {self.cogent_name}. "
-                "Set DISCORD_BOT_TOKEN or provision via channels CLI."
+    def _create_alert_any(self, severity: str, alert_type: str, message: str, metadata: dict | None = None) -> None:
+        """Create an alert in ALL cogent DBs (best-effort)."""
+        for cogent_name in self._configs:
+            self._create_alert(cogent_name, severity, alert_type, message, metadata)
+
+    # ------------------------------------------------------------------
+    # Cogent sync
+    # ------------------------------------------------------------------
+
+    async def _sync_cogents(self) -> None:
+        """Load configs from DynamoDB, sync roles/webhooks in all guilds."""
+        loop = asyncio.get_event_loop()
+        configs = await loop.run_in_executor(None, load_cogent_configs)
+
+        # Update local config cache (and invalidate repos for changed configs)
+        new_config_map: dict[str, CogentDiscordConfig] = {}
+        for cfg in configs:
+            new_config_map[cfg.cogent_name] = cfg
+            old = self._configs.get(cfg.cogent_name)
+            if old and (
+                old.db_resource_arn != cfg.db_resource_arn
+                or old.db_secret_arn != cfg.db_secret_arn
+                or old.db_name != cfg.db_name
+            ):
+                self._repos.pop(cfg.cogent_name, None)
+
+        # Remove repos for cogents that no longer exist
+        for name in list(self._repos.keys()):
+            if name not in new_config_map:
+                self._repos.pop(name, None)
+
+        self._configs = new_config_map
+        logger.info("Loaded %d cogent configs: %s", len(configs), list(new_config_map.keys()))
+
+        # Sync roles/webhooks in each guild
+        for guild in self.client.guilds:
+            try:
+                await self._lifecycle.sync(guild, configs)
+            except Exception:
+                logger.exception("Failed to sync lifecycle for guild %s", guild.name)
+
+    async def _periodic_sync(self) -> None:
+        """Re-sync cogent configs every 60 seconds."""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await self._sync_cogents()
+            except Exception:
+                logger.exception("Periodic cogent sync failed")
+
+    # ------------------------------------------------------------------
+    # Guild metadata sync (to each cogent's DB)
+    # ------------------------------------------------------------------
+
+    async def _sync_guild(self, guild) -> None:
+        """Sync a guild and its channels to every cogent's DB."""
+        from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
+
+        channels = [
+            DiscordChannel(
+                channel_id=str(ch.id),
+                guild_id=str(guild.id),
+                name=ch.name,
+                topic=getattr(ch, "topic", None),
+                category=ch.category.name if ch.category else None,
+                channel_type=ch.type.name,
+                position=ch.position,
             )
-        return token
+            for ch in guild.channels
+        ]
+
+        for cogent_name in self._configs:
+            guild_model = DiscordGuild(
+                guild_id=str(guild.id),
+                cogent_name=cogent_name,
+                name=guild.name,
+                icon_url=guild.icon.url if guild.icon else None,
+                member_count=guild.member_count,
+            )
+
+            def _do_sync(cn=cogent_name, gm=guild_model, chs=channels):
+                repo = self._get_repo(cn)
+                repo.upsert_discord_guild(gm)
+                for ch in chs:
+                    repo.upsert_discord_channel(ch)
+
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, _do_sync)
+            except Exception:
+                logger.exception("Failed to sync guild %s for cogent %s", guild.name, cogent_name)
+
+        logger.info("Synced guild %s (%d channels) to %d cogents", guild.name, len(channels), len(self._configs))
+
+    async def _on_channel_delete(self, channel) -> None:
+        channel_id = str(channel.id)
+        for cogent_name in self._configs:
+            def _do_delete(cn=cogent_name):
+                repo = self._get_repo(cn)
+                repo.delete_discord_channel(channel_id)
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, _do_delete)
+            except Exception:
+                logger.exception("Failed to delete channel %s for cogent %s", channel_id, cogent_name)
+
+    # ------------------------------------------------------------------
+    # Discord event handlers
+    # ------------------------------------------------------------------
+
+    def _setup_handlers(self):
+        @self.client.event
+        async def on_ready():
+            logger.info("Discord bridge connected as %s (multi-tenant)", self.client.user)
+            await self._sync_cogents()
+            for guild in self.client.guilds:
+                await self._sync_guild(guild)
+            self.client.loop.create_task(self._poll_replies())
+            self.client.loop.create_task(self._poll_all_api_requests())
+            self.client.loop.create_task(self._check_pending_dms())
+            self.client.loop.create_task(self._periodic_sync())
+
+        @self.client.event
+        async def on_guild_channel_create(channel):
+            await self._sync_guild(channel.guild)
+
+        @self.client.event
+        async def on_guild_channel_update(before, after):
+            await self._sync_guild(after.guild)
+
+        @self.client.event
+        async def on_guild_channel_delete(channel):
+            await self._on_channel_delete(channel)
+
+        @self.client.event
+        async def on_guild_join(guild):
+            await self._sync_cogents()
+            await self._sync_guild(guild)
+
+        @self.client.event
+        async def on_guild_remove(guild):
+            for cogent_name in self._configs:
+                try:
+                    repo = self._get_repo(cogent_name)
+                    repo.delete_discord_guild(str(guild.id))
+                except Exception:
+                    logger.exception("Failed to delete guild %s for cogent %s", guild.id, cogent_name)
+
+        @self.client.event
+        async def on_message(message: discord.Message):
+            logger.info(
+                "on_message from %s (bot=%s) in %s: %s",
+                message.author, message.author.bot, message.channel,
+                message.content[:80] if message.content else "(empty)",
+            )
+            # Ignore our own messages and any other bot messages
+            if message.author == self.client.user:
+                return
+            if message.author.bot:
+                return
+            await self._relay_to_db(message)
+
+        @self.client.event
+        async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+            await self._on_raw_reaction_add(payload)
+
+    # ------------------------------------------------------------------
+    # Channel helper
+    # ------------------------------------------------------------------
+
+    def _get_or_create_channel(self, repo, channel_name: str):
+        """Look up a channel by name, creating it if missing."""
+        from cogos.db.models import Channel, ChannelType
+        ch = repo.get_channel_by_name(channel_name)
+        if ch is None:
+            logger.info("Creating channel %s", channel_name)
+            ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
+            repo.upsert_channel(ch)
+            ch = repo.get_channel_by_name(channel_name)
+        return ch
+
+    # ------------------------------------------------------------------
+    # Inbound routing
+    # ------------------------------------------------------------------
+
+    def _write_to_cogent(
+        self,
+        cogent_name: str,
+        payload: dict,
+        message_type: str,
+        *,
+        trace_id=None,
+        trace_meta: dict | None = None,
+        discord_message_id: str = "",
+    ) -> None:
+        """Write an inbound message to a specific cogent's scoped channels."""
+        from cogos.db.models import ChannelMessage
+
+        repo = self._get_repo(cogent_name)
+
+        # Scoped catch-all channel: io:discord:{cogent_name}:{dm|mention|message}
+        type_suffix = message_type.split(":")[1]  # dm, mention, message
+        channel_name = f"io:discord:{cogent_name}:{type_suffix}"
+        ch = self._get_or_create_channel(repo, channel_name)
+        if ch is None:
+            raise RuntimeError(f"Failed to create channel {channel_name}")
+
+        repo.append_channel_message(ChannelMessage(
+            channel=ch.id,
+            sender_process=None,
+            payload=payload,
+            idempotency_key=f"discord:{discord_message_id}" if discord_message_id else None,
+            trace_id=trace_id,
+            trace_meta=trace_meta,
+        ))
+
+        # Stamp db_written_at after successful insert
+        if trace_meta is not None:
+            trace_meta["db_written_at_ms"] = int(time.time() * 1000)
+
+        logger.info("Wrote %s from %s to %s (cogent=%s)", message_type, payload.get("author"), channel_name, cogent_name)
+
+        # Write to fine-grained per-source channel
+        fine_channel_name = None
+        if message_type == "discord:message":
+            fine_channel_name = f"io:discord:{cogent_name}:message:{payload['channel_id']}"
+        elif message_type == "discord:dm":
+            fine_channel_name = f"io:discord:{cogent_name}:dm:{payload['author_id']}"
+
+        if fine_channel_name:
+            fine_ch = self._get_or_create_channel(repo, fine_channel_name)
+            if fine_ch:
+                repo.append_channel_message(ChannelMessage(
+                    channel=fine_ch.id,
+                    sender_process=None,
+                    payload=payload,
+                ))
+
+    async def _relay_to_db(self, message: discord.Message):
+        """Route a Discord message to target cogent(s) and write to their DBs."""
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        is_mention = bool(self.client.user and self.client.user.mentioned_in(message))
+
+        if is_dm:
+            message_type = "discord:dm"
+        elif is_mention:
+            message_type = "discord:mention"
+        else:
+            message_type = "discord:message"
+
+        payload = _make_message_payload(message, message_type, is_dm=is_dm, is_mention=is_mention)
+
+        # Upload attachments to S3
+        if self._s3_client and payload.get("attachments"):
+            for att_payload, att_obj in zip(payload["attachments"], message.attachments):
+                s3_result = await self._upload_attachment_to_s3(att_obj)
+                if s3_result:
+                    att_payload["s3_key"] = s3_result["s3_key"]
+                    att_payload["s3_url"] = s3_result["s3_url"]
+
+        # Route to cogent(s)
+        targets = self._router.route(message)
+
+        # DM with no target: reply with available cogent list
+        if not targets and is_dm:
+            available = self._router.available_cogents()
+            if available:
+                names = ", ".join(f"**{n}**" for n in available)
+                await message.channel.send(
+                    f"I'm not sure who you'd like to talk to. Available cogents: {names}\n"
+                    f"Just type a name to switch, e.g. `{available[0]}`"
+                )
+            else:
+                await message.channel.send("No cogents are currently available.")
+            return
+
+        # For non-DM messages with no specific target, this is a regular guild
+        # message that no cogent claims. Still write to all cogents as a passive
+        # message channel event.
+        if not targets and not is_dm:
+            targets = list(self._configs.keys())
+            # Only write to cogents whose default channels include this channel
+            # or if it's a mention (which should always have a target via role).
+            # For truly unrouted guild messages, skip to avoid noise.
+            if message_type == "discord:message":
+                # Only write to cogents that have this channel as default
+                filtered = []
+                channel_id = str(message.channel.id)
+                for name in targets:
+                    persona = self._lifecycle.get_persona(name)
+                    if persona and channel_id in persona.default_channels:
+                        filtered.append(name)
+                targets = filtered
+
+        if not targets:
+            return
+
+        # Generate trace for DMs and mentions
+        trace_id = None
+        trace_meta = None
+        if message_type in ("discord:dm", "discord:mention"):
+            from uuid import uuid4
+            bridge_received_at_ms = int(time.time() * 1000)
+            trace_id = uuid4()
+            trace_meta = {
+                "discord_created_at_ms": int(message.created_at.timestamp() * 1000),
+                "bridge_received_at_ms": bridge_received_at_ms,
+            }
+
+        for cogent_name in targets:
+            try:
+                self._write_to_cogent(
+                    cogent_name,
+                    payload,
+                    message_type,
+                    trace_id=trace_id,
+                    trace_meta=trace_meta,
+                    discord_message_id=str(message.id),
+                )
+
+                # Start typing and track pending DMs
+                if message_type in ("discord:dm", "discord:mention"):
+                    self._start_typing(message.channel)
+                if message_type == "discord:dm":
+                    self._track_pending_dm(
+                        payload["channel_id"], payload["message_id"],
+                        payload["author_id"], cogent_name,
+                    )
+            except Exception:
+                logger.exception("Failed to write message %s to cogent %s", message.id, cogent_name)
+                if message_type in ("discord:dm", "discord:mention"):
+                    self._create_alert(
+                        cogent_name,
+                        "critical",
+                        "discord:inbound_relay_failed",
+                        f"Failed to relay inbound {message_type} from {message.author} to DB — message will be lost",
+                        {"message_id": str(message.id), "author": str(message.author), "message_type": message_type},
+                    )
+
+    # ------------------------------------------------------------------
+    # Reaction relay
+    # ------------------------------------------------------------------
+
+    async def _on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Relay reactions on bot/webhook messages to the owning cogent's DB."""
+        # Ignore bot reactions
+        if payload.member and payload.member.bot:
+            return
+        if payload.user_id == self.client.user.id:
+            return
+
+        try:
+            channel = self.client.get_channel(payload.channel_id)
+            if channel is None:
+                channel = await self.client.fetch_channel(payload.channel_id)
+            message = await channel.fetch_message(payload.message_id)
+        except Exception:
+            logger.debug("Could not fetch message %s for reaction relay", payload.message_id, exc_info=True)
+            return
+
+        # Determine owning cogent: check sent_message_owners first, then
+        # check if it's our bot user, or a webhook message
+        owner = self._sent_message_owners.get(payload.message_id)
+
+        if not owner:
+            # Check if it's a message from our bot
+            if message.author.id == self.client.user.id:
+                # Could be any cogent; relay to all
+                owner = None
+            elif message.webhook_id:
+                # Try to match webhook to a cogent persona
+                for name, persona in self._lifecycle.personas.items():
+                    for wh in persona.webhooks.values():
+                        if wh.id == message.webhook_id:
+                            owner = name
+                            break
+                    if owner:
+                        break
+
+        reaction_payload = {
+            "message_id": str(payload.message_id),
+            "channel_id": str(payload.channel_id),
+            "reactor_id": str(payload.user_id),
+            "emoji": str(payload.emoji.name),
+            "guild_id": str(payload.guild_id) if payload.guild_id else None,
+        }
+        idempotency_key = f"reaction:{payload.message_id}:{payload.user_id}:{payload.emoji.name}"
+
+        target_cogents = [owner] if owner else list(self._configs.keys())
+
+        for cogent_name in target_cogents:
+            try:
+                from cogos.db.models import ChannelMessage
+
+                repo = self._get_repo(cogent_name)
+                ch = self._get_or_create_channel(repo, f"io:discord:{cogent_name}:reaction")
+                if ch is None:
+                    continue
+
+                repo.append_channel_message(ChannelMessage(
+                    channel=ch.id,
+                    sender_process=None,
+                    payload=reaction_payload,
+                    idempotency_key=idempotency_key,
+                ))
+                logger.info(
+                    "Relayed reaction %s from user %s on message %s to cogent %s",
+                    payload.emoji.name, payload.user_id, payload.message_id, cogent_name,
+                )
+            except Exception:
+                logger.exception("Failed to relay reaction to cogent %s", cogent_name)
+
+    # ------------------------------------------------------------------
+    # Typing indicator
+    # ------------------------------------------------------------------
+
+    def _start_typing(self, channel: discord.abc.Messageable):
+        channel_id = channel.id
+        old = self._typing_tasks.pop(channel_id, None)
+        if old and not old.done():
+            old.cancel()
+
+        async def _keep_typing():
+            try:
+                async with channel.typing():
+                    await asyncio.sleep(300)
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.debug("Typing indicator error for channel %s", channel_id, exc_info=True)
+
+        self._typing_tasks[channel_id] = asyncio.create_task(_keep_typing())
+
+    def _stop_typing(self, channel_id: int):
+        task = self._typing_tasks.pop(channel_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    # ------------------------------------------------------------------
+    # Pending DM timeout monitor
+    # ------------------------------------------------------------------
+
+    _DM_TIMEOUT_S = 300  # 5 minutes without a response triggers an alert
+    _DM_STALE_S = 3600   # clean up entries after 1 hour
+
+    def _track_pending_dm(self, dm_channel_id: str, message_id: str, author_id: str, cogent_name: str) -> None:
+        """Record an inbound DM that expects a response."""
+        self._pending_dms[dm_channel_id] = (message_id, author_id, time.time(), cogent_name)
+
+    def _clear_pending_dm(self, channel_id: str) -> None:
+        """Clear pending DM when a response is sent to the channel."""
+        entry = self._pending_dms.pop(channel_id, None)
+        if entry:
+            self._alerted_dm_ids.discard(entry[0])
+
+    def _sweep_pending_dms(self) -> None:
+        """Check for timed-out or stale pending DMs (called by the periodic loop)."""
+        now = time.time()
+        for dm_channel_id, (message_id, author_id, received_at, cogent_name) in list(self._pending_dms.items()):
+            elapsed = now - received_at
+            if elapsed > self._DM_STALE_S:
+                del self._pending_dms[dm_channel_id]
+                self._alerted_dm_ids.discard(message_id)
+            elif elapsed > self._DM_TIMEOUT_S and message_id not in self._alerted_dm_ids:
+                self._alerted_dm_ids.add(message_id)
+                self._create_alert(
+                    cogent_name,
+                    "warning",
+                    "discord:dm_timeout",
+                    f"DM from user {author_id} has had no response for {int(elapsed)}s",
+                    {"author_id": author_id, "message_id": message_id, "dm_channel_id": dm_channel_id, "elapsed_s": int(elapsed)},
+                )
+                logger.warning("DM timeout: no response to user %s (message %s) after %ds (cogent=%s)", author_id, message_id, int(elapsed), cogent_name)
+
+    async def _check_pending_dms(self):
+        """Periodically check for DMs that haven't received a response."""
+        while True:
+            await asyncio.sleep(60)
+            self._sweep_pending_dms()
+
+    # ------------------------------------------------------------------
+    # Attachment upload (unchanged)
+    # ------------------------------------------------------------------
 
     MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -217,316 +721,7 @@ class DiscordBridge:
             return None
 
     # ------------------------------------------------------------------
-    # Discord event handlers
-    # ------------------------------------------------------------------
-
-    async def _sync_guild(self, guild) -> None:
-        """Sync a guild and its channels to the DB."""
-        from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
-
-        channels = [
-            DiscordChannel(
-                channel_id=str(ch.id),
-                guild_id=str(guild.id),
-                name=ch.name,
-                topic=getattr(ch, "topic", None),
-                category=ch.category.name if ch.category else None,
-                channel_type=ch.type.name,
-                position=ch.position,
-            )
-            for ch in guild.channels
-        ]
-        guild_model = DiscordGuild(
-            guild_id=str(guild.id),
-            cogent_name=self.cogent_name,
-            name=guild.name,
-            icon_url=guild.icon.url if guild.icon else None,
-            member_count=guild.member_count,
-        )
-
-        def _do_sync():
-            repo = self._get_repo()
-            repo.upsert_discord_guild(guild_model)
-            for ch in channels:
-                repo.upsert_discord_channel(ch)
-
-        await asyncio.get_event_loop().run_in_executor(None, _do_sync)
-        logger.info("Synced guild %s: %d channels", guild.name, len(channels))
-
-    async def _on_channel_delete(self, channel) -> None:
-        channel_id = str(channel.id)
-        def _do_delete():
-            repo = self._get_repo()
-            repo.delete_discord_channel(channel_id)
-        await asyncio.get_event_loop().run_in_executor(None, _do_delete)
-
-    def _setup_handlers(self):
-        @self.client.event
-        async def on_ready():
-            logger.info("Discord bridge connected as %s", self.client.user)
-            for guild in self.client.guilds:
-                await self._sync_guild(guild)
-            self.client.loop.create_task(self._poll_replies())
-            self.client.loop.create_task(self._poll_api_requests())
-            self.client.loop.create_task(self._check_pending_dms())
-
-        @self.client.event
-        async def on_guild_channel_create(channel):
-            await self._sync_guild(channel.guild)
-
-        @self.client.event
-        async def on_guild_channel_update(before, after):
-            await self._sync_guild(after.guild)
-
-        @self.client.event
-        async def on_guild_channel_delete(channel):
-            await self._on_channel_delete(channel)
-
-        @self.client.event
-        async def on_guild_join(guild):
-            await self._sync_guild(guild)
-
-        @self.client.event
-        async def on_guild_remove(guild):
-            repo = self._get_repo()
-            repo.delete_discord_guild(str(guild.id))
-
-        @self.client.event
-        async def on_message(message: discord.Message):
-            logger.info("on_message from %s (bot=%s) in %s: %s", message.author, message.author.bot, message.channel, message.content[:80] if message.content else "(empty)")
-            # Ignore our own messages and any other bot messages
-            if message.author == self.client.user:
-                return
-            if message.author.bot:
-                return
-            await self._relay_to_db(message)
-
-        @self.client.event
-        async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-            await self._on_raw_reaction_add(payload)
-
-    def _get_or_create_channel(self, repo, channel_name: str):
-        """Look up a channel by name, creating it if missing."""
-        from cogos.db.models import Channel, ChannelType
-        ch = repo.get_channel_by_name(channel_name)
-        if ch is None:
-            logger.info("Creating channel %s", channel_name)
-            ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
-            repo.upsert_channel(ch)
-            ch = repo.get_channel_by_name(channel_name)
-        return ch
-
-    async def _relay_to_db(self, message: discord.Message):
-        """Classify a Discord message and write it as a channel message."""
-        if isinstance(message.channel, discord.DMChannel):
-            message_type = "discord:dm"
-        elif self.client.user and self.client.user.mentioned_in(message):
-            message_type = "discord:mention"
-        else:
-            message_type = "discord:message"
-
-        is_dm = isinstance(message.channel, discord.DMChannel)
-        is_mention = bool(self.client.user and self.client.user.mentioned_in(message))
-
-        payload = _make_message_payload(message, message_type, is_dm=is_dm, is_mention=is_mention)
-
-        # Upload attachments to S3
-        if self._s3_client and payload.get("attachments"):
-            for att_payload, att_obj in zip(payload["attachments"], message.attachments):
-                s3_result = await self._upload_attachment_to_s3(att_obj)
-                if s3_result:
-                    att_payload["s3_key"] = s3_result["s3_key"]
-                    att_payload["s3_url"] = s3_result["s3_url"]
-
-        # Generate trace for DMs and mentions (messages that trigger processing)
-        trace_id = None
-        trace_meta = None
-        if message_type in ("discord:dm", "discord:mention"):
-            from uuid import uuid4
-            bridge_received_at_ms = int(time.time() * 1000)
-            trace_id = uuid4()
-            trace_meta = {
-                "discord_created_at_ms": int(message.created_at.timestamp() * 1000),
-                "bridge_received_at_ms": bridge_received_at_ms,
-            }
-
-        try:
-            from cogos.db.models import ChannelMessage
-            repo = self._get_repo()
-
-            # Get or create the catch-all channel for this message type
-            channel_name = f"io:discord:{message_type.split(':')[1]}"  # io:discord:dm, io:discord:mention, io:discord:message
-            ch = self._get_or_create_channel(repo, channel_name)
-            if ch is None:
-                raise RuntimeError(f"Failed to create Discord channel {channel_name}")
-
-            repo.append_channel_message(ChannelMessage(
-                channel=ch.id,
-                sender_process=None,
-                payload=payload,
-                idempotency_key=f"discord:{message.id}",
-                trace_id=trace_id,
-                trace_meta=trace_meta,
-            ))
-
-            # Stamp db_written_at after successful insert
-            if trace_meta is not None:
-                trace_meta["db_written_at_ms"] = int(time.time() * 1000)
-
-            logger.info("Wrote %s from %s to channel %s", message_type, message.author, channel_name)
-
-            # Write to fine-grained per-source channel for message and dm types
-            fine_channel_name = None
-            if message_type == "discord:message":
-                fine_channel_name = f"io:discord:message:{payload['channel_id']}"
-            elif message_type == "discord:dm":
-                fine_channel_name = f"io:discord:dm:{payload['author_id']}"
-
-            if fine_channel_name:
-                fine_ch = self._get_or_create_channel(repo, fine_channel_name)
-                if fine_ch:
-                    repo.append_channel_message(ChannelMessage(
-                        channel=fine_ch.id,
-                        sender_process=None,
-                        payload=payload,
-                    ))
-
-            # Start typing indicator and track pending DMs
-            if message_type in ("discord:dm", "discord:mention"):
-                self._start_typing(message.channel)
-            if message_type == "discord:dm":
-                self._track_pending_dm(payload["channel_id"], payload["message_id"], payload["author_id"])
-        except Exception:
-            logger.exception("Failed to write message %s to DB", message.id)
-            if message_type in ("discord:dm", "discord:mention"):
-                self._create_alert(
-                    "critical",
-                    "discord:inbound_relay_failed",
-                    f"Failed to relay inbound {message_type} from {message.author} to DB — message will be lost",
-                    {"message_id": str(message.id), "author": str(message.author), "message_type": message_type},
-                )
-
-    # ------------------------------------------------------------------
-    # Reaction relay
-    # ------------------------------------------------------------------
-
-    async def _on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        """Relay reactions on our own messages to the DB."""
-        # Ignore bot reactions
-        if payload.member and payload.member.bot:
-            return
-        if payload.user_id == self.client.user.id:
-            return
-
-        try:
-            channel = self.client.get_channel(payload.channel_id)
-            if channel is None:
-                channel = await self.client.fetch_channel(payload.channel_id)
-            message = await channel.fetch_message(payload.message_id)
-        except Exception:
-            logger.debug("Could not fetch message %s for reaction relay", payload.message_id, exc_info=True)
-            return
-
-        # Only relay reactions on our own messages
-        if message.author.id != self.client.user.id:
-            return
-
-        try:
-            from cogos.db.models import ChannelMessage
-
-            repo = self._get_repo()
-            ch = self._get_or_create_channel(repo, "io:discord:reaction")
-            if ch is None:
-                return
-
-            repo.append_channel_message(ChannelMessage(
-                channel=ch.id,
-                sender_process=None,
-                payload={
-                    "message_id": str(payload.message_id),
-                    "channel_id": str(payload.channel_id),
-                    "reactor_id": str(payload.user_id),
-                    "emoji": str(payload.emoji.name),
-                    "guild_id": str(payload.guild_id) if payload.guild_id else None,
-                },
-                idempotency_key=f"reaction:{payload.message_id}:{payload.user_id}:{payload.emoji.name}",
-            ))
-            logger.info(
-                "Relayed reaction %s from user %s on message %s",
-                payload.emoji.name, payload.user_id, payload.message_id,
-            )
-        except Exception:
-            logger.exception("Failed to relay reaction on message %s", payload.message_id)
-
-    # ------------------------------------------------------------------
-    # Typing indicator
-    # ------------------------------------------------------------------
-
-    def _start_typing(self, channel: discord.abc.Messageable):
-        channel_id = channel.id
-        old = self._typing_tasks.pop(channel_id, None)
-        if old and not old.done():
-            old.cancel()
-
-        async def _keep_typing():
-            try:
-                async with channel.typing():
-                    await asyncio.sleep(300)
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.debug("Typing indicator error for channel %s", channel_id, exc_info=True)
-
-        self._typing_tasks[channel_id] = asyncio.create_task(_keep_typing())
-
-    def _stop_typing(self, channel_id: int):
-        task = self._typing_tasks.pop(channel_id, None)
-        if task and not task.done():
-            task.cancel()
-
-    # ------------------------------------------------------------------
-    # Pending DM timeout monitor
-    # ------------------------------------------------------------------
-
-    _DM_TIMEOUT_S = 300  # 5 minutes without a response triggers an alert
-    _DM_STALE_S = 3600   # clean up entries after 1 hour
-
-    def _track_pending_dm(self, dm_channel_id: str, message_id: str, author_id: str) -> None:
-        """Record an inbound DM that expects a response."""
-        self._pending_dms[dm_channel_id] = (message_id, author_id, time.time())
-
-    def _clear_pending_dm(self, channel_id: str) -> None:
-        """Clear pending DM when a response is sent to the channel."""
-        entry = self._pending_dms.pop(channel_id, None)
-        if entry:
-            self._alerted_dm_ids.discard(entry[0])
-
-    def _sweep_pending_dms(self) -> None:
-        """Check for timed-out or stale pending DMs (called by the periodic loop)."""
-        now = time.time()
-        for dm_channel_id, (message_id, author_id, received_at) in list(self._pending_dms.items()):
-            elapsed = now - received_at
-            if elapsed > self._DM_STALE_S:
-                del self._pending_dms[dm_channel_id]
-                self._alerted_dm_ids.discard(message_id)
-            elif elapsed > self._DM_TIMEOUT_S and message_id not in self._alerted_dm_ids:
-                self._alerted_dm_ids.add(message_id)
-                self._create_alert(
-                    "warning",
-                    "discord:dm_timeout",
-                    f"DM from user {author_id} has had no response for {int(elapsed)}s",
-                    {"author_id": author_id, "message_id": message_id, "dm_channel_id": dm_channel_id, "elapsed_s": int(elapsed)},
-                )
-                logger.warning("DM timeout: no response to user %s (message %s) after %ds", author_id, message_id, int(elapsed))
-
-    async def _check_pending_dms(self):
-        """Periodically check for DMs that haven't received a response."""
-        while True:
-            await asyncio.sleep(60)
-            self._sweep_pending_dms()
-
-    # ------------------------------------------------------------------
-    # SQS reply poller
+    # SQS reply poller (shared queue, multi-tenant dispatch)
     # ------------------------------------------------------------------
 
     async def _poll_replies(self):
@@ -557,7 +752,9 @@ class DiscordBridge:
                         try:
                             body = json.loads(msg.get("Body", "{}"))
                             meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+                            cogent_name = meta.get("cogent_name", "unknown")
                             self._create_alert(
+                                cogent_name if cogent_name in self._configs else next(iter(self._configs), "unknown"),
                                 "warning",
                                 "discord:send_permanent_failure",
                                 f"Cannot send {body.get('type', 'message')} — {type(exc).__name__}: {exc} (message discarded)",
@@ -567,6 +764,7 @@ class DiscordBridge:
                                     "target": body.get("channel") or body.get("user_id"),
                                     "process_id": meta.get("process_id"),
                                     "trace_id": meta.get("trace_id"),
+                                    "cogent_name": cogent_name,
                                     "error": str(exc)[:500],
                                 },
                             )
@@ -577,7 +775,9 @@ class DiscordBridge:
                         try:
                             body = json.loads(msg.get("Body", "{}"))
                             meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+                            cogent_name = meta.get("cogent_name", "unknown")
                             self._create_alert(
+                                cogent_name if cogent_name in self._configs else next(iter(self._configs), "unknown"),
                                 "critical",
                                 "discord:send_failed",
                                 f"Failed to send {body.get('type', 'message')} reply — SQS will retry",
@@ -587,6 +787,7 @@ class DiscordBridge:
                                     "target": body.get("channel") or body.get("user_id"),
                                     "process_id": meta.get("process_id"),
                                     "trace_id": meta.get("trace_id"),
+                                    "cogent_name": cogent_name,
                                 },
                             )
                         except Exception:
@@ -609,10 +810,14 @@ class DiscordBridge:
         meta = body.get("_meta")
         if isinstance(meta, dict):
             meta["sqs_received_at_ms"] = int(time.time() * 1000)
+
+        # Extract cogent_name from _meta
+        cogent_name = meta.get("cogent_name", "") if isinstance(meta, dict) else ""
+
         msg_type = body.get("type", "message")
 
         if msg_type == "dm":
-            await self._handle_dm(body)
+            await self._handle_dm(body, cogent_name)
             return
 
         raw_channel = body.get("channel", "")
@@ -633,65 +838,106 @@ class DiscordBridge:
         if msg_type == "reaction":
             await self._handle_reaction(body, channel)
         elif msg_type == "thread_create":
-            await self._handle_thread_create(body, channel)
+            await self._handle_thread_create(body, channel, cogent_name)
         else:
-            await self._handle_message(body, channel)
+            # Try webhook first, fall back to bot user
+            await self._handle_webhook_message(body, channel, cogent_name)
 
-    def _log_reply_send_latency(self, body: dict, *, msg_type: str, target_id: int | str):
-        latency_ms = _reply_queue_latency_ms(body)
-        if latency_ms is None:
-            return
-        meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
-        logger.info(
-            "CogOS latency discord_queue->send=%sms type=%s target=%s process=%s run=%s trace=%s",
-            latency_ms,
-            msg_type,
-            target_id,
-            meta.get("process_id", ""),
-            meta.get("run_id", ""),
-            meta.get("trace_id", ""),
-        )
+    # ------------------------------------------------------------------
+    # Webhook-based message sending
+    # ------------------------------------------------------------------
 
-    def _log_trace_summary(self, body: dict, *, msg_type: str, target_id: int | str):
-        """Log a complete trace summary if _meta contains trace_id."""
-        meta = body.get("_meta")
-        if not isinstance(meta, dict):
-            return
-        trace_id = meta.get("trace_id")
-        if not trace_id:
-            return
+    async def _handle_webhook_message(self, body: dict, channel, cogent_name: str):
+        """Send a message via the cogent's webhook (with persona name/avatar).
+        Falls back to bot user if no webhook is available."""
+        persona = self._lifecycle.get_persona(cogent_name) if cogent_name else None
+        webhook = None
 
-        now_ms = int(time.time() * 1000)
-        queued_at_ms = meta.get("queued_at_ms")
-        sqs_received_at_ms = meta.get("sqs_received_at_ms", now_ms)
+        if persona:
+            # Get webhook for this channel (or parent channel for threads)
+            target_channel_id = channel.id
+            if isinstance(channel, discord.Thread):
+                target_channel_id = channel.parent_id
+            webhook = persona.webhooks.get(target_channel_id)
 
-        sqs_to_receive_ms = (sqs_received_at_ms - queued_at_ms) if queued_at_ms else None
-        receive_to_send_ms = now_ms - sqs_received_at_ms
+        if webhook:
+            await self._send_via_webhook(body, channel, webhook, persona)
+        else:
+            # Fall back to regular bot message
+            await self._handle_message(body, channel, cogent_name)
 
-        logger.info(
-            "CogOS trace_complete trace_id=%s type=%s target=%s "
-            "process=%s run=%s "
-            "sqs_to_receive_ms=%s receive_to_send_ms=%s",
-            trace_id,
-            msg_type,
-            target_id,
-            meta.get("process_id", ""),
-            meta.get("run_id", ""),
-            sqs_to_receive_ms,
-            receive_to_send_ms,
-        )
+    async def _send_via_webhook(self, body: dict, channel, webhook: discord.Webhook, persona: CogentPersona):
+        """Send content via a webhook with the persona's display name and avatar."""
+        content = body.get("content", "")
+        if content:
+            content = convert_markdown(content)
+        file_specs = body.get("files") or []
+        thread_id = body.get("thread_id")
+        reply_to = body.get("reply_to")
 
-    async def _maybe_react(self, message, body: dict) -> None:
-        """Add a reaction to a sent message if the payload contains a 'react' emoji."""
-        react = body.get("react")
-        if not react or message is None:
-            return
-        try:
-            await message.add_reaction(react)
-        except Exception:
-            logger.warning("Failed to add reaction %s to message %s", react, message.id, exc_info=True)
+        # Determine the thread to send in (if any)
+        thread = discord.MISSING
+        if isinstance(channel, discord.Thread):
+            thread = channel
+        elif thread_id:
+            t = self.client.get_channel(int(thread_id))
+            if t is None:
+                try:
+                    t = await self.client.fetch_channel(int(thread_id))
+                except Exception:
+                    logger.warning("Could not find thread %s for webhook send", thread_id)
+            if t and isinstance(t, discord.Thread):
+                thread = t
 
-    async def _handle_message(self, body: dict, channel):
+        discord_files = await self._download_files(file_specs)
+
+        send_kwargs: dict = {
+            "username": persona.display_name,
+            "avatar_url": persona.avatar_url or discord.MISSING,
+            "wait": True,
+        }
+        if thread is not discord.MISSING:
+            send_kwargs["thread"] = thread
+
+        sent_message = None
+        if discord_files:
+            first_chunk = content[:2000] if content else None
+            sent_message = await webhook.send(
+                content=first_chunk, files=discord_files, **send_kwargs
+            )
+            remaining = content[2000:] if content and len(content) > 2000 else ""
+            for c in chunk_message(remaining):
+                await webhook.send(content=c, **send_kwargs)
+        elif content:
+            chunks = chunk_message(content)
+            sent_message = await webhook.send(content=chunks[0], **send_kwargs)
+            for c in chunks[1:]:
+                await webhook.send(content=c, **send_kwargs)
+
+        # Track message ownership for reaction routing
+        if sent_message:
+            self._sent_message_owners[sent_message.id] = persona.cogent_name
+            # Keep bounded
+            if len(self._sent_message_owners) > 10000:
+                oldest_keys = list(self._sent_message_owners.keys())[:5000]
+                for k in oldest_keys:
+                    del self._sent_message_owners[k]
+
+        # Set thread ownership if replying in a thread
+        actual_thread = thread if thread is not discord.MISSING else None
+        if actual_thread and isinstance(actual_thread, discord.Thread):
+            self._router.set_thread_owner(actual_thread.id, persona.cogent_name)
+
+        await self._maybe_react(sent_message, body)
+        self._log_reply_send_latency(body, msg_type="message", target_id=channel.id)
+        self._log_trace_summary(body, msg_type="message", target_id=channel.id)
+        self._clear_pending_dm(body.get("channel", ""))
+
+    # ------------------------------------------------------------------
+    # Fallback message handlers (bot user, no webhook)
+    # ------------------------------------------------------------------
+
+    async def _handle_message(self, body: dict, channel, cogent_name: str = ""):
         content = body.get("content", "")
         if content:
             content = convert_markdown(content)
@@ -731,6 +977,13 @@ class DiscordBridge:
             sent_message = await target.send(chunks[0], reference=reference)
             for c in chunks[1:]:
                 await target.send(c)
+
+        # Track ownership
+        if sent_message and cogent_name:
+            self._sent_message_owners[sent_message.id] = cogent_name
+            if isinstance(target, discord.Thread):
+                self._router.set_thread_owner(target.id, cogent_name)
+
         await self._maybe_react(sent_message, body)
         self._log_reply_send_latency(body, msg_type="message", target_id=target.id)
         self._log_trace_summary(body, msg_type="message", target_id=target.id)
@@ -746,7 +999,7 @@ class DiscordBridge:
         await message.add_reaction(emoji)
         self._log_reply_send_latency(body, msg_type="reaction", target_id=channel.id)
 
-    async def _handle_thread_create(self, body: dict, channel):
+    async def _handle_thread_create(self, body: dict, channel, cogent_name: str = ""):
         thread_name = body.get("thread_name", "Thread")
         message_id = body.get("message_id")
         content = body.get("content", "")
@@ -758,12 +1011,32 @@ class DiscordBridge:
             thread = await channel.create_thread(
                 name=thread_name, type=discord.ChannelType.public_thread
             )
+
+        # Set thread ownership
+        if cogent_name:
+            self._router.set_thread_owner(thread.id, cogent_name)
+
         if content:
-            for c in chunk_message(content):
-                await thread.send(c)
+            persona = self._lifecycle.get_persona(cogent_name) if cogent_name else None
+            webhook = None
+            if persona and thread.parent_id:
+                webhook = persona.webhooks.get(thread.parent_id)
+
+            if webhook and persona:
+                for c in chunk_message(content):
+                    await webhook.send(
+                        content=c,
+                        thread=thread,
+                        username=persona.display_name,
+                        avatar_url=persona.avatar_url or discord.MISSING,
+                    )
+            else:
+                for c in chunk_message(content):
+                    await thread.send(c)
+
         self._log_reply_send_latency(body, msg_type="thread_create", target_id=channel.id)
 
-    async def _handle_dm(self, body: dict):
+    async def _handle_dm(self, body: dict, cogent_name: str = ""):
         user_id = body.get("user_id")
         content = body.get("content", "")
         if not user_id or not content:
@@ -772,6 +1045,11 @@ class DiscordBridge:
         user = await self.client.fetch_user(int(user_id))
         dm_channel = await user.create_dm()
         self._stop_typing(dm_channel.id)
+
+        # Update last interaction so future DMs from this user route to this cogent
+        if cogent_name:
+            self._router.update_last_interaction(int(user_id), cogent_name)
+
         file_specs = body.get("files") or []
         discord_files = await self._download_files(file_specs)
         sent_message = None
@@ -790,6 +1068,10 @@ class DiscordBridge:
         self._log_reply_send_latency(body, msg_type="dm", target_id=dm_channel.id)
         self._log_trace_summary(body, msg_type="dm", target_id=dm_channel.id)
         self._clear_pending_dm(str(dm_channel.id))
+
+    # ------------------------------------------------------------------
+    # File downloads (unchanged)
+    # ------------------------------------------------------------------
 
     async def _download_files(self, file_specs: list[dict]) -> list[discord.File]:
         if not file_specs:
@@ -828,70 +1110,130 @@ class DiscordBridge:
         return files
 
     # ------------------------------------------------------------------
-    # API request poller
+    # Latency / trace logging
     # ------------------------------------------------------------------
 
-    async def _poll_api_requests(self):
-        """Poll io:discord:api:request for API requests and dispatch them."""
-        logger.info("Starting API request poller")
-        seen_requests: set[str] = set()
+    def _log_reply_send_latency(self, body: dict, *, msg_type: str, target_id: int | str):
+        latency_ms = _reply_queue_latency_ms(body)
+        if latency_ms is None:
+            return
+        meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+        logger.info(
+            "CogOS latency discord_queue->send=%sms type=%s target=%s process=%s run=%s trace=%s cogent=%s",
+            latency_ms,
+            msg_type,
+            target_id,
+            meta.get("process_id", ""),
+            meta.get("run_id", ""),
+            meta.get("trace_id", ""),
+            meta.get("cogent_name", ""),
+        )
+
+    def _log_trace_summary(self, body: dict, *, msg_type: str, target_id: int | str):
+        """Log a complete trace summary if _meta contains trace_id."""
+        meta = body.get("_meta")
+        if not isinstance(meta, dict):
+            return
+        trace_id = meta.get("trace_id")
+        if not trace_id:
+            return
+
+        now_ms = int(time.time() * 1000)
+        queued_at_ms = meta.get("queued_at_ms")
+        sqs_received_at_ms = meta.get("sqs_received_at_ms", now_ms)
+
+        sqs_to_receive_ms = (sqs_received_at_ms - queued_at_ms) if queued_at_ms else None
+        receive_to_send_ms = now_ms - sqs_received_at_ms
+
+        logger.info(
+            "CogOS trace_complete trace_id=%s type=%s target=%s "
+            "process=%s run=%s cogent=%s "
+            "sqs_to_receive_ms=%s receive_to_send_ms=%s",
+            trace_id,
+            msg_type,
+            target_id,
+            meta.get("process_id", ""),
+            meta.get("run_id", ""),
+            meta.get("cogent_name", ""),
+            sqs_to_receive_ms,
+            receive_to_send_ms,
+        )
+
+    async def _maybe_react(self, message, body: dict) -> None:
+        """Add a reaction to a sent message if the payload contains a 'react' emoji."""
+        react = body.get("react")
+        if not react or message is None:
+            return
+        try:
+            await message.add_reaction(react)
+        except Exception:
+            logger.warning("Failed to add reaction %s to message %s", react, message.id, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # API request poller (multi-tenant: poll each cogent's channels)
+    # ------------------------------------------------------------------
+
+    async def _poll_all_api_requests(self):
+        """Poll io:discord:{cogent_name}:api:request for each cogent."""
+        logger.info("Starting multi-tenant API request poller")
+        seen_requests: dict[str, set[str]] = {}  # cogent_name -> set of seen msg ids
 
         while True:
-            try:
-                repo = self._get_repo()
-                ch = self._get_or_create_channel(repo, "io:discord:api:request")
-                if ch is None:
-                    await asyncio.sleep(2)
-                    continue
+            for cogent_name in list(self._configs.keys()):
+                try:
+                    if cogent_name not in seen_requests:
+                        seen_requests[cogent_name] = set()
 
-                messages = repo.list_channel_messages(ch.id, limit=50)
-                for msg in messages:
-                    msg_id = str(msg.id)
-                    if msg_id in seen_requests:
+                    repo = self._get_repo(cogent_name)
+                    request_channel_name = f"io:discord:{cogent_name}:api:request"
+                    ch = self._get_or_create_channel(repo, request_channel_name)
+                    if ch is None:
                         continue
-                    seen_requests.add(msg_id)
 
-                    payload = msg.payload or {}
-                    request_id = payload.get("request_id", msg_id)
-                    method = payload.get("method")
+                    messages = repo.list_channel_messages(ch.id, limit=50)
+                    for msg in messages:
+                        msg_id = str(msg.id)
+                        if msg_id in seen_requests[cogent_name]:
+                            continue
+                        seen_requests[cogent_name].add(msg_id)
 
-                    if method == "history":
-                        try:
-                            await self._handle_history_request(repo, payload)
-                        except Exception:
-                            logger.exception(
-                                "Failed to handle history request %s", request_id
+                        payload = msg.payload or {}
+                        request_id = payload.get("request_id", msg_id)
+                        method = payload.get("method")
+
+                        if method == "history":
+                            try:
+                                await self._handle_history_request(repo, cogent_name, payload)
+                            except Exception:
+                                logger.exception(
+                                    "Failed to handle history request %s for cogent %s", request_id, cogent_name
+                                )
+                                self._write_api_response(
+                                    repo, cogent_name, request_id, "error", error="internal error"
+                                )
+                        else:
+                            logger.warning(
+                                "Unknown API request method: %s (request_id=%s, cogent=%s)",
+                                method, request_id, cogent_name,
                             )
                             self._write_api_response(
-                                repo, request_id, "error", error="internal error"
+                                repo, cogent_name, request_id, "error",
+                                error=f"unknown method: {method}",
                             )
-                    else:
-                        logger.warning(
-                            "Unknown API request method: %s (request_id=%s)",
-                            method,
-                            request_id,
-                        )
-                        self._write_api_response(
-                            repo,
-                            request_id,
-                            "error",
-                            error=f"unknown method: {method}",
-                        )
 
-                # Keep seen_requests bounded
-                if len(seen_requests) > 1000:
-                    # Keep the most recent 500
-                    to_drop = len(seen_requests) - 500
-                    it = iter(seen_requests)
-                    for _ in range(to_drop):
-                        seen_requests.discard(next(it))
+                    # Keep seen_requests bounded per cogent
+                    if len(seen_requests[cogent_name]) > 1000:
+                        to_drop = len(seen_requests[cogent_name]) - 500
+                        it = iter(seen_requests[cogent_name])
+                        for _ in range(to_drop):
+                            seen_requests[cogent_name].discard(next(it))
 
-            except Exception:
-                logger.exception("API request poll error")
+                except Exception:
+                    logger.exception("API request poll error for cogent %s", cogent_name)
 
             await asyncio.sleep(2)
 
-    async def _handle_history_request(self, repo, request: dict):
+    async def _handle_history_request(self, repo, cogent_name: str, request: dict):
         """Handle a 'history' API request by fetching messages from Discord."""
         request_id = request.get("request_id", "")
         channel_id = request.get("channel_id")
@@ -901,7 +1243,7 @@ class DiscordBridge:
 
         if not channel_id:
             self._write_api_response(
-                repo, request_id, "error", error="missing channel_id"
+                repo, cogent_name, request_id, "error", error="missing channel_id"
             )
             return
 
@@ -912,7 +1254,7 @@ class DiscordBridge:
                 channel = await self.client.fetch_channel(int(channel_id))
             except Exception:
                 self._write_api_response(
-                    repo, request_id, "error", error=f"channel {channel_id} not found"
+                    repo, cogent_name, request_id, "error", error=f"channel {channel_id} not found"
                 )
                 return
 
@@ -937,24 +1279,26 @@ class DiscordBridge:
         history_messages.reverse()
 
         self._write_api_response(
-            repo, request_id, "ok", messages=history_messages
+            repo, cogent_name, request_id, "ok", messages=history_messages
         )
 
     def _write_api_response(
         self,
         repo,
+        cogent_name: str,
         request_id: str,
         status: str,
         *,
         messages: list | None = None,
         error: str | None = None,
     ):
-        """Write an API response to io:discord:api:response channel."""
+        """Write an API response to io:discord:{cogent_name}:api:response channel."""
         from cogos.db.models import ChannelMessage
 
-        ch = self._get_or_create_channel(repo, "io:discord:api:response")
+        response_channel_name = f"io:discord:{cogent_name}:api:response"
+        ch = self._get_or_create_channel(repo, response_channel_name)
         if ch is None:
-            logger.error("Failed to create io:discord:api:response channel")
+            logger.error("Failed to create %s channel", response_channel_name)
             return
 
         payload: dict = {

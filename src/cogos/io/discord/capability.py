@@ -53,11 +53,9 @@ def _get_queue_url() -> str:
     override = os.environ.get("DISCORD_REPLY_QUEUE_URL")
     if override:
         return override
-    cogent_name = os.environ.get("COGENT_NAME", "")
-    safe_name = cogent_name.replace(".", "-")
     region = os.environ.get("AWS_REGION", "us-east-1")
     account_id = boto3.client("sts").get_caller_identity()["Account"]
-    return f"https://sqs.{region}.amazonaws.com/{account_id}/cogent-{safe_name}-discord-replies"
+    return f"https://sqs.{region}.amazonaws.com/{account_id}/cogent-polis-discord-replies"
 
 
 def _send_sqs(body: dict) -> None:
@@ -67,11 +65,12 @@ def _send_sqs(body: dict) -> None:
     client.send_message(QueueUrl=url, MessageBody=json.dumps(body))
 
 
-def _with_reply_meta(body: dict, *, process_id: UUID, run_id: UUID | None, trace_id: UUID | None = None) -> dict:
+def _with_reply_meta(body: dict, *, process_id: UUID, run_id: UUID | None, trace_id: UUID | None = None, cogent_name: str = "") -> dict:
     meta = {
         "queued_at_ms": int(time.time() * 1000),
         "trace_id": str(trace_id) if trace_id else str(uuid4()),
         "process_id": str(process_id),
+        "cogent_name": cogent_name,
     }
     if run_id is not None:
         meta["run_id"] = str(run_id)
@@ -98,37 +97,17 @@ class DiscordCapability(Capability):
 
     def __init__(self, repo, process_id, **kwargs):
         super().__init__(repo, process_id, **kwargs)
-        cogent_name = os.environ.get("COGENT_NAME", "")
-        # Read discord identity from secrets
-        self._bot_user_id = ""
-        self._bot_handle = ""
-        try:
-            from cogos.capabilities._secrets_helper import fetch_secret
-            self._bot_user_id = fetch_secret(f"cogent/{cogent_name}/discord/user_id")
-        except Exception:
-            pass
-        try:
-            from cogos.capabilities._secrets_helper import fetch_secret
-            self._bot_handle = fetch_secret(f"cogent/{cogent_name}/discord/handle")
-        except Exception:
-            pass
+        self._cogent_name = os.environ.get("COGENT_NAME", "")
 
     def handle(self) -> str:
-        """The bot's Discord handle (e.g. 'dr.alpha')."""
-        return self._bot_handle
-
-    def user_id(self) -> str:
-        """The bot's Discord user ID (numeric string)."""
-        return self._bot_user_id
+        """The cogent's Discord persona name (mentionable as @cogent:{name})."""
+        return self._cogent_name
 
     def profile(self) -> str:
         """Return Discord identity as markdown for prompt injection."""
-        lines = []
-        if self._bot_handle:
-            lines.append(f"- **Discord Handle:** {self._bot_handle}")
-        if self._bot_user_id:
-            lines.append(f"- **Discord User ID:** {self._bot_user_id}")
-        return "\n".join(lines) + "\n" if lines else ""
+        if self._cogent_name:
+            return f"- **Discord Persona:** {self._cogent_name} (mentionable as @cogent:{self._cogent_name})\n"
+        return ""
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
@@ -204,7 +183,7 @@ class DiscordCapability(Capability):
             body["files"] = file_specs
 
         try:
-            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id))
+            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id, cogent_name=self._cogent_name))
             return SendResult(channel=channel, content_length=len(content))
         except Exception as e:
             return DiscordError(error=str(e))
@@ -226,7 +205,7 @@ class DiscordCapability(Capability):
                 "channel": channel,
                 "message_id": message_id,
                 "emoji": emoji,
-            }, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id))
+            }, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id, cogent_name=self._cogent_name))
             return SendResult(channel=channel, content_length=0, type="reaction")
         except Exception as e:
             return DiscordError(error=str(e))
@@ -255,7 +234,7 @@ class DiscordCapability(Capability):
             body["message_id"] = message_id
 
         try:
-            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id))
+            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id, cogent_name=self._cogent_name))
             return SendResult(channel=channel, content_length=len(content), type="thread_create")
         except Exception as e:
             return DiscordError(error=str(e))
@@ -283,7 +262,7 @@ class DiscordCapability(Capability):
             body["files"] = file_specs
 
         try:
-            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id))
+            _send_sqs(_with_reply_meta(body, process_id=self.process_id, run_id=self.run_id, trace_id=self.trace_id, cogent_name=self._cogent_name))
             return SendResult(channel=f"dm:{user_id}", content_length=len(content), type="dm")
         except Exception as e:
             return DiscordError(error=str(e))
@@ -300,10 +279,9 @@ class DiscordCapability(Capability):
         self._check("receive")
 
         if message_type:
-            # Single channel: io:discord:dm, io:discord:mention, io:discord:message
-            channel_names = [f"io:discord:{message_type.split(':')[1]}"]
+            channel_names = [f"io:discord:{self._cogent_name}:{message_type.split(':')[1]}"]
         else:
-            channel_names = ["io:discord:dm", "io:discord:mention", "io:discord:message"]
+            channel_names = [f"io:discord:{self._cogent_name}:dm", f"io:discord:{self._cogent_name}:mention", f"io:discord:{self._cogent_name}:message"]
 
         messages: list[DiscordMessage] = []
         for name in channel_names:
@@ -361,7 +339,7 @@ class DiscordCapability(Capability):
         request_id = str(uuid4())
 
         # Write request to the API request channel
-        req_channel = self.repo.get_channel_by_name("io:discord:api:request")
+        req_channel = self.repo.get_channel_by_name(f"io:discord:{self._cogent_name}:api:request")
         if req_channel is None:
             return DiscordError(error="Discord API request channel not found")
 
@@ -383,7 +361,7 @@ class DiscordCapability(Capability):
         )
 
         # Poll the response channel for a matching response
-        resp_channel = self.repo.get_channel_by_name("io:discord:api:response")
+        resp_channel = self.repo.get_channel_by_name(f"io:discord:{self._cogent_name}:api:response")
         if resp_channel is None:
             return DiscordError(error="Discord API response channel not found")
 
