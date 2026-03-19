@@ -558,7 +558,12 @@ class DiscordBridge:
             await self._handle_dm(body)
             return
 
-        channel_id = int(body["channel"])
+        raw_channel = body.get("channel", "")
+        try:
+            channel_id = int(raw_channel)
+        except (ValueError, TypeError):
+            logger.error("Invalid (non-numeric) channel in reply: %r — discarding", raw_channel)
+            raise ValueError(f"Invalid channel ID: {raw_channel!r}")
         self._stop_typing(channel_id)
 
         channel = self.client.get_channel(channel_id)

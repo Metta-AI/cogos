@@ -123,3 +123,31 @@ def test_cascade_kill_skips_detached(tmp_path):
 
     assert repo.get_process_by_name("attached").status == ProcessStatus.DISABLED
     assert repo.get_process_by_name("detached").status == ProcessStatus.RUNNABLE
+
+
+def test_init_spawn_detached_does_not_crash(tmp_path):
+    """When init spawns detached children, parent_id is None.
+
+    The handler registration for parent wakeup must be skipped (not attempted
+    with process=None which violates NOT NULL).
+    """
+    repo = LocalRepository(str(tmp_path))
+    spec = ImageSpec(capabilities=[
+        {"name": "procs", "handler": "cogos.capabilities.procs:ProcsCapability",
+         "description": "", "instructions": "", "schema": None, "iam_role_arn": None, "metadata": None},
+    ])
+    apply_image(spec, repo)
+    init_proc = Process(name="init", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
+    init_id = repo.upsert_process(init_proc)
+
+    # Spawn from init itself (detached=True, parent_id becomes None)
+    init_procs = ProcsCapability(repo, init_id)
+    result = init_procs.spawn(name="cog-a", content="a", mode="daemon", detached=True)
+    assert not hasattr(result, "error"), f"spawn cog-a failed: {getattr(result, 'error', '')}"
+
+    result = init_procs.spawn(name="cog-b", content="b", mode="daemon", detached=True)
+    assert not hasattr(result, "error"), f"spawn cog-b failed: {getattr(result, 'error', '')}"
+
+    # Both processes should exist
+    assert repo.get_process_by_name("cog-a") is not None
+    assert repo.get_process_by_name("cog-b") is not None

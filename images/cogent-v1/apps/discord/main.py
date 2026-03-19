@@ -14,7 +14,7 @@ if hasattr(handler_content, 'error'):
 r = procs.spawn("discord/handler",
     mode="daemon",
     content=handler_content.content,
-    model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    model="us.anthropic.claude-sonnet-4-20250514-v1:0",
     idle_timeout_ms=300000,
     capabilities={
         "discord": None, "channels": None, "stdlib": None,

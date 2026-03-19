@@ -2,7 +2,7 @@ from cogos.cog.cog import CogConfig
 
 config = CogConfig(
     mode="daemon",
-    model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    model="us.anthropic.claude-sonnet-4-20250514-v1:0",
     emoji="💬",
     capabilities=[
         "cogent", "discord", "channels", "stdlib", "procs", "file",

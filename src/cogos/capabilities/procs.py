@@ -323,8 +323,10 @@ class ProcsCapability(Capability):
 
         # Register parent for wakeup on the recv channel (child→parent) so
         # child:exited notifications create deliveries and wake the parent.
+        # Skip when parent_id is None (detached children spawned by init).
         from cogos.db.models import Handler
-        self.repo.create_handler(Handler(process=parent_id, channel=recv_ch_id, epoch=child_epoch))
+        if parent_id is not None:
+            self.repo.create_handler(Handler(process=parent_id, channel=recv_ch_id, epoch=child_epoch))
 
         # Bind child to channel handlers if subscribe is set
         if subscribe:

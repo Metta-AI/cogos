@@ -25,7 +25,7 @@ if not has_handler:
         files={"main.md": handler_prompt, "test_main.py": test_content},
         entrypoint="main.md",
         mode="daemon",
-        model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        model="us.anthropic.claude-sonnet-4-20250514-v1:0",
         capabilities=[
             "discord", "channels", "stdlib", "procs", "file",
             "image", "blob", "secrets", "web",
