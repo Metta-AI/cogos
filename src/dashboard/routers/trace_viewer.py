@@ -53,6 +53,45 @@ class TraceOut(BaseModel):
     summary: TraceSummary
 
 
+class TraceListItem(BaseModel):
+    id: str
+    cogent_id: str
+    source: str
+    source_ref: str | None = None
+    created_at: str | None = None
+    span_count: int = 0
+
+
+class TraceListResponse(BaseModel):
+    count: int
+    traces: list[TraceListItem]
+
+
+@router.get("/trace-viewer", response_model=TraceListResponse)
+def list_traces(name: str, limit: int = 20) -> TraceListResponse:
+    repo = get_repo()
+    rows = repo.query(
+        "SELECT id, cogent_id, source, source_ref, created_at FROM cogos_request_trace ORDER BY created_at DESC LIMIT :limit",
+        {"limit": min(limit, 100)},
+    )
+    items = []
+    for r in rows:
+        tid = UUID(r["id"])
+        span_count_rows = repo.query(
+            "SELECT COUNT(*) AS cnt FROM cogos_span WHERE trace_id = :tid",
+            {"tid": tid},
+        )
+        items.append(TraceListItem(
+            id=r["id"],
+            cogent_id=r.get("cogent_id", ""),
+            source=r.get("source", ""),
+            source_ref=r.get("source_ref"),
+            created_at=r.get("created_at"),
+            span_count=span_count_rows[0]["cnt"] if span_count_rows else 0,
+        ))
+    return TraceListResponse(count=len(items), traces=items)
+
+
 @router.get("/trace-viewer/{trace_id}", response_model=TraceOut)
 def get_trace(name: str, trace_id: str) -> TraceOut:
     repo = get_repo()
