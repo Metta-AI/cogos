@@ -191,6 +191,23 @@ def update_all(ctx: click.Context, profile: str | None):
     click.echo(f"\nTotal: {time.monotonic() - t0:.1f}s")
 
 
+def _read_boot_versions(name: str) -> dict[str, str] | None:
+    """Read versions.json from the cogent's database via FileStore."""
+    try:
+        _ensure_db_env(name)
+        from cogos.db.repository import Repository
+        from cogos.files.store import FileStore
+        import json as _json
+        repo = Repository.create()
+        fs = FileStore(repo)
+        content = fs.get_content("mnt/boot/versions.json")
+        if content:
+            return _json.loads(content).get("components", {})
+    except Exception:
+        pass
+    return None
+
+
 @update.command("lambda")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--sha", default=None, help="Use pre-built lambda zip from CI (git SHA)")
@@ -204,6 +221,12 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
 
     click.echo(f"Updating cogent-{name} Lambda functions...")
     _check_ecr_image_for_commit(session, "executor")
+
+    if not sha:
+        versions = _read_boot_versions(name)
+        if versions and versions.get("lambda") and versions["lambda"] != "local":
+            sha = versions["lambda"]
+            click.echo(f"  Using lambda version from boot manifest: {sha[:8]}")
 
     if sha:
         full_sha = _resolve_commit_sha(sha)
@@ -354,6 +377,12 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
         )
 
     name = get_cogent_name(ctx)
+
+    if not tag:
+        versions = _read_boot_versions(name)
+        if versions and versions.get("dashboard") and versions["dashboard"] != "local":
+            tag = f"dashboard-{versions['dashboard']}"
+            click.echo(f"  Using dashboard version from boot manifest: {tag}")
     session = _get_session(profile)
     safe_name = name.replace(".", "-")
     cluster_name = "cogent-polis"
