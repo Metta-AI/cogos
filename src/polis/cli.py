@@ -622,7 +622,39 @@ def cogents_create(ctx: click.Context, name: str):
     )
     console.print("  [green]Status record created[/green]")
 
-    # 4. Secrets — create identity secret for the cogent
+    # 4. Create database on shared cluster
+    console.print("  Creating database on shared cluster...")
+    cfn_client = session.client("cloudformation")
+    resp = cfn_client.describe_stacks(StackName="cogent-polis")
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+    cluster_arn = outputs["SharedDbClusterArn"]
+    secret_arn = outputs["SharedDbSecretArn"]
+
+    rds_client = session.client("rds-data")
+    try:
+        rds_client.execute_statement(
+            resourceArn=cluster_arn,
+            secretArn=secret_arn,
+            database="postgres",
+            sql=f"CREATE DATABASE {db_name}",
+        )
+        console.print(f"  [green]Database {db_name} created[/green]")
+    except rds_client.exceptions.BadRequestException as e:
+        if "already exists" in str(e):
+            console.print(f"  Database {db_name} already exists")
+        else:
+            raise
+
+    # 5. Apply schema to the new database
+    console.print("  Applying schema...")
+    os.environ["DB_RESOURCE_ARN"] = cluster_arn
+    os.environ["DB_SECRET_ARN"] = secret_arn
+    os.environ["DB_NAME"] = db_name
+    from cogos.db.migrations import apply_schema
+    apply_schema()
+    console.print("  [green]Schema applied[/green]")
+
+    # 6. Secrets — create identity secret for the cogent
     console.print("  Creating identity secret...")
     store = SecretStore(session=session)
     identity_path = f"cogent/{name}/identity"
