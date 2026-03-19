@@ -6,7 +6,7 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 
 ### Prerequisites
 
-- AWS credentials configured (profile `softmax-org`)
+- AWS credentials configured (your SSO profile from `~/.cogos/config.yml`)
 - Python with `uv` for dependency management
 - Environment variables for DB: `DB_RESOURCE_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `AWS_REGION`
 - For local dev: `cogent local ...` defaults to a checkout-local JSON store at `.local/cogos/cogos_data.json`; set `COGENT_LOCAL_DATA` to override it
@@ -15,18 +15,18 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 
 ```bash
 # Boot from an image (upserts into DB, non-destructive)
-cogent dr.alpha cogos image boot cogent-v1
+cogent <name> cogos image boot cogent-v1
 
 # Clean boot (wipes tables first)
-cogent dr.alpha cogos image boot cogent-v1 --clean
+cogent <name> cogos image boot cogent-v1 --clean
 ```
 
 ### Check Status
 
 ```bash
-cogent dr.alpha cogos process list
-cogent dr.alpha cogos channel list --limit 20
-cogent dr.alpha cogos capability list
+cogent <name> cogos process list
+cogent <name> cogos channel list --limit 20
+cogent <name> cogos capability list
 ```
 
 ## Images
@@ -157,10 +157,10 @@ Those references are expanded directly where they appear when building the promp
 
 ```bash
 # Snapshot running state
-cogent dr.alpha cogos image snapshot my-snapshot
+cogent <name> cogos image snapshot my-snapshot
 
 # List available images
-cogent dr.alpha cogos image list
+cogent <name> cogos image list
 ```
 
 ## Processes
@@ -203,7 +203,7 @@ add_process(
 Via CLI (for ad-hoc work):
 
 ```bash
-cogent dr.alpha cogos process create \
+cogent <name> cogos process create \
   --name data-sync \
   --mode daemon \
   --runner lambda \
@@ -599,10 +599,10 @@ files.write("agents/my-agent.md", "updated prompt content")
 
 ```bash
 # Capture current state
-cogent dr.alpha cogos image snapshot backup-2026-03-11
+cogent <name> cogos image snapshot backup-2026-03-11
 
 # Boot on a different instance
-cogent dr.beta cogos image boot backup-2026-03-11 --clean
+cogent <name> cogos image boot backup-2026-03-11 --clean
 ```
 
 This copies the entire configuration (capabilities, processes, files, handlers, cron) but not runtime state (channel messages, runs, conversations).

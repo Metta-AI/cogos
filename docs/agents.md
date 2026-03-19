@@ -4,7 +4,7 @@
 
 ### Project
 
-Tasks live in the **Cogents** project in the Softmax workspace:
+Tasks live in the **Cogents** Asana project:
 - **Project URL**: https://app.asana.com/0/1213428766379931
 - **Project GID**: `1213428766379931`
 - **Workspace GID**: `1209016784099267`
@@ -41,21 +41,10 @@ All tools are prefixed with `mcp__claude_ai_Asana__` and loaded via ToolSearch.
 
 ## Which cogent to use
 
-Pick your test cogent based on `$USER`:
-
-| `$USER`        | Cogent       |
-|----------------|--------------|
-| `daveey`       | `dr.alpha`   |
-| `nishadsingh`  | `dr.gamma`   |
-
-All examples below use `$COGENT`. Set it once:
+Set `$COGENT` to your cogent instance name before running examples:
 
 ```bash
-case "$USER" in
-  daveey)       export COGENT=dr.alpha ;;
-  nishadsingh)  export COGENT=dr.gamma ;;
-  *)            echo "Unknown user $USER — set COGENT manually"; exit 1 ;;
-esac
+export COGENT=<your-cogent>
 ```
 
 ## Testing a Cogent End-to-End

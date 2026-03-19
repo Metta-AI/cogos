@@ -12,17 +12,17 @@ The CLI is registered as `polis` via pyproject.toml (`polis.cli:polis`).
 
 ## Authentication
 
-Polis uses AWS SSO profiles to authenticate. The `--profile` option (default: `softmax-org`) must resolve to a session with admin access on the AWS management account (111005867451). The CLI then assumes `OrganizationAccountAccessRole` into the polis account (901289084804).
+Polis uses AWS SSO profiles to authenticate. The `--profile` option must resolve to a session with admin access on your AWS management account. The CLI then assumes `OrganizationAccountAccessRole` into the polis account.
 
 ```bash
-aws sso login --profile softmax-org
+aws sso login --profile <your-profile>
 ```
 
 ## Global Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--profile` | `softmax-org` | AWS SSO profile for org-level operations |
+| `--profile` | (from deploy config) | AWS SSO profile for org-level operations |
 
 ## Stack Management
 

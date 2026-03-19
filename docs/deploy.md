@@ -125,4 +125,4 @@ cogent <name> cogos status                  # CogOS status
 cogent <name> cogos process list            # Processes running
 ```
 
-For dashboard, open `https://<safe-name>.softmax-cogents.com` and confirm the change is visible.
+For dashboard, open `https://<safe-name>.<your-domain>` and confirm the change is visible.

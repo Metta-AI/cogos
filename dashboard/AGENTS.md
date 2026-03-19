@@ -8,12 +8,12 @@ Operational UI for each cogent. Runs as a single Docker container serving both t
 - **Frontend**: Next.js static export, served by FastAPI when `DASHBOARD_STATIC_DIR` is set
 - **Database**: RDS Data API (same Aurora cluster as the cogtainer)
 - **Hosting**: ECS Fargate in the polis account (`cogent-polis` cluster), behind ALB with HTTPS
-- **Domain**: `{safe_name}.softmax-cogents.com` (managed by polis)
+- **Domain**: `{safe_name}.<your-domain>` (managed by polis)
 
 ## Deployment
 
 ```bash
-cogent dr.beta dashboard deploy    # Delegates to: polis dashboard deploy dr.beta
+cogent <name> dashboard deploy    # Delegates to: polis dashboard deploy <name>
 ```
 
 This runs `polis dashboard deploy` which:
@@ -25,8 +25,8 @@ This runs `polis dashboard deploy` which:
 ### First-time setup
 
 ```bash
-polis cogents create dr.beta       # Register identity (domain, cert, secrets)
-cogent dr.beta dashboard deploy    # Deploy the dashboard
+polis cogents create <name>       # Register identity (domain, cert, secrets)
+cogent <name> dashboard deploy    # Deploy the dashboard
 ```
 
 ## Docker Image
@@ -45,7 +45,7 @@ The container serves everything on one port:
 
 ```bash
 cogent local dashboard serve --db local   # Backend (8100) + Next.js dev server (5200 by default)
-cogent dr.beta dashboard serve --db prod  # Live DB via polis
+cogent <name> dashboard serve --db prod  # Live DB via polis
 ```
 
 In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`.

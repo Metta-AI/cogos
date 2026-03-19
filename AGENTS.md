@@ -6,7 +6,7 @@ Built on the Viable System Model. Each cogent is an autonomous agent with its ow
 
 | Term | Definition |
 |------|-----------|
-| **Cogent** | An autonomous agent instance (e.g. `dr.alpha`). Has its own database, channels, identity, and set of cogs. The top-level entity. |
+| **Cogent** | An autonomous agent instance. Has its own database, channels, identity, and set of cogs. The top-level entity. |
 | **Cogtainer** | The infrastructure container that hosts a cogent — ECS task, RDS database, Lambda functions, and IAM roles. One cogtainer per cogent. |
 | **Cog** | A functional module within a cogent (e.g. `discord`, `supervisor`, `worker`). Creates coglets given a context. Has a default coglet that runs on cog startup. |
 | **Coglet** | The unit of work. Processes input/events and produces output/logs. Has a parent cog. Can be run via CogletRuntime, which creates a process for it. |
@@ -18,11 +18,11 @@ All team communication happens on **Discord** (not Slack). When you see `#channe
 
 ```bash
 # Webhook secrets are at discord/channel-webhook/{channel} or discord/agent-webhook-url
-aws secretsmanager get-secret-value --secret-id "discord/agent-webhook-url" --query SecretString --output text --profile softmax
+aws secretsmanager get-secret-value --secret-id "discord/agent-webhook-url" --query SecretString --output text
 
 # Post as a cogent identity:
 curl -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" \
-  -d '{"username": "dr.alpha", "content": "message here"}'
+  -d '{"username": "<name>", "content": "message here"}'
 ```
 
 Discord messages have a 2000-character limit — split longer posts into multiple messages.
@@ -65,8 +65,8 @@ polis cogents list               # All cogents with CPU/memory/channels
 - **Organization**: o-n7g18rzou1
 - **Polis account**: 901289084804 (us-east-1)
 - **ECR**: 901289084804.dkr.ecr.us-east-1.amazonaws.com/cogent
-- **Domain**: softmax-cogents.com
-- **Auth profile**: `softmax-org` (SSO admin on management account 111005867451)
+- **Domain**: (configured in `~/.cogos/config.yml`)
+- **Auth profile**: (configured in `~/.cogos/config.yml`)
 
 ## Secret Path Conventions
 
@@ -77,7 +77,7 @@ polis/shared/{key}         # Org-wide shared keys (e.g., polis/shared/jwt-signin
 
 ## Running a Cogent Locally vs on AWS
 
-`cogent local ...` (or `cogos -c local ...`) means run on this machine using LocalRepository. By default, each checkout gets its own local JSON store at `.local/cogos/cogos_data.json` under that repo. Set `COGENT_LOCAL_DATA` to override it. Any other cogent name (for example `dr.alpha`) targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
+`cogent local ...` (or `cogos -c local ...`) means run on this machine using LocalRepository. By default, each checkout gets its own local JSON store at `.local/cogos/cogos_data.json` under that repo. Set `COGENT_LOCAL_DATA` to override it. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
 
 ### Local: Run CogOS on this machine
 
@@ -153,7 +153,7 @@ cogent local cogos dashboard reload            # restart (stop + start)
 
 # Foreground (opens browser):
 cogent local dashboard serve --db local        # local JSON DB
-cogent dr.alpha dashboard serve --db prod      # live polis DB
+cogent <name> dashboard serve --db prod        # live polis DB
 ```
 
 `cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.
@@ -235,25 +235,25 @@ Common sequences:
 
 ```bash
 # Executor code change
-cogent dr.alpha cogtainer update lambda
-cogent dr.alpha cogos image boot cogent-v1    # if image also changed
+cogent <name> cogtainer update lambda
+cogent <name> cogos image boot cogent-v1    # if image also changed
 
 # Schema migration + executor change
-cogent dr.alpha cogtainer update rds
-cogent dr.alpha cogtainer update lambda
+cogent <name> cogtainer update rds
+cogent <name> cogtainer update lambda
 
 # Full infrastructure change (CDK constructs, IAM, ALB)
-cogent dr.alpha cogtainer create
-cogent dr.alpha cogos image boot cogent-v1
+cogent <name> cogtainer create
+cogent <name> cogos image boot cogent-v1
 ```
 
 ### Managing the Discord bridge (remote)
 
 ```bash
-cogent dr.alpha cogos io discord start     # Scale ECS service to 1 task
-cogent dr.alpha cogos io discord stop      # Scale to 0
-cogent dr.alpha cogos io discord restart   # Force new deployment
-cogent dr.alpha cogos io discord status    # Check running/desired counts
+cogent <name> cogos io discord start     # Scale ECS service to 1 task
+cogent <name> cogos io discord stop      # Scale to 0
+cogent <name> cogos io discord restart   # Force new deployment
+cogent <name> cogos io discord status    # Check running/desired counts
 ```
 
 ### Testing a deployed dashboard
@@ -261,14 +261,14 @@ cogent dr.alpha cogos io discord status    # Check running/desired counts
 1. Create a PAT (Personal Access Token) for API access:
 
 ```bash
-cogent dr.alpha dashboard create-pat
-cogent dr.alpha cogtainer create              # Apply ALB bypass rule
+cogent <name> dashboard create-pat
+cogent <name> cogtainer create              # Apply ALB bypass rule
 ```
 
 2. Test with curl:
 
 ```bash
-curl -H 'X-Api-Key: <pat>' https://dr-alpha.softmax-cogents.com/api/cogents/dr.alpha/status
+curl -H 'X-Api-Key: <pat>' https://<safe-name>.<your-domain>/api/cogents/<name>/status
 ```
 
 3. Or use the `dashboard.test` skill which automates PAT-authenticated UI and API testing against the deployed dashboard.
