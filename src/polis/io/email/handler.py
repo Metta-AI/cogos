@@ -1,7 +1,7 @@
 """Email ingest Lambda — receives parsed emails from Cloudflare Email Worker.
 
-Deployed once in polis. Resolves the target cogent's DB from CloudFormation
-stack outputs, then inserts the event via RDS Data API.
+Deployed once in polis. Resolves the target cogent's DB name from DynamoDB,
+then inserts the event via RDS Data API using the shared Aurora cluster.
 """
 
 import base64
@@ -18,19 +18,15 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 INGEST_SECRET = os.environ.get("EMAIL_INGEST_SECRET", "")
+DB_CLUSTER_ARN = os.environ.get("DB_CLUSTER_ARN", "")
+DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN", "")
+DYNAMO_TABLE = os.environ.get("DYNAMO_TABLE", "")
 
-_cfn = None
 _rds = None
+_dynamo_table = None
 
-# Cache: cogent_name -> (cluster_arn, secret_arn, db_name)
-_db_cache: dict[str, tuple[str, str, str]] = {}
-
-
-def _get_cfn():
-    global _cfn
-    if _cfn is None:
-        _cfn = boto3.client("cloudformation")
-    return _cfn
+# Cache: cogent_name -> db_name
+_db_name_cache: dict[str, str] = {}
 
 
 def _get_rds():
@@ -40,37 +36,40 @@ def _get_rds():
     return _rds
 
 
-def _resolve_db(cogent_name: str) -> tuple[str, str, str]:
-    """Resolve a cogent's DB connection from its CloudFormation stack outputs.
+def _get_dynamo_table():
+    global _dynamo_table
+    if _dynamo_table is None:
+        _dynamo_table = boto3.resource("dynamodb").Table(DYNAMO_TABLE)
+    return _dynamo_table
 
-    The cogent_name from email local part uses hyphens (e.g. 'dr-alpha').
-    Stack names follow: cogent-{hyphenated-name}-cogtainer.
-    """
-    if cogent_name in _db_cache:
-        return _db_cache[cogent_name]
 
-    safe_name = cogent_name.replace(".", "-")
-    stack_name = f"cogent-{safe_name}-cogtainer"
-    resp = _get_cfn().describe_stacks(StackName=stack_name)
-    outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+def _resolve_db_name(cogent_name: str) -> str:
+    """Resolve a cogent's db_name from the DynamoDB status table."""
+    if cogent_name in _db_name_cache:
+        return _db_name_cache[cogent_name]
 
-    cluster_arn = outputs["ClusterArn"]
-    secret_arn = outputs["SecretArn"]
-    db_name = "cogent"
+    resp = _get_dynamo_table().get_item(Key={"cogent_name": cogent_name})
+    item = resp.get("Item")
+    if not item:
+        raise ValueError(f"Cogent not found in status table: {cogent_name}")
 
-    _db_cache[cogent_name] = (cluster_arn, secret_arn, db_name)
-    return cluster_arn, secret_arn, db_name
+    db_name = item.get("db_name")
+    if not db_name:
+        raise ValueError(f"Cogent {cogent_name} has no db_name in status table")
+
+    _db_name_cache[cogent_name] = db_name
+    return db_name
 
 
 def _insert_event(cogent_name: str, event_type: str, source: str, payload: dict) -> str:
     """Insert an event into the cogent's cogos_event table via Data API."""
-    cluster_arn, secret_arn, db_name = _resolve_db(cogent_name)
+    db_name = _resolve_db_name(cogent_name)
     event_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
     _get_rds().execute_statement(
-        resourceArn=cluster_arn,
-        secretArn=secret_arn,
+        resourceArn=DB_CLUSTER_ARN,
+        secretArn=DB_SECRET_ARN,
         database=db_name,
         sql="""
             INSERT INTO cogos_event (id, event_type, source, payload, created_at)

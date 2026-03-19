@@ -426,16 +426,14 @@ class PolisStack(cdk.Stack):
                 "EMAIL_INGEST_SECRET": email_ingest_secret.secret_value.unsafe_unwrap(),
                 "DB_CLUSTER_ARN": self.database.cluster_arn,
                 "DB_SECRET_ARN": self.database.secret.secret_arn if self.database.secret else "",
+                "DYNAMO_TABLE": self.status_table.table_name,
             },
         )
 
-        # Needs to resolve cogent DBs via CloudFormation and write via Data API
-        self.email_ingest_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["cloudformation:DescribeStacks"],
-                resources=["*"],
-            )
-        )
+        # DynamoDB read access for resolving cogent db_name
+        self.status_table.grant_read_data(self.email_ingest_fn)
+
+        # RDS Data API + Secrets Manager for writing events
         self.email_ingest_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
