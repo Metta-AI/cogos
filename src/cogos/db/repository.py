@@ -126,7 +126,25 @@ class Repository:
         }
         if params:
             kwargs["parameters"] = params
-        return self._client.execute_statement(**kwargs)
+        try:
+            return self._client.execute_statement(**kwargs)
+        except Exception:
+            # Log the failing SQL + param names/types for debugging
+            import re
+            jsonb_params = set(re.findall(r":(\w+)::jsonb", sql))
+            if jsonb_params and params:
+                for p in params:
+                    name = p.get("name", "?")
+                    if name in jsonb_params:
+                        val = p.get("value", {})
+                        sv = val.get("stringValue")
+                        if sv is not None:
+                            logger.error(
+                                "JSONB param %s value (first 200 chars): %s",
+                                name, sv[:200],
+                            )
+            logger.error("Failing SQL: %s", sql[:500])
+            raise
 
     def _param(self, name: str, value: Any) -> dict:
         param: dict[str, Any] = {"name": name}
@@ -147,10 +165,37 @@ class Repository:
             param["value"] = {"stringValue": value.strftime("%Y-%m-%d %H:%M:%S.%f")}
             param["typeHint"] = "TIMESTAMP"
         elif isinstance(value, (dict, list)):
-            param["value"] = {"stringValue": json.dumps(value)}
+            param["value"] = {"stringValue": json.dumps(value, default=str)}
+        elif isinstance(value, str):
+            param["value"] = {"stringValue": value}
         else:
+            # Non-standard type (Pydantic model, enum, etc.).  Use str()
+            # which is correct for text columns.  If this value is bound to
+            # a ::jsonb column, the _execute error handler will log it.
+            logger.debug(
+                "Param %s has non-standard type %s; converting via str()",
+                name, type(value).__name__,
+            )
             param["value"] = {"stringValue": str(value)}
         return param
+
+    @staticmethod
+    def _jsonb_safe(value: Any) -> dict | list | None:
+        """Ensure *value* is a dict, list, or None suitable for a ::jsonb column.
+
+        If value is already the right type, return it unchanged.  Otherwise
+        round-trip through JSON to produce a clean dict/list.  This prevents
+        ``invalid input syntax for type json`` errors when non-serializable
+        objects (Pydantic models, enums, etc.) leak into jsonb parameters.
+        """
+        if value is None or isinstance(value, (dict, list)):
+            return value
+        # Last-resort: try to convert via JSON round-trip
+        try:
+            return json.loads(json.dumps(value, default=str))
+        except (TypeError, ValueError):
+            logger.warning("_jsonb_safe: could not serialize %s, wrapping as string", type(value).__name__)
+            return {"_raw": str(value)}
 
     def _extract_value(self, cell: dict) -> Any:
         if "isNull" in cell and cell["isNull"]:
@@ -286,6 +331,7 @@ class Repository:
 
     def add_operation(self, op: CogosOperation) -> UUID:
         now = op.created_at or datetime.now(timezone.utc)
+        op.metadata = self._jsonb_safe(op.metadata) or {}
         self._execute(
             """INSERT INTO cogos_operation (id, epoch, type, metadata, created_at)
                VALUES (:id, :epoch, :type, :metadata::jsonb, :created_at)""",
@@ -322,6 +368,9 @@ class Repository:
     def upsert_process(self, p: Process) -> UUID:
         if not p.epoch:
             p.epoch = self.reboot_epoch
+        p.model_constraints = self._jsonb_safe(p.model_constraints) or {}
+        p.return_schema = self._jsonb_safe(p.return_schema)
+        p.metadata = self._jsonb_safe(p.metadata) or {}
         response = self._execute(
             """INSERT INTO cogos_process
                    (id, name, mode, content, priority, resources, runner, executor,
@@ -487,6 +536,7 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def create_process_capability(self, pc: ProcessCapability) -> UUID:
+        pc.config = self._jsonb_safe(pc.config)
         response = self._execute(
             """INSERT INTO cogos_process_capability (id, process, capability, name, config, epoch)
                VALUES (:id, :process, :capability, :name, :config::jsonb, :epoch)
@@ -785,6 +835,7 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_cron(self, c: Cron) -> UUID:
+        c.payload = self._jsonb_safe(c.payload) or {}
         # Check for existing rule with same expression + channel name
         existing = self._first_row(self._execute(
             "SELECT id FROM cron WHERE cron_expression = :expr AND channel_name = :channel_name",
@@ -857,6 +908,7 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def insert_file(self, f: File) -> UUID:
+        f.includes = self._jsonb_safe(f.includes) or []
         response = self._execute(
             """INSERT INTO cogos_file (id, key, includes)
                VALUES (:id, :key, :includes::jsonb)
@@ -956,7 +1008,7 @@ class Repository:
     def update_file_includes(self, file_id: UUID, includes: list[str]) -> bool:
         response = self._execute(
             "UPDATE cogos_file SET includes = :includes::jsonb, updated_at = now() WHERE id = :id",
-            [self._param("id", file_id), self._param("includes", includes)],
+            [self._param("id", file_id), self._param("includes", self._jsonb_safe(includes) or [])],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
@@ -1122,6 +1174,8 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_capability(self, cap: Capability) -> UUID:
+        cap.schema = self._jsonb_safe(cap.schema)
+        cap.metadata = self._jsonb_safe(cap.metadata) or {}
         response = self._execute(
             """INSERT INTO cogos_capability
                    (id, name, description, instructions, handler,
@@ -1232,6 +1286,7 @@ class Repository:
 
     def upsert_resource(self, resource: Resource) -> str:
         """Insert or update a resource by name."""
+        resource.metadata = self._jsonb_safe(resource.metadata) or {}
         response = self._execute(
             """INSERT INTO resources (name, resource_type, capacity, metadata)
                VALUES (:name, :resource_type, :capacity, :metadata::jsonb)
@@ -1273,6 +1328,9 @@ class Repository:
     def create_run(self, run: Run) -> UUID:
         if not run.epoch:
             run.epoch = self.reboot_epoch
+        run.result = self._jsonb_safe(run.result)
+        run.snapshot = self._jsonb_safe(run.snapshot)
+        run.scope_log = self._jsonb_safe(run.scope_log) or []
         response = self._execute(
             """INSERT INTO cogos_run
                    (id, process, message, conversation, status,
@@ -1325,6 +1383,9 @@ class Repository:
         snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
     ) -> bool:
+        result = self._jsonb_safe(result)
+        snapshot = self._jsonb_safe(snapshot)
+        scope_log = self._jsonb_safe(scope_log)
         response = self._execute(
             """UPDATE cogos_run SET
                    status = :status, tokens_in = :tokens_in, tokens_out = :tokens_out,
@@ -1384,7 +1445,7 @@ class Repository:
             "UPDATE cogos_run SET metadata = :metadata::jsonb WHERE id = :id",
             [
                 self._param("id", run_id),
-                self._param("metadata", metadata),
+                self._param("metadata", self._jsonb_safe(metadata) or {}),
             ],
         )
 
@@ -1526,6 +1587,8 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def create_trace(self, trace: Trace) -> UUID:
+        trace.capability_calls = self._jsonb_safe(trace.capability_calls) or []
+        trace.file_ops = self._jsonb_safe(trace.file_ops) or []
         response = self._execute(
             """INSERT INTO cogos_trace (id, run, capability_calls, file_ops, model_version)
                VALUES (:id, :run, :capability_calls::jsonb, :file_ops::jsonb, :model_version)
@@ -1583,6 +1646,7 @@ class Repository:
         )
 
     def create_span(self, span: Span) -> UUID:
+        span.metadata = self._jsonb_safe(span.metadata) or {}
         response = self._execute(
             """INSERT INTO cogos_span
                    (id, trace_id, parent_span_id, name, coglet, status, metadata)
@@ -1605,6 +1669,7 @@ class Repository:
         raise RuntimeError("Failed to create span")
 
     def complete_span(self, span_id: UUID, *, status: str = "completed", metadata: dict | None = None) -> bool:
+        metadata = self._jsonb_safe(metadata)
         if metadata:
             response = self._execute(
                 """UPDATE cogos_span SET status = :status, ended_at = now(),
@@ -1631,6 +1696,7 @@ class Repository:
         return [self._span_from_row(r) for r in self._rows_to_dicts(response)]
 
     def create_span_event(self, event: SpanEvent) -> UUID:
+        event.metadata = self._jsonb_safe(event.metadata) or {}
         response = self._execute(
             """INSERT INTO cogos_span_event (id, span_id, event, message, metadata)
                VALUES (:id, :span_id, :event, :message, :metadata::jsonb)
@@ -1726,7 +1792,7 @@ class Repository:
                 self._param("alert_type", alert_type),
                 self._param("source", source),
                 self._param("message", message),
-                self._param("metadata", metadata or {}),
+                self._param("metadata", self._jsonb_safe(metadata) or {}),
             ],
         )
 
@@ -1750,6 +1816,7 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_schema(self, s: Schema) -> UUID:
+        s.definition = self._jsonb_safe(s.definition) or {}
         response = self._execute(
             """INSERT INTO cogos_schema (id, name, definition, file_id)
                VALUES (:id, :name, :definition::jsonb, :file_id)
@@ -1804,6 +1871,7 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_channel(self, ch: Channel) -> UUID:
+        ch.inline_schema = self._jsonb_safe(ch.inline_schema)
         response = self._execute(
             """INSERT INTO cogos_channel
                    (id, name, owner_process, schema_id, inline_schema,
@@ -1888,6 +1956,8 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def append_channel_message(self, msg: ChannelMessage) -> UUID:
+        msg.payload = self._jsonb_safe(msg.payload) or {}
+        msg.trace_meta = self._jsonb_safe(msg.trace_meta)
         if msg.idempotency_key:
             response = self._execute(
                 """INSERT INTO cogos_channel_message (id, channel, sender_process, payload, idempotency_key, trace_id, trace_meta)
