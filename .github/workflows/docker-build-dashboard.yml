@@ -31,13 +31,39 @@ jobs:
           aws_role: ${{ vars.AWS_ROLE }}
           tag_prefix: dashboard
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend tarball
+        run: |
+          cd dashboard/frontend
+          npm ci
+          npx next build
+          mkdir -p /tmp/frontend-pkg
+          cp -r .next/standalone/* /tmp/frontend-pkg/
+          [ -d .next/static ] && mkdir -p /tmp/frontend-pkg/.next && cp -r .next/static /tmp/frontend-pkg/.next/static
+          [ -d public ] && cp -r public /tmp/frontend-pkg/public
+          tar czf /tmp/frontend.tar.gz -C /tmp/frontend-pkg .
+          echo "SIZE=$(du -h /tmp/frontend.tar.gz | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: Upload frontend tarball to S3
+        uses: ./.github/actions/s3-upload
+        with:
+          aws_role: ${{ vars.AWS_ROLE }}
+          source_path: /tmp/frontend.tar.gz
+          s3_key: dashboard/${{ github.sha }}/frontend.tar.gz
+
       - name: Summary
         run: |
-          echo "### Dashboard Image Built" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Dashboard Built" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Tags:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Docker Tags:**" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.build.outputs.image_uri }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Deploy:** \`cogent <name> dashboard deploy --docker --tag dashboard-${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Frontend Tarball:** \`s3://cogent-polis-ci-artifacts/dashboard/${{ github.sha }}/frontend.tar.gz\` (${{ env.SIZE }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Deploy:** \`cogent <name> cogtainer update dashboard --sha ${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
