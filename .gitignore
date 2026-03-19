@@ -19,6 +19,8 @@ downloads/
 lib/
 !dashboard/frontend/src/lib/
 !images/**/lib/
+!src/cogos/lib/
+!tests/cogos/lib/
 lib64/
 parts/
 sdist/
