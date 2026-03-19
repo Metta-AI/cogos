@@ -157,6 +157,22 @@ class CogletRuntime:
             detached=True,
         )
 
+    def run(
+        self,
+        name_or_manifest: str | CogletManifest,
+        procs: Any,
+        capabilities: dict | None = None,
+        capability_overrides: dict | None = None,
+    ) -> Any:
+        """Spawn a child coglet by name or manifest. Returns ProcessHandle.
+
+        If *capabilities* is provided it is used as-is instead of building
+        capabilities from the coglet config.  *capability_overrides* is an
+        alias accepted for backwards compatibility.
+        """
+        caps = capabilities or capability_overrides
+        return self.run_coglet(name_or_manifest, procs, capabilities=caps)
+
     def run_coglet(
         self,
         name_or_manifest: str | CogletManifest,
