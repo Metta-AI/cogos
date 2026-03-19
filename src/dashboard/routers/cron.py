@@ -9,8 +9,8 @@ from dashboard.db import get_repo
 from dashboard.models import (
     CronCreate,
     CronItem,
-    CronUpdate,
     CronsResponse,
+    CronUpdate,
     ToggleRequest,
     ToggleResponse,
 )
@@ -71,7 +71,7 @@ def update_cron(name: str, cron_id: str, body: CronUpdate) -> CronItem:
         updated = Cron(
             id=uid,
             expression=body.cron_expression if body.cron_expression is not None else cron.expression,
-            event_type=body.channel_name if body.channel_name is not None else cron.event_type,
+            channel_name=body.channel_name if body.channel_name is not None else cron.channel_name,
             enabled=body.enabled if body.enabled is not None else cron.enabled,
             payload=body.metadata if body.metadata is not None else cron.payload,
         )

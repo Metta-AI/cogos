@@ -1,11 +1,12 @@
 """Tests for ChannelsCapability."""
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.channels import ChannelsCapability
-from cogos.db.models import Channel, ChannelMessage, ChannelType, Handler, Schema
+from cogos.capabilities.channels import ChannelError, ChannelsCapability
+from cogos.db.models import Channel, ChannelMessage, ChannelType, Schema
 
 
 @pytest.fixture
@@ -25,6 +26,7 @@ class TestCreate:
         repo.upsert_channel.return_value = uuid4()
         cap = ChannelsCapability(repo, pid)
         result = cap.create("metrics", schema={"value": "number"})
+        assert not isinstance(result, ChannelError)
         assert result.name == "metrics"
         repo.upsert_channel.assert_called_once()
 
@@ -34,6 +36,7 @@ class TestCreate:
         repo.upsert_channel.return_value = uuid4()
         cap = ChannelsCapability(repo, pid)
         result = cap.create("metrics", schema="metrics")
+        assert not isinstance(result, ChannelError)
         assert result.name == "metrics"
 
     def test_create_missing_schema_ref(self, repo, pid):
@@ -45,8 +48,9 @@ class TestCreate:
 
 class TestSendAndRead:
     def test_send_valid(self, repo, pid):
-        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED,
-                     inline_schema={"fields": {"body": "string"}})
+        ch = Channel(
+            name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, inline_schema={"fields": {"body": "string"}}
+        )
         repo.get_channel_by_name.return_value = ch
         repo.append_channel_message.return_value = uuid4()
         cap = ChannelsCapability(repo, pid)
@@ -54,8 +58,9 @@ class TestSendAndRead:
         assert hasattr(result, "id")
 
     def test_send_invalid_payload(self, repo, pid):
-        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED,
-                     inline_schema={"fields": {"body": "string"}})
+        ch = Channel(
+            name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, inline_schema={"fields": {"body": "string"}}
+        )
         repo.get_channel_by_name.return_value = ch
         cap = ChannelsCapability(repo, pid)
         result = cap.send("ch1", {"body": 123})
@@ -63,8 +68,8 @@ class TestSendAndRead:
 
     def test_send_closed_channel(self, repo, pid):
         from datetime import datetime
-        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED,
-                     closed_at=datetime.utcnow())
+
+        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=datetime.utcnow())
         repo.get_channel_by_name.return_value = ch
         cap = ChannelsCapability(repo, pid)
         result = cap.send("ch1", {"body": "hello"})
@@ -78,6 +83,7 @@ class TestSendAndRead:
         ]
         cap = ChannelsCapability(repo, pid)
         result = cap.read("ch1")
+        assert not isinstance(result, ChannelError)
         assert len(result) == 1
 
 
@@ -98,10 +104,12 @@ class TestClose:
         repo.get_channel_by_name.return_value = ch
         repo.close_channel.return_value = True
         from datetime import datetime
+
         closed_ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=datetime.utcnow())
         repo.get_channel.return_value = closed_ch
         cap = ChannelsCapability(repo, pid)
         result = cap.close("ch1")
+        assert not isinstance(result, ChannelError)
         assert result.closed_at is not None
 
     def test_close_by_non_owner(self, repo, pid):

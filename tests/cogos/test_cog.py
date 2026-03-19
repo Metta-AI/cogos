@@ -7,14 +7,15 @@ from pathlib import Path
 from cogos.db.local_repository import LocalRepository
 from cogos.files.store import FileStore
 
-
 # ---------------------------------------------------------------------------
 # Image-level: add_cog + cog manifest
 # ---------------------------------------------------------------------------
 
+
 class TestAddCog:
     def test_add_cog_in_image_spec(self):
         from cogos.image.spec import load_image
+
         spec = load_image(Path("images/cogent-v1"))
         cog_names = {c["name"] for c in spec.cogs}
         assert "recruiter" in cog_names
@@ -23,7 +24,6 @@ class TestAddCog:
     def test_cog_apply_writes_boot_manifest(self, tmp_path):
         import json
 
-        from cogos.files.store import FileStore
         from cogos.image.apply import apply_image
         from cogos.image.spec import load_image
 
@@ -33,6 +33,7 @@ class TestAddCog:
 
         fs = FileStore(repo)
         raw = fs.get_content("_boot/cog_manifests.json")
+        assert raw is not None
         manifest = json.loads(raw)
         names = {e["name"] for e in manifest}
         assert "recruiter" in names

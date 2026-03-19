@@ -1,33 +1,42 @@
 """End-to-end test: parent gets child:exited notification after child completes."""
+
 from __future__ import annotations
 
-from cogos.capabilities.procs import ProcsCapability
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import (
-    Channel,
-    ChannelType,
     Process,
     ProcessMode,
     ProcessStatus,
     Run,
     RunStatus,
 )
+from cogos.executor.handler import ExecutorConfig
 from cogos.image.apply import apply_image
 from cogos.image.spec import ImageSpec
 from cogos.runtime.local import run_and_complete
-from cogos.executor.handler import ExecutorConfig
 
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    spec = ImageSpec(capabilities=[
-        {"name": "procs", "handler": "cogos.capabilities.procs:ProcsCapability",
-         "description": "", "instructions": "", "schema": None, "iam_role_arn": None, "metadata": None},
-    ])
+    spec = ImageSpec(
+        capabilities=[
+            {
+                "name": "procs",
+                "handler": "cogos.capabilities.procs:ProcsCapability",
+                "description": "",
+                "instructions": "",
+                "schema": None,
+                "iam_role_arn": None,
+                "metadata": None,
+            },
+        ]
+    )
     apply_image(spec, repo)
     parent = Process(name="parent", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING)
     parent_id = repo.upsert_process(parent)
     parent = repo.get_process(parent_id)
+    assert parent is not None
     return repo, parent
 
 
@@ -46,6 +55,7 @@ def test_success_notification(tmp_path):
 
     handle = procs.spawn(name="child-ok", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-ok")
+    assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 
@@ -58,6 +68,7 @@ def test_success_notification(tmp_path):
     assert recv_ch is not None
 
     msgs = repo.list_channel_messages(recv_ch.id, limit=10)
+    assert msgs is not None
     assert len(msgs) == 1
     payload = msgs[0].payload
     assert payload["type"] == "child:exited"
@@ -73,6 +84,7 @@ def test_failure_notification(tmp_path):
 
     handle = procs.spawn(name="child-fail", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-fail")
+    assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 
@@ -81,7 +93,9 @@ def test_failure_notification(tmp_path):
 
     recv_ch_name = f"spawn:{child.id}\u2192{parent.id}"
     recv_ch = repo.get_channel_by_name(recv_ch_name)
+    assert recv_ch is not None
     msgs = repo.list_channel_messages(recv_ch.id, limit=10)
+    assert msgs is not None
     assert len(msgs) == 1
     payload = msgs[0].payload
     assert payload["type"] == "child:exited"
@@ -92,14 +106,16 @@ def test_failure_notification(tmp_path):
 
 def test_parent_handler_creates_delivery(tmp_path):
     """The parent Handler on the recv channel means match_messages creates a delivery."""
-    from cogos.capabilities.scheduler import SchedulerCapability
     from uuid import UUID
+
+    from cogos.capabilities.scheduler import SchedulerCapability
 
     repo, parent = _setup(tmp_path)
     procs = ProcsCapability(repo, parent.id)
 
     handle = procs.spawn(name="child-delivery", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-delivery")
+    assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 
@@ -120,6 +136,7 @@ def test_handle_runs_after_completion(tmp_path):
 
     handle = procs_cap.spawn(name="child-runs", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-runs")
+    assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 
@@ -128,6 +145,7 @@ def test_handle_runs_after_completion(tmp_path):
 
     # Get handle and check runs()
     h = procs_cap.get(name="child-runs")
+    assert not isinstance(h, ProcessError)
     runs = h.runs(limit=5)
     assert len(runs) == 1
     assert runs[0].status == "completed"

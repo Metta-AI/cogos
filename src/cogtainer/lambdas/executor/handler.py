@@ -11,7 +11,7 @@ from uuid import UUID
 import boto3
 from botocore.config import Config as BotoConfig
 
-from cogtainer.db.models import Event, Program, ProgramType, Run, RunStatus, infer_program_type
+from cogtainer.db.models import Alert, AlertSeverity, Event, Program, ProgramType, Run, RunStatus, infer_program_type
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.db import get_repo
 from cogtainer.lambdas.shared.events import emit_run_result, put_event
@@ -22,46 +22,56 @@ logger = setup_logging()
 
 # ── Code Mode: two meta-tools ────────────────────────────────
 
-CODE_MODE_TOOL_CONFIG = {"tools": [
-    {"toolSpec": {
-        "name": "search_tools",
-        "description": (
-            "Search available tools by keyword. Returns tool names, descriptions, "
-            "usage instructions, and input schemas. Use this to discover what tools "
-            "are available before writing code."
-        ),
-        "inputSchema": {"json": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search keyword (e.g. 'memory', 'task', 'event')",
+CODE_MODE_TOOL_CONFIG = {
+    "tools": [
+        {
+            "toolSpec": {
+                "name": "search_tools",
+                "description": (
+                    "Search available tools by keyword. Returns tool names, descriptions, "
+                    "usage instructions, and input schemas. Use this to discover what tools "
+                    "are available before writing code."
+                ),
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search keyword (e.g. 'memory', 'task', 'event')",
+                            },
+                        },
+                        "required": ["query"],
+                    }
                 },
-            },
-            "required": ["query"],
-        }},
-    }},
-    {"toolSpec": {
-        "name": "execute_code",
-        "description": (
-            "Execute Python code with access to declared tools as callable functions. "
-            "Use search_tools first to discover available tools and their schemas. "
-            "Tools are organized as dot-notation namespaces matching their names "
-            "(e.g. cogtainer.task.create, channels.discord.send). "
-            "Print results to see them. Returns stdout output or error traceback."
-        ),
-        "inputSchema": {"json": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Python code to execute",
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "execute_code",
+                "description": (
+                    "Execute Python code with access to declared tools as callable functions. "
+                    "Use search_tools first to discover available tools and their schemas. "
+                    "Tools are organized as dot-notation namespaces matching their names "
+                    "(e.g. cogtainer.task.create, channels.discord.send). "
+                    "Print results to see them. Returns stdout output or error traceback."
+                ),
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Python code to execute",
+                            },
+                        },
+                        "required": ["code"],
+                    }
                 },
-            },
-            "required": ["code"],
-        }},
-    }},
-]}
+            }
+        },
+    ]
+}
 
 
 def handler(event: dict, context) -> dict:
@@ -69,6 +79,7 @@ def handler(event: dict, context) -> dict:
     # Delegate to CogOS executor if this is a cogos process invocation
     if event.get("process_id"):
         from cogos.executor.handler import handler as cogos_handler
+
         return cogos_handler(event, context)
 
     config = get_config()
@@ -106,11 +117,9 @@ def handler(event: dict, context) -> dict:
     try:
         source = _resolve_program_source(program, repo)
         if infer_program_type(source) == ProgramType.PYTHON:
-            run = execute_python_program(program, event_data, run, config,
-                                         task_data=task_data if task_data else None)
+            run = execute_python_program(program, event_data, run, config, task_data=task_data if task_data else None)
         else:
-            run = execute_program(program, event_data, run, config,
-                                  task_data=task_data if task_data else None)
+            run = execute_program(program, event_data, run, config, task_data=task_data if task_data else None)
         run.status = RunStatus.COMPLETED
         run.duration_ms = int((time.time() - start_time) * 1000)
         run.completed_at = datetime.now(timezone.utc)
@@ -170,15 +179,17 @@ def handler(event: dict, context) -> dict:
 
         try:
             repo.create_alert(
-                severity="warning",
-                alert_type="process:run:failed",
-                source="executor",
-                message=f"Run failed for '{program_name}': {str(e)[:500]}",
-                metadata={
-                    "process_name": program_name,
-                    "run_id": str(run.id),
-                    "duration_ms": duration_ms,
-                },
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    alert_type="process:run:failed",
+                    source="executor",
+                    message=f"Run failed for '{program_name}': {str(e)[:500]}",
+                    metadata={
+                        "process_name": program_name,
+                        "run_id": str(run.id),
+                        "duration_ms": duration_ms,
+                    },
+                )
             )
         except Exception:
             logger.debug("Could not create alert for failed run %s", run.id)
@@ -223,8 +234,7 @@ def _handle_execute_code(tool_input: dict, tool_names: list[str], config) -> str
     return resp_payload.get("result", "(no result)")
 
 
-def execute_program(program: Program, event_data: dict, run: Run, config,
-                    task_data: dict | None = None) -> Run:
+def execute_program(program: Program, event_data: dict, run: Run, config, task_data: dict | None = None) -> Run:
     """Execute program via Bedrock converse API with Code Mode tool loop."""
     bedrock = boto3.client(
         "bedrock-runtime",
@@ -235,12 +245,12 @@ def execute_program(program: Program, event_data: dict, run: Run, config,
 
     # Merge task tool overrides into a program copy
     if task_data:
-        merged_tools = list(set(
-            (program.tools or []) + (task_data.get("tools") or [])
-        ))
-        program = program.model_copy(update={
-            "tools": merged_tools,
-        })
+        merged_tools = list(set((program.tools or []) + (task_data.get("tools") or [])))
+        program = program.model_copy(
+            update={
+                "tools": merged_tools,
+            }
+        )
 
     # Build system prompt with memory context
     from memory.context_engine import ContextEngine
@@ -310,12 +320,14 @@ def execute_program(program: Program, event_data: dict, run: Run, config,
                 else:
                     result = f"Unknown tool: {tool_name}"
 
-                tool_results.append({
-                    "toolResult": {
-                        "toolUseId": tool_use["toolUseId"],
-                        "content": [{"text": result}],
+                tool_results.append(
+                    {
+                        "toolResult": {
+                            "toolUseId": tool_use["toolUseId"],
+                            "content": [{"text": result}],
+                        }
                     }
-                })
+                )
             messages.append({"role": "user", "content": tool_results})
         else:
             break
@@ -346,7 +358,10 @@ def _resolve_program_source(program: Program, repo) -> str:
 
 
 def execute_python_program(
-    program: Program, event_data: dict, run: Run, config,
+    program: Program,
+    event_data: dict,
+    run: Run,
+    config,
     task_data: dict | None = None,
 ) -> Run:
     """Execute a Python program by calling its run(repo, event, config) function."""
@@ -371,7 +386,7 @@ def execute_python_program(
     result_events = run_fn(repo, event_data, prog_config)
 
     if result_events:
-        for evt in result_events:
+        for evt in result_events:  # type: ignore[union-attr]
             if isinstance(evt, Event):
                 put_event(evt, config.event_bus_name)
                 run.events_emitted.append(evt.event_type)

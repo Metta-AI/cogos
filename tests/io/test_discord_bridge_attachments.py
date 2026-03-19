@@ -1,7 +1,9 @@
 """Tests for inbound attachment S3 upload in Discord bridge."""
+
 from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock, patch
-import pytest
+
 from cogos.io.discord.bridge import DiscordBridge
 
 
@@ -56,6 +58,7 @@ class TestInboundAttachments:
         assert result["s3_key"].startswith("blobs/")
         assert result["s3_key"].endswith("/img.png")
         assert "s3_url" in result
+        assert bridge._s3_client is not None
         bridge._s3_client.put_object.assert_called_once()
 
     async def test_skip_large_attachment(self):
@@ -67,6 +70,7 @@ class TestInboundAttachments:
         attachment.size = 30_000_000
         result = await bridge._upload_attachment_to_s3(attachment)
         assert result is None
+        assert bridge._s3_client is not None
         bridge._s3_client.put_object.assert_not_called()
 
     async def test_no_s3_client_returns_none(self):
@@ -83,12 +87,17 @@ class TestOutboundS3Files:
         bridge = _make_bridge_with_s3()
         body_mock = MagicMock()
         body_mock.read.return_value = b"file data"
+        assert bridge._s3_client is not None
         bridge._s3_client.get_object.return_value = {"Body": body_mock}
 
         import discord
-        files = await bridge._download_files([
-            {"s3_key": "blobs/abc/chart.png", "filename": "chart.png"},
-        ])
+
+        files = await bridge._download_files(
+            [
+                {"s3_key": "blobs/abc/chart.png", "filename": "chart.png"},
+            ]
+        )
         assert len(files) == 1
         assert isinstance(files[0], discord.File)
+        assert bridge._s3_client is not None
         bridge._s3_client.get_object.assert_called_once_with(Bucket="test-bucket", Key="blobs/abc/chart.png")

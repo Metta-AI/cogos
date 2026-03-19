@@ -2,8 +2,8 @@
 
 from datetime import datetime, timezone
 
-from cogos.capabilities.alerts import AlertsCapability
 from cogos.capabilities.alert_monitor import AlertMonitorCapability
+from cogos.capabilities.alerts import AlertsCapability
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 
@@ -41,6 +41,7 @@ def test_full_pipeline_spam(tmp_path):
 
     # Verify alerts went to channel
     ch = repo.get_channel_by_name("system:alerts")
+    assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=100)
     assert len(msgs) == 10
 
@@ -81,6 +82,7 @@ def test_full_pipeline_emergency(tmp_path):
 
     # Verify escalation in supervisor channel
     ch = repo.get_channel_by_name("supervisor:alerts")
+    assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
     assert len(msgs) >= 1
     assert msgs[0].payload["rule"] == "monitor:critical_signal"

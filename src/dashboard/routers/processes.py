@@ -184,9 +184,10 @@ def _sync_handlers(
 ) -> None:
     """Sync handlers: add missing, remove stale."""
     from cogos.db.models import Channel, ChannelType
+
     existing = repo.list_handlers(process_id=process_id)
     # Build map of channel name -> handler
-    existing_by_name: dict[str, object] = {}
+    existing_by_name: dict[str, Handler] = {}
     for h in existing:
         name = None
         if h.channel:
@@ -301,12 +302,14 @@ def get_process(name: str, process_id: str) -> dict:
     for pc in pcs:
         c = repo.get_capability(pc.capability)
         if c:
-            cap_grants.append({
-                "id": str(pc.id),
-                "grant_name": pc.name or c.name,
-                "capability_name": c.name,
-                "config": pc.config,
-            })
+            cap_grants.append(
+                {
+                    "id": str(pc.id),
+                    "grant_name": pc.name or c.name,
+                    "capability_name": c.name,
+                    "config": pc.config,
+                }
+            )
 
     # Global includes — files the executor prepends to every process prompt.
     file_store = FileStore(repo)
@@ -333,15 +336,11 @@ def get_process(name: str, process_id: str) -> dict:
         "resolved_prompt": resolved_prompt,
         "prompt_tree": prompt_tree,
         "capabilities": [g["grant_name"] for g in cap_grants],
-        "capability_configs": {
-            g["grant_name"]: g["config"] or {}
-            for g in cap_grants
-        },
+        "capability_configs": {g["grant_name"]: g["config"] or {} for g in cap_grants},
         "cap_grants": cap_grants,
         "includes": includes,
         "handlers": handler_list,
     }
-
 
 
 @router.post("/processes", response_model=ProcessDetail)
@@ -470,12 +469,14 @@ def get_process_logs(
             continue
         msgs = repo.list_channel_messages(ch.id, limit=limit)
         for m in msgs:
-            entries.append(ProcessLogEntry(
-                stream=stream,
-                text=m.payload.get("text", ""),
-                process_name=m.payload.get("process", p.name),
-                created_at=_iso(m.created_at) if m.created_at else None,
-            ))
+            entries.append(
+                ProcessLogEntry(
+                    stream=stream,
+                    text=m.payload.get("text", ""),
+                    process_name=m.payload.get("process", p.name),
+                    created_at=_iso(m.created_at) if m.created_at else None,
+                )
+            )
 
     # Sort by created_at
     entries.sort(key=lambda e: e.created_at or "")

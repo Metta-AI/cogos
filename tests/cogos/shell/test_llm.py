@@ -76,6 +76,7 @@ def test_llm_file_flag(tmp_path, monkeypatch):
 def test_llm_help(tmp_path):
     state, reg, _ = _setup(tmp_path)
     output = reg.dispatch(state, "llm --help")
+    assert output is not None
     assert "Usage:" in output
     assert "-v" in output
     assert "-f" in output
@@ -84,4 +85,5 @@ def test_llm_help(tmp_path):
 def test_llm_no_args_shows_help(tmp_path):
     state, reg, _ = _setup(tmp_path)
     output = reg.dispatch(state, "llm")
+    assert output is not None
     assert "Usage:" in output

@@ -45,5 +45,6 @@ def test_system_alerts_channel_has_schema(tmp_path):
     ensure_system_channels(repo, init_id)
 
     ch = repo.get_channel_by_name("system:alerts")
+    assert ch is not None
     assert ch.inline_schema is not None
     assert "fields" in ch.inline_schema

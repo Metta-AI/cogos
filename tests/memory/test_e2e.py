@@ -7,8 +7,6 @@ hierarchical key resolution, and CLI commands.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from click.testing import CliRunner
 
@@ -339,6 +337,7 @@ class TestCLI:
         self._tmp_path = tmp_path
 
         import memory.cli as cli_mod
+
         monkeypatch.setattr(cli_mod, "_get_store", lambda: s)
 
     def test_put_and_list(self, runner):
@@ -393,6 +392,7 @@ class TestCLI:
         assert "Activated version 1" in result.output
 
         mem = self._store.get("/cli/act")
+        assert mem is not None
         assert mem.active_version == 1
 
     def test_set_ro_and_delete_blocked(self, runner):
@@ -472,6 +472,5 @@ class TestCLI:
         assert "1 updated" in result.output
 
         mem = self._store.get("/t/note")
+        assert mem is not None
         assert mem.active_version == 2
-
-

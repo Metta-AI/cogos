@@ -20,6 +20,7 @@ def _setup(tmp_path):
 def test_cap_ls(tmp_path):
     state, reg, _ = _setup(tmp_path)
     output = reg.dispatch(state, "cap ls")
+    assert output is not None
     assert "files" in output
     assert "procs" in output
     assert "secrets" in output
@@ -28,10 +29,14 @@ def test_cap_ls(tmp_path):
 def test_cap_disable(tmp_path):
     state, reg, repo = _setup(tmp_path)
     reg.dispatch(state, "cap disable files")
-    assert not repo.get_capability_by_name("files").enabled
+    cap = repo.get_capability_by_name("files")
+    assert cap is not None
+    assert not cap.enabled
 
 
 def test_cap_enable(tmp_path):
     state, reg, repo = _setup(tmp_path)
     reg.dispatch(state, "cap enable secrets")
-    assert repo.get_capability_by_name("secrets").enabled
+    cap = repo.get_capability_by_name("secrets")
+    assert cap is not None
+    assert cap.enabled

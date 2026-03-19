@@ -18,7 +18,7 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
         }
         if hasattr(record, "run_id"):
-            log_entry["run_id"] = record.run_id
+            log_entry["run_id"] = record.run_id  # type: ignore[attr-defined]
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_entry)

@@ -21,6 +21,7 @@ def _setup(tmp_path):
 def test_help_lists_commands(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "help")
+    assert output is not None
     assert "help" in output
     assert "dummy" in output
 
@@ -34,15 +35,18 @@ def test_exit_returns_none(tmp_path):
 def test_history_empty(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "history")
+    assert output is not None
     assert "no history" in output.lower()
 
 
 def test_history_shows_entries(tmp_path):
     from cogos.files.store import FileStore
+
     state, reg = _setup(tmp_path)
     fs = FileStore(state.repo)
     fs.create("home/root/.shell_history", "ls\nps\ncat foo.md\n")
     output = reg.dispatch(state, "history")
+    assert output is not None
     assert "ls" in output
     assert "ps" in output
     assert "cat foo.md" in output

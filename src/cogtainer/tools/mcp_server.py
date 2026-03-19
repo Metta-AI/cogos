@@ -12,9 +12,9 @@ import json
 import logging
 import os
 
-import mcp.types as types
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+import mcp.types as types  # type: ignore[import-not-found]
+from mcp.server import Server  # type: ignore[import-not-found]
+from mcp.server.stdio import stdio_server  # type: ignore[import-not-found]
 
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.db import get_repo

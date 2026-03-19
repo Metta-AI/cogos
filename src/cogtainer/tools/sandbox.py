@@ -12,6 +12,7 @@ import json
 import logging
 import traceback
 import types
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _import_handler(handler_path: str) -> callable:
+def _import_handler(handler_path: str) -> Callable:
     """Import a handler from a dotted path like 'module.path:function_name'."""
     module_path, _, func_name = handler_path.partition(":")
     if not module_path or not func_name:
@@ -34,7 +35,7 @@ def _import_handler(handler_path: str) -> callable:
     return getattr(mod, func_name)
 
 
-def _build_namespace(tools_map: dict[str, callable]) -> dict[str, types.SimpleNamespace]:
+def _build_namespace(tools_map: dict[str, Callable]) -> dict[str, types.SimpleNamespace]:
     """Build nested SimpleNamespace tree from slash-separated tool names.
 
     Given {"cogtainer/task/create": fn, "io/discord/send": fn2} returns:
@@ -84,6 +85,7 @@ def _build_namespace(tools_map: dict[str, callable]) -> dict[str, types.SimpleNa
 @dataclass
 class ScopedConfig:
     """Config wrapper that carries a scoped boto3 session for cross-account access."""
+
     cogent_name: str
     region: str
     db_cluster_arn: str
@@ -138,26 +140,28 @@ def search_tools(query: str, tool_names: list[str], repo) -> list[dict]:
     for tool in tools:
         searchable = f"{tool.name} {tool.description} {tool.instructions}".lower()
         if query_lower in searchable:
-            results.append({
-                "name": tool.name.replace("/", "."),
-                "description": tool.description,
-                "instructions": tool.instructions,
-                "input_schema": tool.input_schema,
-            })
+            results.append(
+                {
+                    "name": tool.name.replace("/", "."),
+                    "description": tool.description,
+                    "instructions": tool.instructions,
+                    "input_schema": tool.input_schema,
+                }
+            )
     return results
 
 
 def load_and_wrap_tools(tool_names: list[str], config, repo) -> dict[str, types.SimpleNamespace]:
-    """Load Tool records and build a callable namespace tree for sandbox execution.
+    """Load Tool records and build a Callable namespace tree for sandbox execution.
 
-    Each tool becomes a callable at its dot-path location:
+    Each tool becomes a Callable at its dot-path location:
         cogtainer/task/create  ->  namespace["cogtainer"].task.create(name="foo")
 
     The wrapper translates keyword-arg calls into handler(tool_name, input_dict, config).
     Handler results are JSON-parsed when possible, otherwise returned as raw strings.
     """
     tools = repo.get_tools(tool_names)
-    tools_map: dict[str, callable] = {}
+    tools_map: dict[str, Callable] = {}
 
     for tool in tools:
         if not tool.handler:
@@ -174,13 +178,14 @@ def load_and_wrap_tools(tool_names: list[str], config, repo) -> dict[str, types.
             scoped = _scoped_config_from(config)
 
         # Capture tool.name, handler, and scoped in closure
-        def _make_wrapper(t_name: str, t_handler: callable, t_config: ScopedConfig):
+        def _make_wrapper(t_name: str, t_handler: Callable, t_config: ScopedConfig):
             def wrapper(**kwargs):
                 raw = t_handler(t_name, kwargs, t_config)
                 try:
                     return json.loads(raw)
                 except (json.JSONDecodeError, TypeError):
                     return raw
+
             return wrapper
 
         tools_map[tool.name] = _make_wrapper(tool.name, handler, scoped)

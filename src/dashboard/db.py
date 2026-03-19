@@ -23,8 +23,10 @@ def get_repo() -> Repository:
     if _repo is None:
         if os.environ.get("USE_LOCAL_DB") == "1":
             from cogos.db.local_repository import LocalRepository
+
             logger.info("USE_LOCAL_DB=1, using local repository")
             _repo = LocalRepository()
         else:
             _repo = Repository.create()
+    assert _repo is not None
     return _repo

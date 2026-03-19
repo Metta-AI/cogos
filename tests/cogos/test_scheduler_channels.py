@@ -1,5 +1,6 @@
 """Tests for channel-based scheduler delivery."""
-from uuid import UUID, uuid4
+
+from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
 from cogos.db.local_repository import LocalRepository
@@ -42,7 +43,9 @@ def test_channel_message_auto_creates_delivery(tmp_path):
     msg = ChannelMessage(channel=ch.id, sender_process=owner.id, payload={"content": "hello"})
     repo.append_channel_message(msg)
 
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
     deliveries = repo.get_pending_deliveries(proc.id)
     assert len(deliveries) >= 1
 
@@ -88,7 +91,9 @@ def test_no_handler_no_delivery(tmp_path):
     repo.append_channel_message(msg)
 
     # No handlers, so no deliveries
-    assert repo.get_process(owner.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(owner.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING
 
 
 def test_backstop_creates_missing_deliveries(tmp_path):
@@ -108,7 +113,9 @@ def test_backstop_creates_missing_deliveries(tmp_path):
     # Append message BEFORE handler exists (no auto-delivery)
     msg = ChannelMessage(channel=ch.id, sender_process=owner.id, payload={"content": "early"})
     repo.append_channel_message(msg)
-    assert repo.get_process(proc.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING
 
     # Now create handler
     handler = Handler(process=proc.id, channel=ch.id)
@@ -118,7 +125,9 @@ def test_backstop_creates_missing_deliveries(tmp_path):
     result = scheduler.match_messages()
     assert result.deliveries_created == 1
     assert result.deliveries[0].process_id == str(proc.id)
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
 
 
 def test_multiple_handlers_on_same_channel(tmp_path):
@@ -143,8 +152,12 @@ def test_multiple_handlers_on_same_channel(tmp_path):
     msg = ChannelMessage(channel=ch.id, sender_process=owner.id, payload={"data": "test"})
     repo.append_channel_message(msg)
 
-    assert repo.get_process(proc1.id).status == ProcessStatus.RUNNABLE
-    assert repo.get_process(proc2.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc1.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc2.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
 
     d1 = repo.get_pending_deliveries(proc1.id)
     d2 = repo.get_pending_deliveries(proc2.id)

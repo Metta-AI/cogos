@@ -1,4 +1,5 @@
 """Tests for scheduler idle timeout reaping (now a no-op)."""
+
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
@@ -22,4 +23,6 @@ def test_reap_is_noop(tmp_path):
 
     result = scheduler.reap_idle_processes()
     assert result.reaped_count == 0
-    assert repo.get_process(proc.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING

@@ -10,11 +10,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from cogtainer.db.models import (
     Alert,
-    AlertSeverity,
     Conversation,
     ConversationStatus,
     Cron,
@@ -23,17 +22,17 @@ from cogtainer.db.models import (
     MemoryVersion,
     Program,
     Resource,
-    ResourceType,
     ResourceUsage,
     Run,
     RunStatus,
     Task,
     TaskStatus,
-    Trace,
+    ThrottleResult,
     Tool,
+    Trace,
     Trigger,
-    TriggerConfig,
 )
+from cogtainer.db.repository import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ def _json_serial(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-class LocalRepository:
+class LocalRepository(Repository):
     """In-memory repository backed by a JSON file for persistence."""
 
     def __init__(self, data_dir: str | None = None) -> None:
@@ -77,7 +76,7 @@ class LocalRepository:
         self._tools: dict[str, Tool] = {}
 
         # Versioned memory (v2)
-        self._memories: dict[UUID, Memory] = {}          # keyed by memory.id
+        self._memories: dict[UUID, Memory] = {}  # keyed by memory.id
         self._memory_versions: dict[UUID, list[MemoryVersion]] = {}  # keyed by memory_id
 
         self._load()
@@ -166,8 +165,12 @@ class LocalRepository:
             ver = MemoryVersion(**mv)
             self._memory_versions.setdefault(ver.memory_id, []).append(ver)
 
-        logger.info("Loaded local data: %d programs, %d tasks, %d events",
-                     len(self._programs), len(self._tasks), len(self._events))
+        logger.info(
+            "Loaded local data: %d programs, %d tasks, %d events",
+            len(self._programs),
+            len(self._tasks),
+            len(self._events),
+        )
 
     def _save(self) -> None:
         data = {
@@ -186,9 +189,7 @@ class LocalRepository:
             "tools": [t.model_dump(mode="json") for t in self._tools.values()],
             "memories_v2": [m.model_dump(mode="json", exclude={"versions"}) for m in self._memories.values()],
             "memory_versions": [
-                mv.model_dump(mode="json")
-                for versions in self._memory_versions.values()
-                for mv in versions
+                mv.model_dump(mode="json") for versions in self._memory_versions.values() for mv in versions
             ],
         }
         self._file.write_text(json.dumps(data, indent=2, default=_json_serial))
@@ -413,7 +414,7 @@ class LocalRepository:
             if eid in by_id:
                 result.append(by_id[eid])
                 for e in self._events:
-                    if e.parent_event_id == eid:
+                    if e.parent_event_id == eid and e.id is not None:
                         queue.append(e.id)
         result.sort(key=lambda e: e.created_at or datetime.min)
         return result
@@ -425,6 +426,7 @@ class LocalRepository:
             return []
         while current.parent_event_id and current.parent_event_id in by_id:
             current = by_id[current.parent_event_id]
+        assert current.id is not None
         return self.get_event_tree(current.id)
 
     # ── Runs ─────────────────────────────────────────────────
@@ -573,19 +575,16 @@ class LocalRepository:
     def get_pool_usage(self, resource_name: str) -> int:
         """Count running tasks that consume this pool resource."""
         return sum(
-            1 for t in self._tasks.values()
-            if t.status == TaskStatus.RUNNING and (
-                t.runner == resource_name
-                or resource_name == "concurrent-tasks"
-                or resource_name in (t.resources or [])
+            1
+            for t in self._tasks.values()
+            if t.status == TaskStatus.RUNNING
+            and (
+                t.runner == resource_name or resource_name == "concurrent-tasks" or resource_name in (t.resources or [])
             )
         )
 
     def get_consumable_usage(self, resource_name: str) -> float:
-        return sum(
-            u.amount for u in self._resource_usage
-            if u.resource_name == resource_name
-        )
+        return sum(u.amount for u in self._resource_usage if u.resource_name == resource_name)
 
     # ── Tasks (extended) ─────────────────────────────────────
 

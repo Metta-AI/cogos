@@ -126,7 +126,7 @@ class ComputeConstruct(Construct):
         orchestrator_role = iam.Role(
             self,
             "OrchestratorRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),  # type: ignore[arg-type]
             managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
@@ -148,7 +148,7 @@ class ComputeConstruct(Construct):
         executor_role = iam.Role(
             self,
             "ExecutorRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),  # type: ignore[arg-type]
             managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
@@ -192,7 +192,7 @@ class ComputeConstruct(Construct):
             code=lambda_code,
             memory_size=config.orchestrator_memory_mb,
             timeout=Duration.seconds(config.orchestrator_timeout_s),
-            role=orchestrator_role,
+            role=orchestrator_role,  # type: ignore[arg-type]
             environment={
                 **env,
                 "EXECUTOR_FUNCTION_NAME": f"cogent-{safe_name}-executor",
@@ -203,7 +203,7 @@ class ComputeConstruct(Construct):
         sandbox_role = iam.Role(
             self,
             "SandboxRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),  # type: ignore[arg-type]
             managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
@@ -225,7 +225,7 @@ class ComputeConstruct(Construct):
             code=lambda_code,
             memory_size=256,
             timeout=Duration.seconds(30),
-            role=sandbox_role,
+            role=sandbox_role,  # type: ignore[arg-type]
             environment=env,
         )
 
@@ -247,7 +247,7 @@ class ComputeConstruct(Construct):
             code=lambda_code,
             memory_size=config.executor_memory_mb,
             timeout=Duration.seconds(config.executor_timeout_s),
-            role=executor_role,
+            role=executor_role,  # type: ignore[arg-type]
             environment={
                 **env,
                 "SANDBOX_FUNCTION_NAME": f"cogent-{safe_name}-sandbox",
@@ -260,7 +260,7 @@ class ComputeConstruct(Construct):
         dispatcher_role = iam.Role(
             self,
             "DispatcherRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),  # type: ignore[arg-type]
             managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
@@ -282,14 +282,14 @@ class ComputeConstruct(Construct):
             code=lambda_code,
             memory_size=256,
             timeout=Duration.seconds(65),
-            role=dispatcher_role,
+            role=dispatcher_role,  # type: ignore[arg-type]
             environment=env,
         )
 
         ingress_role = iam.Role(
             self,
             "IngressRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),  # type: ignore[arg-type]
             managed_policies=[lambda_basic],
         )
         for stmt in data_api_statements:
@@ -311,7 +311,7 @@ class ComputeConstruct(Construct):
             memory_size=256,
             timeout=Duration.seconds(60),
             reserved_concurrent_executions=1,
-            role=ingress_role,
+            role=ingress_role,  # type: ignore[arg-type]
             environment=env,
         )
         self.ingress.add_event_source(
@@ -325,7 +325,7 @@ class ComputeConstruct(Construct):
         task_role = iam.Role(
             self,
             "TaskRole",
-            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),  # type: ignore[arg-type]
         )
         for stmt in data_api_statements:
             task_role.add_to_policy(stmt)
@@ -388,7 +388,7 @@ class ComputeConstruct(Construct):
             family=f"cogent-{safe_name}-executor",
             cpu=config.ecs_cpu,
             memory_limit_mib=config.ecs_memory,
-            task_role=task_role,
+            task_role=task_role,  # type: ignore[arg-type]
         )
 
         # Use custom executor image from polis ECR repo if available

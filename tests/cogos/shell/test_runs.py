@@ -21,11 +21,13 @@ def _setup(tmp_path):
 def test_runs_list(tmp_path):
     state, reg, _, r = _setup(tmp_path)
     output = reg.dispatch(state, "runs")
+    assert output is not None
     assert "scheduler" in output or str(r.id)[:8] in output
 
 
 def test_run_show(tmp_path):
     state, reg, _, r = _setup(tmp_path)
     output = reg.dispatch(state, f"run show {r.id}")
+    assert output is not None
     assert "100" in output
     assert "1200" in output

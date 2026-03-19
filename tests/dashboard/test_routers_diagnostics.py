@@ -1,6 +1,6 @@
 """Tests for the diagnostics router."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -20,20 +20,22 @@ def _mock_repo():
 
 def test_diagnostics_route_registered():
     client = _client()
-    routes = [r.path for r in client.app.routes]
+    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
     assert "/api/cogents/{name}/diagnostics" in routes
 
 
 def test_diagnostics_history_route_registered():
     client = _client()
-    routes = [r.path for r in client.app.routes]
+    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
     assert "/api/cogents/{name}/diagnostics/history" in routes
 
 
 def test_diagnostics_history_no_data():
     mock = _mock_repo()
-    with patch("dashboard.routers.diagnostics.get_repo", return_value=mock), \
-         patch("dashboard.routers.diagnostics.FileStore") as MockFS:
+    with (
+        patch("dashboard.routers.diagnostics.get_repo", return_value=mock),
+        patch("dashboard.routers.diagnostics.FileStore") as MockFS,
+    ):
         MockFS.return_value.history.return_value = []
         client = _client()
         resp = client.get("/api/cogents/test/diagnostics/history")
@@ -50,8 +52,10 @@ def test_diagnostics_history_returns_parsed_versions():
     v2.version = 2
     v2.content = '{"timestamp":"2026-03-02T00:00:00Z","summary":{"total":2,"pass":1,"fail":1},"categories":{}}'
 
-    with patch("dashboard.routers.diagnostics.get_repo", return_value=mock), \
-         patch("dashboard.routers.diagnostics.FileStore") as MockFS:
+    with (
+        patch("dashboard.routers.diagnostics.get_repo", return_value=mock),
+        patch("dashboard.routers.diagnostics.FileStore") as MockFS,
+    ):
         MockFS.return_value.history.return_value = [v1, v2]
         client = _client()
         resp = client.get("/api/cogents/test/diagnostics/history?limit=10")
@@ -73,8 +77,10 @@ def test_diagnostics_history_skips_invalid_json():
     v2.version = 2
     v2.content = '{"timestamp":"2026-03-02T00:00:00Z","summary":{"total":1,"pass":1,"fail":0},"categories":{}}'
 
-    with patch("dashboard.routers.diagnostics.get_repo", return_value=mock), \
-         patch("dashboard.routers.diagnostics.FileStore") as MockFS:
+    with (
+        patch("dashboard.routers.diagnostics.get_repo", return_value=mock),
+        patch("dashboard.routers.diagnostics.FileStore") as MockFS,
+    ):
         MockFS.return_value.history.return_value = [v1, v2]
         client = _client()
         resp = client.get("/api/cogents/test/diagnostics/history")
@@ -90,11 +96,15 @@ def test_diagnostics_history_respects_limit():
     for i in range(5):
         v = MagicMock()
         v.version = i + 1
-        v.content = f'{{"timestamp":"2026-03-0{i+1}T00:00:00Z","summary":{{"total":1,"pass":1,"fail":0}},"categories":{{}}}}'
+        v.content = (
+            f'{{"timestamp":"2026-03-0{i + 1}T00:00:00Z","summary":{{"total":1,"pass":1,"fail":0}},"categories":{{}}}}'
+        )
         versions.append(v)
 
-    with patch("dashboard.routers.diagnostics.get_repo", return_value=mock), \
-         patch("dashboard.routers.diagnostics.FileStore") as MockFS:
+    with (
+        patch("dashboard.routers.diagnostics.get_repo", return_value=mock),
+        patch("dashboard.routers.diagnostics.FileStore") as MockFS,
+    ):
         MockFS.return_value.history.return_value = versions
         client = _client()
         resp = client.get("/api/cogents/test/diagnostics/history?limit=3")

@@ -1,14 +1,20 @@
 """End-to-end test: trace_id flows from message through dispatch to run."""
+
 from __future__ import annotations
 
 import tempfile
 from uuid import uuid4
 
-from cogos.capabilities.scheduler import SchedulerCapability
+from cogos.capabilities.scheduler import SchedulerCapability, SchedulerError
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import (
-    Channel, ChannelMessage, ChannelType,
-    Handler, Process, ProcessMode, ProcessStatus,
+    Channel,
+    ChannelMessage,
+    ChannelType,
+    Handler,
+    Process,
+    ProcessMode,
+    ProcessStatus,
 )
 from cogos.runtime.dispatch import build_dispatch_event
 
@@ -36,16 +42,18 @@ def _setup_repo_with_traced_message():
     repo.create_handler(handler)
 
     trace_id = uuid4()
-    msg_id = repo.append_channel_message(ChannelMessage(
-        channel=ch.id,
-        payload={"content": "hello", "message_type": "discord:dm"},
-        trace_id=trace_id,
-        trace_meta={
-            "discord_created_at_ms": 1000,
-            "bridge_received_at_ms": 1001,
-            "db_written_at_ms": 1002,
-        },
-    ))
+    msg_id = repo.append_channel_message(
+        ChannelMessage(
+            channel=ch.id,
+            payload={"content": "hello", "message_type": "discord:dm"},
+            trace_id=trace_id,
+            trace_meta={
+                "discord_created_at_ms": 1000,
+                "bridge_received_at_ms": 1001,
+                "db_written_at_ms": 1002,
+            },
+        )
+    )
 
     return repo, proc, trace_id, msg_id
 
@@ -55,6 +63,7 @@ def test_trace_id_flows_from_message_to_delivery():
     repo, proc, trace_id, _ = _setup_repo_with_traced_message()
 
     deliveries = repo.get_pending_deliveries(proc.id)
+    assert deliveries is not None
     assert len(deliveries) == 1
     assert deliveries[0].trace_id == trace_id
 
@@ -64,14 +73,16 @@ def test_trace_id_flows_from_dispatch_to_run():
     repo, proc, trace_id, _ = _setup_repo_with_traced_message()
 
     proc = repo.get_process(proc.id)
+    assert proc is not None
     assert proc.status == ProcessStatus.RUNNABLE
 
     scheduler = SchedulerCapability(repo, uuid4())
     result = scheduler.dispatch_process(process_id=str(proc.id))
-    assert not hasattr(result, "error"), f"dispatch failed: {result}"
+    assert not isinstance(result, SchedulerError), f"dispatch failed: {result}"
     assert result.trace_id == str(trace_id)
 
     from uuid import UUID
+
     run = repo.get_run(UUID(result.run_id))
     assert run is not None
     assert run.trace_id == trace_id
@@ -107,18 +118,21 @@ def test_message_without_trace_id_works():
     handler = Handler(process=proc.id, channel=ch.id)
     repo.create_handler(handler)
 
-    repo.append_channel_message(ChannelMessage(
-        channel=ch.id,
-        payload={"content": "regular message"},
-    ))
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=ch.id,
+            payload={"content": "regular message"},
+        )
+    )
 
     deliveries = repo.get_pending_deliveries(proc.id)
+    assert deliveries is not None
     assert len(deliveries) == 1
     assert deliveries[0].trace_id is None
 
     scheduler = SchedulerCapability(repo, uuid4())
     result = scheduler.dispatch_process(process_id=str(proc.id))
-    assert not hasattr(result, "error")
+    assert not isinstance(result, SchedulerError), f"dispatch failed: {result}"
     assert result.trace_id is None
 
     event = build_dispatch_event(repo, result)

@@ -1,4 +1,5 @@
 """Tests for image compositing functions — overlay_text, watermark, combine."""
+
 from __future__ import annotations
 
 import io
@@ -37,6 +38,7 @@ def _patch_blob(cap: ImageCapability, key_to_bytes: dict[str, bytes]) -> BlobRef
         if key in key_to_bytes:
             return BlobContent(data=key_to_bytes[key], filename=key.split("/")[-1], content_type="image/png")
         from cogos.capabilities.blob import BlobError
+
         return BlobError(error=f"Not found: {key}")
 
     cap._blob.download = MagicMock(side_effect=_download_side)
@@ -56,7 +58,7 @@ def test_overlay_text_returns_blobref():
 
     assert isinstance(result, BlobRef)
     assert result.key == expected_ref.key
-    cap._blob.upload.assert_called_once()
+    cap._blob.upload.assert_called_once()  # type: ignore[attr-defined]
 
 
 def test_overlay_text_scope_denied():
@@ -83,7 +85,7 @@ def test_watermark_returns_blobref():
 
     assert isinstance(result, BlobRef)
     assert result.key == expected_ref.key
-    cap._blob.upload.assert_called_once()
+    cap._blob.upload.assert_called_once()  # type: ignore[attr-defined]
 
 
 # ── combine tests ───────────────────────────────────────────
@@ -99,7 +101,7 @@ def test_combine_horizontal():
 
     assert isinstance(result, BlobRef)
     # Verify the uploaded image dimensions
-    call_args = cap._blob.upload.call_args
+    call_args = cap._blob.upload.call_args  # type: ignore[attr-defined]
     uploaded_bytes = call_args[0][0] if call_args[0] else call_args.kwargs.get("data")
     combined = Image.open(io.BytesIO(uploaded_bytes))
     assert combined.size == (110, 80)
@@ -114,7 +116,7 @@ def test_combine_vertical():
     result = cap.combine(["img/a.png", "img/b.png"], layout="vertical")
 
     assert isinstance(result, BlobRef)
-    call_args = cap._blob.upload.call_args
+    call_args = cap._blob.upload.call_args  # type: ignore[attr-defined]
     uploaded_bytes = call_args[0][0] if call_args[0] else call_args.kwargs.get("data")
     combined = Image.open(io.BytesIO(uploaded_bytes))
     assert combined.size == (80, 110)

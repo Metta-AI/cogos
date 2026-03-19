@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.secrets import SecretsCapability
+from cogos.capabilities.secrets import SecretError, SecretsCapability
 
 
 @pytest.fixture
@@ -25,12 +25,11 @@ class TestUnscopedGet:
         cap = SecretsCapability(repo, pid)
         with patch("boto3.client") as mock_client:
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {
-                "Parameter": {"Value": "secret123"}
-            }
+            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "secret123"}}
             mock_client.return_value = mock_ssm
             result = cap.get("any-key")
             assert result.key == "any-key"
+            assert not isinstance(result, SecretError)
             assert result.value == "secret123"
 
 
@@ -39,11 +38,10 @@ class TestScopedGet:
         cap = SecretsCapability(repo, pid).scope(keys=["app/*"])
         with patch("boto3.client") as mock_client:
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {
-                "Parameter": {"Value": "val"}
-            }
+            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "val"}}
             mock_client.return_value = mock_ssm
             result = cap.get("app/db-password")
+            assert not isinstance(result, SecretError)
             assert result.value == "val"
 
     def test_scoped_keys_denies_non_matching(self, repo, pid):
@@ -55,20 +53,17 @@ class TestScopedGet:
         cap = SecretsCapability(repo, pid).scope(keys=["my-api-key"])
         with patch("boto3.client") as mock_client:
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {
-                "Parameter": {"Value": "val"}
-            }
+            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "val"}}
             mock_client.return_value = mock_ssm
             result = cap.get("my-api-key")
+            assert not isinstance(result, SecretError)
             assert result.value == "val"
 
     def test_scoped_keys_multiple_patterns(self, repo, pid):
         cap = SecretsCapability(repo, pid).scope(keys=["app/*", "db/*"])
         with patch("boto3.client") as mock_client:
             mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {
-                "Parameter": {"Value": "v"}
-            }
+            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "v"}}
             mock_client.return_value = mock_ssm
             cap.get("app/key")
             cap.get("db/password")

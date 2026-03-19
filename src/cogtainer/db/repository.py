@@ -31,8 +31,9 @@ from cogtainer.db.models import (
     RunStatus,
     Task,
     TaskStatus,
-    Trace,
+    ThrottleResult,
     Tool,
+    Trace,
     Trigger,
     TriggerConfig,
 )
@@ -457,15 +458,17 @@ class Repository:
         )
         results = []
         for row in self._rows_to_dicts(response):
-            results.append(MemoryVersion(
-                id=UUID(row["id"]),
-                memory_id=UUID(row["memory_id"]),
-                version=row["version"],
-                read_only=row.get("read_only", False),
-                content=row.get("content", ""),
-                source=row.get("source", "cogent"),
-                created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
-            ))
+            results.append(
+                MemoryVersion(
+                    id=UUID(row["id"]),
+                    memory_id=UUID(row["memory_id"]),
+                    version=row["version"],
+                    read_only=row.get("read_only", False),
+                    content=row.get("content", ""),
+                    source=row.get("source", "cogent"),
+                    created_at=datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
+                )
+            )
         return results
 
     def update_active_version(self, memory_id: UUID, version: int) -> None:
@@ -1344,6 +1347,7 @@ class Repository:
             return ThrottleResult(allowed=True, state_changed=False, throttle_active=False)
 
         import time
+
         now = time.time()
         cutoff = now - window_seconds
 
@@ -1377,12 +1381,15 @@ class Repository:
             WHERE id = :id
             RETURNING throttle_active, (SELECT prev_active FROM prev) AS prev_throttle_active
         """
-        response = self._execute(sql, [
-            self._param("id", trigger_id),
-            self._param("cutoff", cutoff),
-            self._param("max_events", max_events),
-            self._param("now", now),
-        ])
+        response = self._execute(
+            sql,
+            [
+                self._param("id", trigger_id),
+                self._param("cutoff", cutoff),
+                self._param("max_events", max_events),
+                self._param("now", now),
+            ],
+        )
         row = self._first_row(response)
         if not row:
             return ThrottleResult(allowed=True, state_changed=False, throttle_active=False)
@@ -1428,9 +1435,7 @@ class Repository:
 
     def list_cron(self, *, enabled_only: bool = False) -> list[Cron]:
         if enabled_only:
-            response = self._execute(
-                "SELECT * FROM cron WHERE enabled = true ORDER BY created_at"
-            )
+            response = self._execute("SELECT * FROM cron WHERE enabled = true ORDER BY created_at")
         else:
             response = self._execute("SELECT * FROM cron ORDER BY created_at")
         return [self._cron_from_row(r) for r in self._rows_to_dicts(response)]

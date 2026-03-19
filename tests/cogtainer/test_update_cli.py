@@ -4,6 +4,7 @@ import pytest
 from botocore.exceptions import ClientError
 from click.testing import CliRunner
 
+from cogos.io.discord.setup import discord_secret_status
 from cogtainer.update_cli import (
     _ensure_discord_bridge_state,
     _find_dashboard_service,
@@ -11,7 +12,6 @@ from cogtainer.update_cli import (
     _is_dashboard_service_name,
     update,
 )
-from cogos.io.discord.setup import discord_secret_status
 
 
 class _FakeEcsClient:
@@ -81,9 +81,7 @@ def test_find_dashboard_service_prefers_dashboard_service_over_discord():
 
 
 def test_find_dashboard_service_raises_when_dashboard_service_missing():
-    ecs_client = _FakeEcsClient(
-        ["arn:aws:ecs:us-east-1:901289084804:service/cogent-polis/cogent-dr-gamma-discord"]
-    )
+    ecs_client = _FakeEcsClient(["arn:aws:ecs:us-east-1:901289084804:service/cogent-polis/cogent-dr-gamma-discord"])
 
     with pytest.raises(Exception, match="No dashboard service found"):
         _find_dashboard_service(ecs_client, "dr-gamma")
@@ -101,7 +99,7 @@ def test_get_discord_desired_count_reads_service():
         secrets_client=_FakeSecretsClient(exists=True),
     )
 
-    desired = _get_discord_desired_count(session, "dr.gamma")
+    desired = _get_discord_desired_count(session, "dr.gamma")  # type: ignore[arg-type]
 
     assert desired == 1
 
@@ -115,7 +113,7 @@ def test_discord_secret_status_checks_expected_secret_name():
         secrets_client=secrets_client,
     )
 
-    configured, error = discord_secret_status("dr.gamma", "us-east-1", session=session)
+    configured, error = discord_secret_status("dr.gamma", "us-east-1", session=session)  # type: ignore[arg-type]
 
     assert configured is True
     assert error is None
@@ -135,7 +133,7 @@ def test_ensure_discord_bridge_state_autostarts_when_secret_exists():
     )
 
     action = _ensure_discord_bridge_state(
-        session,
+        session,  # type: ignore[arg-type]
         "dr.gamma",
         "dr-gamma",
         previous_desired_count=None,
@@ -161,7 +159,7 @@ def test_ensure_discord_bridge_state_preserves_explicitly_stopped_bridge():
     )
 
     action = _ensure_discord_bridge_state(
-        session,
+        session,  # type: ignore[arg-type]
         "dr.gamma",
         "dr-gamma",
         previous_desired_count=0,
@@ -233,7 +231,9 @@ def test_update_rds_runs_brain_and_cogos_migrations(monkeypatch):
     calls: dict[str, object] = {}
     fake_repo = object()
 
-    monkeypatch.setattr("cogtainer.update_cli._ensure_db_env", lambda name, profile=None: calls.setdefault("ensure", (name, profile)))
+    monkeypatch.setattr(
+        "cogtainer.update_cli._ensure_db_env", lambda name, profile=None: calls.setdefault("ensure", (name, profile))
+    )
     monkeypatch.setattr("cogos.db.migrations.apply_schema", lambda: 10)
     monkeypatch.setattr(
         "cogos.db.migrations.apply_cogos_sql_migrations",

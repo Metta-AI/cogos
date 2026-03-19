@@ -113,8 +113,8 @@ def create_app() -> FastAPI:
     async def healthz() -> dict:
         return {"ok": True}
 
-    @app.post("/admin/reload-frontend")
-    async def reload_frontend(request: Request) -> dict:
+    @app.post("/admin/reload-frontend", response_model=None)
+    async def reload_frontend(request: Request) -> dict | JSONResponse:
         """Signal the entrypoint to re-download frontend assets from S3 and restart Node."""
         import signal
 
@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
     async def web_blob(path: str):
         """Serve blob content from S3 — used for AI-generated images in websites."""
         import boto3
+
         repo = __import__("dashboard.db", fromlist=["get_repo"]).get_repo()
         from cogos import get_sessions_bucket
         bucket = get_sessions_bucket()

@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.file_cap import DirCapability, FileCapability
-from cogos.capabilities.files import FileContent, FileError, GrepResult
+from cogos.capabilities.files import FileContent, FileError
 from cogos.db.local_repository import LocalRepository
 from cogos.files.store import FileStore
 
@@ -33,7 +33,10 @@ def pid():
 @pytest.fixture
 def populated_repo(repo, fs):
     """Create a repo with several files for search/navigation tests."""
-    fs.create("src/main.py", "import os\nimport sys\n\ndef main():\n    print('hello')\n    # TODO: add logging\n    return 0\n")
+    fs.create(
+        "src/main.py",
+        "import os\nimport sys\n\ndef main():\n    print('hello')\n    # TODO: add logging\n    return 0\n",
+    )
     fs.create("src/utils.py", "def helper():\n    # TODO: refactor this\n    return 42\n\ndef unused():\n    pass\n")
     fs.create("src/config.yaml", "debug: true\nport: 8080\n")
     fs.create("docs/readme.md", "# My Project\n\nA sample project.\n")
@@ -198,6 +201,7 @@ class TestFileSlicedReadE2E:
     def test_offset_limit(self, populated_repo, pid):
         cap = FileCapability(populated_repo, pid)
         result = cap.read("src/big_file.py", offset=10, limit=5)
+        assert not isinstance(result, FileError)
         assert result.total_lines == 200
         lines = result.content.split("\n")
         assert len(lines) == 5
@@ -207,6 +211,7 @@ class TestFileSlicedReadE2E:
     def test_head(self, populated_repo, pid):
         cap = FileCapability(populated_repo, pid)
         result = cap.head("src/big_file.py", n=3)
+        assert not isinstance(result, FileError)
         lines = result.content.split("\n")
         assert len(lines) == 3
         assert lines[0] == "line_0 = 0"
@@ -214,6 +219,7 @@ class TestFileSlicedReadE2E:
     def test_tail(self, populated_repo, pid):
         cap = FileCapability(populated_repo, pid)
         result = cap.tail("src/big_file.py", n=3)
+        assert not isinstance(result, FileError)
         lines = result.content.split("\n")
         assert len(lines) == 3
         assert lines[-1] == "line_199 = 199"
@@ -221,6 +227,7 @@ class TestFileSlicedReadE2E:
     def test_negative_offset(self, populated_repo, pid):
         cap = FileCapability(populated_repo, pid)
         result = cap.read("src/big_file.py", offset=-5)
+        assert not isinstance(result, FileError)
         lines = result.content.split("\n")
         assert len(lines) == 5
         assert lines[-1] == "line_199 = 199"
@@ -231,6 +238,7 @@ class TestFileSlicedReadE2E:
         scoped = dir_cap.scope(prefix="src/")
         f = scoped.get("big_file.py")
         result = f.read(offset=0, limit=2)
+        assert not isinstance(result, FileError)
         assert result.total_lines == 200
         assert result.content == "line_0 = 0\nline_1 = 1"
 
@@ -245,6 +253,7 @@ class TestFileEditE2E:
         assert not isinstance(result, FileError)
         # Verify the edit persisted
         content = cap.read("src/config.yaml")
+        assert not isinstance(content, FileError)
         assert "debug: false" in content.content
         assert "debug: true" not in content.content
 
@@ -254,6 +263,7 @@ class TestFileEditE2E:
         result = cap.edit("test/repeated.txt", old="aaa", new="xxx", replace_all=True)
         assert not isinstance(result, FileError)
         content = cap.read("test/repeated.txt")
+        assert not isinstance(content, FileError)
         assert content.content == "xxx\nbbb\nxxx\nccc\nxxx"
 
     def test_edit_fails_not_unique(self, populated_repo, pid, fs):
@@ -276,6 +286,7 @@ class TestFileEditE2E:
         result = f.edit(old="port: 8080", new="port: 9090")
         assert not isinstance(result, FileError)
         content = f.read()
+        assert not isinstance(content, FileError)
         assert "port: 9090" in content.content
 
     def test_edit_denied_by_scope(self, populated_repo, pid):

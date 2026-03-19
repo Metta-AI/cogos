@@ -35,7 +35,7 @@ def handler(event, context):
     sm_client = boto3.client("secretsmanager")
     cw = boto3.client("cloudwatch")
     dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(DYNAMO_TABLE)
+    table = dynamodb.Table(DYNAMO_TABLE)  # type: ignore[attr-defined]
 
     stacks = _find_cogent_stacks(cfn)
     logger.info("Found %d cogent stacks", len(stacks))

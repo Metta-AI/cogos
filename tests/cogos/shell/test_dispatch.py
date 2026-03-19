@@ -21,6 +21,7 @@ def test_registry_returns_error_for_unknown_command(tmp_path):
     state = ShellState(cogent_name="test", repo=repo, cwd="")
     reg = CommandRegistry()
     result = reg.dispatch(state, "nosuchcmd foo")
+    assert result is not None
     assert "unknown command" in result.lower()
 
 

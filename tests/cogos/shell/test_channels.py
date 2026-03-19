@@ -10,9 +10,13 @@ def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
     ch = Channel(name="events", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
-    repo.append_channel_message(ChannelMessage(
-        channel=ch.id, sender_process=None, payload={"type": "test", "data": "hello"},
-    ))
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=ch.id,
+            sender_process=None,
+            payload={"type": "test", "data": "hello"},
+        )
+    )
     state = ShellState(cogent_name="test", repo=repo, cwd="")
     reg = CommandRegistry()
     register(reg)
@@ -21,13 +25,16 @@ def _setup(tmp_path):
 
 def test_ch_ls(tmp_path):
     state, reg, _ = _setup(tmp_path)
-    assert "events" in reg.dispatch(state, "ch ls")
+    output = reg.dispatch(state, "ch ls")
+    assert output is not None
+    assert "events" in output
 
 
 def test_ch_send(tmp_path):
     state, reg, repo = _setup(tmp_path)
     reg.dispatch(state, 'ch send events {"type":"ping"}')
     ch = repo.get_channel_by_name("events")
+    assert ch is not None
     msgs = repo.list_channel_messages(ch.id)
     assert len(msgs) == 2
     assert msgs[-1].payload["type"] == "ping"
@@ -36,5 +43,6 @@ def test_ch_send(tmp_path):
 def test_ch_log(tmp_path):
     state, reg, _ = _setup(tmp_path)
     output = reg.dispatch(state, "ch log events")
+    assert output is not None
     assert "test" in output
     assert "hello" in output

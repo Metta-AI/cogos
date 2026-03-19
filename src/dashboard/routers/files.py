@@ -208,7 +208,7 @@ def delete_file_version(name: str, key: str, version: int) -> dict:
     deleted_version = next((v for v in versions if v.version == version), None)
     if not deleted_version:
         raise HTTPException(status_code=404, detail="Version not found")
-    if not repo.delete_file_version(f.id, version):
+    if not repo.delete_file_version(f.id, version):  # type: ignore[attr-defined]
         raise HTTPException(status_code=404, detail="Version not found")
     if deleted_version.is_active:
         active_version = repo.get_active_file_version(f.id)

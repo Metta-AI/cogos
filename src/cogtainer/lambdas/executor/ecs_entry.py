@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-
 from uuid import UUID
 
 from cogtainer.db.models import Event, Run, RunStatus
@@ -161,6 +160,7 @@ def main() -> None:
 
         # Build prompt: resolve program content from memory
         from cogtainer.lambdas.executor.handler import _resolve_program_source
+
         prompt = _resolve_program_source(program, repo)
         if task_content:
             prompt += f"\n\n{task_content}"
@@ -176,7 +176,7 @@ def main() -> None:
 
         result = subprocess.run(
             cmd,
-            timeout=config.ecs_timeout_s if hasattr(config, "ecs_timeout_s") else 3600,
+            timeout=getattr(config, "ecs_timeout_s", 3600),
             cwd=WORKSPACE_DIR,
         )
 

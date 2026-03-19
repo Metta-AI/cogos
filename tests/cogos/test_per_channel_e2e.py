@@ -6,7 +6,7 @@ Boots cogent-v1 image, simulates Discord DM flow, verifies:
 3. On second DM, child has its own delivery on the fine-grained channel
 4. Idle reaping cleans up the child after timeout
 """
-from datetime import datetime, timedelta, timezone
+
 from uuid import UUID
 
 from cogos.capabilities.procs import ProcsCapability
@@ -20,8 +20,6 @@ from cogos.db.models import (
     Process,
     ProcessMode,
     ProcessStatus,
-    Run,
-    RunStatus,
 )
 from cogos.runtime.local import run_local_tick
 
@@ -54,9 +52,14 @@ def _simulate_bridge_dm(repo: LocalRepository, payload: dict) -> None:
         catch_all = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
         repo.upsert_channel(catch_all)
         catch_all = repo.get_channel_by_name("io:discord:dm")
-    repo.append_channel_message(ChannelMessage(
-        channel=catch_all.id, sender_process=None, payload=payload,
-    ))
+        assert catch_all is not None
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=catch_all.id,
+            sender_process=None,
+            payload=payload,
+        )
+    )
 
     # Fine-grained
     fine_name = f"io:discord:dm:{author_id}"
@@ -65,9 +68,14 @@ def _simulate_bridge_dm(repo: LocalRepository, payload: dict) -> None:
         fine = Channel(name=fine_name, channel_type=ChannelType.NAMED)
         repo.upsert_channel(fine)
         fine = repo.get_channel_by_name(fine_name)
-    repo.append_channel_message(ChannelMessage(
-        channel=fine.id, sender_process=None, payload=payload,
-    ))
+        assert fine is not None
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=fine.id,
+            sender_process=None,
+            payload=payload,
+        )
+    )
 
 
 def test_per_channel_dm_routing_full_flow(tmp_path):
@@ -89,9 +97,11 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
     )
     parent_id = repo.upsert_process(parent)
     parent = repo.get_process(parent_id)
+    assert parent is not None
 
     for ch_name in handler_channel_names:
         ch = repo.get_channel_by_name(ch_name)
+        assert ch is not None
         repo.create_handler(Handler(process=parent_id, channel=ch.id, enabled=True))
 
     assert parent is not None
@@ -103,6 +113,7 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
 
     # Parent should now be RUNNABLE (got delivery on catch-all)
     parent = repo.get_process(parent.id)
+    assert parent is not None
     assert parent.status == ProcessStatus.RUNNABLE
 
     # Run a tick with a fake executor that simulates what the LLM would do:
@@ -116,9 +127,7 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
 
         child_name = f"discord-dm:{author_id}"
         existing = repo.get_process_by_name(child_name)
-        if existing and existing.status not in (
-            ProcessStatus.COMPLETED, ProcessStatus.DISABLED
-        ):
+        if existing and existing.status not in (ProcessStatus.COMPLETED, ProcessStatus.DISABLED):
             # Child already exists, skip
             return run
 
@@ -145,9 +154,12 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
 
     # Verify child has a handler on the fine-grained channel
     child_handlers = repo.list_handlers(process_id=child.id)
+    assert child_handlers is not None
     child_handler_channels = set()
     for h in child_handlers:
+        assert h.channel is not None
         ch = repo.get_channel(h.channel)
+        assert ch is not None
         if ch:
             child_handler_channels.add(ch.name)
     assert "io:discord:dm:42" in child_handler_channels
@@ -157,7 +169,9 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
 
     # Child should have pending deliveries on the fine-grained channel
     child = repo.get_process(child.id)
+    assert child is not None
     child_deliveries = repo.get_pending_deliveries(child.id)
+    assert child_deliveries is not None
     assert len(child_deliveries) >= 1
     assert child.status == ProcessStatus.RUNNABLE
 
@@ -178,4 +192,6 @@ def test_idle_reaping_is_noop(tmp_path):
 
     result = scheduler.reap_idle_processes()
     assert result.reaped_count == 0
-    assert repo.get_process(child.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(child.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING

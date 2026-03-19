@@ -105,6 +105,7 @@ class TestSearchRepos:
             MockGithub.return_value = mock_gh
 
             results = cap.search_repos("hello world", limit=5)
+            assert not isinstance(results, GitHubError)
             assert len(results) == 1
             assert isinstance(results[0], RepoSummary)
             assert results[0].full_name == "octocat/hello-world"
@@ -157,6 +158,7 @@ class TestListOrgRepos:
             MockGithub.return_value = mock_gh
 
             results = cap.list_org_repos("metta-ai", limit=10)
+            assert not isinstance(results, GitHubError)
             assert len(results) == 1
             assert isinstance(results[0], RepoSummary)
             assert results[0].full_name == "metta-ai/metta"
@@ -196,6 +198,7 @@ class TestListContributions:
             MockGithub.return_value = mock_gh
 
             results = cap.list_contributions("octocat", limit=10)
+            assert not isinstance(results, GitHubError)
             assert len(results) == 1
             assert isinstance(results[0], Contribution)
             assert results[0].repo == "octocat/hello-world"

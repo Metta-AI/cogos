@@ -1,10 +1,13 @@
 """Tests for Memory and MemoryVersion models."""
+
+from uuid import UUID
+
 from cogtainer.db.models import Memory, MemoryVersion
 
 
 class TestMemoryVersion:
     def test_defaults(self):
-        mv = MemoryVersion(memory_id="00000000-0000-0000-0000-000000000001", version=1)
+        mv = MemoryVersion(memory_id=UUID("00000000-0000-0000-0000-000000000001"), version=1)
         assert mv.version == 1
         assert mv.read_only is False
         assert mv.content == ""
@@ -13,7 +16,7 @@ class TestMemoryVersion:
     def test_source_values(self):
         for source in ["polis", "cogent", "user:daveey"]:
             mv = MemoryVersion(
-                memory_id="00000000-0000-0000-0000-000000000001",
+                memory_id=UUID("00000000-0000-0000-0000-000000000001"),
                 version=1,
                 source=source,
             )

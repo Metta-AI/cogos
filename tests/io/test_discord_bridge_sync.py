@@ -1,8 +1,12 @@
 """Tests for Discord bridge guild/channel sync."""
+
 from __future__ import annotations
+
 from unittest.mock import MagicMock
+
 import discord
 import pytest
+
 from cogos.io.discord.bridge import DiscordBridge
 
 

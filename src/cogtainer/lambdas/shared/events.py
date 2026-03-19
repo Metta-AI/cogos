@@ -66,7 +66,7 @@ def emit_run_result(
             event_type="run:succeeded" if succeeded else "run:failed",
             source=source,
             payload=payload,
-            parent_event_id=parent_event_id,
+            parent_event_id=int(parent_event_id) if parent_event_id else None,
         ),
         bus_name,
     )

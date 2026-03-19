@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import inspect
 import typing
+from collections.abc import Callable
+from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -64,7 +66,7 @@ def _describe_pydantic(model_cls: type) -> list[str]:
     return lines
 
 
-def _method_help(method: callable) -> str:
+def _method_help(method: Callable) -> str:  # type: ignore[type-arg]
     """Generate help text for a single method, including IO schemas."""
     sig = inspect.signature(method)
     hints = typing.get_type_hints(method)
@@ -94,8 +96,7 @@ def _method_help(method: callable) -> str:
     # Expand Pydantic return types
     ret_models: list[type] = []
     if typing.get_origin(ret_type) is typing.Union:
-        ret_models = [a for a in typing.get_args(ret_type)
-                      if isinstance(a, type) and issubclass(a, BaseModel)]
+        ret_models = [a for a in typing.get_args(ret_type) if isinstance(a, type) and issubclass(a, BaseModel)]
     elif isinstance(ret_type, type) and issubclass(ret_type, BaseModel):
         ret_models = [ret_type]
 
@@ -121,12 +122,13 @@ class _ScopeDescriptor:
     """
 
     def __set_name__(self, owner: type, name: str) -> None:
-        self._attr = f"_scope_data"
+        self._attr = "_scope_data"
 
     def __get__(self, obj: object, objtype: type | None = None) -> dict:
         if obj is None:
             return self  # type: ignore[return-value]
         import sys
+
         frame = sys._getframe(1)
         caller_file = frame.f_code.co_filename
         # Allow access from cogos package internals and test code
@@ -151,14 +153,16 @@ class Capability:
 
     _scope = _ScopeDescriptor()
 
-    def __init__(self, repo: Repository, process_id: UUID, run_id: UUID | None = None, trace_id: UUID | None = None) -> None:
+    def __init__(
+        self, repo: Repository, process_id: UUID, run_id: UUID | None = None, trace_id: UUID | None = None
+    ) -> None:
         self.repo = repo
         self.process_id = process_id
         self.run_id = run_id
         self.trace_id = trace_id
         self._scope = {}
 
-    def scope(self, **kwargs: object) -> Capability:
+    def scope(self, **kwargs: object) -> Self:
         """Return a clone of this capability with a narrower scope.
 
         Never modifies the original instance.
@@ -176,9 +180,7 @@ class Capability:
         that forgetting to override is a loud failure, not a silent
         privilege escalation.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} must override _narrow() with intersection logic"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must override _narrow() with intersection logic")
 
     def _check(self, op: str, **context: object) -> None:
         """Verify that *op* is allowed under the current scope.

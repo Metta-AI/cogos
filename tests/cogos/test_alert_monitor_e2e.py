@@ -77,6 +77,7 @@ def test_check_escalates_emergency(tmp_path):
     assert result.actions_taken >= 1
 
     ch = repo.get_channel_by_name("supervisor:alerts")
+    assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
     assert len(msgs) >= 1
 

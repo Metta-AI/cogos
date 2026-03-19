@@ -6,17 +6,15 @@ The LLM is replaced by custom execute_fn that simulates what the LLM would do.
 
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from cogos.capabilities.cog_registry import CogRegistryCapability
 from cogos.capabilities.coglet_runtime import CogletRuntimeCapability
-from cogos.capabilities.procs import ProcsCapability
-from cogos.cog.runtime import CogManifest, CogletManifest
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.cog.cog import CogConfig
-from cogos.files.store import FileStore
+from cogos.cog.runtime import CogletManifest
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import (
     Channel,
@@ -26,11 +24,10 @@ from cogos.db.models import (
     Process,
     ProcessMode,
     ProcessStatus,
-    Run,
     RunStatus,
 )
-from cogos.runtime.local import run_and_complete, run_local_tick
-
+from cogos.files.store import FileStore
+from cogos.runtime.local import run_local_tick
 
 # ── Fixtures ──────────────────────────────────────────────
 
@@ -44,11 +41,9 @@ def repo(tmp_path):
 def worker_cog_files(repo):
     """Populate worker cog files in FileStore (same as image boot does)."""
     fs = FileStore(repo)
-    fs.create("cogos/worker/main.md",
-        "# Worker\n\n"
-        "You are a worker. Complete the task below.\n"
-    )
-    fs.create("cogos/worker/make_coglet.py",
+    fs.create("cogos/worker/main.md", "# Worker\n\nYou are a worker. Complete the task below.\n")
+    fs.create(
+        "cogos/worker/make_coglet.py",
         "from cogos.cog.cog import CogConfig\n"
         "from cogos.cog.runtime import CogletManifest\n"
         "\n"
@@ -66,7 +61,7 @@ def worker_cog_files(repo):
         "    caps = ['channels']\n"
         "    if 'github' in reason.lower():\n"
         "        caps.append('github')\n"
-        "    return manifest, caps\n"
+        "    return manifest, caps\n",
     )
     return fs
 
@@ -91,6 +86,7 @@ def _setup_supervisor(repo):
     )
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("supervisor:help")
+    assert ch is not None
 
     handler = Handler(
         process=supervisor.id,
@@ -130,6 +126,7 @@ class TestSupervisorWorkerFlow:
 
         # Verify supervisor became runnable
         sup = repo.get_process(supervisor.id)
+        assert sup is not None
         assert sup.status == ProcessStatus.RUNNABLE
 
         # Step 2: Supervisor wakes up, screens request, creates worker
@@ -143,9 +140,7 @@ class TestSupervisorWorkerFlow:
             cog_registry = CogRegistryCapability(repo, process.id)
             worker_cog = cog_registry.get_or_make_cog("cogos/worker")
             coglet, required_caps = worker_cog.make_coglet(
-                "Create a github issue for bug #42\n"
-                "discord_channel_id: 123\n"
-                "discord_message_id: 456\n"
+                "Create a github issue for bug #42\ndiscord_channel_id: 123\ndiscord_message_id: 456\n"
             )
 
             assert coglet.name == "worker-task"
@@ -161,7 +156,7 @@ class TestSupervisorWorkerFlow:
                 capabilities={},  # In real usage, supervisor would scope these
             )
 
-            assert hasattr(result, "id"), f"spawn failed: {result}"
+            assert not isinstance(result, ProcessError), f"spawn failed: {result}"
             worker_process_id = result._process.id
             return run
 
@@ -171,6 +166,7 @@ class TestSupervisorWorkerFlow:
         # both help requests and exit notifications.
         call_count = [0]
         supervisor_spawned = [False]
+
         def tick_execute(process, event_data, run, config, repo, **kwargs):
             call_count[0] += 1
             if process.name == "supervisor":
@@ -187,15 +183,14 @@ class TestSupervisorWorkerFlow:
             run.result = {"completed": True, "issue_url": "https://github.com/org/repo/issues/99"}
             return run
 
-        executed = run_local_tick(
-            repo, None, execute_fn=tick_execute
-        )
+        executed = run_local_tick(repo, None, execute_fn=tick_execute)
         # Supervisor + worker + supervisor (re-woken by child:exited)
         assert executed >= 2
         assert call_count[0] >= 2
 
         # Verify supervisor went back to waiting
         sup = repo.get_process(supervisor.id)
+        assert sup is not None
         assert sup.status == ProcessStatus.WAITING
 
         # Verify worker was created and completed
@@ -209,6 +204,7 @@ class TestSupervisorWorkerFlow:
 
         # Verify run result
         runs = repo.list_runs(process_id=worker_process_id)
+        assert runs is not None
         assert len(runs) == 1
         assert runs[0].status == RunStatus.COMPLETED
 
@@ -246,9 +242,7 @@ class TestSupervisorWorkerFlow:
             # Should not reach here for this test
             raise AssertionError("Should have been screened")
 
-        executed = run_local_tick(
-            repo, None, execute_fn=supervisor_screens_threat
-        )
+        executed = run_local_tick(repo, None, execute_fn=supervisor_screens_threat)
         assert executed == 1
 
         # Verify no worker was spawned
@@ -257,6 +251,7 @@ class TestSupervisorWorkerFlow:
 
         # Verify supervisor went back to waiting (not crashed)
         sup = repo.get_process(supervisor.id)
+        assert sup is not None
         assert sup.status == ProcessStatus.WAITING
 
     def test_make_coglet_includes_template(self, repo, worker_cog_files):

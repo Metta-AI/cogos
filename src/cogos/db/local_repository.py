@@ -36,6 +36,7 @@ from cogos.db.models import (
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 from cogos.db.models.span import Span, SpanEvent, SpanStatus
 from cogos.db.models.trace import RequestTrace
+from cogos.db.repository import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def _json_serial(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-class LocalRepository:
+class LocalRepository(Repository):
     """In-memory CogOS repository backed by a JSON file."""
 
     def __init__(self, data_dir: str | None = None) -> None:
@@ -128,9 +129,7 @@ class LocalRepository:
             "process_capabilities": [pc.model_dump(mode="json") for pc in self._process_capabilities.values()],
             "files": [f.model_dump(mode="json") for f in self._files.values()],
             "file_versions": [
-                fv.model_dump(mode="json")
-                for versions in self._file_versions.values()
-                for fv in versions
+                fv.model_dump(mode="json") for versions in self._file_versions.values() for fv in versions
             ],
             "resources": [r.model_dump(mode="json") for r in self._resources.values()],
             "cron_rules": [c.model_dump(mode="json") for c in self._cron_rules.values()],
@@ -161,16 +160,10 @@ class LocalRepository:
         primary_fields: tuple[str, ...],
         conflict_fields: tuple[str, ...] | None = None,
     ) -> list[dict[str, Any]]:
-        merged = {
-            cls._row_key(row, *primary_fields): row
-            for row in latest_rows
-        }
+        merged = {cls._row_key(row, *primary_fields): row for row in latest_rows}
         conflicts = {}
         if conflict_fields:
-            conflicts = {
-                cls._row_key(row, *conflict_fields): cls._row_key(row, *primary_fields)
-                for row in latest_rows
-            }
+            conflicts = {cls._row_key(row, *conflict_fields): cls._row_key(row, *primary_fields) for row in latest_rows}
 
         for row in current_rows:
             primary_key = cls._row_key(row, *primary_fields)
@@ -348,8 +341,11 @@ class LocalRepository:
 
         logger.info(
             "Loaded cogos data: %d processes, %d capabilities, %d files, %d deliveries, %d runs",
-            len(self._processes), len(self._capabilities), len(self._files),
-            len(self._deliveries), len(self._runs),
+            len(self._processes),
+            len(self._capabilities),
+            len(self._files),
+            len(self._deliveries),
+            len(self._runs),
         )
 
     def _save(self) -> None:
@@ -437,10 +433,7 @@ class LocalRepository:
         """Delete all files whose key starts with any of the given prefixes. Returns count deleted."""
         count = 0
         with self._writing(force=True):
-            to_delete = [
-                fid for fid, f in self._files.items()
-                if any(f.key.startswith(p) for p in prefixes)
-            ]
+            to_delete = [fid for fid, f in self._files.items() if any(f.key.startswith(p) for p in prefixes)]
             for fid in to_delete:
                 del self._files[fid]
                 self._file_versions.pop(fid, None)
@@ -499,7 +492,9 @@ class LocalRepository:
                 return True
             return False
 
-    def list_processes(self, *, status: ProcessStatus | None = None, limit: int = 200, epoch: int | None = None) -> list[Process]:
+    def list_processes(
+        self, *, status: ProcessStatus | None = None, limit: int = 200, epoch: int | None = None
+    ) -> list[Process]:
         self._maybe_reload()
         effective_epoch = self._reboot_epoch if epoch is None else epoch
         procs = list(self._processes.values())
@@ -541,8 +536,10 @@ class LocalRepository:
 
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         self._maybe_reload()
-        runnable = [p for p in self._processes.values()
-                    if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch]
+        runnable = [
+            p for p in self._processes.values()
+            if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch
+        ]
         _MAX_DT = datetime.max.replace(tzinfo=UTC)
         runnable.sort(key=lambda p: (-p.priority, p.runnable_since or _MAX_DT, p.name))
         return runnable[:limit]
@@ -604,12 +601,17 @@ class LocalRepository:
         q = query.lower()
         if process_id:
             bound_cap_ids = {pc.capability for pc in self._process_capabilities.values() if pc.process == process_id}
-            caps = [c for c in self._capabilities.values()
-                    if c.enabled and c.id in bound_cap_ids
-                    and (q in c.name.lower() or q in (c.description or "").lower())]
+            caps = [
+                c
+                for c in self._capabilities.values()
+                if c.enabled and c.id in bound_cap_ids and (q in c.name.lower() or q in (c.description or "").lower())
+            ]
         else:
-            caps = [c for c in self._capabilities.values()
-                    if c.enabled and (q in c.name.lower() or q in (c.description or "").lower())]
+            caps = [
+                c
+                for c in self._capabilities.values()
+                if c.enabled and (q in c.name.lower() or q in (c.description or "").lower())
+            ]
         caps.sort(key=lambda c: c.name)
         return caps
 
@@ -628,7 +630,9 @@ class LocalRepository:
             self._handlers[h.id] = h
             return h.id
 
-    def list_handlers(self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None) -> list[Handler]:
+    def list_handlers(
+        self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None
+    ) -> list[Handler]:
         self._maybe_reload()
         effective_epoch = self._reboot_epoch if epoch is None else epoch
         handlers = list(self._handlers.values())
@@ -691,13 +695,15 @@ class LocalRepository:
             if pc.capability == capability_id:
                 proc = self._processes.get(pc.process)
                 if proc:
-                    results.append({
-                        "process_id": str(proc.id),
-                        "process_name": proc.name,
-                        "process_status": proc.status.value if hasattr(proc.status, "value") else str(proc.status),
-                        "grant_name": pc.name,
-                        "config": pc.config,
-                    })
+                    results.append(
+                        {
+                            "process_id": str(proc.id),
+                            "process_name": proc.name,
+                            "process_status": proc.status.value if hasattr(proc.status, "value") else str(proc.status),
+                            "grant_name": pc.name,
+                            "config": pc.config,
+                        }
+                    )
         results.sort(key=lambda r: r["process_name"])
         return results
 
@@ -734,9 +740,7 @@ class LocalRepository:
         files.sort(key=lambda f: f.key)
         return files[:limit]
 
-    def grep_files(
-        self, pattern: str, *, prefix: str | None = None, limit: int = 100
-    ) -> list[tuple[str, str]]:
+    def grep_files(self, pattern: str, *, prefix: str | None = None, limit: int = 100) -> list[tuple[str, str]]:
         """Search active file versions by regex pattern. Returns (key, content) tuples."""
         import re
 
@@ -752,15 +756,11 @@ class LocalRepository:
                     break
         return results
 
-    def glob_files(
-        self, pattern: str, *, prefix: str | None = None, limit: int = 200
-    ) -> list[str]:
+    def glob_files(self, pattern: str, *, prefix: str | None = None, limit: int = 200) -> list[str]:
         """Match file keys by glob pattern. Returns list of matching keys."""
         import re
 
-        from cogos.db.repository import Repository
-
-        regex = Repository._glob_to_regex(pattern)
+        regex = self._glob_to_regex(pattern)
         self._maybe_reload()
         results: list[str] = []
         for f in sorted(self._files.values(), key=lambda f: f.key):
@@ -895,7 +895,8 @@ class LocalRepository:
         self._maybe_reload()
         handler_ids = {h.id for h in self._handlers.values() if h.process == process_id}
         deliveries = [
-            delivery for delivery in self._deliveries.values()
+            delivery
+            for delivery in self._deliveries.values()
             if delivery.handler in handler_ids and delivery.status == DeliveryStatus.PENDING
         ]
         deliveries.sort(key=lambda d: d.created_at or datetime.min)
@@ -932,7 +933,8 @@ class LocalRepository:
         times = [
             self._channel_messages[d.message].created_at
             for d in self._deliveries.values()
-            if d.handler == handler_id and d.message in self._channel_messages
+            if d.handler == handler_id
+            and d.message in self._channel_messages
             and self._channel_messages[d.message].created_at
         ]
         return max(times) if times else None
@@ -1060,6 +1062,7 @@ class LocalRepository:
         """List runs that failed or timed out within the last max_age_ms."""
         self._maybe_reload()
         from datetime import timedelta
+
         cutoff = datetime.now(UTC) - timedelta(milliseconds=max_age_ms)
         result = []
         for run in self._runs.values():
@@ -1103,6 +1106,7 @@ class LocalRepository:
             runs = [r for r in runs if (r.status.value if hasattr(r.status, "value") else r.status) == status]
         if since:
             from datetime import datetime as dt
+
             cutoff = dt.fromisoformat(since.replace("Z", "+00:00"))
             runs = [r for r in runs if r.created_at and r.created_at >= cutoff]
         runs.sort(key=lambda r: r.created_at or datetime.min, reverse=True)
@@ -1117,11 +1121,13 @@ class LocalRepository:
                 if fv.run_id == run_id:
                     f = self._files.get(file_id)
                     if f:
-                        results.append({
-                            "key": f.key,
-                            "version": fv.version,
-                            "created_at": fv.created_at,
-                        })
+                        results.append(
+                            {
+                                "key": f.key,
+                                "version": fv.version,
+                                "created_at": fv.created_at,
+                            }
+                        )
         results.sort(key=lambda r: r.get("created_at") or datetime.min)
         return results
 
@@ -1135,6 +1141,7 @@ class LocalRepository:
     ) -> list[Run]:
         """List runs for processes whose name matches a glob pattern."""
         import fnmatch
+
         self._maybe_reload()
         # Build name->id map
         matching_pids = set()
@@ -1236,8 +1243,7 @@ class LocalRepository:
             # Idempotency check
             if msg.idempotency_key:
                 for existing in self._channel_messages.values():
-                    if (existing.channel == msg.channel
-                            and existing.idempotency_key == msg.idempotency_key):
+                    if existing.channel == msg.channel and existing.idempotency_key == msg.idempotency_key:
                         return existing.id
 
             self._channel_messages[msg.id] = msg
@@ -1254,7 +1260,9 @@ class LocalRepository:
 
             return msg.id
 
-    def list_channel_messages(self, channel_id: UUID | None = None, *, limit: int = 100, since=None) -> list[ChannelMessage]:
+    def list_channel_messages(
+        self, channel_id: UUID | None = None, *, limit: int = 100, since=None
+    ) -> list[ChannelMessage]:
         self._maybe_reload()
         msgs = list(self._channel_messages.values())
         if channel_id is not None:
@@ -1277,6 +1285,7 @@ class LocalRepository:
 
     def upsert_discord_guild(self, guild: DiscordGuild) -> None:
         from datetime import timezone
+
         guild.synced_at = datetime.now(timezone.utc)
         self._discord_guilds[guild.guild_id] = guild
         self._save()
@@ -1299,6 +1308,7 @@ class LocalRepository:
 
     def upsert_discord_channel(self, channel: DiscordChannel) -> None:
         from datetime import timezone
+
         channel.synced_at = datetime.now(timezone.utc)
         self._discord_channels[channel.channel_id] = channel
         self._save()

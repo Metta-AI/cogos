@@ -2,9 +2,23 @@ import json
 from uuid import uuid4
 
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Capability, Channel, ChannelMessage, ChannelType, Delivery, DeliveryStatus, Handler, Process, ProcessCapability, ProcessMode, ProcessStatus, Run, RunStatus
-from cogos.files.store import FileStore
+from cogos.db.models import (
+    Capability,
+    Channel,
+    ChannelMessage,
+    ChannelType,
+    Delivery,
+    DeliveryStatus,
+    Handler,
+    Process,
+    ProcessCapability,
+    ProcessMode,
+    ProcessStatus,
+    Run,
+    RunStatus,
+)
 from cogos.executor import handler as executor_handler
+from cogos.files.store import FileStore
 from cogos.runtime.local import run_and_complete
 
 
@@ -68,6 +82,7 @@ def test_executor_recreates_missing_dispatch_run(monkeypatch, tmp_path):
 
     assert result["statusCode"] == 200
     runs = repo.list_runs(process_id=process.id)
+    assert runs is not None
     assert len(runs) == 1
     assert runs[0].id == missing_run_id
     assert runs[0].status == RunStatus.COMPLETED
@@ -86,6 +101,7 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("io:discord:dm")
+    assert ch is not None
 
     handler = Handler(process=process.id, channel=ch.id)
     repo.create_handler(handler)
@@ -115,8 +131,12 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     )
 
     assert result["statusCode"] == 200
-    assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
-    assert repo.get_run(run.id).status == RunStatus.COMPLETED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.COMPLETED
     assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
 
 
@@ -144,9 +164,12 @@ def test_daemon_failure_returns_to_waiting_without_pending_deliveries(monkeypatc
 
     assert result["statusCode"] == 500
     runs = repo.list_runs(process_id=process.id)
+    assert runs is not None
     assert len(runs) == 1
     assert runs[0].status == RunStatus.FAILED
-    assert repo.get_process(process.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING
 
 
 def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_path):
@@ -162,6 +185,7 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("io:discord:dm")
+    assert ch is not None
 
     handler = Handler(process=process.id, channel=ch.id)
     repo.create_handler(handler)
@@ -191,8 +215,12 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     )
 
     assert result["statusCode"] == 500
-    assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
-    assert repo.get_run(run.id).status == RunStatus.FAILED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.FAILED
     assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
     assert repo._deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
 
@@ -224,6 +252,7 @@ def test_daemon_suspended_after_consecutive_failures(monkeypatch, tmp_path):
         assert result["statusCode"] == 500
 
     proc = repo.get_process(process.id)
+    assert proc is not None
     assert proc.status == ProcessStatus.SUSPENDED
 
     # Should have created a critical alert
@@ -259,6 +288,7 @@ def test_daemon_not_suspended_with_fewer_than_threshold_failures(monkeypatch, tm
         )
 
     proc = repo.get_process(process.id)
+    assert proc is not None
     assert proc.status == ProcessStatus.WAITING
 
 
@@ -294,6 +324,7 @@ def test_daemon_not_suspended_if_success_breaks_streak(monkeypatch, tmp_path):
         )
 
     proc = repo.get_process(process.id)
+    assert proc is not None
     assert proc.status != ProcessStatus.SUSPENDED
 
 
@@ -317,13 +348,15 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
                     "output": {
                         "message": {
                             "role": "assistant",
-                            "content": [{
-                                "toolUse": {
-                                    "toolUseId": "tool-1",
-                                    "name": "bad tool",
-                                    "input": {},
+                            "content": [
+                                {
+                                    "toolUse": {
+                                        "toolUseId": "tool-1",
+                                        "name": "bad tool",
+                                        "input": {},
+                                    }
                                 }
-                            }],
+                            ],
                         }
                     },
                     "usage": {"inputTokens": 11, "outputTokens": 7},
@@ -420,11 +453,7 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
     first_call = fake_bedrock.calls[0]
     assert first_call["messages"][0]["content"][0]["text"] == "Execute your task."
     assert first_call["system"][0]["text"] == (
-        "Intro\n"
-        "--- prompt.md ---\n"
-        "Prompt body\n"
-        "--- docs/shared.md ---\n"
-        "Shared context"
+        "Intro\n--- prompt.md ---\nPrompt body\n--- docs/shared.md ---\nShared context"
     )
 
 
@@ -453,6 +482,7 @@ def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tm
     )
 
     stored_run = repo.get_run(run.id)
+    assert stored_run is not None
     assert stored_run.status == RunStatus.COMPLETED
     assert stored_run.snapshot is not None
     assert stored_run.snapshot["resumed"] is False
@@ -519,6 +549,8 @@ def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
     assert "hello-2" in second_call_messages[2]["content"][0]["text"]
 
     stored_run = repo.get_run(second_run.id)
+    assert stored_run is not None
+    assert stored_run.snapshot is not None
     assert stored_run.snapshot["resumed"] is True
     assert stored_run.snapshot["resumed_from_run_id"] == str(first_run.id)
     assert stored_run.snapshot["resume_skipped_reason"] is None
@@ -564,6 +596,8 @@ def test_legacy_session_mode_process_still_resumes(monkeypatch, tmp_path):
     assert second_call_messages[1]["content"][0]["text"] == "first-response"
 
     stored_run = repo.get_run(second_run.id)
+    assert stored_run is not None
+    assert stored_run.snapshot is not None
     assert stored_run.snapshot["resumed"] is True
 
 
@@ -588,22 +622,28 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
     monkeypatch.setattr(executor_handler.SandboxExecutor, "execute", _raise_on_execute)
 
     first_run = _make_run(repo, process)
-    first_bedrock = _FakeBedrock([{
-        "output": {
-            "message": {
-                "role": "assistant",
-                "content": [{
-                    "toolUse": {
-                        "toolUseId": "tool-1",
-                        "name": "run_code",
-                        "input": {"code": "print('hello')"},
+    first_bedrock = _FakeBedrock(
+        [
+            {
+                "output": {
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "toolUse": {
+                                    "toolUseId": "tool-1",
+                                    "name": "run_code",
+                                    "input": {"code": "print('hello')"},
+                                }
+                            }
+                        ],
                     }
-                }],
+                },
+                "usage": {"inputTokens": 7, "outputTokens": 5},
+                "stopReason": "tool_use",
             }
-        },
-        "usage": {"inputTokens": 7, "outputTokens": 5},
-        "stopReason": "tool_use",
-    }])
+        ]
+    )
 
     run_and_complete(
         process,
@@ -615,8 +655,10 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
     )
 
     failed_run = repo.get_run(first_run.id)
+    assert failed_run is not None
     assert failed_run.status == RunStatus.FAILED
 
+    assert failed_run.snapshot is not None
     checkpoint = _read_json(FileStore(repo), failed_run.snapshot["checkpoint_key"])
     assert checkpoint["messages"][1]["content"][0]["toolUse"]["name"] == "run_code"
 
@@ -639,6 +681,8 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
     assert "second" in resumed_messages[2]["content"][0]["text"]
 
     stored_run = repo.get_run(second_run.id)
+    assert stored_run is not None
+    assert stored_run.snapshot is not None
     assert stored_run.snapshot["resumed"] is True
     assert stored_run.snapshot["resumed_from_run_id"] == str(first_run.id)
 
@@ -684,6 +728,8 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
     assert "second" in second_call_messages[0]["content"][0]["text"]
 
     stored_run = repo.get_run(second_run.id)
+    assert stored_run is not None
+    assert stored_run.snapshot is not None
     assert stored_run.snapshot["resumed"] is False
     assert stored_run.snapshot["resume_skipped_reason"] == "prompt_fingerprint_changed"
 
@@ -705,7 +751,11 @@ def test_python_executor_runs_code_directly(monkeypatch, tmp_path):
     config = executor_handler.ExecutorConfig()
 
     result_run = executor_handler.execute_process(
-        process, {"process_id": str(process.id)}, run, config, repo,
+        process,
+        {"process_id": str(process.id)},
+        run,
+        config,
+        repo,
     )
 
     assert result_run.result == {"output": "hello from python"}
@@ -730,7 +780,9 @@ def test_python_executor_receives_event_payload(monkeypatch, tmp_path):
     result_run = executor_handler.execute_process(
         process,
         {"process_id": str(process.id), "payload": {"msg": "hi"}},
-        run, config, repo,
+        run,
+        config,
+        repo,
     )
 
     assert result_run.result == {"output": "hi"}
@@ -766,7 +818,9 @@ def test_python_executor_resolves_file_refs(monkeypatch, tmp_path):
     result_run = executor_handler.execute_process(
         process,
         {"process_id": str(process.id)},
-        run, config, repo,
+        run,
+        config,
+        repo,
     )
 
     assert result_run.result == {"output": "world"}
@@ -789,16 +843,24 @@ def test_python_executor_error_captured_in_run(monkeypatch, tmp_path):
     result_run = executor_handler.execute_process(
         process,
         {"process_id": str(process.id)},
-        run, config, repo,
+        run,
+        config,
+        repo,
     )
 
+    assert result_run.result is not None
     assert "ValueError" in result_run.result["output"]
     assert "boom" in result_run.result["output"]
 
 
-def _tool_use_response(tool_name: str, tool_input: dict, tool_use_id: str = "tool-1",
-                        text: str | None = None,
-                        input_tokens: int = 5, output_tokens: int = 3) -> dict:
+def _tool_use_response(
+    tool_name: str,
+    tool_input: dict,
+    tool_use_id: str = "tool-1",
+    text: str | None = None,
+    input_tokens: int = 5,
+    output_tokens: int = 3,
+) -> dict:
     content = []
     if text:
         content.append({"text": text})
@@ -862,6 +924,7 @@ def test_run_code_output_published_to_process_stdout(monkeypatch, tmp_path):
     ch = repo.get_channel_by_name("process:code-runner:stdout")
     assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
+    assert msgs is not None
     texts = [m.payload.get("text", "") for m in msgs]
     assert any("hello world" in t for t in texts)
 
@@ -888,6 +951,7 @@ def test_final_assistant_text_published_to_process_stderr(monkeypatch, tmp_path)
     ch = repo.get_channel_by_name("process:chat-worker:stderr")
     assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
+    assert msgs is not None
     texts = [m.payload.get("text", "") for m in msgs]
     assert any("final words" in t for t in texts)
 
@@ -920,6 +984,7 @@ def test_intermediate_assistant_text_published_to_stdout(monkeypatch, tmp_path):
     ch = repo.get_channel_by_name("process:think-worker:stdout")
     assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
+    assert msgs is not None
     texts = [m.payload.get("text", "") for m in msgs]
     assert any("Let me think about this" in t for t in texts)
 
@@ -959,6 +1024,7 @@ def test_tty_forwards_to_global_io_channels(monkeypatch, tmp_path):
     io_stdout = repo.get_channel_by_name("io:stdout")
     assert io_stdout is not None
     stdout_msgs = repo.list_channel_messages(io_stdout.id, limit=10)
+    assert stdout_msgs is not None
     stdout_texts = [m.payload.get("text", "") for m in stdout_msgs]
     assert any("tty output" in t for t in stdout_texts)
 
@@ -966,6 +1032,7 @@ def test_tty_forwards_to_global_io_channels(monkeypatch, tmp_path):
     io_stderr = repo.get_channel_by_name("io:stderr")
     assert io_stderr is not None
     stderr_msgs = repo.list_channel_messages(io_stderr.id, limit=10)
+    assert stderr_msgs is not None
     stderr_texts = [m.payload.get("text", "") for m in stderr_msgs]
     assert any("tty final" in t for t in stderr_texts)
 
@@ -1005,11 +1072,14 @@ def test_no_tty_does_not_forward_to_global_io(monkeypatch, tmp_path):
     ch = repo.get_channel_by_name("process:no-tty-worker:stdout")
     assert ch is not None
     msgs = repo.list_channel_messages(ch.id, limit=10)
+    assert msgs is not None
     assert len(msgs) > 0
 
     # Global io channels should be empty
     io_stdout = repo.get_channel_by_name("io:stdout")
+    assert io_stdout is not None
     io_stderr = repo.get_channel_by_name("io:stderr")
+    assert io_stderr is not None
     assert len(repo.list_channel_messages(io_stdout.id, limit=10)) == 0
     assert len(repo.list_channel_messages(io_stderr.id, limit=10)) == 0
 
@@ -1026,7 +1096,7 @@ def test_python_executor_handles_web_request(monkeypatch, tmp_path):
         name="web-handler",
         mode=ProcessMode.DAEMON,
         executor="python",
-        content='''
+        content="""
 req = event.get("web_request", {})
 request_id = event.get("web_request_id", "")
 path = req.get("path", "/")
@@ -1035,15 +1105,13 @@ if route == "status":
     web.respond(request_id, status=200, headers={"content-type": "application/json"}, body=json.dumps({"status": "ok"}))
 else:
     web.respond(request_id, status=404, headers={"content-type": "application/json"}, body=json.dumps({"error": "not found"}))
-''',
+""",
         status=ProcessStatus.RUNNING,
     )
     repo.upsert_process(process)
 
     # Bind web capability to process
-    repo.create_process_capability(
-        ProcessCapability(process=process.id, capability=web_cap_model.id, name="web")
-    )
+    repo.create_process_capability(ProcessCapability(process=process.id, capability=web_cap_model.id, name="web"))
 
     run = _make_run(repo, process)
     config = executor_handler.ExecutorConfig()
@@ -1061,7 +1129,9 @@ else:
                 "body": None,
             },
         },
-        run, config, repo,
+        run,
+        config,
+        repo,
     )
 
     # No LLM calls — Python executor runs code directly
@@ -1071,9 +1141,10 @@ else:
 
 def test_spill_tool_result_short_text(tmp_path):
     """Short output is returned inline without spilling."""
+    from uuid import uuid4
+
     from cogos.executor.handler import _spill_tool_result
     from cogos.files.store import FileStore
-    from uuid import uuid4
 
     repo = _repo(tmp_path)
     fs = FileStore(repo)
@@ -1083,9 +1154,10 @@ def test_spill_tool_result_short_text(tmp_path):
 
 def test_spill_tool_result_large_text(tmp_path):
     """Large output is written to file store; inline text is a short preview."""
+    from uuid import uuid4
+
     from cogos.executor.handler import _spill_tool_result
     from cogos.files.store import FileStore
-    from uuid import uuid4
 
     repo = _repo(tmp_path)
     fs = FileStore(repo)
@@ -1111,9 +1183,14 @@ def test_large_tool_output_spilled_to_file_store(monkeypatch, tmp_path):
 
     responses = [
         {
-            "output": {"message": {"role": "assistant", "content": [
-                {"toolUse": {"toolUseId": "t1", "name": "run_code", "input": {"code": "print('x'*10000)"}}},
-            ]}},
+            "output": {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"toolUse": {"toolUseId": "t1", "name": "run_code", "input": {"code": "print('x'*10000)"}}},
+                    ],
+                }
+            },
             "usage": {"inputTokens": 10, "outputTokens": 5},
             "stopReason": "tool_use",
         },
@@ -1124,7 +1201,11 @@ def test_large_tool_output_spilled_to_file_store(monkeypatch, tmp_path):
 
     fake = _FakeBedrock(responses)
     result_run = executor_handler.execute_process(
-        process, {"process_id": str(process.id)}, run, config, repo,
+        process,
+        {"process_id": str(process.id)},
+        run,
+        config,
+        repo,
         bedrock_client=fake,
     )
 
@@ -1138,6 +1219,7 @@ def test_large_tool_output_spilled_to_file_store(monkeypatch, tmp_path):
 
     # Full output should be in the file store
     from cogos.files.store import FileStore
+
     fs = FileStore(repo)
     stored = fs.get_content(f"run_output/{run.id}/1-0")
     assert stored == large_output
@@ -1172,6 +1254,7 @@ def test_context_overflow_creates_critical_alert(monkeypatch, tmp_path):
     assert result["statusCode"] == 500
 
     alerts = repo.list_alerts()
+    assert alerts is not None
     overflow_alerts = [a for a in alerts if a.alert_type == "process:context_overflow"]
     assert len(overflow_alerts) == 1
     assert overflow_alerts[0].severity.value == "critical"

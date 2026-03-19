@@ -24,14 +24,12 @@ from polis.aws import (
     set_profile,
 )
 from polis.config import PolisConfig
-from polis.quotas import QuotaEnsureResult, ensure_service_quota_targets
 from polis.naming import expected_stack_name
+from polis.quotas import QuotaEnsureResult, ensure_service_quota_targets
 from polis.secrets.store import SecretStore
 
 console = Console()
-_PROFILE_HELP = (
-    f"AWS profile override (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
-)
+_PROFILE_HELP = f"AWS profile override (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
 
 @click.group()
@@ -262,7 +260,7 @@ def status():
     def _query_cogents_and_secrets():
         """DynamoDB cogent status + secrets list."""
         ddb = polis_session.resource("dynamodb")
-        tbl = ddb.Table("cogent-status")
+        tbl = ddb.Table("cogent-status")  # type: ignore[attr-defined]
         items = _scan_table_items(tbl)
 
         sm = polis_session.client("secretsmanager")
@@ -601,7 +599,7 @@ def cogents_create(ctx: click.Context, name: str):
     # 3. DynamoDB — register in cogent-status table
     console.print("  Registering in status table...")
     ddb = session.resource("dynamodb")
-    table_resource = ddb.Table("cogent-status")
+    table_resource = ddb.Table("cogent-status")  # type: ignore[attr-defined]
     table_resource.put_item(
         Item={
             "cogent_name": name,
@@ -693,7 +691,7 @@ def cogents_destroy(ctx: click.Context, name: str):
     # 3. Delete DynamoDB status record
     try:
         ddb = session.resource("dynamodb")
-        table_resource = ddb.Table("cogent-status")
+        table_resource = ddb.Table("cogent-status")  # type: ignore[attr-defined]
         table_resource.delete_item(Key={"cogent_name": name})
         console.print("  [green]Deleted status record[/green]")
     except Exception as e:
@@ -714,7 +712,7 @@ def cogents_list():
     """List all cogents registered in the polis."""
     session, _ = get_polis_session()
     ddb = session.resource("dynamodb")
-    table_resource = ddb.Table("cogent-status")
+    table_resource = ddb.Table("cogent-status")  # type: ignore[attr-defined]
 
     try:
         items = _scan_table_items(table_resource)
@@ -762,7 +760,7 @@ def cogents_status(name: str):
     """Show detailed status for a cogent."""
     session, _ = get_polis_session()
     ddb = session.resource("dynamodb")
-    table_resource = ddb.Table("cogent-status")
+    table_resource = ddb.Table("cogent-status")  # type: ignore[attr-defined]
 
     item = table_resource.get_item(Key={"cogent_name": name}).get("Item")
 
@@ -852,9 +850,7 @@ def _ensure_polis_quotas(
         current = "-" if result.current_value is None else f"{result.current_value:g}"
         desired = f"{result.desired_value:g}"
         if result.status == "satisfied":
-            console.print(
-                f"    [green]ok[/green] {result.quota_name}: current {current} >= desired {desired}"
-            )
+            console.print(f"    [green]ok[/green] {result.quota_name}: current {current} >= desired {desired}")
         elif result.status == "requested":
             detail = f"request {result.request_id}" if result.request_id else "request submitted"
             console.print(
@@ -863,8 +859,7 @@ def _ensure_polis_quotas(
         elif result.status == "pending":
             request_id = result.request_id or "pending"
             console.print(
-                f"    [cyan]pending[/cyan] {result.quota_name}: "
-                f"current {current}, desired {desired} ({request_id})"
+                f"    [cyan]pending[/cyan] {result.quota_name}: current {current}, desired {desired} ({request_id})"
             )
         else:
             failures.append(result)

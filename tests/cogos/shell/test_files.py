@@ -27,6 +27,7 @@ def test_pwd_at_root(tmp_path):
 def test_ls_root_shows_directories(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "ls")
+    assert output is not None
     assert "prompts/" in output
     assert "config/" in output
     assert "data/" in output
@@ -35,6 +36,7 @@ def test_ls_root_shows_directories(tmp_path):
 def test_ls_prefix_shows_children(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "ls prompts")
+    assert output is not None
     assert "init.md" in output
     assert "scheduler.md" in output
 
@@ -73,19 +75,25 @@ def test_cat_relative(tmp_path):
 
 def test_cat_not_found(tmp_path):
     state, reg = _setup(tmp_path)
-    assert "not found" in reg.dispatch(state, "cat nope.txt").lower()
+    output = reg.dispatch(state, "cat nope.txt")
+    assert output is not None
+    assert "not found" in output.lower()
 
 
 def test_rm(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "rm prompts/init.md")
+    assert output is not None
     assert "removed" in output.lower()
-    assert "not found" in reg.dispatch(state, "cat prompts/init.md").lower()
+    output2 = reg.dispatch(state, "cat prompts/init.md")
+    assert output2 is not None
+    assert "not found" in output2.lower()
 
 
 def test_tree(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "tree")
+    assert output is not None
     assert "prompts/" in output or "prompts" in output
     assert "init.md" in output
     assert "config/" in output or "config" in output
@@ -94,4 +102,5 @@ def test_tree(tmp_path):
 def test_mkdir_noop(tmp_path):
     state, reg = _setup(tmp_path)
     output = reg.dispatch(state, "mkdir newdir")
+    assert output is not None
     assert "implicit" in output.lower()

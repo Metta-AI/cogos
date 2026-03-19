@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from cogos.io.discord.bridge import DiscordBridge, _make_message_payload
-
 
 # ---------------------------------------------------------------------------
 # Helpers to build fake Discord objects
@@ -19,7 +18,7 @@ from cogos.io.discord.bridge import DiscordBridge, _make_message_payload
 
 def _make_author(*, name="testuser", id_=42):
     author = MagicMock()
-    author.__str__ = lambda self: name
+    author.__str__ = lambda self: name  # type: ignore[assignment]
     author.id = id_
     return author
 
@@ -219,6 +218,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -237,6 +237,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -251,12 +252,13 @@ class TestBridgeInbound:
 
     async def test_relay_mention(self):
         bridge = _make_bridge()
-        bridge.client.user.mentioned_in.return_value = True
+        bridge.client.user.mentioned_in.return_value = True  # type: ignore[attr-defined]
         bridge._start_typing = MagicMock()
         repo = MagicMock()
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:mention", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -275,6 +277,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -285,12 +288,13 @@ class TestBridgeInbound:
 
     async def test_relay_starts_typing_on_mention(self):
         bridge = _make_bridge()
-        bridge.client.user.mentioned_in.return_value = True
+        bridge.client.user.mentioned_in.return_value = True  # type: ignore[attr-defined]
         bridge._start_typing = MagicMock()
         repo = MagicMock()
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:mention", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -306,6 +310,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         catch_all = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
         fine = Channel(name="io:discord:message:100", channel_type=ChannelType.NAMED)
 
@@ -334,6 +339,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         catch_all = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
         fine = Channel(name="io:discord:dm:42", channel_type=ChannelType.NAMED)
 
@@ -361,6 +367,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         catch_all = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
         created_fine = Channel(name="io:discord:message:100", channel_type=ChannelType.NAMED)
 
@@ -380,8 +387,7 @@ class TestBridgeInbound:
         await bridge._relay_to_db(msg)
 
         # Should have upserted the fine-grained channel
-        upsert_calls = [c for c in repo.upsert_channel.call_args_list
-                        if c.args[0].name == "io:discord:message:100"]
+        upsert_calls = [c for c in repo.upsert_channel.call_args_list if c.args[0].name == "io:discord:message:100"]
         assert len(upsert_calls) == 1
         assert repo.append_channel_message.call_count == 2
 
@@ -392,6 +398,7 @@ class TestBridgeInbound:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -559,9 +566,7 @@ class TestBridgeOutbound:
         channel.fetch_message.side_effect = RuntimeError("not found")
 
         with pytest.raises(RuntimeError):
-            await bridge._handle_thread_create(
-                {"thread_name": "T", "message_id": "456", "content": "hi"}, channel
-            )
+            await bridge._handle_thread_create({"thread_name": "T", "message_id": "456", "content": "hi"}, channel)
 
     async def test_handle_dm_clears_pending(self):
         """Successful DM send should clear the pending DM tracker."""
@@ -607,6 +612,7 @@ class TestAlertingAndTimeout:
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
+
         ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
 
@@ -657,22 +663,23 @@ class TestAlertingAndTimeout:
         sqs_msg = {
             "MessageId": "sqs-1",
             "ReceiptHandle": "rh-1",
-            "Body": json.dumps({
-                "type": "dm",
-                "user_id": "777",
-                "content": "hi",
-                "_meta": {"process_id": "p1", "trace_id": "t1"},
-            }),
+            "Body": json.dumps(
+                {
+                    "type": "dm",
+                    "user_id": "777",
+                    "content": "hi",
+                    "_meta": {"process_id": "p1", "trace_id": "t1"},
+                }
+            ),
         }
 
         # _send_reply raises Forbidden (user has DMs disabled)
         resp = MagicMock()
         resp.status = 403
-        bridge._send_reply = AsyncMock(
-            side_effect=discord.errors.Forbidden(resp, "Cannot send messages to this user")
-        )
+        bridge._send_reply = AsyncMock(side_effect=discord.errors.Forbidden(resp, "Cannot send messages to this user"))
 
         call_count = {"n": 0}
+
         def _receive(**kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -700,12 +707,14 @@ class TestAlertingAndTimeout:
         sqs_msg = {
             "MessageId": "sqs-1",
             "ReceiptHandle": "rh-1",
-            "Body": json.dumps({
-                "type": "message",
-                "channel": "fake-dm-channel-999",
-                "content": "hi",
-                "_meta": {"process_id": "p1", "trace_id": "t1"},
-            }),
+            "Body": json.dumps(
+                {
+                    "type": "message",
+                    "channel": "fake-dm-channel-999",
+                    "content": "hi",
+                    "_meta": {"process_id": "p1", "trace_id": "t1"},
+                }
+            ),
         }
 
         # _send_reply raises ValueError from int("fake-dm-channel-999")
@@ -714,6 +723,7 @@ class TestAlertingAndTimeout:
         )
 
         call_count = {"n": 0}
+
         def _receive(**kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -755,6 +765,7 @@ class TestAlertingAndTimeout:
 
         # Make receive_message return one message then stop the loop
         call_count = {"n": 0}
+
         def _receive(**kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -786,6 +797,7 @@ class TestAlertingAndTimeout:
         bridge._send_reply = AsyncMock()
 
         call_count = {"n": 0}
+
         def _receive(**kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
@@ -847,6 +859,7 @@ class TestAlertingAndTimeout:
 
         # Simulate a DM received 6 minutes ago (> 300s timeout)
         import time as _time
+
         bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360)
 
         bridge._sweep_pending_dms()
@@ -861,6 +874,7 @@ class TestAlertingAndTimeout:
         bridge._create_alert = MagicMock()
 
         import time as _time
+
         bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360)
 
         bridge._sweep_pending_dms()
@@ -875,6 +889,7 @@ class TestAlertingAndTimeout:
         bridge._create_alert = MagicMock()
 
         import time as _time
+
         bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 10)  # 10s ago
 
         bridge._sweep_pending_dms()
@@ -888,6 +903,7 @@ class TestAlertingAndTimeout:
         bridge._create_alert = MagicMock()
 
         import time as _time
+
         bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 4000)  # >1h ago
         bridge._alerted_dm_ids.add("msg1")
 

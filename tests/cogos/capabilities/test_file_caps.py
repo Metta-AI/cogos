@@ -185,9 +185,7 @@ class TestDirGrepGlobTree:
     def test_grep_returns_results(self, repo, pid):
         cap = DirCapability(repo, pid)
         scoped = cap.scope(prefix="/workspace/")
-        repo.grep_files.return_value = [
-            ("/workspace/main.py", "line1\n# TODO fix\nline3")
-        ]
+        repo.grep_files.return_value = [("/workspace/main.py", "line1\n# TODO fix\nline3")]
         results = scoped.grep("TODO")
         assert len(results) == 1
         assert results[0].key == "/workspace/main.py"
@@ -199,15 +197,11 @@ class TestDirGrepGlobTree:
         scoped = cap.scope(prefix="/workspace/")
         repo.grep_files.return_value = []
         scoped.grep("pattern")
-        repo.grep_files.assert_called_once_with(
-            "pattern", prefix="/workspace/", limit=100
-        )
+        repo.grep_files.assert_called_once_with("pattern", prefix="/workspace/", limit=100)
 
     def test_grep_with_context(self, repo, pid):
         cap = DirCapability(repo, pid)
-        repo.grep_files.return_value = [
-            ("file.py", "a\nb\nTODO fix\nd\ne")
-        ]
+        repo.grep_files.return_value = [("file.py", "a\nb\nTODO fix\nd\ne")]
         results = cap.grep("TODO", context=1)
         m = results[0].matches[0]
         assert m.before == ["b"]
@@ -232,9 +226,7 @@ class TestDirGrepGlobTree:
         scoped = cap.scope(prefix="/workspace/")
         repo.glob_files.return_value = []
         scoped.glob("**/*.py")
-        repo.glob_files.assert_called_once_with(
-            "**/*.py", prefix="/workspace/", limit=50
-        )
+        repo.glob_files.assert_called_once_with("**/*.py", prefix="/workspace/", limit=50)
 
     def test_glob_denied_without_op(self, repo, pid):
         cap = DirCapability(repo, pid)
@@ -272,9 +264,7 @@ class TestFileSlicedRead:
     def _setup_file(self, repo, key="test.py"):
         content = "\n".join(f"line {i}" for i in range(100))
         f = File(key=key)
-        fv = FileVersion(
-            file_id=f.id, version=1, content=content, source="agent", is_active=True
-        )
+        fv = FileVersion(file_id=f.id, version=1, content=content, source="agent", is_active=True)
         repo.get_active_file_version.return_value = fv
         return f, fv, content
 
@@ -296,6 +286,7 @@ class TestFileSlicedRead:
         with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
             mock_cls.return_value.get.return_value = f
             result = cap.read("test.py")
+            assert not isinstance(result, FileError)
             assert result.total_lines == 100
 
     def test_head(self, repo, pid):
@@ -304,6 +295,7 @@ class TestFileSlicedRead:
         with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
             mock_cls.return_value.get.return_value = f
             result = cap.head("test.py", n=3)
+            assert not isinstance(result, FileError)
             lines = result.content.split("\n")
             assert len(lines) == 3
             assert lines[0] == "line 0"
@@ -314,6 +306,7 @@ class TestFileSlicedRead:
         with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
             mock_cls.return_value.get.return_value = f
             result = cap.tail("test.py", n=3)
+            assert not isinstance(result, FileError)
             lines = result.content.split("\n")
             assert len(lines) == 3
             assert lines[-1] == "line 99"
@@ -325,6 +318,7 @@ class TestFileSlicedRead:
         with patch("cogos.capabilities.file_cap.FileStore") as mock_cls:
             mock_cls.return_value.get.return_value = f
             result = cap.read("test.py", offset=-5)
+            assert not isinstance(result, FileError)
             lines = result.content.split("\n")
             assert len(lines) == 5
             assert lines[-1] == "line 99"
@@ -336,9 +330,7 @@ class TestFileSlicedRead:
 class TestFileEdit:
     def _setup_file(self, repo, key="test.py", content="hello world\nfoo bar\nbaz"):
         f = File(key=key)
-        fv = FileVersion(
-            file_id=f.id, version=1, content=content, source="agent", is_active=True
-        )
+        fv = FileVersion(file_id=f.id, version=1, content=content, source="agent", is_active=True)
         repo.get_active_file_version.return_value = fv
         return f, fv
 

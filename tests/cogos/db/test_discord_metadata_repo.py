@@ -1,4 +1,5 @@
 """Tests for Discord metadata repository methods."""
+
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
@@ -17,6 +18,7 @@ def test_upsert_guild_updates(tmp_path):
     repo.upsert_discord_guild(DiscordGuild(guild_id="123", cogent_name="alpha", name="Old Name"))
     repo.upsert_discord_guild(DiscordGuild(guild_id="123", cogent_name="alpha", name="New Name"))
     result = repo.get_discord_guild("123")
+    assert result is not None
     assert result.name == "New Name"
 
 

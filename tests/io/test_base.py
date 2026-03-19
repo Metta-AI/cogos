@@ -1,6 +1,8 @@
-from cogos.io.base import IOAdapter, IOMode, InboundEvent
 from datetime import datetime, timezone
+
 import pytest
+
+from cogos.io.base import InboundEvent, IOAdapter, IOMode
 
 
 class TestInboundEvent:
@@ -38,4 +40,4 @@ class TestIOMode:
 class TestIOAdapterABC:
     def test_cannot_instantiate_abstract(self):
         with pytest.raises(TypeError):
-            IOAdapter(name="test")
+            IOAdapter(name="test")  # type: ignore[reportAbstractUsage]

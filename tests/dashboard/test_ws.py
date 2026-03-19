@@ -12,7 +12,7 @@ def test_manager_starts_empty():
 def test_disconnect_nonexistent():
     m = ConnectionManager()
     # Should not raise
-    m.disconnect("test", None)
+    m.disconnect("test", None)  # type: ignore[arg-type]
 
 
 def test_ws_endpoint_accepts():

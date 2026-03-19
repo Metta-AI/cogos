@@ -102,6 +102,7 @@ class TestListTasks:
             mock_asana.TasksApi.return_value = mock_tasks_api
 
             results = cap.list_tasks("proj-1")
+            assert not isinstance(results, AsanaError)
             assert len(results) == 2
             assert isinstance(results[0], TaskSummary)
             assert results[0].name == "Task 1"

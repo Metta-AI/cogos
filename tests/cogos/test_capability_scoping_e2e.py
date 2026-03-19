@@ -12,11 +12,9 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.base import Capability
-from cogos.capabilities.files import FilesCapability
-from cogos.capabilities.procs import ProcsCapability
+from cogos.capabilities.files import FileError, FilesCapability
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
-
 
 # ── Fixtures ──────────────────────────────────────────────────
 
@@ -60,7 +58,7 @@ class TestScopedFilesCapabilityEnforcesPrefix:
         result = cap.read("/workspace/doc.md")
         # Should NOT raise PermissionError — it reaches the store layer and
         # returns a FileError because the file doesn't exist in our mock.
-        assert hasattr(result, "error")
+        assert isinstance(result, FileError)
         assert "not found" in result.error
 
     def test_read_method_outside_prefix_raises(self, repo, pid):
@@ -134,14 +132,13 @@ class TestSpawnDelegationEnforcesParentScope:
 
     def test_narrower_child_scope_succeeds(self, repo, pid):
         self._setup_parent_grants(
-            repo, pid,
+            repo,
+            pid,
             prefix="/workspace/",
             ops={"read"},
         )
         procs = ProcsCapability(repo, pid)
-        child_files = FilesCapability(repo, pid).scope(
-            prefix="/workspace/docs/", ops={"read"}
-        )
+        child_files = FilesCapability(repo, pid).scope(prefix="/workspace/docs/", ops={"read"})
         result = procs.spawn(
             name="child",
             content="do something",
@@ -152,7 +149,8 @@ class TestSpawnDelegationEnforcesParentScope:
 
     def test_outside_parent_prefix_fails(self, repo, pid):
         self._setup_parent_grants(
-            repo, pid,
+            repo,
+            pid,
             prefix="/workspace/",
             ops={"read"},
         )
@@ -163,12 +161,13 @@ class TestSpawnDelegationEnforcesParentScope:
             content="do something",
             capabilities={"files": child_files},
         )
-        assert hasattr(result, "error") and result.error is not None
+        assert isinstance(result, ProcessError)
         assert "scope" in result.error.lower() or "widen" in result.error.lower() or "Cannot" in result.error
 
     def test_unscoped_child_when_parent_scoped_fails(self, repo, pid):
         self._setup_parent_grants(
-            repo, pid,
+            repo,
+            pid,
             prefix="/workspace/",
             ops={"read"},
         )
@@ -180,7 +179,7 @@ class TestSpawnDelegationEnforcesParentScope:
             content="do something",
             capabilities={"files": child_files},
         )
-        assert hasattr(result, "error") and result.error is not None
+        assert isinstance(result, ProcessError)
         assert "widen" in result.error.lower() or "scope" in result.error.lower()
 
 
@@ -230,17 +229,13 @@ class TestSandboxCannotForgeCapability:
         return executor.execute(code)
 
     def test_import_capability_module_blocked(self):
-        result = self._run_with_files(
-            "from cogos.capabilities.files import FilesCapability"
-        )
+        result = self._run_with_files("from cogos.capabilities.files import FilesCapability")
         assert "error" in result.lower()
 
     def test_reflection_via_type_blocked(self):
         """Even with an object reference, reflection via type()  __bases__ cannot
         construct new capabilities because __import__ is unavailable."""
-        result = self._run_with_files(
-            "type(files).__bases__[0].__subclasses__()"
-        )
+        result = self._run_with_files("type(files).__bases__[0].__subclasses__()")
         # This may or may not error depending on builtins available,
         # but it should NOT return a usable capability constructor.
         # If it errors, that is the safe outcome.

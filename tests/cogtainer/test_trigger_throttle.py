@@ -54,6 +54,7 @@ class TestThrottleCheckBasic:
         repo.throttle_check(t.id, 1, 60)
         repo.throttle_check(t.id, 1, 60)
         trigger = repo.get_trigger(t.id)
+        assert trigger is not None
         assert trigger.throttle_rejected == 2
 
 

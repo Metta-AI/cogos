@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import os
 import sys
@@ -29,9 +28,7 @@ def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor"
     import subprocess
 
     try:
-        sha_short = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True
-        ).strip()
+        sha_short = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
     except Exception:
         return None
 
@@ -139,14 +136,28 @@ def _package_lambda_code() -> bytes:
     # Install runtime deps into a temp directory
     deps_dir = tempfile.mkdtemp(prefix="lambda-deps-")
     lambda_deps = [
-        "pydantic", "pydantic-settings", "pydantic-core", "annotated-types",
-        "Pillow", "google-genai", "anthropic", "asana", "PyGithub",
+        "pydantic",
+        "pydantic-settings",
+        "pydantic-core",
+        "annotated-types",
+        "Pillow",
+        "google-genai",
+        "anthropic",
+        "asana",
+        "PyGithub",
     ]
     subprocess.check_call(
         [
-            "uv", "pip", "install", "--target", deps_dir, "--quiet",
-            "--python", "3.12",
-            "--python-platform", "linux",
+            "uv",
+            "pip",
+            "install",
+            "--target",
+            deps_dir,
+            "--quiet",
+            "--python",
+            "3.12",
+            "--python-platform",
+            "linux",
         ]
         + lambda_deps,
     )
@@ -175,6 +186,7 @@ def _package_lambda_code() -> bytes:
                 zf.write(full_path, arc_name)
 
     import shutil
+
     shutil.rmtree(deps_dir, ignore_errors=True)
     return buf.getvalue()
 
@@ -277,6 +289,7 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
     try:
         _ensure_db_env(name)
         from cogos.db.repository import Repository
+
         repo = Repository.create()
         repo.set_meta("content:deployed_at")
     except Exception:
@@ -372,8 +385,7 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
     """
     if tag and tag.startswith("executor-"):
         raise click.ClickException(
-            "Executor images run as Lambda, not ECS. "
-            "Use 'cogtainer update lambda' to deploy executor code."
+            "Executor images run as Lambda, not ECS. Use 'cogtainer update lambda' to deploy executor code."
         )
 
     name = get_cogent_name(ctx)
@@ -617,7 +629,8 @@ def _discord_service_name(safe_name: str) -> str:
 def _get_discord_desired_count(session: boto3.Session, name: str) -> int | None:
     """Return the current desired count for the Discord bridge service."""
     service_status, _ = discord_service_status(name, DEFAULT_REGION, session=session)
-    return service_status.get("bridge_desired_count")
+    val = service_status.get("bridge_desired_count")
+    return val if isinstance(val, int) else None
 
 
 def _restore_discord_desired_count(ecs_client, safe_name: str, desired_count: int | None) -> None:
@@ -750,14 +763,15 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
     t1 = time.monotonic()
     reload_url = f"https://{safe_name}.softmax-cogents.com/admin/reload-frontend"
     try:
-        import urllib.request
-
         import json
+        import urllib.request
 
         # Load Cloudflare Access service token + dashboard API key
         sm = session.client("secretsmanager", region_name=DEFAULT_REGION)
         cf_token = json.loads(sm.get_secret_value(SecretId="cogent/polis/cloudflare-service-token")["SecretString"])
-        api_key = json.loads(sm.get_secret_value(SecretId=f"cogent/{name}/dashboard-api-key")["SecretString"])["api_key"]
+        api_key = json.loads(sm.get_secret_value(SecretId=f"cogent/{name}/dashboard-api-key")["SecretString"])[
+            "api_key"
+        ]
 
         req = urllib.request.Request(reload_url, method="POST")
         req.add_header("CF-Access-Client-Id", cf_token["client_id"])
@@ -776,6 +790,7 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
     try:
         from polis.cloudflare import purge_cache
         from polis.secrets.store import SecretStore
+
         store = SecretStore(session=session)
         purge_cache(store)
         click.echo(f"  Cache: {click.style('purged', fg='green')} ({time.monotonic() - t1:.1f}s)")
@@ -833,10 +848,14 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     t1 = time.monotonic()
     result = subprocess.run(
         [
-            "docker", "build",
-            "-f", "dashboard/Dockerfile",
-            "-t", f"cogent:{image_tag}",
-            "--platform", "linux/amd64",
+            "docker",
+            "build",
+            "-f",
+            "dashboard/Dockerfile",
+            "-t",
+            f"cogent:{image_tag}",
+            "--platform",
+            "linux/amd64",
             ".",
         ],
         cwd=project_root,
@@ -992,11 +1011,16 @@ def update_stack(ctx: click.Context, profile: str | None):
         "cdk",
         "deploy",
         f"cogent-{safe_name}-cogtainer",
-        "-c", f"cogent_name={name}",
-        "-c", f"certificate_arn={cert_arn}",
-        "-c", f"ecr_repo_uri={ecr_repo_uri}",
-        "--app", "python -m cogtainer.cdk.app",
-        "--require-approval", "never",
+        "-c",
+        f"cogent_name={name}",
+        "-c",
+        f"certificate_arn={cert_arn}",
+        "-c",
+        f"ecr_repo_uri={ecr_repo_uri}",
+        "--app",
+        "python -m cogtainer.cdk.app",
+        "--require-approval",
+        "never",
     ]
     env = {**os.environ, "AWS_PROFILE": profile}
     result = subprocess.run(cmd, capture_output=False, env=env)
@@ -1013,10 +1037,7 @@ def update_stack(ctx: click.Context, profile: str | None):
         click.echo(f"Warning: could not reconcile Discord bridge state: {e}")
     else:
         if discord_action == ("restored", discord_desired_count):
-            click.echo(
-                f"Restoring Discord bridge desired count to {discord_desired_count} "
-                f"for cogent-{name}..."
-            )
+            click.echo(f"Restoring Discord bridge desired count to {discord_desired_count} for cogent-{name}...")
         elif discord_action == ("autostarted", 1):
             click.echo(f"Starting Discord bridge for cogent-{name} because a token is configured...")
 
@@ -1024,6 +1045,7 @@ def update_stack(ctx: click.Context, profile: str | None):
     try:
         _ensure_db_env(name)
         from cogos.db.repository import Repository
+
         repo = Repository.create()
         repo.set_meta("stack:updated_at")
     except Exception:

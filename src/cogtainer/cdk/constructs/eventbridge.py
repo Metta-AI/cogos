@@ -40,7 +40,7 @@ class EventBridgeConstruct(Construct):
             event_pattern=events.EventPattern(
                 source=events.Match.prefix("cogent."),
             ),
-            targets=[targets.LambdaFunction(orchestrator_fn)],
+            targets=[targets.LambdaFunction(orchestrator_fn)],  # type: ignore[arg-type]
         )
 
         self.bus_name = self.event_bus.event_bus_name

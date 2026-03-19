@@ -34,11 +34,17 @@ def test_model_without_prefix_passes_through():
 
 
 def test_bedrock_tools_to_anthropic():
-    tool_config = {"tools": [{"toolSpec": {
-        "name": "search",
-        "description": "Search things",
-        "inputSchema": {"json": {"type": "object", "properties": {"q": {"type": "string"}}}},
-    }}]}
+    tool_config = {
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "search",
+                    "description": "Search things",
+                    "inputSchema": {"json": {"type": "object", "properties": {"q": {"type": "string"}}}},
+                }
+            }
+        ]
+    }
     result = _bedrock_tools_to_anthropic(tool_config)
     assert len(result) == 1
     assert result[0]["name"] == "search"
@@ -55,9 +61,14 @@ def test_text_message_conversion():
 
 
 def test_tool_use_message_conversion():
-    messages = [{"role": "assistant", "content": [
-        {"toolUse": {"toolUseId": "t1", "name": "search", "input": {"q": "test"}}},
-    ]}]
+    messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {"toolUse": {"toolUseId": "t1", "name": "search", "input": {"q": "test"}}},
+            ],
+        }
+    ]
     result = _bedrock_messages_to_anthropic(messages)
     block = result[0]["content"][0]
     assert block["type"] == "tool_use"
@@ -66,9 +77,14 @@ def test_tool_use_message_conversion():
 
 
 def test_tool_result_message_conversion():
-    messages = [{"role": "user", "content": [
-        {"toolResult": {"toolUseId": "t1", "content": [{"text": "result"}]}},
-    ]}]
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"toolResult": {"toolUseId": "t1", "content": [{"text": "result"}]}},
+            ],
+        }
+    ]
     result = _bedrock_messages_to_anthropic(messages)
     block = result[0]["content"][0]
     assert block["type"] == "tool_result"
@@ -95,7 +111,7 @@ class _FakeToolUseBlock:
     type: str = "tool_use"
     id: str = "t1"
     name: str = "search"
-    input: dict = None
+    input: dict = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.input is None:
@@ -104,9 +120,9 @@ class _FakeToolUseBlock:
 
 @dataclass
 class _FakeResponse:
-    content: list = None
+    content: list = None  # type: ignore[assignment]
     stop_reason: str = "end_turn"
-    usage: _FakeUsage = None
+    usage: _FakeUsage = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.content is None:

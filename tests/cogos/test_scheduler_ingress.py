@@ -3,10 +3,21 @@ from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
 from cogos.db.local_repository import LocalRepository
-from cogos.db.models import Channel, ChannelMessage, ChannelType, Cron, DeliveryStatus, Handler, Process, ProcessMode, ProcessStatus, RunStatus
+from cogos.db.models import (
+    Channel,
+    ChannelMessage,
+    ChannelType,
+    Cron,
+    DeliveryStatus,
+    Handler,
+    Process,
+    ProcessMode,
+    ProcessStatus,
+    RunStatus,
+)
+from cogos.runtime.ingress import dispatch_ready_processes
 from cogos.runtime.schedule import apply_scheduled_messages
 from cogtainer.lambdas.dispatcher.handler import _apply_system_ticks
-from cogos.runtime.ingress import dispatch_ready_processes
 
 
 def _repo(tmp_path) -> LocalRepository:
@@ -27,6 +38,7 @@ def _setup_channel_and_handler(repo, proc, channel_name="io:discord:dm"):
     ch = Channel(name=channel_name, channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name(channel_name)
+    assert ch is not None
     handler = Handler(process=proc.id, channel=ch.id)
     repo.create_handler(handler)
     msg = ChannelMessage(channel=ch.id, payload={"content": "hello"})
@@ -46,6 +58,7 @@ def test_match_messages_idempotent_per_handler(tmp_path):
     ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("io:discord:dm")
+    assert ch is not None
 
     repo.create_handler(Handler(process=proc1.id, channel=ch.id))
     repo.append_channel_message(ChannelMessage(channel=ch.id, payload={"content": "hi"}))
@@ -73,7 +86,9 @@ def test_match_and_dispatch(tmp_path):
     ch, handler, msg = _setup_channel_and_handler(repo, proc)
 
     # Inline delivery already created by append_channel_message
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
 
     class _LambdaClient:
         def __init__(self) -> None:
@@ -95,7 +110,9 @@ def test_match_and_dispatch(tmp_path):
     assert dispatched == 1
     assert len(lambda_client.invocations) == 1
     assert len(repo.list_runs(process_id=proc.id)) == 1
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNING
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNING
     delivery = next(iter(repo._deliveries.values()))
     assert delivery.status == DeliveryStatus.QUEUED
 
@@ -123,9 +140,12 @@ def test_dispatch_rolls_back_failed_invoke(tmp_path):
     )
 
     assert dispatched == 0
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
     assert len(repo.get_pending_deliveries(proc.id)) == 1
     runs = repo.list_runs(process_id=proc.id)
+    assert runs is not None
     assert len(runs) == 1
     assert runs[0].status == RunStatus.FAILED
     delivery = next(iter(repo._deliveries.values()))
@@ -141,11 +161,14 @@ def test_apply_system_ticks_wakes_channel_subscribers(tmp_path):
     channel = Channel(name="system:tick:hour", channel_type=ChannelType.NAMED)
     repo.upsert_channel(channel)
     channel = repo.get_channel_by_name("system:tick:hour")
+    assert channel is not None
     repo.create_handler(Handler(process=proc.id, channel=channel.id))
 
     _apply_system_ticks(repo, now=datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc))
 
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
     assert len(repo.get_pending_deliveries(proc.id)) == 1
 
 
@@ -157,6 +180,7 @@ def test_apply_scheduled_messages_emits_matching_cron_channels(tmp_path):
     channel = Channel(name="check:health", channel_type=ChannelType.NAMED)
     repo.upsert_channel(channel)
     channel = repo.get_channel_by_name("check:health")
+    assert channel is not None
     repo.create_handler(Handler(process=proc.id, channel=channel.id))
     repo.upsert_cron(
         Cron(
@@ -172,6 +196,9 @@ def test_apply_scheduled_messages_emits_matching_cron_channels(tmp_path):
     )
 
     assert emitted >= 2
-    assert repo.get_process(proc.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
     messages = repo.list_channel_messages(channel.id)
+    assert messages is not None
     assert messages[-1].payload == {"kind": "cron"}

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.io.email.capability import EmailCapability
+from cogos.io.email.capability import EmailCapability, EmailError
 
 
 @pytest.fixture
@@ -32,6 +32,7 @@ class TestScopedTo:
 
         cap = EmailCapability(repo, pid).scope(to=["a@b.com"])
         result = cap.send(to="a@b.com", subject="Hi", body="Hello")
+        assert not isinstance(result, EmailError)
         assert result.to == "a@b.com"
 
     def test_scoped_to_denies_non_matching_recipient(self, repo, pid):
@@ -59,6 +60,7 @@ class TestScopedOps:
 
         cap = EmailCapability(repo, pid).scope(ops={"send"})
         result = cap.send(to="a@b.com", subject="Hi", body="Hello")
+        assert not isinstance(result, EmailError)
         assert result.to == "a@b.com"
 
     def test_scoped_ops_allows_receive(self, repo, pid):
@@ -104,6 +106,7 @@ class TestUnscoped:
 
         cap = EmailCapability(repo, pid)
         result = cap.send(to="anyone@any.com", subject="Hi", body="Hello")
+        assert not isinstance(result, EmailError)
         assert result.to == "anyone@any.com"
 
     def test_unscoped_allows_receive(self, repo, pid):

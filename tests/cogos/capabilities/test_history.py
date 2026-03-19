@@ -8,11 +8,9 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.history import (
-    FileMutation,
     HistoryCapability,
     HistoryError,
     ProcessHistory,
-    RunSummary,
 )
 from cogos.db.models import Process, ProcessMode, ProcessStatus
 from cogos.db.models.run import Run, RunStatus
@@ -36,7 +34,7 @@ def _make_proc(name="worker-1"):
 
 def _make_run(process_id=None, status=RunStatus.COMPLETED, error=None, duration_ms=100):
     r = Run(process=process_id or uuid4(), status=status, duration_ms=duration_ms, error=error)
-    r.created_at = "2026-03-17T12:00:00"
+    r.created_at = "2026-03-17T12:00:00"  # type: ignore[assignment]
     return r
 
 
@@ -76,6 +74,7 @@ class TestHistoryProcess:
 
         cap = HistoryCapability(repo, pid)
         h = cap.process(name="worker-1")
+        assert not isinstance(h, HistoryError)
         runs = h.runs(limit=5)
         assert len(runs) == 1
         assert runs[0].status == "completed"
@@ -89,6 +88,7 @@ class TestHistoryProcess:
         ]
         cap = HistoryCapability(repo, pid)
         h = cap.process(name="worker-1")
+        assert not isinstance(h, HistoryError)
         files = h.files(run_id=str(uuid4()))
         assert len(files) == 1
         assert files[0].key == "src/main.py"
@@ -140,9 +140,7 @@ class TestHistoryQuery:
         run1 = _make_run(process_id=allowed_proc.id)
         run2 = _make_run(process_id=blocked_proc.id)
         repo.list_runs.return_value = [run1, run2]
-        repo.get_process.side_effect = lambda pid: (
-            allowed_proc if pid == allowed_proc.id else blocked_proc
-        )
+        repo.get_process.side_effect = lambda pid: allowed_proc if pid == allowed_proc.id else blocked_proc
         cap = HistoryCapability(repo, pid)
         scoped = cap.scope(process_ids=[str(allowed_proc.id)])
         results = scoped.query()

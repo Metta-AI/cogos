@@ -2,6 +2,7 @@
 
 Requires GOOGLE_API_KEY env var. Skip with: pytest -m "not live"
 """
+
 from __future__ import annotations
 
 import io
@@ -11,9 +12,8 @@ from unittest.mock import MagicMock
 import pytest
 from PIL import Image
 
-from cogos.capabilities.blob import BlobCapability, BlobContent, BlobRef, BlobError
-from cogos.capabilities.image import ImageCapability, ImageDescription, AnalysisResult, ExtractedText, ImageError
-
+from cogos.capabilities.blob import BlobContent, BlobError, BlobRef
+from cogos.capabilities.image import AnalysisResult, ImageCapability, ImageDescription
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("GOOGLE_API_KEY"),
@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skipif(
 
 
 # ── In-memory blob store (no S3 needed) ─────────────────────
+
 
 class InMemoryBlobStore:
     """Fake blob store backed by a dict."""
@@ -48,7 +49,7 @@ def _make_live_capability() -> ImageCapability:
     """Create an ImageCapability with in-memory blob store and real Gemini."""
     repo = MagicMock()
     cap = ImageCapability(repo, process_id=MagicMock())
-    cap._blob = InMemoryBlobStore()
+    cap._blob = InMemoryBlobStore()  # type: ignore[assignment]
     return cap
 
 
@@ -60,6 +61,7 @@ def _get_image(cap: ImageCapability, ref: BlobRef) -> Image.Image:
 
 
 # ── Tests ────────────────────────────────────────────────────
+
 
 class TestGenerateManipulateAnalyze:
     """Full pipeline: generate → manipulate → analyze."""
@@ -125,7 +127,7 @@ class TestGenerateManipulateAnalyze:
         # Overlay text
         ref3 = cap.overlay_text(ref2.key, "Beautiful Sunset", position="bottom", font_size=20)
         assert isinstance(ref3, BlobRef), f"Overlay failed: {ref3}"
-        print(f"  3. Added text overlay")
+        print("  3. Added text overlay")
 
         # Describe the final result
         desc = cap.describe(ref3.key)

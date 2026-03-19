@@ -1,10 +1,11 @@
 """Tests for SchemasCapability."""
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.schemas import SchemasCapability
+from cogos.capabilities.schemas import SchemaError, SchemasCapability
 from cogos.db.models import Schema
 
 
@@ -25,6 +26,7 @@ class TestSchemaGet:
         repo.get_schema_by_name.return_value = s
         cap = SchemasCapability(repo, pid)
         result = cap.get("metrics")
+        assert not isinstance(result, SchemaError)
         assert result.name == "metrics"
         assert result.definition == {"fields": {"value": "number"}}
 

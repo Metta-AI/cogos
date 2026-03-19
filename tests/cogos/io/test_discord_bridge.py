@@ -56,7 +56,7 @@ def test_reply_queue_latency_ms_uses_enqueued_timestamp():
 @pytest.mark.anyio
 async def test_relay_to_db_recreates_missing_system_channel():
     bridge = _make_bridge()
-    bridge.client.user = None
+    bridge.client.user = None  # type: ignore[assignment]
     bridge._start_typing = MagicMock()
 
     repo = MagicMock()

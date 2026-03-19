@@ -1,5 +1,4 @@
 """Integration test for per-channel Discord sub-handler flow."""
-from uuid import UUID, uuid4
 
 from cogos.capabilities.procs import ProcsCapability
 from cogos.db.local_repository import LocalRepository
@@ -53,22 +52,37 @@ def test_child_receives_delivery_on_fine_grained_channel(tmp_path):
 
     # Simulate bridge writing a message to both channels
     payload = {"content": "hello", "channel_id": "12345", "author_id": "42"}
-    repo.append_channel_message(ChannelMessage(
-        channel=catch_all.id, sender_process=None, payload=payload,
-    ))
-    repo.append_channel_message(ChannelMessage(
-        channel=fine.id, sender_process=None, payload=payload,
-    ))
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=catch_all.id,
+            sender_process=None,
+            payload=payload,
+        )
+    )
+    repo.append_channel_message(
+        ChannelMessage(
+            channel=fine.id,
+            sender_process=None,
+            payload=payload,
+        )
+    )
 
     # Child should have a pending delivery on the fine-grained channel
     child_proc = repo.get_process_by_name("discord-handler:12345")
+    assert child_proc is not None
     child_deliveries = repo.get_pending_deliveries(child_proc.id)
+    assert child_deliveries is not None
     assert len(child_deliveries) >= 1
 
     # Parent should also have a pending delivery on catch-all
     parent_deliveries = repo.get_pending_deliveries(parent.id)
+    assert parent_deliveries is not None
     assert len(parent_deliveries) >= 1
 
     # Both should be RUNNABLE
-    assert repo.get_process(child_proc.id).status == ProcessStatus.RUNNABLE
-    assert repo.get_process(parent.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(child_proc.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
+    _tmp_get_process = repo.get_process(parent.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE

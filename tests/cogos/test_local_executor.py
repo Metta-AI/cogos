@@ -63,12 +63,21 @@ def test_run_and_complete_success(tmp_path):
     run = _make_run(repo, process)
 
     result = run_and_complete(
-        process, {}, run, None, repo, execute_fn=_noop_execute,
+        process,
+        {},
+        run,
+        None,
+        repo,
+        execute_fn=_noop_execute,
     )
 
     assert result.id == run.id
-    assert repo.get_run(run.id).status == RunStatus.COMPLETED
-    assert repo.get_process(process.id).status == ProcessStatus.COMPLETED
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.COMPLETED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.COMPLETED
 
 
 def test_run_and_complete_daemon_goes_to_waiting(tmp_path):
@@ -78,11 +87,20 @@ def test_run_and_complete_daemon_goes_to_waiting(tmp_path):
     run = _make_run(repo, process)
 
     result = run_and_complete(
-        process, {}, run, None, repo, execute_fn=_noop_execute,
+        process,
+        {},
+        run,
+        None,
+        repo,
+        execute_fn=_noop_execute,
     )
 
-    assert repo.get_run(run.id).status == RunStatus.COMPLETED
-    assert repo.get_process(process.id).status == ProcessStatus.WAITING
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.COMPLETED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING
 
 
 def test_run_and_complete_failure_disables_one_shot(tmp_path):
@@ -92,11 +110,20 @@ def test_run_and_complete_failure_disables_one_shot(tmp_path):
     run = _make_run(repo, process)
 
     run_and_complete(
-        process, {}, run, None, repo, execute_fn=_failing_execute,
+        process,
+        {},
+        run,
+        None,
+        repo,
+        execute_fn=_failing_execute,
     )
 
-    assert repo.get_run(run.id).status == RunStatus.FAILED
-    assert repo.get_process(process.id).status == ProcessStatus.DISABLED
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.FAILED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.DISABLED
 
 
 def test_run_and_complete_returns_run_on_failure(tmp_path):
@@ -106,12 +133,21 @@ def test_run_and_complete_returns_run_on_failure(tmp_path):
     run = _make_run(repo, process)
 
     result = run_and_complete(
-        process, {}, run, None, repo, execute_fn=_failing_execute,
+        process,
+        {},
+        run,
+        None,
+        repo,
+        execute_fn=_failing_execute,
     )
 
     assert result.id == run.id
-    assert repo.get_run(run.id).status == RunStatus.FAILED
-    assert repo.get_process(process.id).status == ProcessStatus.RUNNABLE
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.FAILED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.RUNNABLE
 
 
 def test_local_repository_merges_stale_writers(tmp_path):
@@ -143,8 +179,12 @@ def test_run_and_complete_respects_out_of_band_disable(tmp_path):
         execute_fn=_disable_mid_run,
     )
 
-    assert repo.get_run(run.id).status == RunStatus.COMPLETED
-    assert repo.get_process(process.id).status == ProcessStatus.DISABLED
+    _tmp_get_run = repo.get_run(run.id)
+    assert _tmp_get_run is not None
+    assert _tmp_get_run.status == RunStatus.COMPLETED
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.DISABLED
 
 
 # ---- run_local_tick tests ----
@@ -164,7 +204,9 @@ def test_run_local_tick_executes_runnable_process(tmp_path):
     executed = run_local_tick(repo, None, execute_fn=_noop_execute)
 
     assert executed == 1
-    assert repo.get_process(p.id).status == ProcessStatus.COMPLETED
+    _tmp_get_process = repo.get_process(p.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.COMPLETED
 
 
 def test_run_local_tick_no_work(tmp_path):
@@ -211,7 +253,9 @@ def test_run_local_tick_matches_channel_messages(tmp_path):
     executed = run_local_tick(repo, None, execute_fn=_noop_execute)
 
     assert executed == 1
-    assert repo.get_process(p.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(p.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING
 
 
 def test_run_local_tick_uses_prod_dispatch_envelope(tmp_path):
@@ -227,6 +271,7 @@ def test_run_local_tick_uses_prod_dispatch_envelope(tmp_path):
     channel = Channel(name="test-channel", channel_type=ChannelType.NAMED)
     repo.upsert_channel(channel)
     channel = repo.get_channel_by_name("test-channel")
+    assert channel is not None
 
     repo.create_handler(Handler(process=process.id, channel=channel.id, enabled=True))
     message = ChannelMessage(
@@ -264,6 +309,7 @@ def test_run_local_tick_applies_system_ticks(tmp_path):
     channel = Channel(name="system:tick:hour", channel_type=ChannelType.NAMED)
     repo.upsert_channel(channel)
     channel = repo.get_channel_by_name("system:tick:hour")
+    assert channel is not None
     repo.create_handler(Handler(process=process.id, channel=channel.id, enabled=True))
 
     executed = run_local_tick(
@@ -274,4 +320,6 @@ def test_run_local_tick_applies_system_ticks(tmp_path):
     )
 
     assert executed == 1
-    assert repo.get_process(process.id).status == ProcessStatus.WAITING
+    _tmp_get_process = repo.get_process(process.id)
+    assert _tmp_get_process is not None
+    assert _tmp_get_process.status == ProcessStatus.WAITING

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.io.discord.capability import DiscordCapability
+from cogos.io.discord.capability import DiscordCapability, DiscordError
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ class TestUnscopedAllowsAnyChannel:
     def test_unscoped_send_any_channel(self, mock_sqs, repo, pid):
         cap = DiscordCapability(repo, pid)
         result = cap.send("chan-123", "hello")
+        assert not isinstance(result, DiscordError)
         assert result.channel == "chan-123"
         mock_sqs.assert_called_once()
 
@@ -42,6 +43,7 @@ class TestUnscopedAllowsAnyChannel:
         cap = DiscordCapability(repo, pid, run_id=run_id)
         result = cap.send("chan-123", "hello")
 
+        assert not isinstance(result, DiscordError)
         assert result.channel == "chan-123"
         body = mock_sqs.call_args.args[0]
         assert body["channel"] == "chan-123"
@@ -59,18 +61,21 @@ class TestScopedChannelsAllowsMatching:
     def test_scoped_send_allowed_channel(self, mock_sqs, repo, pid):
         cap = DiscordCapability(repo, pid).scope(channels=["chan-123", "chan-456"])
         result = cap.send("chan-123", "hello")
+        assert not isinstance(result, DiscordError)
         assert result.channel == "chan-123"
 
     @patch("cogos.io.discord.capability._send_sqs")
     def test_scoped_react_allowed_channel(self, mock_sqs, repo, pid):
         cap = DiscordCapability(repo, pid).scope(channels=["chan-123"])
         result = cap.react("chan-123", "msg-1", "👍")
+        assert not isinstance(result, DiscordError)
         assert result.type == "reaction"
 
     @patch("cogos.io.discord.capability._send_sqs")
     def test_scoped_create_thread_allowed_channel(self, mock_sqs, repo, pid):
         cap = DiscordCapability(repo, pid).scope(channels=["chan-123"])
         result = cap.create_thread("chan-123", "Topic")
+        assert not isinstance(result, DiscordError)
         assert result.type == "thread_create"
 
 
@@ -105,6 +110,7 @@ class TestScopedOpsDenies:
     def test_scoped_ops_allows_send(self, mock_sqs, repo, pid):
         cap = DiscordCapability(repo, pid).scope(ops={"send"})
         result = cap.send("chan-123", "hello")
+        assert not isinstance(result, DiscordError)
         assert result.channel == "chan-123"
 
     def test_scoped_ops_denies_receive(self, repo, pid):

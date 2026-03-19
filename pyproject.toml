@@ -57,7 +57,7 @@ packages = ["src/cli", "src/body", "src/cogtainer", "src/memory", "src/run", "sr
 
 [tool.pyright]
 pythonVersion = "3.12"
-include = ["src/body", "src/cogtainer", "src/cli", "src/memory", "src/polis", "src/dashboard", "tests"]
+include = ["src/cogtainer", "src/cli", "src/memory", "src/polis", "src/dashboard", "tests"]
 exclude = [".venv", "dist", "node_modules"]
 typeCheckingMode = "basic"
 reportMissingImports = true

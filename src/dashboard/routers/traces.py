@@ -228,6 +228,7 @@ def _emitted_messages_for_run(
         return []
 
     start = _as_utc(run.created_at)
+    assert start is not None
     completed = _as_utc(run.completed_at)
     end = completed + timedelta(seconds=5) if completed else None
 

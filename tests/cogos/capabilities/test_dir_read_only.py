@@ -1,15 +1,17 @@
 """Tests for DirCapability read_only scope."""
-import pytest
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from cogos.capabilities.file_cap import DirCapability, FileCapability
+import pytest
+
+from cogos.capabilities.file_cap import DirCapability
 
 
 def _make_dir_cap(prefix="test/", read_only=False):
     repo = MagicMock()
     cap = DirCapability(repo=repo, process_id=uuid4())
-    scope = {"prefix": prefix}
+    scope: dict[str, object] = {"prefix": prefix}
     if read_only:
         scope["read_only"] = True
     cap._scope = scope

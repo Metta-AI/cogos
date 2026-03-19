@@ -1,4 +1,5 @@
 """Channel management routes."""
+
 from __future__ import annotations
 
 import logging
@@ -81,10 +82,7 @@ def _schema_name(repo, ch: Channel) -> str | None:
 
 
 def _schema_registry(repo) -> dict[str, dict]:
-    return {
-        schema.name: schema.definition
-        for schema in repo.list_schemas()
-    }
+    return {schema.name: schema.definition for schema in repo.list_schemas()}
 
 
 @router.get("/channels", response_model=ChannelsResponse)
@@ -106,22 +104,24 @@ def list_channels(
     for ch in channels:
         msgs = repo.list_channel_messages(ch.id, limit=10000)
         handlers = repo.match_handlers_by_channel(ch.id)
-        out.append(ChannelOut(
-            id=str(ch.id),
-            name=ch.name,
-            channel_type=ch.channel_type.value,
-            owner_process=str(ch.owner_process) if ch.owner_process else None,
-            owner_process_name=proc_names.get(ch.owner_process) if ch.owner_process else None,
-            schema_name=_schema_name(repo, ch),
-            schema_id=str(ch.schema_id) if ch.schema_id else None,
-            schema_definition=_schema_definition(repo, ch),
-            inline_schema=ch.inline_schema,
-            auto_close=ch.auto_close,
-            closed_at=str(ch.closed_at) if ch.closed_at else None,
-            message_count=len(msgs),
-            subscriber_count=len(handlers),
-            created_at=str(ch.created_at) if ch.created_at else None,
-        ))
+        out.append(
+            ChannelOut(
+                id=str(ch.id),
+                name=ch.name,
+                channel_type=ch.channel_type.value,
+                owner_process=str(ch.owner_process) if ch.owner_process else None,
+                owner_process_name=proc_names.get(ch.owner_process) if ch.owner_process else None,
+                schema_name=_schema_name(repo, ch),
+                schema_id=str(ch.schema_id) if ch.schema_id else None,
+                schema_definition=_schema_definition(repo, ch),
+                inline_schema=ch.inline_schema,
+                auto_close=ch.auto_close,
+                closed_at=str(ch.closed_at) if ch.closed_at else None,
+                message_count=len(msgs),
+                subscriber_count=len(handlers),
+                created_at=str(ch.created_at) if ch.created_at else None,
+            )
+        )
 
     return ChannelsResponse(count=len(out), channels=out)
 
@@ -143,7 +143,7 @@ def get_channel(name: str, channel_id: str, limit: int = Query(50)) -> ChannelDe
             id=str(m.id),
             channel=str(m.channel),
             sender_process=str(m.sender_process),
-            sender_process_name=proc_names.get(m.sender_process),
+            sender_process_name=proc_names.get(m.sender_process) if m.sender_process else None,
             payload=m.payload,
             created_at=str(m.created_at) if m.created_at else None,
         )

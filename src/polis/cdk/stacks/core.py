@@ -98,7 +98,7 @@ class PolisStack(cdk.Stack):
                     "ecr:BatchGetImage",
                     "ecr:BatchCheckLayerAvailability",
                 ],
-                principals=[iam.AnyPrincipal()],
+                principals=[iam.AnyPrincipal()],  # type: ignore[arg-type]
                 conditions={"StringEquals": {"aws:PrincipalOrgID": org_id}},
             )
         )
@@ -181,14 +181,14 @@ class PolisStack(cdk.Stack):
             "WatcherSchedule",
             schedule=events.Schedule.rate(Duration.minutes(1)),
         )
-        rule.add_target(targets.LambdaFunction(self.watcher_fn))
+        rule.add_target(targets.LambdaFunction(self.watcher_fn))  # type: ignore[arg-type]
 
         # --- Polis Admin Role (assumable by any account in the org) ---
         self.admin_role = iam.Role(
             self,
             "PolisAdminRole",
             role_name="cogent-polis-admin",
-            assumed_by=iam.OrganizationPrincipal(org_id),
+            assumed_by=iam.OrganizationPrincipal(org_id),  # type: ignore[arg-type]
         )
 
         # Route53, ACM, DynamoDB, Secrets Manager, ECS, ECR, CloudFormation
@@ -392,7 +392,9 @@ class PolisStack(cdk.Stack):
 
         # --- Email Ingest Lambda (receives from Cloudflare Email Worker) ---
         email_ingest_secret = secretsmanager.Secret.from_secret_name_v2(
-            self, "EmailIngestSecret", "polis/email/ingest_secret",
+            self,
+            "EmailIngestSecret",
+            "polis/email/ingest_secret",
         )
 
         self.email_ingest_fn = lambda_.Function(
@@ -445,7 +447,7 @@ class PolisStack(cdk.Stack):
             self,
             "GitHubActionsRole",
             role_name="github-actions-cogents",
-            assumed_by=iam.WebIdentityPrincipal(
+            assumed_by=iam.WebIdentityPrincipal(  # type: ignore[arg-type]
                 github_oidc_provider.open_id_connect_provider_arn,
                 conditions={
                     "StringEquals": {

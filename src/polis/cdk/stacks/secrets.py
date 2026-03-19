@@ -7,7 +7,11 @@ from pathlib import Path
 import aws_cdk as cdk
 from aws_cdk import (
     Duration,
+)
+from aws_cdk import (
     aws_iam as iam,
+)
+from aws_cdk import (
     aws_lambda as lambda_,
 )
 from constructs import Construct
@@ -53,7 +57,7 @@ class SecretsStack(cdk.Stack):
         # Allow Secrets Manager to invoke the rotation lambda
         self.rotation_fn.add_permission(
             "SecretsManagerInvoke",
-            principal=iam.ServicePrincipal("secretsmanager.amazonaws.com"),
+            principal=iam.ServicePrincipal("secretsmanager.amazonaws.com"),  # type: ignore[arg-type]
         )
 
         # --- Cross-account secrets reader role ---
@@ -61,7 +65,7 @@ class SecretsStack(cdk.Stack):
             self,
             "SecretsReaderRole",
             role_name="cogent-secrets-reader",
-            assumed_by=iam.OrganizationPrincipal(org_id),
+            assumed_by=iam.OrganizationPrincipal(org_id),  # type: ignore[arg-type]
         )
 
         self.secrets_reader_role.add_to_policy(

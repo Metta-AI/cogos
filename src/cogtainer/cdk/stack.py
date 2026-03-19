@@ -83,7 +83,7 @@ class CogtainerStack(Stack):
             event_pattern=events.EventPattern(
                 source=events.Match.prefix("cogent."),
             ),
-            targets=[targets.LambdaFunction(self.compute.orchestrator)],
+            targets=[targets.LambdaFunction(self.compute.orchestrator)],  # type: ignore[arg-type]
         )
 
         # Dispatcher schedule — polls proposed events every minute
@@ -92,7 +92,7 @@ class CogtainerStack(Stack):
             "DispatcherSchedule",
             rule_name=f"cogent-{safe_name}-dispatcher-schedule",
             schedule=events.Schedule.rate(Duration.minutes(1)),
-            targets=[targets.LambdaFunction(self.compute.dispatcher)],
+            targets=[targets.LambdaFunction(self.compute.dispatcher)],  # type: ignore[arg-type]
         )
 
         # 6. Monitoring
@@ -100,9 +100,9 @@ class CogtainerStack(Stack):
             self,
             "Monitoring",
             config=config,
-            orchestrator_fn=self.compute.orchestrator,
-            executor_fn=self.compute.executor,
-            ingress_fn=self.compute.ingress,
+            orchestrator_fn=self.compute.orchestrator,  # type: ignore[arg-type]
+            executor_fn=self.compute.executor,  # type: ignore[arg-type]
+            ingress_fn=self.compute.ingress,  # type: ignore[arg-type]
             ingress_queue=self.compute.ingress_queue,
         )
 
@@ -111,7 +111,8 @@ class CogtainerStack(Stack):
 
         # Pass Discord reply queue URL to executor Lambda for cogos discord capability
         self.compute.executor.add_environment(
-            "DISCORD_REPLY_QUEUE_URL", self.discord_reply_queue.queue_url,
+            "DISCORD_REPLY_QUEUE_URL",
+            self.discord_reply_queue.queue_url,
         )
 
         # 8. Dashboard (ALB + Fargate on shared cogent-polis cluster)
@@ -162,7 +163,8 @@ class CogtainerStack(Stack):
         """Create the Discord bridge SQS queue + Fargate service."""
         vpc = ec2.Vpc.from_lookup(self, "DiscordVpc", is_default=True)
         cluster = ecs.Cluster.from_cluster_attributes(
-            self, "DiscordPolisCluster",
+            self,
+            "DiscordPolisCluster",
             cluster_name="cogent-polis",
             vpc=vpc,
             security_groups=[],
@@ -179,13 +181,15 @@ class CogtainerStack(Stack):
 
         # Bot token from Secrets Manager (existing secret stores {"access_token": "..."})
         bot_token_secret = secretsmanager.Secret.from_secret_name_v2(
-            self, "DiscordBotToken",
+            self,
+            "DiscordBotToken",
             secret_name=f"cogent/{config.cogent_name}/discord",
         )
 
         # Task definition
         task_def = ecs.FargateTaskDefinition(
-            self, "DiscordTaskDef",
+            self,
+            "DiscordTaskDef",
             family=f"cogent-{safe_name}-discord",
             cpu=256,
             memory_limit_mib=512,
@@ -215,14 +219,14 @@ class CogtainerStack(Stack):
         )
 
         # IAM: DB Data API
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
                 resources=[self.database.cluster_arn],
             )
         )
         if self.database.secret:
-            task_def.task_role.add_to_policy(
+            task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
                 iam.PolicyStatement(
                     actions=["secretsmanager:GetSecretValue"],
                     resources=[self.database.secret.secret_arn],
@@ -241,16 +245,15 @@ class CogtainerStack(Stack):
         self.discord_reply_queue.grant_send_messages(self.compute.executor)
 
         # Also grant the ECS executor task role send access
-        self.discord_reply_queue.grant_send_messages(
-            self.compute.task_definition.task_role
-        )
+        self.discord_reply_queue.grant_send_messages(self.compute.task_definition.task_role)
 
         # Default to 1 so CDK deploys don't kill a running bridge.
         # update_cli saves/restores the count, but bare cdk deploys bypass that.
         sg = ec2.SecurityGroup(self, "DiscordSg", vpc=vpc, allow_all_outbound=True)
 
         self.discord_service = ecs.FargateService(
-            self, "DiscordService",
+            self,
+            "DiscordService",
             service_name=f"cogent-{safe_name}-discord",
             cluster=cluster,
             task_definition=task_def,
@@ -265,13 +268,12 @@ class CogtainerStack(Stack):
 
         CfnOutput(self, "DiscordReplyQueueUrl", value=self.discord_reply_queue.queue_url)
 
-    def _create_dashboard(
-        self, config: CogtainerConfig, safe_name: str, certificate_arn: str
-    ) -> None:
+    def _create_dashboard(self, config: CogtainerConfig, safe_name: str, certificate_arn: str) -> None:
         """Create the dashboard ALB + Fargate service."""
         vpc = ec2.Vpc.from_lookup(self, "DashVpc", is_default=True)
         cluster = ecs.Cluster.from_cluster_attributes(
-            self, "PolisCluster",
+            self,
+            "PolisCluster",
             cluster_name="cogent-polis",
             vpc=vpc,
             security_groups=[],
@@ -284,14 +286,16 @@ class CogtainerStack(Stack):
 
         # ALB
         lb = elbv2.ApplicationLoadBalancer(
-            self, "DashLB",
+            self,
+            "DashLB",
             vpc=vpc,
             internet_facing=True,
             vpc_subnets=public_subnets,
         )
 
         target_group = elbv2.ApplicationTargetGroup(
-            self, "DashTG",
+            self,
+            "DashTG",
             vpc=vpc,
             port=5174,
             protocol=elbv2.ApplicationProtocol.HTTP,
@@ -320,8 +324,8 @@ class CogtainerStack(Stack):
         # Task definition — same account, direct access to DB via Data API
         task_def = ecs.FargateTaskDefinition(self, "DashTaskDef", cpu=256, memory_limit_mib=512)
         docker_version = (
-            Path(__file__).resolve().parent.parent.parent.parent / "dashboard" / "DOCKER_VERSION"
-        ).read_text().strip()
+            (Path(__file__).resolve().parent.parent.parent.parent / "dashboard" / "DOCKER_VERSION").read_text().strip()
+        )
 
         db_env = {
             "COGENT_NAME": config.cogent_name,
@@ -350,57 +354,65 @@ class CogtainerStack(Stack):
         )
 
         # Grant dashboard task role Data API access
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
                 resources=[self.database.cluster_arn],
             )
         )
         if self.database.secret:
-            task_def.task_role.add_to_policy(
+            task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
                 iam.PolicyStatement(
                     actions=["secretsmanager:GetSecretValue"],
                     resources=[self.database.secret.secret_arn],
                 )
             )
         # Allow reading dashboard API key for admin endpoint auth
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
-                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/dashboard-api-key-*"],
+                resources=[
+                    f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/dashboard-api-key-*"
+                ],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
-                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/discord-*"],
+                resources=[
+                    f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/discord-*"
+                ],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
-                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/gemini-*"],
+                resources=[
+                    f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/gemini-*"
+                ],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
-                resources=[f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/asana-*"],
+                resources=[
+                    f"arn:aws:secretsmanager:{config.region}:{config.account}:secret:cogent/{config.cogent_name}/asana-*"
+                ],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["ecs:DescribeServices"],
                 resources=["*"],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["events:PutEvents"],
                 resources=["*"],
             )
         )
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["logs:FilterLogEvents"],
                 resources=["*"],
@@ -409,7 +421,7 @@ class CogtainerStack(Stack):
         self.storage.bucket.grant_read_write(task_def.task_role)
 
         # IAM: invoke executor Lambda for /api/ proxy
-        task_def.task_role.add_to_policy(
+        task_def.task_role.add_to_policy(  # type: ignore[attr-defined]
             iam.PolicyStatement(
                 actions=["lambda:InvokeFunction"],
                 resources=[self.compute.executor.function_arn],
@@ -424,7 +436,8 @@ class CogtainerStack(Stack):
         )
 
         service = ecs.FargateService(
-            self, "DashService",
+            self,
+            "DashService",
             cluster=cluster,
             task_definition=task_def,
             desired_count=1,
