@@ -149,31 +149,28 @@ else:
 ### Step 2: Respond and update state (single run_code call)
 
 ```python
-# For DMs/mentions: always respond. For channel msgs: only if clearly addressed to you.
+# Decide: escalate or reply directly?
+escalate = False  # set True if you need capabilities you don't have
 
-# Option A — Text reply:
-reply = "your response here"
-
-# Option B — React only (for ack 👍 or background task 🔄):
-# discord.react(channel=channel_id, message_id=message_id, emoji="👍")
-
-# Option C — Escalate (when you lack capability or info):
-# Do NOT send a text reply like "On it" or "Working on it" — just react and escalate silently.
-# discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
-# channels.send("supervisor:help", {
-#     "process_name": "discord-handle-message",
-#     "description": "what the user asked for",
-#     "context": "relevant details",
-#     "severity": "info",
-#     "reply_channel": "io:discord:dm",
-#     "discord_channel_id": channel_id,
-#     "discord_message_id": message_id,
-#     "discord_author_id": author_id,
-# })
-# Then exit — do NOT send a text message. The supervisor will reply when done.
+if escalate:
+    # ESCALATION — react ⬆️ and delegate to supervisor. NO text reply.
+    discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
+    channels.send("supervisor:help", {
+        "process_name": "discord-handle-message",
+        "description": "what the user asked for",
+        "context": "relevant details",
+        "severity": "info",
+        "reply_channel": "io:discord:dm",
+        "discord_channel_id": channel_id,
+        "discord_message_id": message_id,
+        "discord_author_id": author_id,
+    })
+    reply = "[escalated]"
+else:
+    # DIRECT REPLY — compose your response
+    reply = "your response here"
 
 # Update conversation log and waterline BEFORE sending to Discord.
-# This prevents double-sends if write() fails and the LLM retries.
 log_handle = data.get(f"{conv_key}/recent.log")
 log_handle.write(history + f"\n{author}: {content}\nassistant: {reply}")
 seen = waterline.get("seen", [])
@@ -183,10 +180,9 @@ waterline["last_log_msg"] = message_id
 wl = data.get(f"{conv_key}/waterline.json")
 wl.write(json.dumps(waterline))
 
-# Send LAST — after state is saved, so retries won't double-send.
-# react="💬" identifies this response as coming from the discord handler
-discord.send(channel=channel_id, content="💬 " + reply, reply_to=message_id, react="💬")
-# For escalation, also: discord.react(channel=channel_id, message_id=message_id, emoji="⬆️")
+# Send ONLY if not escalating — escalation replies come from the supervisor
+if not escalate:
+    discord.send(channel=channel_id, content="💬 " + reply, reply_to=message_id, react="💬")
 print("Done")
 ```
 
@@ -206,7 +202,7 @@ print("Done")
 - The request requires action beyond your scope
 - You don't know the answer and guessing would be wrong
 
-When escalating, react with ⬆️ on the original message and send to `supervisor:help`. Do NOT send a text reply — the reaction is the acknowledgment. The supervisor will reply when done.
+When escalating, set `escalate = True`. This reacts with ⬆️ on the original message and sends to `supervisor:help`. Do NOT send a text reply — the reaction is the only acknowledgment. The supervisor will reply when done.
 
 ## Channel messages (not DM, not mention)
 
