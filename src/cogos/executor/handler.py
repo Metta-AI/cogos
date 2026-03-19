@@ -182,6 +182,36 @@ SUPPORTED_TOOL_NAMES = {
 TOOL_NAME_PLACEHOLDER = "search"
 
 
+def _reply_trace_link(repo, process: Process, event_data: dict, trace_id: UUID) -> None:
+    """Reply to the originating Discord message with a trace viewer link."""
+    dashboard_url = os.environ.get("DASHBOARD_URL", "")
+    if not dashboard_url:
+        return
+
+    # Extract Discord metadata from the event payload
+    payload = event_data.get("payload", {})
+    if not isinstance(payload, dict):
+        return
+
+    channel_id = payload.get("channel_id")
+    message_id = payload.get("message_id")
+    if not channel_id or not message_id:
+        return
+
+    trace_link = f"{dashboard_url}/#trace-viewer:{trace_id}"
+    try:
+        # Write to the Discord output channel via SQS (same mechanism as discord.send)
+        from cogos.io.discord.capability import _send_sqs, _with_reply_meta
+        body = {
+            "channel": channel_id,
+            "content": f"\U0001f50d Trace: {trace_link}",
+            "reply_to": message_id,
+        }
+        _send_sqs(_with_reply_meta(body, process_id=process.id, run_id=None, trace_id=trace_id))
+    except Exception:
+        logger.debug("Failed to reply with trace link", exc_info=True)
+
+
 def handler(event: dict, context: Any = None) -> dict:
     """Lambda entry point — parse payload and execute process."""
     config = get_config()
@@ -247,11 +277,31 @@ def handler(event: dict, context: Any = None) -> dict:
         except (ValueError, Exception):
             logger.debug("Invalid trace_id in event: %s", trace_id_str)
 
+    # Initialize distributed trace context
+    from cogos.trace import init_trace
+    parent_span_id = None
+    if event.get("parent_span_id"):
+        try:
+            parent_span_id = UUID(event["parent_span_id"])
+        except (ValueError, Exception):
+            pass
+
+    trace_ctx = init_trace(
+        repo,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
+        source=event.get("source", ""),
+        source_ref=event.get("source_ref"),
+        cogent_id=os.environ.get("COGENT_NAME", ""),
+    )
+    trace_id = trace_ctx.trace_id
+
     logger.info(f"Starting run {run_id} for process {process.name}")
 
     start_time = time.time()
     try:
-        run = execute_process(process, event, run, config, repo, trace_id=trace_id)
+        with trace_ctx.start_span(f"process:{process.name}", coglet=process.name):
+            run = execute_process(process, event, run, config, repo, trace_id=trace_id)
         run.status = RunStatus.COMPLETED
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -306,6 +356,7 @@ def handler(event: dict, context: Any = None) -> dict:
                 repo.update_process_status(process.id, ProcessStatus.COMPLETED)
 
         logger.info(f"Run {run_id} completed in {duration_ms}ms")
+        _reply_trace_link(repo, process, event, trace_ctx.trace_id)
         result = {"statusCode": 200, "run_id": str(run_id)}
 
         web_request_id = event.get("web_request_id")
@@ -647,9 +698,21 @@ def execute_process(
         refresh_checkpoint=True,
     )
 
+    turn_span = None
     try:
         for _turn in range(config.max_turns):
             turn_number = _turn + 1
+
+            from cogos.trace import current_trace
+            trace_ctx = current_trace()
+            turn_span = None
+            if trace_ctx:
+                turn_span = trace_ctx.start_span(
+                    f"llm_turn:{turn_number}",
+                    metadata={"model": model_id},
+                )
+                turn_span.__enter__()
+
             kwargs: dict[str, Any] = {
                 "modelId": model_id,
                 "messages": messages,
@@ -778,12 +841,16 @@ def execute_process(
                     },
                     refresh_checkpoint=True,
                 )
+                if turn_span:
+                    turn_span.__exit__(None, None, None)
                 continue
 
             # Publish final assistant commentary to process stderr
             for block in output_message.get("content", []):
                 if isinstance(block, dict) and "text" in block:
                     _publish_process_io(repo, process, "stderr", block["text"])
+            if turn_span:
+                turn_span.__exit__(None, None, None)
             break
         else:
             final_stop_reason = "max_turns"
@@ -837,6 +904,9 @@ def execute_process(
         )
         return run
     except Exception as exc:
+        if turn_span:
+            turn_span.__exit__(type(exc), exc, exc.__traceback__)
+            turn_span = None
         _publish_process_io(repo, process, "stderr", f"[{process.name}] {exc}")
         # Detect throttling so dispatcher can apply cooldown
         exc_str = str(exc)
@@ -1057,6 +1127,35 @@ def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:
     return json.dumps(results, indent=2) if results else "No capabilities found matching query."
 
 
+def _wrap_capability_with_tracing(instance, namespace: str):
+    """Wrap capability methods to automatically create trace spans."""
+    from cogos.trace import current_trace
+
+    class TracingProxy:
+        def __init__(self, target, ns):
+            object.__setattr__(self, '_target', target)
+            object.__setattr__(self, '_ns', ns)
+
+        def __getattr__(self, name):
+            attr = getattr(self._target, name)
+            if not callable(attr) or name.startswith('_'):
+                return attr
+            ns = self._ns
+
+            def traced_method(*args, **kwargs):
+                ctx = current_trace()
+                if ctx:
+                    with ctx.start_span(f"tool:{ns}.{name}"):
+                        return attr(*args, **kwargs)
+                return attr(*args, **kwargs)
+            return traced_method
+
+        def help(self):
+            return self._target.help() if hasattr(self._target, 'help') else str(self._target)
+
+    return TracingProxy(instance, namespace)
+
+
 def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Repository, *, run_id: UUID | None = None, trace_id: UUID | None = None) -> None:
     """Inject capability instances into the variable table.
 
@@ -1107,6 +1206,7 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
             # Apply scope from config if present
             if pc.config:
                 instance = instance.scope(**pc.config)
+            instance = _wrap_capability_with_tracing(instance, ns)
             vt.set(ns, instance)
         except (ImportError, AttributeError) as exc:
             logger.warning("Could not load capability %s (%s): %s", cap_model.name, handler_path, exc)
