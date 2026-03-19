@@ -451,7 +451,10 @@ class DiscordBridge:
                 },
                 idempotency_key=f"reaction:{payload.message_id}:{payload.user_id}:{payload.emoji.name}",
             ))
-            logger.info("Relayed reaction %s from user %s on message %s", payload.emoji.name, payload.user_id, payload.message_id)
+            logger.info(
+                "Relayed reaction %s from user %s on message %s",
+                payload.emoji.name, payload.user_id, payload.message_id,
+            )
         except Exception:
             logger.exception("Failed to relay reaction on message %s", payload.message_id)
 
