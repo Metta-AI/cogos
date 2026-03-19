@@ -16,3 +16,12 @@ class Trace(BaseModel):
     file_ops: list[dict[str, Any]] = Field(default_factory=list)
     model_version: str | None = None
     created_at: datetime | None = None
+
+
+class RequestTrace(BaseModel):
+    """Request-level trace — groups spans across processes."""
+    id: UUID = Field(default_factory=uuid4)
+    cogent_id: str = ""
+    source: str = ""  # "discord", "api", "cli", "cron"
+    source_ref: str | None = None  # e.g., discord channel_id:message_id
+    created_at: datetime | None = None

@@ -17,7 +17,8 @@ from cogos.db.models.process_capability import ProcessCapability
 from cogos.db.models.resource import Resource, ResourceType, ResourceUsage
 from cogos.db.models.run import Run, RunStatus
 from cogos.db.models.schema import Schema
-from cogos.db.models.trace import Trace
+from cogos.db.models.span import Span, SpanEvent, SpanStatus
+from cogos.db.models.trace import RequestTrace, Trace
 
 __all__ = [
     "Alert",
@@ -44,11 +45,15 @@ __all__ = [
     "ProcessCapability",
     "ProcessMode",
     "ProcessStatus",
+    "RequestTrace",
     "Resource",
     "ResourceType",
     "ResourceUsage",
     "Run",
     "RunStatus",
     "Schema",
+    "Span",
+    "SpanEvent",
+    "SpanStatus",
     "Trace",
 ]
