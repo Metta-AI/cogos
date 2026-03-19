@@ -59,7 +59,7 @@ interval_str = current.isoformat()
 findings = []
 brief = dir.get("newsfromthefront/brief.md").read().content
 
-# Run Perplexity, GitHub, Twitter searches with after_date/before_date
+# Run Tavily, GitHub, Twitter searches with after_date/before_date
 # (follow the same query generation logic as apps/newsfromthefront/researcher.md)
 # ...
 

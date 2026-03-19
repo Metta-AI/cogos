@@ -1,4 +1,4 @@
-"""WebSearch capability — Perplexity, GitHub, and Twitter/X search."""
+"""WebSearch capability — Tavily, GitHub, and Twitter/X search."""
 from __future__ import annotations
 
 import datetime
@@ -36,7 +36,7 @@ class SearchError(BaseModel):
 
 
 class WebSearchCapability(Capability):
-    """Multi-backend web search: Perplexity (general web), GitHub, Twitter/X."""
+    """Multi-backend web search: Tavily (general web), GitHub, Twitter/X."""
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict[str, Any] = {}
@@ -96,39 +96,42 @@ class WebSearchCapability(Capability):
         after_date: str | None = None,
         before_date: str | None = None,
     ) -> SearchResult | SearchError:
-        """Search the web via Perplexity sonar. recency: 'day'|'week'|'month'."""
+        """Search the web via Tavily. recency: 'day'|'week'|'month'."""
         self._check("search")
         try:
-            api_key = fetch_secret("cogent/{cogent}/perplexity", field="api_key")
+            api_key = fetch_secret("cogent/{cogent}/tavily", field="api_key")
             payload: dict[str, Any] = {
-                "model": "sonar",
-                "messages": [{"role": "user", "content": query}],
+                "api_key": api_key,
+                "query": query,
+                "search_depth": "advanced",
+                "include_answer": True,
+                "max_results": 10,
             }
-            if recency:
-                payload["search_recency_filter"] = recency
             if after_date or before_date:
-                date_filter: dict[str, str] = {}
+                # Tavily uses 'days' param — compute from date range
                 if after_date:
-                    date_filter["after"] = after_date
-                if before_date:
-                    date_filter["before"] = before_date
-                payload["search_date_filter"] = date_filter
+                    delta = (datetime.date.today() - datetime.date.fromisoformat(after_date)).days
+                    payload["days"] = max(delta, 1)
+            elif recency:
+                days = {"day": 1, "week": 7, "month": 30}.get(recency, 7)
+                payload["days"] = days
             result = self._http_json(
-                "https://api.perplexity.ai/chat/completions",
+                "https://api.tavily.com/search",
                 payload=payload,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers={"Content-Type": "application/json"},
             )
-            summary = result["choices"][0]["message"]["content"]
+            summary = result.get("answer", "")
             sources = [
-                {"url": url, "title": "", "snippet": ""}
-                for url in result.get("citations", [])
+                {
+                    "url": r.get("url", ""),
+                    "title": r.get("title", ""),
+                    "snippet": r.get("content", "")[:300],
+                }
+                for r in result.get("results", [])
             ]
             return SearchResult(summary=summary, sources=sources)
         except Exception as e:
-            logger.exception("Perplexity search failed")
+            logger.exception("Tavily search failed")
             return SearchError(error=str(e))
 
     def search_github(

@@ -796,11 +796,11 @@ BUILTIN_CAPABILITIES: list[dict] = [
     # web_search, web_fetch
     {
         "name": "web_search",
-        "description": "Multi-backend web search: Perplexity (general web), GitHub (repos/issues/code), Twitter/X (tweets).",
+        "description": "Multi-backend web search: Tavily (general web), GitHub (repos/issues/code), Twitter/X (tweets).",
         "handler": "cogos.capabilities.web_search.WebSearchCapability",
         "instructions": (
             "Use web_search to research topics across multiple sources.\n"
-            "- web_search.search(query, recency?, after_date?, before_date?) — general web search via Perplexity; recency: 'day'|'week'|'month'\n"
+            "- web_search.search(query, recency?, after_date?, before_date?) — general web search via Tavily; recency: 'day'|'week'|'month'\n"
             "- web_search.search_github(query, search_type?, after_date?, before_date?) — GitHub search; search_type: 'repositories'|'issues'|'discussions'|'code'\n"
             "- web_search.search_twitter(query, recency?, after_date?, before_date?) — Twitter/X tweet search via X API v2\n"
             "Use recency='day' for latest news. Use after_date/before_date (ISO date strings) for backfill."

@@ -52,10 +52,10 @@ today = datetime.date.today().isoformat()
 
 findings = []
 
-# Perplexity — general web, news, blog posts
-for query in perplexity_queries:
+# Tavily — general web, news, blog posts
+for query in tavily_queries:
     result = web_search.search(query, recency="day")
-    findings.append({"source": "perplexity", "query": query, "result": result.dict()})
+    findings.append({"source": "tavily", "query": query, "result": result.dict()})
 
 # GitHub — new repos and activity in this space
 for query in github_queries:
@@ -102,4 +102,4 @@ print("Signalled analyst via newsfromthefront:findings-ready")
 
 - If the GitHub API is unavailable, skip step 2 and proceed with the cached brief description.
 - The brief evolves over time — always re-read it fresh; don't rely on prior context.
-- Aim for broad coverage: 3–4 Perplexity queries, 2–3 GitHub queries, 2–3 Twitter queries.
+- Aim for broad coverage: 3–4 Tavily queries, 2–3 GitHub queries, 2–3 Twitter queries.

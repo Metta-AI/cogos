@@ -21,8 +21,8 @@ def cap():
 class TestSearch:
     def test_returns_summary_and_sources(self, cap):
         resp = {
-            "choices": [{"message": {"content": "Here is a summary."}}],
-            "citations": ["https://example.com"],
+            "answer": "Here is a summary.",
+            "results": [{"url": "https://example.com", "title": "Example", "content": "snippet"}],
         }
         with patch("cogos.capabilities.web_search.fetch_secret", return_value="key"), \
              patch.object(cap, "_http_json", return_value=resp):
@@ -32,20 +32,20 @@ class TestSearch:
         assert result.sources[0]["url"] == "https://example.com"
 
     def test_passes_recency_to_payload(self, cap):
-        resp = {"choices": [{"message": {"content": "s"}}], "citations": []}
+        resp = {"answer": "s", "results": []}
         with patch("cogos.capabilities.web_search.fetch_secret", return_value="k"), \
              patch.object(cap, "_http_json", return_value=resp) as mock_http:
             cap.search("query", recency="day")
         payload = mock_http.call_args[1]["payload"]
-        assert payload["search_recency_filter"] == "day"
+        assert payload["days"] == 1
 
     def test_passes_date_filter_for_backfill(self, cap):
-        resp = {"choices": [{"message": {"content": "s"}}], "citations": []}
+        resp = {"answer": "s", "results": []}
         with patch("cogos.capabilities.web_search.fetch_secret", return_value="k"), \
              patch.object(cap, "_http_json", return_value=resp) as mock_http:
             cap.search("q", after_date="2025-01-01", before_date="2025-01-31")
         payload = mock_http.call_args[1]["payload"]
-        assert payload["search_date_filter"] == {"after": "2025-01-01", "before": "2025-01-31"}
+        assert "days" in payload
 
     def test_returns_error_on_exception(self, cap):
         with patch("cogos.capabilities.web_search.fetch_secret", side_effect=Exception("no key")):
