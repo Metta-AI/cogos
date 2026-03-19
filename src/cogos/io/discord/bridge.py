@@ -118,6 +118,9 @@ class DiscordBridge:
     """Multi-tenant relay: routes Discord messages to per-cogent DBs
     and sends outbound replies via cogent-specific webhooks."""
 
+    cogent_name: str
+    _repo: object | None
+
     def __init__(self):
         self.bot_token = os.environ.get("DISCORD_BOT_TOKEN", "")
         if not self.bot_token:
