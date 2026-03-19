@@ -482,6 +482,7 @@ class PolisStack(cdk.Stack):
             ],
         )
         self.ci_artifacts_bucket.grant_read_write(self.github_actions_role)
+        self.ci_artifacts_bucket.grant_read(self.admin_role)
 
         # --- Outputs ---
         cdk.CfnOutput(self, "GitHubActionsRoleArn", value=self.github_actions_role.role_arn)
