@@ -95,12 +95,28 @@ class GitHubCapability(Capability):
 
     def __init__(self, repo, process_id) -> None:
         super().__init__(repo, process_id)
-        self._api_key: str | None = None
+        self._client_instance = None
 
     def _get_client(self):
-        if self._api_key is None:
-            self._api_key = fetch_secret(SECRET_KEY, field="access_token")
-        return Github(auth=Auth.Token(self._api_key))
+        if self._client_instance is not None:
+            return self._client_instance
+        secret_raw = fetch_secret(SECRET_KEY)
+        import json as _json
+        secret = _json.loads(secret_raw)
+        secret_type = secret.get("type", "token")
+        if secret_type == "github_app" and secret.get("private_key"):
+            # GitHub App auth — generate installation token from private key
+            app_id = int(secret["app_id"])
+            private_key = secret["private_key"]
+            installation_id = int(secret["installation_id"])
+            app_auth = Auth.AppAuth(app_id, private_key)
+            gh = Github(auth=app_auth.get_installation_auth(installation_id))
+        else:
+            # Personal access token or pre-generated token
+            token = secret.get("access_token") or secret_raw
+            gh = Github(auth=Auth.Token(token))
+        self._client_instance = gh
+        return gh
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
