@@ -153,7 +153,12 @@ class ProcsCapability(Capability):
 
         if detached:
             init_id = self._init_process_id()
-            parent_id = init_id if init_id else self.process_id
+            # If init is spawning detached children, don't set a parent —
+            # child exit notifications would wake init in an infinite loop.
+            if init_id and init_id == self.process_id:
+                parent_id = None
+            else:
+                parent_id = init_id if init_id else self.process_id
         else:
             parent_id = self.process_id
 
