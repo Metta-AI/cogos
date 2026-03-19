@@ -194,16 +194,22 @@ class ProcsCapability(Capability):
 
         for grant_name, cap_instance in (capabilities or {}).items():
             if cap_instance is not None:
+                # Unwrap tracing proxy to get the real capability
+                real_instance = cap_instance
+                try:
+                    real_instance = object.__getattribute__(cap_instance, '_target')
+                except AttributeError:
+                    pass
                 # Resolve the registered capability model from the instance
-                cap_type_name = type(cap_instance).__name__.lower().replace("capability", "")
+                cap_type_name = type(real_instance).__name__.lower().replace("capability", "")
                 cap = self.repo.get_capability_by_name(cap_type_name)
                 if not cap:
                     cap = self.repo.get_capability_by_name(grant_name)
                 if not cap:
                     # Look up by handler class path
-                    handler_path = f"{type(cap_instance).__module__}.{type(cap_instance).__name__}"
+                    handler_path = f"{type(real_instance).__module__}.{type(real_instance).__name__}"
                     cap = self.repo.get_capability_by_handler(handler_path)
-                child_scope = getattr(cap_instance, "_scope", None) or None
+                child_scope = getattr(real_instance, "_scope", None) or None
             else:
                 # Fallback: resolve capability type by grant name
                 cap_type_name = grant_name

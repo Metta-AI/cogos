@@ -50,7 +50,7 @@ def test_init_can_spawn_supervisor_with_delegatable_caps(tmp_path):
     procs_cap = ProcsCapability(repo, init_proc.id)
 
     caps = {
-        "me": None, "procs": None, "dir": None, "file": None,
+        "me": None, "procs": None, "root_dir": None,
         "discord": None, "channels": None, "secrets": None,
         "stdlib": None, "alerts": None,
         "asana": None, "email": None, "github": None,

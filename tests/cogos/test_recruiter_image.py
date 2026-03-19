@@ -123,15 +123,15 @@ def test_cogent_v1_recruiter_files():
 
 
 def test_cogent_v1_recruiter_prompt_refs_are_explicit():
-    """Recruiter orchestrator references config and worker files via file.read()."""
+    """Recruiter orchestrator references config and worker files via source.get().read()."""
     spec = load_image(Path("images/cogent-v1"))
 
     orchestrator = spec.files["apps/recruiter/main.py"]
-    # The orchestrator uses file.read() to load config into coglets at runtime
-    assert 'file.read("apps/recruiter/criteria.md")' in orchestrator
-    assert 'file.read("apps/recruiter/strategy.md")' in orchestrator
-    # Child prompt files are still referenced via file.read()
-    assert 'file.read("apps/recruiter/discover.md")' in orchestrator
+    # The orchestrator uses source.get().read() to load config into coglets at runtime
+    assert 'source.get("criteria.md").read()' in orchestrator
+    assert 'source.get("strategy.md").read()' in orchestrator
+    # Child prompt files are still referenced via source.get().read()
+    assert 'source.get("discover.md").read()' in orchestrator
 
 
 def test_cogent_v1_recruiter_channel():

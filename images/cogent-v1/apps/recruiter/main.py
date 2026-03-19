@@ -7,30 +7,30 @@ payload = event.get("payload", {})
 
 # Config coglet — data only, no entrypoint
 config = cog.make_coglet("config", files={
-    "criteria.md": file.read("apps/recruiter/criteria.md").content,
-    "rubric.json": file.read("apps/recruiter/rubric.json").content,
-    "strategy.md": file.read("apps/recruiter/strategy.md").content,
-    "diagnosis.md": file.read("apps/recruiter/diagnosis.md").content,
-    "evolution.md": file.read("apps/recruiter/evolution.md").content,
-    "sourcer/github.md": file.read("apps/recruiter/sourcer/github.md").content,
-    "sourcer/twitter.md": file.read("apps/recruiter/sourcer/twitter.md").content,
-    "sourcer/web.md": file.read("apps/recruiter/sourcer/web.md").content,
-    "sourcer/substack.md": file.read("apps/recruiter/sourcer/substack.md").content,
+    "criteria.md": source.get("criteria.md").read().content,
+    "rubric.json": source.get("rubric.json").read().content,
+    "strategy.md": source.get("strategy.md").read().content,
+    "diagnosis.md": source.get("diagnosis.md").read().content,
+    "evolution.md": source.get("evolution.md").read().content,
+    "sourcer/github.md": source.get("sourcer/github.md").read().content,
+    "sourcer/twitter.md": source.get("sourcer/twitter.md").read().content,
+    "sourcer/web.md": source.get("sourcer/web.md").read().content,
+    "sourcer/substack.md": source.get("sourcer/substack.md").read().content,
 })
 
 # Executable coglets
 discover = cog.make_coglet("discover", entrypoint="main.md",
-    files={"main.md": file.read("apps/recruiter/discover.md").content})
+    files={"main.md": source.get("discover.md").read().content})
 present = cog.make_coglet("present", entrypoint="main.md", mode="daemon",
-    files={"main.md": file.read("apps/recruiter/present.md").content})
+    files={"main.md": source.get("present.md").read().content})
 profile = cog.make_coglet("profile", entrypoint="main.md",
-    files={"main.md": file.read("apps/recruiter/profile.md").content})
+    files={"main.md": source.get("profile.md").read().content})
 evolve = cog.make_coglet("evolve", entrypoint="main.md",
-    files={"main.md": file.read("apps/recruiter/evolve.md").content})
+    files={"main.md": source.get("evolve.md").read().content})
 
 # Shared capability set for worker coglets
 worker_caps = {
-    "me": None, "data": None, "config_coglet": config,
+    "me": None, "data_dir": data_dir, "config_coglet": config,
     "secrets": None, "discord": None, "channels": None,
     "supervisor": channels.scope(names=["supervisor:help"], ops=["send"]),
 }

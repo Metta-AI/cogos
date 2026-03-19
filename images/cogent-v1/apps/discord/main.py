@@ -3,7 +3,7 @@
 # Ensures the handler exists with correct channel subscriptions, checks health,
 # and escalates if unhealthy.
 
-handler_content = file.read("apps/discord/handler/main.md")
+handler_content = source.get("handler/main.md").read()
 if hasattr(handler_content, 'error'):
     print("WARN: handler content not found: " + str(handler_content.error))
     exit()
@@ -18,9 +18,9 @@ r = procs.spawn("discord/handler",
     idle_timeout_ms=300000,
     capabilities={
         "discord": None, "channels": None, "stdlib": None,
-        "procs": None, "file": None,
+        "procs": None,
         "image": None, "blob": None, "secrets": None, "web": None,
-        "data:dir": data,
+        "data_dir": data_dir,
     },
     subscribe=["io:discord:dm", "io:discord:mention", "io:discord:message"],
 )
