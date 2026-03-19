@@ -1,0 +1,45 @@
+name: "Update versions.defaults.json"
+description: "Update a component version in versions.defaults.json and commit"
+
+inputs:
+  component:
+    description: "Component key to update (e.g. executor, dashboard)"
+    required: true
+  version:
+    description: "Version SHA to set"
+    required: true
+  defaults_file:
+    description: "Path to versions.defaults.json"
+    required: false
+    default: "images/cogent-v1/versions.defaults.json"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Update versions.defaults.json
+      shell: bash
+      run: |
+        FILE="${{ inputs.defaults_file }}"
+        COMPONENT="${{ inputs.component }}"
+        VERSION="${{ inputs.version }}"
+
+        python3 -c "
+        import json
+        with open('$FILE') as f:
+            data = json.load(f)
+        data['$COMPONENT'] = '$VERSION'
+        with open('$FILE', 'w') as f:
+            json.dump(data, f, indent=2)
+            f.write('\n')
+        "
+        echo "Updated $COMPONENT to $VERSION in $FILE"
+
+    - name: Commit and push
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add "${{ inputs.defaults_file }}"
+        git diff --cached --quiet && echo "No changes" && exit 0
+        git commit -m "ci: update ${{ inputs.component }} version to ${{ inputs.version }}"
+        git push

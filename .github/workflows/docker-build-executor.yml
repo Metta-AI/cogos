@@ -14,7 +14,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -73,3 +73,21 @@ jobs:
           echo "**Lambda Zip:** \`s3://cogent-polis-ci-artifacts/lambda/${{ github.sha }}/lambda.zip\` (${{ env.SIZE }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Deploy:** \`cogent <name> cogtainer update ecs --tag executor-${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update versions defaults (executor)
+        uses: ./.github/actions/update-versions
+        with:
+          component: executor
+          version: ${{ steps.build.outputs.short_sha }}
+
+      - name: Update versions defaults (lambda)
+        uses: ./.github/actions/update-versions
+        with:
+          component: lambda
+          version: ${{ github.sha }}
+
+      - name: Update versions defaults (cogos)
+        uses: ./.github/actions/update-versions
+        with:
+          component: cogos
+          version: ${{ github.sha }}

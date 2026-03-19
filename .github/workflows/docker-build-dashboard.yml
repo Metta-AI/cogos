@@ -13,7 +13,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -67,3 +67,15 @@ jobs:
           echo "**Frontend Tarball:** \`s3://cogent-polis-ci-artifacts/dashboard/${{ github.sha }}/frontend.tar.gz\` (${{ env.SIZE }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Deploy:** \`cogent <name> cogtainer update dashboard --sha ${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update versions defaults (dashboard)
+        uses: ./.github/actions/update-versions
+        with:
+          component: dashboard
+          version: ${{ steps.build.outputs.short_sha }}
+
+      - name: Update versions defaults (dashboard_frontend)
+        uses: ./.github/actions/update-versions
+        with:
+          component: dashboard_frontend
+          version: ${{ github.sha }}
