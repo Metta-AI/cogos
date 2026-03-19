@@ -15,6 +15,28 @@ _ENTRYPOINT_NAMES = ("main.py", "main.md")
 
 
 # ---------------------------------------------------------------------------
+# Model helpers — avoid hardcoding Bedrock model IDs
+# ---------------------------------------------------------------------------
+
+_MODELS = {
+    "haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "sonnet": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "opus": "us.anthropic.claude-opus-4-20250514-v1:0",
+}
+
+
+def model(name: str) -> str:
+    """Return the Bedrock model ID for a short model name.
+
+    >>> model("sonnet")
+    'us.anthropic.claude-sonnet-4-20250514-v1:0'
+    """
+    if name in _MODELS:
+        return _MODELS[name]
+    raise ValueError(f"Unknown model {name!r}, choose from: {', '.join(_MODELS)}")
+
+
+# ---------------------------------------------------------------------------
 # Config model
 # ---------------------------------------------------------------------------
 

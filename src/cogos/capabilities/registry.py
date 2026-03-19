@@ -94,16 +94,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
         },
     },
     {
-        "name": "dir",
+        "name": "root_dir",
         "description": "Directory access — list files and get file handles for read/write/append.",
         "handler": "cogos.capabilities.file_cap.DirCapability",
         "instructions": (
-            "Use dir to access files under a directory prefix.\n"
-            "- dir.list(prefix?) — list files\n"
-            "- f = dir.get(key) — get a file handle\n"
-            "- dir.grep(pattern, prefix?, limit=20, context=0) — regex search file contents\n"
-            "- dir.glob(pattern, limit=50) — match file keys by glob\n"
-            "- dir.tree(prefix?, depth=3) — compact directory tree\n"
+            "Directory access for files under a prefix.\n"
+            "- .list(prefix?) — list files\n"
+            "- f = .get(key) — get a file handle\n"
+            "- .grep(pattern, prefix?, limit=20, context=0) — regex search file contents\n"
+            "- .glob(pattern, limit=50) — match file keys by glob\n"
+            "- .tree(prefix?, depth=3) — compact directory tree\n"
             "- f.read(offset?, limit?) — read file (line-sliced)\n"
             "- f.write(content) — overwrite file\n"
             "- f.append(content) — append to file\n"

@@ -9,7 +9,7 @@ add_process(
     runner="lambda",
     priority=200.0,
     capabilities=[
-        "me", "procs", "dir", "file", "discord", "channels",
+        "me", "procs", "root_dir", "file", "discord", "channels",
         "secrets", "stdlib", "alerts", "cogent", "history",
         "blob", "image",
         # Delegatable to supervisor → helpers:

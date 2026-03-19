@@ -1164,6 +1164,14 @@ class Repository:
         row = self._first_row(response)
         return self._capability_from_row(row) if row else None
 
+    def get_capability_by_handler(self, handler: str) -> Capability | None:
+        response = self._execute(
+            "SELECT * FROM cogos_capability WHERE handler = :handler",
+            [self._param("handler", handler)],
+        )
+        row = self._first_row(response)
+        return self._capability_from_row(row) if row else None
+
     def list_capabilities(self, *, enabled_only: bool = False) -> list[Capability]:
         where = "WHERE enabled = TRUE" if enabled_only else ""
         response = self._execute(

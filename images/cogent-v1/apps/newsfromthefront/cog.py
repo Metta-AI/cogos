@@ -4,7 +4,7 @@ config = CogConfig(
     mode="daemon",
     priority=15.0,
     capabilities=[
-        "me", "procs", "dir", "file", "channels", "discord",
+        "me", "procs", "channels", "discord",
         "web_search", "secrets", "stdlib",
     ],
     handlers=[

@@ -1,12 +1,12 @@
-from cogos.cog.cog import CogConfig
+from cogos.cog.cog import CogConfig, model
 
 config = CogConfig(
     mode="daemon",
     priority=5.0,
     executor="python",
-    model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    model=model("haiku"),
     capabilities=[
-        "me", "procs", "dir", "file", "discord", "channels",
+        "me", "procs", "discord", "channels",
         "stdlib", "image", "blob", "secrets", "web",
     ],
     handlers=[

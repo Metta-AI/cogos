@@ -236,19 +236,19 @@ class CogletRuntime:
                 if cap_obj is not None:
                     caps[entry] = cap_obj
             elif isinstance(entry, dict):
-                cap_name = entry["name"]
-                alias = entry.get("alias", cap_name)
+                name = entry["name"]
+                cap_type = entry.get("type", name)
                 cap_config = entry.get("config")
-                cap_obj = self.cap_objects.get(cap_name)
+                cap_obj = self.cap_objects.get(cap_type)
                 if cap_obj is not None and cap_config and hasattr(cap_obj, "scope"):
-                    caps[alias] = cap_obj.scope(**cap_config)
+                    caps[name] = cap_obj.scope(**cap_config)
                 elif cap_obj is not None:
-                    caps[alias] = cap_obj
+                    caps[name] = cap_obj
         return caps
 
     def _add_scoped_dir_and_data(self, caps: dict[str, Any], cog_name: str) -> None:
         """Add scoped dir and data capabilities."""
-        dir_cap = self.cap_objects.get("dir")
+        dir_cap = self.cap_objects.get("root_dir")
         if dir_cap is not None and hasattr(dir_cap, "scope"):
-            caps["dir"] = dir_cap.scope(prefix=f"cogs/{cog_name}/")
-            caps["data"] = dir_cap.scope(prefix=f"data/{cog_name}/")
+            caps["src_dir"] = dir_cap.scope(prefix=f"cogs/{cog_name}/")
+            caps["data_dir"] = dir_cap.scope(prefix=f"data/{cog_name}/")

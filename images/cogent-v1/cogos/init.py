@@ -4,7 +4,7 @@
 
 # ── Capability lookup for dynamic spawning ────────────────────
 _cap_objects = {
-    "me": me, "procs": procs, "dir": dir, "file": file,
+    "me": me, "procs": procs, "root_dir": root_dir, "file": file,
     "channels": channels, "secrets": secrets,
     "stdlib": stdlib, "blob": blob, "image": image,
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
@@ -64,18 +64,18 @@ def _build_caps(cap_list, cog_name):
                 caps[entry] = cap_obj
         elif isinstance(entry, dict):
             name = entry["name"]
-            alias = entry.get("alias", name)
+            cap_type = entry.get("type", name)
             config = entry.get("config")
-            cap_obj = _cap_objects.get(name)
+            cap_obj = _cap_objects.get(cap_type)
             if cap_obj is not None and config and hasattr(cap_obj, "scope"):
-                caps[alias] = cap_obj.scope(**config)
+                caps[name] = cap_obj.scope(**config)
             elif cap_obj is not None:
-                caps[alias] = cap_obj
-    # Add scoped dir and data for cog isolation
-    dir_cap = _cap_objects.get("dir")
+                caps[name] = cap_obj
+    # Add scoped dir capabilities for cog isolation
+    dir_cap = _cap_objects.get("root_dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
-        caps["dir"] = dir_cap.scope(prefix="cogs/" + cog_name + "/")
-        caps["data"] = dir_cap.scope(prefix="data/" + cog_name + "/")
+        caps["src_dir"] = dir_cap.scope(prefix="cogs/" + cog_name + "/")
+        caps["data_dir"] = dir_cap.scope(prefix="data/" + cog_name + "/")
     return caps
 
 def _read_file(key):
@@ -102,7 +102,7 @@ def _spawn_cog(manifest):
 
     caps = _build_caps(config.get("capabilities", []), cog_name)
     # Add source dir scoped to where the cog's files live in the FileStore
-    dir_cap = _cap_objects.get("dir")
+    dir_cap = _cap_objects.get("root_dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
         caps["source"] = dir_cap.scope(prefix=prefix + "/" + cog_name + "/")
 

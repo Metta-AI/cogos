@@ -6,7 +6,7 @@ config = CogConfig(
     priority=0.5,
     handlers=["process:run:failed", "system:alerts"],
     capabilities=[
-        "history", "procs", "channels", "dir", "file", "stdlib", "alerts", "secrets",
+        "history", "procs", "channels", "stdlib", "alerts", "secrets",
     ],
     idle_timeout_ms=60000,
 )

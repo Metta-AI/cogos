@@ -1,11 +1,11 @@
-from cogos.cog.cog import CogConfig
+from cogos.cog.cog import CogConfig, model
 
 config = CogConfig(
     mode="daemon",
-    model="us.anthropic.claude-sonnet-4-20250514-v1:0",
+    model=model("sonnet"),
     emoji="💬",
     capabilities=[
-        "cogent", "discord", "channels", "stdlib", "procs", "file",
+        "cogent", "discord", "channels", "stdlib", "procs",
         "image", "blob", "secrets", "web",
     ],
     handlers=[

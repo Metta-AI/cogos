@@ -24,8 +24,8 @@ def diag_files():
     checks = []
 
     def test_write_read():
-        data.get("_diag/test.txt").write("hello diagnostics")
-        r = data.get("_diag/test.txt").read()
+        data_dir.get("_diag/test.txt").write("hello diagnostics")
+        r = data_dir.get("_diag/test.txt").read()
         if hasattr(r, "error"):
             raise Exception(str(r.error))
         if r.content != "hello diagnostics":
@@ -33,29 +33,29 @@ def diag_files():
     checks.append(check("write_read", test_write_read))
 
     def test_overwrite():
-        data.get("_diag/test.txt").write("version 2")
-        r = data.get("_diag/test.txt").read()
+        data_dir.get("_diag/test.txt").write("version 2")
+        r = data_dir.get("_diag/test.txt").read()
         if r.content != "version 2":
             raise Exception("got " + repr(r.content))
     checks.append(check("overwrite", test_overwrite))
 
     def test_edit():
-        data.get("_diag/edit.txt").write("the quick brown fox")
-        data.get("_diag/edit.txt").edit(old="brown", new="red")
-        r = data.get("_diag/edit.txt").read()
+        data_dir.get("_diag/edit.txt").write("the quick brown fox")
+        data_dir.get("_diag/edit.txt").edit(old="brown", new="red")
+        r = data_dir.get("_diag/edit.txt").read()
         if "red fox" not in r.content:
             raise Exception("got " + repr(r.content))
     checks.append(check("edit", test_edit))
 
     def test_grep():
-        data.get("_diag/grep.txt").write("MARKER_DIAG_TEST")
-        results = data.grep("MARKER_DIAG_TEST")
+        data_dir.get("_diag/grep.txt").write("MARKER_DIAG_TEST")
+        results = data_dir.grep("MARKER_DIAG_TEST")
         if not isinstance(results, list) or len(results) == 0:
             raise Exception("grep returned " + repr(results))
     checks.append(check("grep", test_grep))
 
     def test_glob():
-        results = data.glob("_diag/*.txt")
+        results = data_dir.glob("_diag/*.txt")
         if not isinstance(results, list):
             raise Exception("glob returned " + repr(results))
     checks.append(check("glob", test_glob))
@@ -404,7 +404,7 @@ else:
 
     # Read previous results for diffing
     prev = None
-    prev_raw = data.get("current.json").read()
+    prev_raw = data_dir.get("current.json").read()
     if not hasattr(prev_raw, "error"):
         try:
             prev = json.loads(prev_raw.content)
@@ -435,7 +435,7 @@ else:
                 changes.append("- FIXED: " + k)
 
     # Write reports
-    data.get("current.json").write(json.dumps(results))
+    data_dir.get("current.json").write(json.dumps(results))
 
     # current.md
     md = ["# Diagnostics — " + timestamp, "**" + str(passed) + "/" + str(total) + " PASS**", ""]
@@ -452,19 +452,19 @@ else:
                     line += " — " + str(ck["error"])[:150]
                 md.append(line)
         md.append("")
-    data.get("current.md").write("\n".join(md))
+    data_dir.get("current.md").write("\n".join(md))
 
     # log.md (prepend)
     log_line = "## " + timestamp + " — " + str(passed) + "/" + str(total) + " PASS"
-    log_prev = data.get("log.md").read()
+    log_prev = data_dir.get("log.md").read()
     log_content = log_prev.content if hasattr(log_prev, "content") else ""
-    data.get("log.md").write(log_line + "\n" + log_content)
+    data_dir.get("log.md").write(log_line + "\n" + log_content)
 
     # changelog
     if changes:
-        cl_prev = data.get("changelog.md").read()
+        cl_prev = data_dir.get("changelog.md").read()
         cl_content = cl_prev.content if hasattr(cl_prev, "content") else ""
-        data.get("changelog.md").write("## " + timestamp + "\n" + "\n".join(changes) + "\n\n" + cl_content)
+        data_dir.get("changelog.md").write("## " + timestamp + "\n" + "\n".join(changes) + "\n\n" + cl_content)
 
     print(str(passed) + "/" + str(total) + " passed")
     for c in changes:

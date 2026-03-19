@@ -5,7 +5,7 @@ config = CogConfig(
     priority=2.0,
     executor="python",
     capabilities=[
-        "me", "procs", "dir", "file", "github",
+        "me", "procs", "github",
         "channels", "stdlib",
     ],
     handlers=[

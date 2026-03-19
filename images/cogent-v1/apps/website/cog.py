@@ -5,7 +5,7 @@ config = CogConfig(
     priority=5.0,
     executor="python",
     capabilities=[
-        "me", "procs", "dir", "file", "web", "channels",
+        "me", "procs", "web", "channels",
         "stdlib",
     ],
     handlers=["io:web:request"],

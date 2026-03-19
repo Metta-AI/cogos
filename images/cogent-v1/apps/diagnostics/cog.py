@@ -6,7 +6,7 @@ config = CogConfig(
     priority=1.0,
     handlers=["system:diagnostics"],
     capabilities=[
-        "me", "procs", "dir", "file",
+        "me", "procs",
         "channels", "stdlib", "history",
         "discord", "email", "asana", "github",
         "web", "web_search", "web_fetch",

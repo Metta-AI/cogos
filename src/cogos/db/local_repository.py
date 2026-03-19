@@ -543,7 +543,8 @@ class LocalRepository:
         self._maybe_reload()
         runnable = [p for p in self._processes.values()
                     if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch]
-        runnable.sort(key=lambda p: (-p.priority, p.runnable_since or datetime.max, p.name))
+        _MAX_DT = datetime.max.replace(tzinfo=UTC)
+        runnable.sort(key=lambda p: (-p.priority, p.runnable_since or _MAX_DT, p.name))
         return runnable[:limit]
 
     def increment_retry(self, process_id: UUID) -> bool:
@@ -579,6 +580,13 @@ class LocalRepository:
         self._maybe_reload()
         for c in self._capabilities.values():
             if c.name == name:
+                return c
+        return None
+
+    def get_capability_by_handler(self, handler: str) -> Capability | None:
+        self._maybe_reload()
+        for c in self._capabilities.values():
+            if c.handler == handler:
                 return c
         return None
 
