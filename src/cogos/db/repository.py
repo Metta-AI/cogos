@@ -1210,6 +1210,46 @@ class Repository:
         )
 
     # ═══════════════════════════════════════════════════════════
+    # RESOURCES
+    # ═══════════════════════════════════════════════════════════
+
+    def upsert_resource(self, resource: Resource) -> str:
+        """Insert or update a resource by name."""
+        response = self._execute(
+            """INSERT INTO resources (name, resource_type, capacity, metadata)
+               VALUES (:name, :resource_type, :capacity, :metadata::jsonb)
+               ON CONFLICT (name)
+               DO UPDATE SET resource_type = EXCLUDED.resource_type,
+                            capacity = EXCLUDED.capacity,
+                            metadata = EXCLUDED.metadata
+               RETURNING name, created_at""",
+            [
+                self._param("name", resource.name),
+                self._param("resource_type", resource.resource_type.value),
+                self._param("capacity", resource.capacity),
+                self._param("metadata", resource.metadata),
+            ],
+        )
+        row = self._first_row(response)
+        if row:
+            resource.created_at = self._ts(row, "created_at")
+            return row["name"]
+        raise RuntimeError("Failed to upsert resource")
+
+    def list_resources(self) -> list[Resource]:
+        response = self._execute("SELECT * FROM resources ORDER BY name")
+        return [self._resource_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def _resource_from_row(self, row: dict) -> Resource:
+        return Resource(
+            name=row["name"],
+            resource_type=ResourceType(row["resource_type"]),
+            capacity=float(row.get("capacity", 1.0)),
+            metadata=self._json_field(row, "metadata", {}),
+            created_at=self._ts(row, "created_at"),
+        )
+
+    # ═══════════════════════════════════════════════════════════
     # RUNS
     # ═══════════════════════════════════════════════════════════
 
