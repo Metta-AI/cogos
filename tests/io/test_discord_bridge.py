@@ -85,6 +85,15 @@ def _make_bridge():
     bridge._pending_dms = {}
     bridge._alerted_dm_ids = set()
 
+    # Multi-tenant routing
+    bridge._configs = {"test-bot": MagicMock()}
+    bridge._repos = {}
+    bridge._sent_message_owners = {}
+    bridge._lifecycle = MagicMock()
+    bridge._router = MagicMock()
+    bridge._router.route.return_value = ["test-bot"]
+    bridge._router.available_cogents.return_value = ["test-bot"]
+
     # Minimal discord client mock
     bridge.client = MagicMock()
     bridge.client.user = MagicMock()
@@ -304,20 +313,20 @@ class TestBridgeInbound:
         bridge._start_typing.assert_called_once()
 
     async def test_relay_channel_message_writes_to_fine_grained_channel(self):
-        """Channel messages should also write to io:discord:message:<channel_id>."""
+        """Channel messages should also write to io:discord:test-bot:message:<channel_id>."""
         bridge = _make_bridge()
         repo = MagicMock()
         bridge._get_repo = MagicMock(return_value=repo)
 
         from cogos.db.models import Channel, ChannelType
 
-        catch_all = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
-        fine = Channel(name="io:discord:message:100", channel_type=ChannelType.NAMED)
+        catch_all = Channel(name="io:discord:test-bot:message", channel_type=ChannelType.NAMED)
+        fine = Channel(name="io:discord:test-bot:message:100", channel_type=ChannelType.NAMED)
 
         def _get_channel(name):
-            if name == "io:discord:message":
+            if name == "io:discord:test-bot:message":
                 return catch_all
-            if name == "io:discord:message:100":
+            if name == "io:discord:test-bot:message:100":
                 return fine
             return None
 
@@ -332,7 +341,7 @@ class TestBridgeInbound:
         assert fine.id in channels_written
 
     async def test_relay_dm_writes_to_fine_grained_channel(self):
-        """DM messages should also write to io:discord:dm:<author_id>."""
+        """DM messages should also write to io:discord:test-bot:dm:<author_id>."""
         bridge = _make_bridge()
         bridge._start_typing = MagicMock()
         repo = MagicMock()
@@ -340,13 +349,13 @@ class TestBridgeInbound:
 
         from cogos.db.models import Channel, ChannelType
 
-        catch_all = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
-        fine = Channel(name="io:discord:dm:42", channel_type=ChannelType.NAMED)
+        catch_all = Channel(name="io:discord:test-bot:dm", channel_type=ChannelType.NAMED)
+        fine = Channel(name="io:discord:test-bot:dm:42", channel_type=ChannelType.NAMED)
 
         def _get_channel(name):
-            if name == "io:discord:dm":
+            if name == "io:discord:test-bot:dm":
                 return catch_all
-            if name == "io:discord:dm:42":
+            if name == "io:discord:test-bot:dm:42":
                 return fine
             return None
 
@@ -368,15 +377,15 @@ class TestBridgeInbound:
 
         from cogos.db.models import Channel, ChannelType
 
-        catch_all = Channel(name="io:discord:message", channel_type=ChannelType.NAMED)
-        created_fine = Channel(name="io:discord:message:100", channel_type=ChannelType.NAMED)
+        catch_all = Channel(name="io:discord:test-bot:message", channel_type=ChannelType.NAMED)
+        created_fine = Channel(name="io:discord:test-bot:message:100", channel_type=ChannelType.NAMED)
 
         call_count = {"fine": 0}
 
         def _get_channel(name):
-            if name == "io:discord:message":
+            if name == "io:discord:test-bot:message":
                 return catch_all
-            if name == "io:discord:message:100":
+            if name == "io:discord:test-bot:message:100":
                 call_count["fine"] += 1
                 return None if call_count["fine"] == 1 else created_fine
             return None
@@ -387,7 +396,7 @@ class TestBridgeInbound:
         await bridge._relay_to_db(msg)
 
         # Should have upserted the fine-grained channel
-        upsert_calls = [c for c in repo.upsert_channel.call_args_list if c.args[0].name == "io:discord:message:100"]
+        upsert_calls = [c for c in repo.upsert_channel.call_args_list if c.args[0].name == "io:discord:test-bot:message:100"]
         assert len(upsert_calls) == 1
         assert repo.append_channel_message.call_count == 2
 
@@ -579,7 +588,7 @@ class TestBridgeOutbound:
         bridge.client.fetch_user = AsyncMock(return_value=mock_user)
 
         # Simulate a pending DM for this channel
-        bridge._pending_dms["444"] = ("msg123", "777", 1000.0)
+        bridge._pending_dms["444"] = ("msg123", "777", 1000.0, "test-bot")
 
         await bridge._handle_dm({"user_id": "777", "content": "reply"})
 
@@ -591,7 +600,7 @@ class TestBridgeOutbound:
         channel = AsyncMock()
         channel.id = 100
 
-        bridge._pending_dms["555"] = ("msg456", "42", 1000.0)
+        bridge._pending_dms["555"] = ("msg456", "42", 1000.0, "test-bot")
 
         await bridge._handle_message({"content": "reply", "channel": "555"}, channel)
 
@@ -620,9 +629,10 @@ class TestAlertingAndTimeout:
         await bridge._relay_to_db(msg)
 
         assert "101" in bridge._pending_dms
-        msg_id, author_id, _ = bridge._pending_dms["101"]
+        msg_id, author_id, _, cogent = bridge._pending_dms["101"]
         assert msg_id == "301"
         assert author_id == "42"
+        assert cogent == "test-bot"
 
     async def test_relay_dm_failure_creates_alert(self):
         """Failed inbound DM relay should create a critical alert."""
@@ -639,8 +649,9 @@ class TestAlertingAndTimeout:
 
         bridge._create_alert.assert_called_once()
         call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "critical"
-        assert call_args.args[1] == "discord:inbound_relay_failed"
+        assert call_args.args[0] == "test-bot"
+        assert call_args.args[1] == "critical"
+        assert call_args.args[2] == "discord:inbound_relay_failed"
 
     async def test_relay_channel_message_failure_no_alert(self):
         """Failed relay for regular channel messages should NOT create an alert."""
@@ -694,8 +705,9 @@ class TestAlertingAndTimeout:
         # Alert should be created with warning severity (not critical)
         bridge._create_alert.assert_called_once()
         call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "warning"
-        assert call_args.args[1] == "discord:send_permanent_failure"
+        assert call_args.args[0] == "test-bot"
+        assert call_args.args[1] == "warning"
+        assert call_args.args[2] == "discord:send_permanent_failure"
         # SQS message SHOULD be deleted (permanent failure, no retry)
         bridge._sqs_client.delete_message.assert_called_once()
 
@@ -738,8 +750,9 @@ class TestAlertingAndTimeout:
         # Alert should be created with warning severity
         bridge._create_alert.assert_called_once()
         call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "warning"
-        assert call_args.args[1] == "discord:send_permanent_failure"
+        assert call_args.args[0] == "test-bot"
+        assert call_args.args[1] == "warning"
+        assert call_args.args[2] == "discord:send_permanent_failure"
         # SQS message SHOULD be deleted (permanent failure, no retry)
         bridge._sqs_client.delete_message.assert_called_once()
 
@@ -779,8 +792,9 @@ class TestAlertingAndTimeout:
 
         bridge._create_alert.assert_called_once()
         call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "critical"
-        assert call_args.args[1] == "discord:send_failed"
+        assert call_args.args[0] == "test-bot"
+        assert call_args.args[1] == "critical"
+        assert call_args.args[2] == "discord:send_failed"
         # SQS message should NOT be deleted (for retry)
         bridge._sqs_client.delete_message.assert_not_called()
 
@@ -815,7 +829,7 @@ class TestAlertingAndTimeout:
         """Basic pending DM track/clear cycle."""
         bridge = _make_bridge()
 
-        bridge._track_pending_dm("ch1", "msg1", "user1")
+        bridge._track_pending_dm("ch1", "msg1", "user1", "test-bot")
         assert "ch1" in bridge._pending_dms
 
         bridge._clear_pending_dm("ch1")
@@ -832,7 +846,7 @@ class TestAlertingAndTimeout:
         repo = MagicMock()
         bridge._get_repo = MagicMock(return_value=repo)
 
-        bridge._create_alert("warning", "test:alert", "something happened", {"key": "val"})
+        bridge._create_alert("test-bot", "warning", "test:alert", "something happened", {"key": "val"})
 
         repo.create_alert.assert_called_once_with(
             severity="warning",
@@ -850,7 +864,7 @@ class TestAlertingAndTimeout:
         bridge._get_repo = MagicMock(return_value=repo)
 
         # Should not raise
-        bridge._create_alert("critical", "test:alert", "boom")
+        bridge._create_alert("test-bot", "critical", "test:alert", "boom")
 
     def test_sweep_alerts_on_timeout(self):
         """_sweep_pending_dms should alert when DM exceeds timeout."""
@@ -860,12 +874,13 @@ class TestAlertingAndTimeout:
         # Simulate a DM received 6 minutes ago (> 300s timeout)
         import time as _time
 
-        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360)
+        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360, "test-bot")
 
         bridge._sweep_pending_dms()
 
         bridge._create_alert.assert_called_once()
-        assert bridge._create_alert.call_args.args[1] == "discord:dm_timeout"
+        assert bridge._create_alert.call_args.args[0] == "test-bot"
+        assert bridge._create_alert.call_args.args[2] == "discord:dm_timeout"
         assert "msg1" in bridge._alerted_dm_ids
 
     def test_sweep_does_not_double_alert(self):
@@ -875,7 +890,7 @@ class TestAlertingAndTimeout:
 
         import time as _time
 
-        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360)
+        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 360, "test-bot")
 
         bridge._sweep_pending_dms()
         bridge._sweep_pending_dms()  # second sweep
@@ -890,7 +905,7 @@ class TestAlertingAndTimeout:
 
         import time as _time
 
-        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 10)  # 10s ago
+        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 10, "test-bot")  # 10s ago
 
         bridge._sweep_pending_dms()
 
@@ -904,7 +919,7 @@ class TestAlertingAndTimeout:
 
         import time as _time
 
-        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 4000)  # >1h ago
+        bridge._pending_dms["ch1"] = ("msg1", "user1", _time.time() - 4000, "test-bot")  # >1h ago
         bridge._alerted_dm_ids.add("msg1")
 
         bridge._sweep_pending_dms()

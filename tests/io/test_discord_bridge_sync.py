@@ -19,6 +19,17 @@ def _make_bridge():
     bridge._sqs_client = MagicMock()
     bridge._typing_tasks = {}
     bridge._repo = None
+    bridge._s3_client = None
+    bridge._blob_bucket = ""
+    bridge._pending_dms = {}
+    bridge._alerted_dm_ids = set()
+    bridge._configs = {"test-bot": MagicMock()}
+    bridge._repos = {}
+    bridge._sent_message_owners = {}
+    bridge._lifecycle = MagicMock()
+    bridge._router = MagicMock()
+    bridge._router.route.return_value = ["test-bot"]
+    bridge._router.available_cogents.return_value = ["test-bot"]
     bridge.client = MagicMock()
     bridge.client.user = MagicMock()
     bridge.client.user.id = 999
