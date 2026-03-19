@@ -1,6 +1,6 @@
 # cogos
 
-CogOS — an autonomous software engineering agent built on the Viable System Model.
+CogOS -- an autonomous software engineering agent built on the Viable System Model.
 
 ## Prerequisites
 
