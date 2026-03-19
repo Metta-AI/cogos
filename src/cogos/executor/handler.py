@@ -483,7 +483,7 @@ def handler(event: dict, context: Any = None) -> dict:
         else:
             repo.update_process_status(process.id, ProcessStatus.DISABLED)
 
-        logger.error(f"Run {run_id} failed: {e}")
+        logger.error(f"Run {run_id} failed: {e}", exc_info=True)
         result = {"statusCode": 500, "error": str(e)}
         web_request_id = event.get("web_request_id")
         if web_request_id:
@@ -533,7 +533,7 @@ def _execute_python_process(
         code = re.sub(r"@\{([^{}\n]+)\}", _replace, content)
 
     if not code:
-        run.result = "(no content to execute)"
+        run.result = {"output": "(no content to execute)"}
         return run
 
     # Set up sandbox with capability proxies — same as LLM path
