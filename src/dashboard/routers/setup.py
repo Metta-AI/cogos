@@ -608,59 +608,53 @@ def _build_asana_setup(name: str) -> ChannelSetup:
 
 
 def _build_profile_setup(name: str) -> ChannelSetup:
-    profile_key = "whoami/profile.md"
-    profile_exists = False
-    profile_content = ""
+    region = os.environ.get("AWS_REGION", "us-east-1")
 
-    try:
-        repo = get_repo()
-        from cogos.files.store import FileStore
-        store = FileStore(repo)
-        content = store.get_content(profile_key)
-        if content is not None:
-            profile_exists = True
-            profile_content = content
-    except Exception as exc:
-        logger.warning("Profile check failed for %s: %s", name, exc)
+    cogent_name = _read_secret_value(f"cogent/{name}/identity/name", region)
+    discord_handle = _read_secret_value(f"cogent/{name}/discord/handle", region)
+    discord_user_id = _read_secret_value(f"cogent/{name}/discord/user_id", region)
 
-    has_name = profile_exists and "(set " not in profile_content
+    has_name = bool(cogent_name)
+    has_discord = bool(discord_handle) and bool(discord_user_id)
+    all_set = has_name and has_discord
 
-    if has_name:
+    detail_lines = [
+        f"- **Cogent Name:** {cogent_name or '(not set)'}",
+        f"- **Discord Handle:** {discord_handle or '(not set)'}",
+        f"- **Discord User ID:** {discord_user_id or '(not set)'}",
+    ]
+
+    if all_set:
         edit_step = SetupStep(
             key="edit-profile",
             title="Edit cogent profile",
             description="Update name and Discord identity fields.",
             status=SetupStatus.READY,
-            detail=profile_content,
+            detail="\n".join(detail_lines),
         )
     else:
         edit_step = SetupStep(
             key="edit-profile",
             title="Edit cogent profile",
-            description="Set the cogent's name and Discord identity. These are auto-populated when the bridge connects, or you can set them manually below.",
+            description="Set the cogent's name and Discord identity. These are stored in Secrets Manager and read by capabilities at runtime.",
             status=SetupStatus.NEEDS_ACTION,
-            detail=profile_content if profile_content else (
-                "# Profile\n\n"
-                "- **Name:** (set on boot)\n"
-                "- **Discord User ID:** (set on boot)\n"
-                "- **Discord Username:** (set on boot)\n"
-            ),
+            detail="\n".join(detail_lines),
         )
 
-    status = SetupStatus.READY if has_name else SetupStatus.NEEDS_ACTION
+    status = SetupStatus.READY if all_set else SetupStatus.NEEDS_ACTION
     summary = (
-        "Cogent profile is configured."
-        if has_name
-        else "Start the Discord bridge to populate the cogent's name and Discord identity."
+        "Cogent identity is configured."
+        if all_set
+        else "Set the cogent's name and Discord identity in Secrets Manager."
     )
 
     return ChannelSetup(
         key="profile",
         title="Profile",
-        description="Configure the cogent's identity — name, manager, and creation date.",
+        description="Configure the cogent's identity — name and Discord handle/user ID.",
         status=status,
         summary=summary,
-        ready_for_test=has_name,
+        ready_for_test=all_set,
         steps=[edit_step],
     )
 
