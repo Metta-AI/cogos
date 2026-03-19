@@ -16,10 +16,15 @@ def main() -> None:
     ecr_repo_uri = app.node.try_get_context("ecr_repo_uri") or ""
     llm_provider = app.node.try_get_context("llm_provider") or "bedrock"
 
+    shared_db_cluster_arn = app.node.try_get_context("shared_db_cluster_arn") or ""
+    shared_db_secret_arn = app.node.try_get_context("shared_db_secret_arn") or ""
+
     config = CogtainerConfig(
         cogent_name=cogent_name,
         ecr_repo_uri=ecr_repo_uri,
         llm_provider=llm_provider,
+        shared_db_cluster_arn=shared_db_cluster_arn,
+        shared_db_secret_arn=shared_db_secret_arn,
     )
 
     CogtainerStack(

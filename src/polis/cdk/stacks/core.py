@@ -311,6 +311,9 @@ class PolisStack(cdk.Stack):
                 actions=[
                     "rds-data:ExecuteStatement",
                     "rds-data:BatchExecuteStatement",
+                    "rds-data:BeginTransaction",
+                    "rds-data:CommitTransaction",
+                    "rds-data:RollbackTransaction",
                 ],
                 resources=["*"],
             )
@@ -385,6 +388,9 @@ class PolisStack(cdk.Stack):
                 actions=[
                     "rds-data:ExecuteStatement",
                     "rds-data:BatchExecuteStatement",
+                    "rds-data:BeginTransaction",
+                    "rds-data:CommitTransaction",
+                    "rds-data:RollbackTransaction",
                 ],
                 resources=["*"],
             )

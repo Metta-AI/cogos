@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def main() -> None:
-    import boto3
+    from polis.aws import get_polis_session
 
-    session = boto3.Session(region_name="us-east-1")
+    session, _ = get_polis_session()
 
     # 1. Read all cogents from DynamoDB
     ddb = session.resource("dynamodb")
@@ -46,6 +46,14 @@ def main() -> None:
 
     rds = session.client("rds-data")
 
+    # Set AWS credentials so apply_schema() can access RDS in polis account
+    creds = session.get_credentials().get_frozen_credentials()
+    os.environ["AWS_ACCESS_KEY_ID"] = creds.access_key
+    os.environ["AWS_SECRET_ACCESS_KEY"] = creds.secret_key
+    if creds.token:
+        os.environ["AWS_SESSION_TOKEN"] = creds.token
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+
     # 3. Migrate each cogent
     for item in items:
         name = item.get("cogent_name", "<unknown>")
@@ -63,7 +71,7 @@ def main() -> None:
                     sql=f"CREATE DATABASE {db_name}",
                 )
                 print(f"  Created database {db_name}")
-            except rds.exceptions.BadRequestException as e:
+            except Exception as e:
                 if "already exists" in str(e):
                     print(f"  Database {db_name} already exists")
                 else:

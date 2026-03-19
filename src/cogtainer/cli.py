@@ -219,6 +219,20 @@ def create_cmd(ctx: click.Context, profile: str | None):
     except Exception:
         click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
 
+    # Resolve shared DB cluster from polis stack
+    shared_db_cluster_arn = ""
+    shared_db_secret_arn = ""
+    try:
+        cfn = polis_session.client("cloudformation")
+        polis_outputs = {
+            o["OutputKey"]: o["OutputValue"]
+            for o in cfn.describe_stacks(StackName="cogent-polis")["Stacks"][0].get("Outputs", [])
+        }
+        shared_db_cluster_arn = polis_outputs.get("SharedDbClusterArn", "")
+        shared_db_secret_arn = polis_outputs.get("SharedDbSecretArn", "")
+    except Exception:
+        click.echo("Warning: Could not resolve shared DB from polis stack.")
+
     click.echo(f"Deploying cogtainer for cogent-{name} in polis account...")
     if cert_arn:
         click.echo(f"  Certificate: {cert_arn}")
@@ -233,6 +247,8 @@ def create_cmd(ctx: click.Context, profile: str | None):
         "-c", f"cogent_name={name}",
         "-c", f"certificate_arn={cert_arn}",
         "-c", f"ecr_repo_uri={ecr_repo_uri}",
+        "-c", f"shared_db_cluster_arn={shared_db_cluster_arn}",
+        "-c", f"shared_db_secret_arn={shared_db_secret_arn}",
         "--app", "python -m cogtainer.cdk.app",
         "--require-approval", "never",
     ]
