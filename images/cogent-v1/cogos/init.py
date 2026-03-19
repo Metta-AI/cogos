@@ -3,27 +3,18 @@
 # Uses raw manifest dicts since the sandbox cannot import Python modules.
 
 # ── Capability lookup for dynamic spawning ────────────────────
-_cap_objects = {
-    "me": me, "procs": procs, "dir": dir, "file": file,
-    "discord": discord, "channels": channels, "secrets": secrets,
-    "stdlib": stdlib, "alerts": alerts, "blob": blob, "image": image,
-    "asana": asana, "email": email, "github": github,
-    "web_search": web_search, "web_fetch": web_fetch, "web": web,
-    "cogent": cogent,
-}
-# Optional capabilities — may not be injected into init's sandbox
-try:
-    _cap_objects["cog_registry"] = cog_registry
-except NameError:
-    pass
-try:
-    _cap_objects["coglet_runtime"] = coglet_runtime
-except NameError:
-    pass
-try:
-    _cap_objects["history"] = history
-except NameError:
-    pass
+# All capabilities are optional — only add those injected into init's sandbox.
+_cap_objects = {}
+for _name in [
+    "me", "procs", "dir", "file", "discord", "channels", "secrets",
+    "stdlib", "alerts", "blob", "image", "asana", "email", "github",
+    "web_search", "web_fetch", "web", "cogent", "cog_registry",
+    "coglet_runtime", "history",
+]:
+    try:
+        _cap_objects[_name] = eval(_name)
+    except NameError:
+        pass
 
 def _build_caps(cap_list, cog_name):
     """Build capabilities dict from a CogConfig capabilities list.
