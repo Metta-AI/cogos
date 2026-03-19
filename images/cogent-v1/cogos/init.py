@@ -133,6 +133,8 @@ for ch_name in [
     "io:web:request",
     "github:discover",
     "system:diagnostics",
+    "system:alerts",
+    "supervisor:alerts",
 ]:
     channels.create(ch_name)
 
