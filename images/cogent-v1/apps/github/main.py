@@ -8,11 +8,23 @@ print("github: channel=" + repr(channel) + " payload=" + repr(payload))
 # Source repo identity
 SOURCE_REPO = "metta-ai/cogents-v1"
 
+# Read coglet prompts
+scanner_content = file.read("apps/github/scanner/main.md")
+if hasattr(scanner_content, 'error'):
+    print("github: scanner prompt not found: " + str(scanner_content.error))
+    exit()
+discovery_content = file.read("apps/github/discovery/main.md")
+if hasattr(discovery_content, 'error'):
+    print("github: discovery prompt not found: " + str(discovery_content.error))
+    exit()
+
+print("github: coglet prompts loaded")
+
 # Create coglets
 scanner = cog.make_coglet("scanner", entrypoint="main.md",
-    files={"main.md": file.read("apps/github/scanner/main.md").content})
+    files={"main.md": scanner_content.content})
 discovery = cog.make_coglet("discovery", entrypoint="main.md",
-    files={"main.md": file.read("apps/github/discovery/main.md").content})
+    files={"main.md": discovery_content.content})
 
 worker_caps = {
     "github": None, "data": None, "dir": None,
@@ -29,6 +41,7 @@ if channel == "github:discover":
     run.process().send({"repo": repo})
 
 elif channel == "system:tick:hour" or not channel:
+    print("github: running scan")
     # Check if daily scan is due
     last_scan = data.get("last_scan.txt").read()
     today = stdlib.time.strftime("%Y-%m-%d")
@@ -39,8 +52,9 @@ elif channel == "system:tick:hour" or not channel:
     # Read repos.md and build scan list
     repos_content = data.get("repos.md").read()
     if hasattr(repos_content, 'error'):
-        print("github: repos.md not found")
+        print("github: repos.md not found: " + str(repos_content.error))
         exit()
+    print("github: repos.md loaded, parsing")
 
     scan_repos = []
     for line in repos_content.content.split("\n"):
@@ -50,10 +64,12 @@ elif channel == "system:tick:hour" or not channel:
         if line.endswith("/*"):
             # Org wildcard — list org repos
             org = line[:-2]
+            print("github: listing org " + org)
             org_repos = github.list_org_repos(org, limit=100)
             if hasattr(org_repos, 'error'):
                 print("WARN: list_org_repos " + org + " failed: " + org_repos.error)
                 continue
+            print("github: found " + str(len(org_repos)) + " repos in " + org)
             for r in org_repos:
                 scan_repos.append(r.full_name)
         else:
@@ -61,10 +77,12 @@ elif channel == "system:tick:hour" or not channel:
 
     # Deduplicate
     scan_repos = list(dict.fromkeys(scan_repos))
+    print("github: " + str(len(scan_repos)) + " repos to scan")
 
     # Spawn scanner coglet for each repo
     for repo in scan_repos:
         is_self = repo == SOURCE_REPO
+        print("github: scanning " + repo + (" (self)" if is_self else ""))
         run = coglet_runtime.run(scanner, procs, capability_overrides=worker_caps)
         run.process().send({"repo": repo, "is_self_repo": is_self})
 
@@ -73,4 +91,4 @@ elif channel == "system:tick:hour" or not channel:
     print("github: dispatched " + str(len(scan_repos)) + " scans")
 
 else:
-    print(f"github: unknown channel {channel!r}")
+    print("github: unknown channel " + repr(channel))
