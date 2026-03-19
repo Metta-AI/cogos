@@ -156,29 +156,91 @@ def _run_migrations(repo) -> None:
 @image.command()
 @click.argument("name", default="cogent-v1")
 @click.option("--clean", is_flag=True, help="Wipe all tables before loading")
+@click.option("--dry-run", is_flag=True, help="Resolve and verify versions, then exit")
+@click.option("--executor", "v_executor", default=None, help="Override executor version SHA")
+@click.option("--dashboard", "v_dashboard", default=None, help="Override dashboard version SHA")
+@click.option("--dashboard-frontend", "v_dashboard_frontend", default=None, help="Override dashboard frontend SHA")
+@click.option("--discord-bridge", "v_discord_bridge", default=None, help="Override discord bridge SHA")
+@click.option("--lambda", "v_lambda", default=None, help="Override lambda version SHA")
+@click.option("--cogos-version", "v_cogos", default=None, help="Override cogos version SHA")
 @click.pass_context
-def boot(ctx: click.Context, name: str, clean: bool):
+def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_frontend,
+         v_discord_bridge, v_lambda, v_cogos):
     """Boot CogOS from an image (default: cogent-v1)."""
     from cogos.image.apply import apply_image
     from cogos.image.spec import load_image
+    from cogos.image.versions import (
+        ArtifactMissing,
+        VersionManifest,
+        load_defaults,
+        resolve_versions,
+        verify_artifacts,
+        write_versions_to_filestore,
+    )
+    from cogos.files.store import FileStore
 
-    # Find image directory
     repo_root = Path(__file__).resolve().parents[3]
     image_dir = repo_root / "images" / name
     if not image_dir.is_dir():
         click.echo(f"Image not found: {image_dir}")
         return
 
-    repo = _repo()
+    # 1. Resolve versions
+    defaults = load_defaults(image_dir)
+    overrides = {}
+    for key, val in [("executor", v_executor), ("dashboard", v_dashboard),
+                     ("dashboard_frontend", v_dashboard_frontend),
+                     ("discord_bridge", v_discord_bridge),
+                     ("lambda", v_lambda), ("cogos", v_cogos)]:
+        if val is not None:
+            overrides[key] = val
 
+    components = resolve_versions(defaults, overrides)
+    click.echo("Resolved versions:")
+    for k, v in sorted(components.items()):
+        click.echo(f"  {k}: {v}")
+
+    # 2. Verify artifacts (skip for local dev)
+    is_local = all(v == "local" for v in components.values())
+    if not is_local:
+        click.echo("Verifying artifacts...")
+        try:
+            import boto3
+            session = boto3.Session()
+            verify_artifacts(
+                components,
+                ecr_client=session.client("ecr", region_name="us-east-1"),
+                s3_client=session.client("s3"),
+                artifacts_bucket="cogent-polis-ci-artifacts",
+            )
+            click.echo("All artifacts verified.")
+        except ArtifactMissing as e:
+            click.echo(f"ERROR: {e}")
+            return
+
+    if dry_run:
+        click.echo("Dry run complete.")
+        return
+
+    repo = _repo()
     _run_migrations(repo)
 
     if clean:
         repo.clear_all()
-        # Reset epoch so new processes match (meta table survives clear_all)
         repo.set_meta("reboot_epoch", "0")
         click.echo("Tables cleaned.")
 
+    # 3. Get epoch from DB
+    epoch = repo.reboot_epoch
+
+    # 4. Write versions manifest
+    cogent_name = os.environ.get("COGENT_NAME", name)
+    manifest = VersionManifest(epoch=epoch, cogent_name=cogent_name, components=components)
+    fs = FileStore(repo)
+    write_versions_to_filestore(manifest, fs)
+    click.echo(f"Wrote versions.json (epoch={epoch})")
+
+    # 5. Continue normal boot
     spec = load_image(image_dir)
     counts = apply_image(spec, repo)
 
@@ -187,9 +249,6 @@ def boot(ctx: click.Context, name: str, clean: bool):
         f"{counts['resources']} resources, {counts['files']} files, "
         f"{counts['processes']} processes, {counts['cron']} cron"
     )
-
-    # Dispatch note: init will be executed by the Lambda dispatcher.
-    # Use `cogent <name> cogos run-local --once` to dispatch locally.
 
 
 @image.command()
