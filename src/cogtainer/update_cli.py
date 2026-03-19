@@ -193,8 +193,9 @@ def update_all(ctx: click.Context, profile: str | None):
 
 @update.command("lambda")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--sha", default=None, help="Use pre-built lambda zip from CI (git SHA)")
 @click.pass_context
-def update_lambda(ctx: click.Context, profile: str | None):
+def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
     """Update Lambda function code."""
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
@@ -204,7 +205,26 @@ def update_lambda(ctx: click.Context, profile: str | None):
     click.echo(f"Updating cogent-{name} Lambda functions...")
     _check_ecr_image_for_commit(session, "executor")
 
-    zip_bytes = _package_lambda_code()
+    if sha:
+        full_sha = _resolve_commit_sha(sha)
+        s3_key = f"lambda/{full_sha}/lambda.zip"
+        click.echo(f"  Downloading pre-built lambda from CI ({sha[:8]})...")
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            _download_ci_artifact(session, s3_key, tmp_path)
+            with open(tmp_path, "rb") as f:
+                zip_bytes = f.read()
+        except Exception:
+            raise click.ClickException(
+                f"CI artifact not found: s3://{CI_ARTIFACTS_BUCKET}/{s3_key}\n"
+                f"Check CI: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-executor.yml"
+            )
+        finally:
+            os.unlink(tmp_path)
+    else:
+        zip_bytes = _package_lambda_code()
     pkg_time = time.monotonic() - t0
     click.echo(f"  Package: {len(zip_bytes) / 1024:.0f} KB ({pkg_time:.1f}s)")
 
@@ -485,6 +505,37 @@ def _upload_dashboard_tarball(
     return f"s3://{bucket}/{s3_key}"
 
 
+CI_ARTIFACTS_BUCKET = "cogent-polis-ci-artifacts"
+
+
+def _resolve_commit_sha(sha: str) -> str:
+    """Resolve a short or long SHA to the full SHA used in CI artifacts."""
+    import subprocess
+
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", sha], text=True
+        ).strip()
+    except Exception:
+        return sha
+
+
+def _download_ci_artifact(session: boto3.Session, s3_key: str, dest_path: str) -> None:
+    """Download a CI artifact from the shared bucket."""
+    s3_client = session.client("s3", region_name=DEFAULT_REGION)
+    s3_client.download_file(CI_ARTIFACTS_BUCKET, s3_key, dest_path)
+
+
+def _check_ci_artifact_exists(session: boto3.Session, s3_key: str) -> bool:
+    """Check if a CI artifact exists in the shared bucket."""
+    s3_client = session.client("s3", region_name=DEFAULT_REGION)
+    try:
+        s3_client.head_object(Bucket=CI_ARTIFACTS_BUCKET, Key=s3_key)
+        return True
+    except Exception:
+        return False
+
+
 def _wait_for_bucket(
     session: boto3.Session,
     bucket: str,
@@ -630,8 +681,9 @@ def _get_deployed_docker_version(ecs_client, service_arn: str) -> str:
 @update.command("dashboard")
 @click.option("--docker", is_flag=True, help="Force rebuild and push Docker image")
 @click.option("--skip-health", is_flag=True, help="Skip waiting for service stability")
+@click.option("--sha", default=None, help="Use pre-built frontend from CI (git SHA)")
 @click.pass_context
-def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
+def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: str | None):
     """Build frontend, upload to S3, and restart the dashboard.
 
     \b
@@ -662,7 +714,7 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
         return
 
     # --- Fast path: build frontend → S3 → restart ---
-    _build_and_upload_frontend(session, safe_name, project_root)
+    _build_and_upload_frontend(session, safe_name, project_root, sha=sha)
 
     # 4. Signal running container to reload frontend (no ECS restart needed)
     click.echo("  Reloading frontend...")
@@ -704,10 +756,25 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool):
     click.echo(f"  Dashboard: {click.style('deployed', fg='green')} ({time.monotonic() - t0:.1f}s)")
 
 
-def _build_and_upload_frontend(session, safe_name, project_root):
+def _build_and_upload_frontend(session, safe_name, project_root, sha: str | None = None):
     """Build Next.js frontend and upload tarball to S3."""
     # 1. Build Next.js and package standalone output
-    tarball_path, _size_mb = _build_dashboard_tarball(project_root)
+    if sha:
+        full_sha = _resolve_commit_sha(sha)
+        s3_key = f"dashboard/{full_sha}/frontend.tar.gz"
+        click.echo(f"  Downloading pre-built frontend from CI ({sha[:8]})...")
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+            tarball_path = tmp.name
+        try:
+            _download_ci_artifact(session, s3_key, tarball_path)
+        except Exception:
+            raise click.ClickException(
+                f"CI artifact not found: s3://{CI_ARTIFACTS_BUCKET}/{s3_key}\n"
+                f"Check CI: gh run list --repo Metta-AI/cogents-v1 --workflow docker-build-dashboard.yml"
+            )
+    else:
+        tarball_path, _size_mb = _build_dashboard_tarball(project_root)
 
     # 2. Upload to S3
     click.echo("  Uploading to S3...")
