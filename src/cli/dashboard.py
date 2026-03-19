@@ -15,7 +15,7 @@ from cli.local_dev import apply_local_checkout_env, repo_root, resolve_dashboard
 from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV, resolve_org_profile
 from polis.config import PolisConfig
 
-_COGENT_DIR = Path.home() / ".cogents"
+_COGENT_DIR = Path.home() / ".cogos"
 _REPO_ROOT = repo_root()
 _FRONTEND_DIR = _REPO_ROOT / "dashboard" / "frontend"
 _PROFILE_HELP = f"AWS profile for DB lookup (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
