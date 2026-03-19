@@ -9,7 +9,7 @@ _cap_objects = {
     "stdlib": stdlib, "alerts": alerts, "blob": blob, "image": image,
     "asana": asana, "email": email, "github": github,
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
-    "cogent": cogent, "history": history,
+    "cogent": cogent,
 }
 # Optional capabilities — may not be injected into init's sandbox
 try:
@@ -18,6 +18,10 @@ except NameError:
     pass
 try:
     _cap_objects["coglet_runtime"] = coglet_runtime
+except NameError:
+    pass
+try:
+    _cap_objects["history"] = history
 except NameError:
     pass
 
