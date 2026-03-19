@@ -1,6 +1,6 @@
 # cogos
 
-CogOS runtime, infrastructure, and dashboard code.
+Runtime, infrastructure, and dashboard code for CogOS.
 
 ## Local Quick Start
 
