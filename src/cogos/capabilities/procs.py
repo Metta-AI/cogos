@@ -191,6 +191,8 @@ class ProcsCapability(Capability):
             if cap_instance is not None:
                 cap_type_name = type(cap_instance).__name__.lower().replace("capability", "")
                 cap = self.repo.get_capability_by_name(cap_type_name)
+                if not cap:
+                    cap = self.repo.get_capability_by_name(grant_name)
                 child_scope = getattr(cap_instance, "_scope", None) or None
             else:
                 # Fallback: resolve capability type by grant name
