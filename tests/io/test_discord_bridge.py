@@ -649,6 +649,90 @@ class TestAlertingAndTimeout:
 
         bridge._create_alert.assert_not_called()
 
+    async def test_poll_replies_discards_on_forbidden(self):
+        """Forbidden errors (permanent) should discard the message and create warning alert."""
+        bridge = _make_bridge()
+        bridge._create_alert = MagicMock()
+
+        sqs_msg = {
+            "MessageId": "sqs-1",
+            "ReceiptHandle": "rh-1",
+            "Body": json.dumps({
+                "type": "dm",
+                "user_id": "777",
+                "content": "hi",
+                "_meta": {"process_id": "p1", "trace_id": "t1"},
+            }),
+        }
+
+        # _send_reply raises Forbidden (user has DMs disabled)
+        resp = MagicMock()
+        resp.status = 403
+        bridge._send_reply = AsyncMock(
+            side_effect=discord.errors.Forbidden(resp, "Cannot send messages to this user")
+        )
+
+        call_count = {"n": 0}
+        def _receive(**kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return {"Messages": [sqs_msg]}
+            raise KeyboardInterrupt("stop")
+
+        bridge._sqs_client.receive_message.side_effect = _receive
+
+        with pytest.raises(KeyboardInterrupt):
+            await bridge._poll_replies()
+
+        # Alert should be created with warning severity (not critical)
+        bridge._create_alert.assert_called_once()
+        call_args = bridge._create_alert.call_args
+        assert call_args.args[0] == "warning"
+        assert call_args.args[1] == "discord:send_permanent_failure"
+        # SQS message SHOULD be deleted (permanent failure, no retry)
+        bridge._sqs_client.delete_message.assert_called_once()
+
+    async def test_poll_replies_discards_on_invalid_channel_id(self):
+        """ValueError from invalid channel IDs should discard the message."""
+        bridge = _make_bridge()
+        bridge._create_alert = MagicMock()
+
+        sqs_msg = {
+            "MessageId": "sqs-1",
+            "ReceiptHandle": "rh-1",
+            "Body": json.dumps({
+                "type": "message",
+                "channel": "fake-dm-channel-999",
+                "content": "hi",
+                "_meta": {"process_id": "p1", "trace_id": "t1"},
+            }),
+        }
+
+        # _send_reply raises ValueError from int("fake-dm-channel-999")
+        bridge._send_reply = AsyncMock(
+            side_effect=ValueError("invalid literal for int() with base 10: 'fake-dm-channel-999'")
+        )
+
+        call_count = {"n": 0}
+        def _receive(**kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return {"Messages": [sqs_msg]}
+            raise KeyboardInterrupt("stop")
+
+        bridge._sqs_client.receive_message.side_effect = _receive
+
+        with pytest.raises(KeyboardInterrupt):
+            await bridge._poll_replies()
+
+        # Alert should be created with warning severity
+        bridge._create_alert.assert_called_once()
+        call_args = bridge._create_alert.call_args
+        assert call_args.args[0] == "warning"
+        assert call_args.args[1] == "discord:send_permanent_failure"
+        # SQS message SHOULD be deleted (permanent failure, no retry)
+        bridge._sqs_client.delete_message.assert_called_once()
+
     async def test_poll_replies_alerts_on_send_failure(self):
         """SQS reply send failure should create an alert."""
         bridge = _make_bridge()

@@ -494,6 +494,26 @@ class DiscordBridge:
                         await self._send_reply(msg)
                     except discord.errors.NotFound:
                         logger.error("Channel not found for reply %s, discarding", msg.get("MessageId"))
+                    except (discord.errors.Forbidden, ValueError) as exc:
+                        logger.error("Permanent failure sending reply %s (discarding): %s", msg.get("MessageId"), exc)
+                        try:
+                            body = json.loads(msg.get("Body", "{}"))
+                            meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+                            self._create_alert(
+                                "warning",
+                                "discord:send_permanent_failure",
+                                f"Cannot send {body.get('type', 'message')} — {type(exc).__name__}: {exc} (message discarded)",
+                                {
+                                    "sqs_message_id": msg.get("MessageId"),
+                                    "msg_type": body.get("type", "message"),
+                                    "target": body.get("channel") or body.get("user_id"),
+                                    "process_id": meta.get("process_id"),
+                                    "trace_id": meta.get("trace_id"),
+                                    "error": str(exc)[:500],
+                                },
+                            )
+                        except Exception:
+                            logger.debug("Failed to create permanent-failure alert", exc_info=True)
                     except Exception:
                         logger.exception("Failed to send reply: %s", msg.get("MessageId"))
                         try:
