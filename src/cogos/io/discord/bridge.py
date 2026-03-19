@@ -124,7 +124,8 @@ class DiscordBridge:
 
         self._sqs_client = boto3.client("sqs", region_name=self.region)
         self._repo = None  # lazy init
-        self._blob_bucket = os.environ.get("SESSIONS_BUCKET", "")
+        from cogos import get_sessions_bucket
+        self._blob_bucket = get_sessions_bucket()
         self._s3_client = boto3.client("s3", region_name=self.region) if self._blob_bucket else None
 
         # Typing indicator tasks keyed by channel_id

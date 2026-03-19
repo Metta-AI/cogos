@@ -77,3 +77,20 @@ def test_download_scope_ops_blocked():
     scoped = cap.scope(ops=["upload"])
     result = scoped.download("blobs/abc/test.txt")
     assert isinstance(result, BlobError)
+
+
+def test_bucket_derived_from_cogent_name(monkeypatch):
+    """When SESSIONS_BUCKET is unset, derive bucket from COGENT_NAME."""
+    monkeypatch.delenv("SESSIONS_BUCKET", raising=False)
+    monkeypatch.setenv("COGENT_NAME", "dr.alpha")
+    repo = MagicMock()
+    cap = BlobCapability(repo, uuid4())
+    assert cap._bucket == "cogent-dr-alpha-cogtainer-sessions"
+
+
+def test_bucket_from_env(monkeypatch):
+    """When SESSIONS_BUCKET is set, use it directly."""
+    monkeypatch.setenv("SESSIONS_BUCKET", "my-custom-bucket")
+    repo = MagicMock()
+    cap = BlobCapability(repo, uuid4())
+    assert cap._bucket == "my-custom-bucket"

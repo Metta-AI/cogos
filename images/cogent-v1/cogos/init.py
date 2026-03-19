@@ -9,7 +9,7 @@ _cap_objects = {
     "stdlib": stdlib, "alerts": alerts, "blob": blob, "image": image,
     "asana": asana, "email": email, "github": github,
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
-    "cogent": cogent,
+    "cogent": cogent, "history": history,
 }
 # Optional capabilities — may not be injected into init's sandbox
 try:

@@ -46,7 +46,8 @@ class BlobCapability(Capability):
 
     def __init__(self, repo, process_id, run_id=None):
         super().__init__(repo, process_id, run_id)
-        self._bucket = os.environ.get("SESSIONS_BUCKET", "")
+        from cogos import get_sessions_bucket
+        self._bucket = get_sessions_bucket()
         self._s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
     def _narrow(self, existing: dict, requested: dict) -> dict:

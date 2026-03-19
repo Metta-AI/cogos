@@ -174,7 +174,8 @@ def create_app() -> FastAPI:
         """Serve blob content from S3 — used for AI-generated images in websites."""
         import boto3
         repo = __import__("dashboard.db", fromlist=["get_repo"]).get_repo()
-        bucket = os.environ.get("SESSIONS_BUCKET", "")
+        from cogos import get_sessions_bucket
+        bucket = get_sessions_bucket()
         if not bucket:
             return JSONResponse(status_code=503, content={"detail": "blob storage not configured"})
         # path may already start with "blobs/" (from ref.key) or be bare
