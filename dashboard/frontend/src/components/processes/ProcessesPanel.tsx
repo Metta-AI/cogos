@@ -2384,8 +2384,17 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     <Badge variant={STATUS_VARIANT[proc.status] || "neutral"}>{proc.status}</Badge>
                   )}
                 </span>
-                <span className="text-[11px] text-red-400 truncate" title={lastRun?.error || ""}>
-                  {lastRun?.error ? (lastRun.error.length > 40 ? lastRun.error.slice(0, 40) + "…" : lastRun.error) : ""}
+                <span className="text-[11px] truncate flex items-center gap-2">
+                  {lastRun ? (
+                    <span className="text-[var(--text-muted)] flex-shrink-0">{fmtTimestamp(lastRun.created_at)}</span>
+                  ) : (
+                    <span className="text-[var(--text-muted)]">never</span>
+                  )}
+                  {lastRun?.error && (
+                    <span className="text-red-400 truncate" title={lastRun.error}>
+                      {lastRun.error.length > 30 ? lastRun.error.slice(0, 30) + "…" : lastRun.error}
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center justify-end gap-1">
                   <span className="inline-flex items-center justify-center w-[22px] h-[18px]">
