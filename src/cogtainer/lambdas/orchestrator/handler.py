@@ -265,6 +265,14 @@ def _dispatch_ecs(config, ecs_client, payload: str, program_name: str,
     if session_id:
         env_vars.append({"name": "CLAUDE_CODE_SESSION", "value": session_id})
 
+    container_overrides = {
+        "name": "Executor",
+        "environment": env_vars,
+    }
+
+    if config.executor_image_override:
+        container_overrides["image"] = config.executor_image_override
+
     ecs_client.run_task(
         cluster=config.ecs_cluster_arn,
         taskDefinition=config.ecs_task_definition,
@@ -278,12 +286,7 @@ def _dispatch_ecs(config, ecs_client, payload: str, program_name: str,
             }
         },
         overrides={
-            "containerOverrides": [
-                {
-                    "name": "Executor",
-                    "environment": env_vars,
-                }
-            ]
+            "containerOverrides": [container_overrides]
         },
     )
     logger.info(f"Dispatched to ECS: {program_name} (session={session_id})")

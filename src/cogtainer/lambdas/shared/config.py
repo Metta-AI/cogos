@@ -21,6 +21,7 @@ class LambdaConfig:
     ecs_subnets: str = ""
     ecs_security_group: str = ""
     sandbox_function_name: str = ""
+    executor_image_override: str | None = None
 
 
 _config: LambdaConfig | None = None
@@ -44,5 +45,6 @@ def get_config() -> LambdaConfig:
             ecs_subnets=os.environ.get("ECS_SUBNETS", ""),
             ecs_security_group=os.environ.get("ECS_SECURITY_GROUP", ""),
             sandbox_function_name=os.environ.get("SANDBOX_FUNCTION_NAME", ""),
+            executor_image_override=os.environ.get("EXECUTOR_IMAGE_OVERRIDE"),
         )
     return _config
