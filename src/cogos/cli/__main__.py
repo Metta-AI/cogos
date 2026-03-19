@@ -330,7 +330,8 @@ def process_create(name: str, mode: str, content: str,
 @process.command("run")
 @click.argument("name")
 @click.option("--local", is_flag=True, help="Run locally via Bedrock (no Lambda)")
-def process_run(name: str, local: bool):
+@click.option("--event", default=None, help="JSON event data (e.g. '{\"channel_name\":\"system:tick:hour\"}')")
+def process_run(name: str, local: bool, event: str | None):
     """Trigger a process to run."""
     repo = _repo()
     p = repo.get_process_by_name(name)
@@ -351,13 +352,26 @@ def process_run(name: str, local: bool):
         click.echo(f"Starting local run {run.id} for {name}...")
 
         bedrock = _bedrock_client()
-        run = run_and_complete(p, {}, run, config, repo, bedrock_client=bedrock)
+        event_data = json.loads(event) if event else {}
+        try:
+            run = run_and_complete(p, event_data, run, config, repo, bedrock_client=bedrock)
+        except Exception as exc:
+            import traceback
+            click.echo(f"Exception during execution:\n{traceback.format_exc()}")
+            run.status = RunStatus.FAILED
+            run.error = str(exc)
 
+        click.echo(f"  Run status: {run.status}")
         if run.status == RunStatus.COMPLETED:
             click.echo(f"Run completed in {run.duration_ms or 0}ms")
             click.echo(f"  Tokens: {run.tokens_in} in, {run.tokens_out} out")
+            if run.result:
+                click.echo(f"  Output: {json.dumps(run.result)[:500]}")
         else:
-            click.echo(f"Run failed: {run.error}")
+            # Re-read from DB to get error message
+            db_run = repo.get_run(run.id)
+            error = (db_run.error if db_run else None) or run.error or "(unknown)"
+            click.echo(f"Run failed: {error}")
     else:
         # Mark as runnable for scheduler to pick up
         from cogos.db.models import ProcessStatus
