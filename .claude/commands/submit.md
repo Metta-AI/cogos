@@ -22,5 +22,6 @@ Pull, merge, test, push, and announce to Discord #cogents.
      -d "{\"username\": \"cogents.2\", \"content\": \"$SUMMARY\"}"
    ```
    - Keep the message under 2000 characters
+   - If the work is tied to an Asana task, include it as a hyperlink: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
    - If the webhook secret doesn't exist, try `discord/agent-webhook-url` as fallback
 7. Print the summary locally so the user can see what was announced
