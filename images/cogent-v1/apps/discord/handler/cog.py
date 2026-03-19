@@ -6,7 +6,7 @@ config = CogConfig(
     emoji="💬",
     capabilities=[
         "cogent", "discord", "channels", "stdlib", "procs", "file",
-        "image", "blob", "secrets", "web",
+        "image", "blob", "secrets", "web", "github",
     ],
     handlers=[
         "io:discord:dm",
