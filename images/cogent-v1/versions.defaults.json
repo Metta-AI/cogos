@@ -4,5 +4,5 @@
   "dashboard_frontend": "local",
   "discord_bridge": "local",
   "lambda": "a6363c89b7747916a7a431784fd0651134cbd8c8",
-  "cogos": "local"
+  "cogos": "a6363c89b7747916a7a431784fd0651134cbd8c8"
 }
