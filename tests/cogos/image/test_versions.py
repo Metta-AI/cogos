@@ -2,7 +2,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock
-from cogos.image.versions import VersionManifest, resolve_versions, verify_artifacts, ArtifactMissing, load_defaults
+from cogos.image.versions import VersionManifest, resolve_versions, verify_artifacts, ArtifactMissing, load_defaults, write_versions_to_filestore
 
 
 def test_manifest_roundtrip():
@@ -108,3 +108,19 @@ def test_load_defaults_missing(tmp_path):
     result = load_defaults(tmp_path)
     for v in result.values():
         assert v == "local"
+
+
+def test_write_versions_to_filestore():
+    manifest = VersionManifest(
+        epoch=1, cogent_name="test",
+        components={"executor": "aaa", "dashboard": "bbb", "dashboard_frontend": "ccc",
+                     "discord_bridge": "ddd", "lambda": "eee", "cogos": "fff"},
+    )
+    fs = MagicMock()
+    write_versions_to_filestore(manifest, fs)
+    fs.upsert.assert_called_once()
+    call_args = fs.upsert.call_args
+    assert call_args[0][0] == "mnt/boot/versions.json"
+    written = json.loads(call_args[0][1])
+    assert written["epoch"] == 1
+    assert written["components"]["executor"] == "aaa"

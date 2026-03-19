@@ -96,3 +96,7 @@ def load_defaults(image_dir: Path) -> dict[str, str]:
     if defaults_file.exists():
         return json.loads(defaults_file.read_text())
     return {c: "local" for c in KNOWN_COMPONENTS}
+
+
+def write_versions_to_filestore(manifest: VersionManifest, fs) -> None:
+    fs.upsert("mnt/boot/versions.json", manifest.to_json(), source="boot")
