@@ -197,6 +197,106 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     assert repo._deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
 
 
+def test_daemon_suspended_after_consecutive_failures(monkeypatch, tmp_path):
+    """Daemon should be suspended after 3 consecutive failed runs."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="flaky-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor_handler, "execute_process", _fail)
+
+    # Run and fail 3 times — daemon should be suspended on the 3rd
+    for i in range(3):
+        result = executor_handler.handler(
+            {"process_id": str(process.id)},
+            None,
+        )
+        assert result["statusCode"] == 500
+
+    proc = repo.get_process(process.id)
+    assert proc.status == ProcessStatus.SUSPENDED
+
+    # Should have created a critical alert
+    alerts = repo.list_alerts()
+    suspension_alerts = [a for a in alerts if a.alert_type == "process:daemon_suspended"]
+    assert len(suspension_alerts) == 1
+    assert suspension_alerts[0].metadata["process_name"] == "flaky-daemon"
+
+
+def test_daemon_not_suspended_with_fewer_than_threshold_failures(monkeypatch, tmp_path):
+    """Daemon should NOT be suspended after fewer than 3 consecutive failures."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="recovering-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor_handler, "execute_process", _fail)
+
+    # Fail only twice — daemon should stay waiting
+    for i in range(2):
+        executor_handler.handler(
+            {"process_id": str(process.id)},
+            None,
+        )
+
+    proc = repo.get_process(process.id)
+    assert proc.status == ProcessStatus.WAITING
+
+
+def test_daemon_not_suspended_if_success_breaks_streak(monkeypatch, tmp_path):
+    """A successful run between failures should reset the consecutive count."""
+    repo = _repo(tmp_path)
+    process = Process(
+        name="mixed-daemon",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNING,
+        runner="lambda",
+    )
+    repo.upsert_process(process)
+
+    monkeypatch.setattr(executor_handler, "get_repo", lambda config=None: repo)
+
+    fail_count = {"n": 0}
+
+    def _sometimes_fail(*args, **kwargs):
+        fail_count["n"] += 1
+        if fail_count["n"] == 2:
+            # Second call succeeds
+            return args[2]  # return the run
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor_handler, "execute_process", _sometimes_fail)
+
+    # Fail, succeed, fail — should NOT suspend (no 3 consecutive failures)
+    for i in range(3):
+        executor_handler.handler(
+            {"process_id": str(process.id)},
+            None,
+        )
+
+    proc = repo.get_process(process.id)
+    assert proc.status != ProcessStatus.SUSPENDED
+
+
 def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
     repo = _repo(tmp_path)
     process = Process(

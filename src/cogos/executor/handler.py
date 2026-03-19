@@ -388,18 +388,42 @@ def handler(event: dict, context: Any = None) -> dict:
         if current and current.status in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
             pass  # someone disabled/suspended it while running
         elif process.mode.value == "daemon":
-            next_status = (
-                ProcessStatus.RUNNABLE
-                if repo.has_pending_deliveries(process.id)
-                else ProcessStatus.WAITING
-            )
-            repo.update_process_status(process.id, next_status)
-            logger.warning(
-                "Daemon process %s failed run %s but remains %s",
-                process.name,
-                run.id,
-                next_status.value,
-            )
+            # Circuit breaker: suspend daemon after consecutive failures
+            if _daemon_should_suspend(repo, process):
+                repo.update_process_status(process.id, ProcessStatus.SUSPENDED)
+                logger.error(
+                    "Daemon %s suspended after consecutive failures (run %s)",
+                    process.name,
+                    run.id,
+                )
+                try:
+                    repo.create_alert(
+                        severity="critical",
+                        alert_type="process:daemon_suspended",
+                        source="executor",
+                        message=f"Daemon '{process.name}' suspended after consecutive failures: {str(e)[:300]}",
+                        metadata={
+                            "process_id": str(process.id),
+                            "process_name": process.name,
+                            "run_id": str(run.id),
+                            "error": str(e)[:500],
+                        },
+                    )
+                except Exception:
+                    logger.debug("Could not create suspension alert for %s", process.name)
+            else:
+                next_status = (
+                    ProcessStatus.RUNNABLE
+                    if repo.has_pending_deliveries(process.id)
+                    else ProcessStatus.WAITING
+                )
+                repo.update_process_status(process.id, next_status)
+                logger.warning(
+                    "Daemon process %s failed run %s but remains %s",
+                    process.name,
+                    run.id,
+                    next_status.value,
+                )
         elif process.retry_count < process.max_retries:
             repo.increment_retry(process.id)
             repo.update_process_status(process.id, ProcessStatus.RUNNABLE)
@@ -909,6 +933,21 @@ def _is_supported_tool_name(name: object) -> bool:
         and name in SUPPORTED_TOOL_NAMES
     )
 
+
+
+_DAEMON_CONSECUTIVE_FAILURE_LIMIT = 3
+
+
+def _daemon_should_suspend(repo: Repository, process: Process) -> bool:
+    """Check if a daemon has hit the consecutive failure limit.
+
+    Looks at the most recent runs for this process and returns True if
+    the last N runs (including the current one that just failed) all failed.
+    """
+    recent_runs = repo.list_runs(process_id=process.id, limit=_DAEMON_CONSECUTIVE_FAILURE_LIMIT)
+    if len(recent_runs) < _DAEMON_CONSECUTIVE_FAILURE_LIMIT:
+        return False
+    return all(r.status in (RunStatus.FAILED, RunStatus.THROTTLED) for r in recent_runs)
 
 
 def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -> None:
