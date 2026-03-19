@@ -27,7 +27,7 @@ if channel == "github:discover":
     run = coglet_runtime.run(discovery, procs, capability_overrides=worker_caps)
     run.process().send({"repo": repo})
 
-elif channel == "system:tick:hour":
+elif channel == "system:tick:hour" or not channel:
     # Check if daily scan is due
     last_scan = data.get("last_scan.txt").read()
     today = stdlib.time.strftime("%Y-%m-%d")
