@@ -178,3 +178,6 @@ cdk.out/
 cdk.context.json
 dogfood-output*/
 cdk.out.destroy/
+
+# Git worktrees
+.worktrees/
