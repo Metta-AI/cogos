@@ -72,18 +72,16 @@ def handler(event, context):
             persona = _read_discord_persona(sm_client, cogent_name)
             if persona:
                 item["discord_persona"] = persona
-            # Include DB connection info from CloudFormation outputs or ECS task definition
+            # Include DB connection info from CloudFormation outputs
             outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
-            if outputs.get("ClusterArn"):
+            cluster_arn = outputs.get("DbClusterArn") or outputs.get("ClusterArn") or ""
+            secret_arn = outputs.get("DbSecretArn") or outputs.get("SecretArn") or ""
+            if cluster_arn:
                 item["database"] = {
-                    "cluster_arn": outputs["ClusterArn"],
-                    "secret_arn": outputs.get("SecretArn", ""),
-                    "db_name": "cogent",
+                    "cluster_arn": cluster_arn,
+                    "secret_arn": secret_arn,
+                    "db_name": f"cogent_{cogent_name.replace('.', '-').replace('-', '_')}",
                 }
-            elif not item.get("database", {}).get("cluster_arn"):
-                db_info = _resolve_db_from_ecs(ecs, cogent_name)
-                if db_info:
-                    item["database"] = db_info
             items.append(item)
             seen_names.add(cogent_name)
         except Exception:
@@ -126,25 +124,6 @@ def _load_existing_status_items(table) -> list[dict]:
         params["ExclusiveStartKey"] = last_key
     return items
 
-
-def _resolve_db_from_ecs(ecs_client, cogent_name: str) -> dict | None:
-    """Resolve DB connection info from existing ECS task definitions."""
-    safe_name = cogent_name.replace(".", "-")
-    for family in [f"cogent-{safe_name}-discord", f"cogent-{safe_name}-executor"]:
-        try:
-            resp = ecs_client.describe_task_definition(taskDefinition=family)
-            for container in resp["taskDefinition"]["containerDefinitions"]:
-                env = {e["name"]: e["value"] for e in container.get("environment", [])}
-                cluster_arn = env.get("DB_RESOURCE_ARN", "")
-                if cluster_arn:
-                    return {
-                        "cluster_arn": cluster_arn,
-                        "secret_arn": env.get("DB_SECRET_ARN", ""),
-                        "db_name": env.get("DB_NAME", "cogent"),
-                    }
-        except Exception:
-            continue
-    return None
 
 
 def _read_discord_persona(sm_client, cogent_name: str) -> dict | None:

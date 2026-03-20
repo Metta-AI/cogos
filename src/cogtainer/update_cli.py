@@ -942,6 +942,7 @@ def update_stack(ctx: click.Context, profile: str | None):
     # Look up certificate ARN from polis account
     set_profile(profile)
     session, _ = get_polis_session()
+    cf = session.client("cloudformation", region_name=DEFAULT_REGION)
     acm = session.client("acm", region_name=DEFAULT_REGION)
     cert_arn = ""
     domain = f"{safe_name}.{PolisConfig().domain}"
@@ -959,17 +960,13 @@ def update_stack(ctx: click.Context, profile: str | None):
     except Exception:
         click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
 
-    # Resolve shared DB ARNs from DynamoDB cogent-status table
-    shared_db_cluster_arn = ""
-    shared_db_secret_arn = ""
-    try:
-        ddb = session.resource("dynamodb", region_name=DEFAULT_REGION)
-        item = ddb.Table("cogent-status").get_item(Key={"cogent_name": name}).get("Item", {})
-        db_info = item.get("database", {})
-        shared_db_cluster_arn = db_info.get("cluster_arn", "")
-        shared_db_secret_arn = db_info.get("secret_arn", "")
-    except Exception:
-        click.echo("Warning: Could not resolve shared DB from cogent-status table.")
+    # Resolve shared infra from polis stack outputs (source of truth)
+    polis_stack = cf.describe_stacks(StackName=naming.polis_stack_name())["Stacks"][0]
+    polis_outputs = {o["OutputKey"]: o["OutputValue"] for o in polis_stack.get("Outputs", [])}
+    shared_db_cluster_arn = polis_outputs.get("SharedDbClusterArn", "")
+    shared_db_secret_arn = polis_outputs.get("SharedDbSecretArn", "")
+    shared_alb_listener_arn = polis_outputs.get("SharedHttpsListenerArn", "")
+    shared_alb_sg_id = polis_outputs.get("SharedAlbSecurityGroupId", "")
 
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [
@@ -987,6 +984,10 @@ def update_stack(ctx: click.Context, profile: str | None):
         f"shared_db_cluster_arn={shared_db_cluster_arn}",
         "-c",
         f"shared_db_secret_arn={shared_db_secret_arn}",
+        "-c",
+        f"shared_alb_listener_arn={shared_alb_listener_arn}",
+        "-c",
+        f"shared_alb_security_group_id={shared_alb_sg_id}",
         "--app",
         "python -m polis.cdk.app",
         "--require-approval",

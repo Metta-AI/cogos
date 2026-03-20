@@ -175,10 +175,14 @@ class CogentStack(Stack):
         )
 
         # -----------------------------------------------------------------
-        # 2. S3 Sessions Bucket (import existing bucket if it already exists)
+        # 2. S3 Sessions Bucket
         # -----------------------------------------------------------------
-        self.sessions_bucket = s3.Bucket.from_bucket_name(
-            self, "SessionsBucket", naming.bucket_name(cogent_name),
+        self.sessions_bucket = s3.Bucket(
+            self,
+            "SessionsBucket",
+            bucket_name=naming.bucket_name(cogent_name),
+            removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
         )
 
         # Grant the cogent role read/write on the sessions bucket
@@ -267,6 +271,8 @@ class CogentStack(Stack):
         # -----------------------------------------------------------------
         CfnOutput(self, "CogentName", value=cogent_name)
         CfnOutput(self, "CogentRoleArn", value=self.cogent_role.role_arn)
+        CfnOutput(self, "DbClusterArn", value=shared_db_cluster_arn)
+        CfnOutput(self, "DbSecretArn", value=shared_db_secret_arn)
         CfnOutput(self, "SessionsBucketName", value=self.sessions_bucket.bucket_name)
         CfnOutput(self, "IngressQueueUrl", value=self.ingress_queue.queue_url)
         if self.dashboard_url:

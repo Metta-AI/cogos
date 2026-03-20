@@ -186,16 +186,14 @@ class CogentStack(Stack):
         # 2. S3 Sessions Bucket
         # -----------------------------------------------------------------
         bucket_name = f"cogtainer-{cogtainer_name}-{safe_name}-sessions"
-        # Use explicit IAM policy for S3 (from_bucket_name doesn't support grant)
-        self.cogent_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-                resources=[
-                    f"arn:aws:s3:::{bucket_name}",
-                    f"arn:aws:s3:::{bucket_name}/*",
-                ],
-            )
+        self.sessions_bucket = s3.Bucket(
+            self,
+            "SessionsBucket",
+            bucket_name=bucket_name,
+            removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
         )
+        self.sessions_bucket.grant_read_write(self.cogent_role)
 
         # -----------------------------------------------------------------
         # 3. SQS FIFO Ingress Queue
@@ -350,8 +348,10 @@ class CogentStack(Stack):
         CfnOutput(self, "CogtainerName", value=cogtainer_name)
         CfnOutput(self, "CogentName", value=cogent_name)
         CfnOutput(self, "CogentRoleArn", value=self.cogent_role.role_arn)
+        CfnOutput(self, "DbClusterArn", value=db_cluster_arn)
+        CfnOutput(self, "DbSecretArn", value=db_secret_arn)
         CfnOutput(
-            self, "SessionsBucketName", value=bucket_name
+            self, "SessionsBucketName", value=self.sessions_bucket.bucket_name
         )
         CfnOutput(self, "IngressQueueUrl", value=self.ingress_queue.queue_url)
         if self.dashboard_url:
@@ -524,15 +524,7 @@ class CogentStack(Stack):
         )
 
         # S3
-        task_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-                resources=[
-                    f"arn:aws:s3:::{bucket_name}",
-                    f"arn:aws:s3:::{bucket_name}/*",
-                ],
-            )
-        )
+        self.sessions_bucket.grant_read_write(task_role)
 
         # Security group — allow traffic from ALB
         sg = ec2.SecurityGroup(self, "DashSg", vpc=vpc)

@@ -168,6 +168,13 @@ class PolisStack(cdk.Stack):
             vpc_subnets=public_subnets,
         )
 
+        # Allow ALB to forward traffic to dashboard containers on port 5174
+        self.shared_alb.connections.security_groups[0].add_egress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(5174),
+            "Allow ALB to reach dashboard containers",
+        )
+
         # Wildcard cert for *.softmax-cogents.com
         wildcard_cert_arn = self.node.try_get_context("wildcard_cert_arn") or ""
         if wildcard_cert_arn:
