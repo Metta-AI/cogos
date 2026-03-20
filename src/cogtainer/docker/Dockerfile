@@ -33,7 +33,7 @@ RUN curl -fsSL "https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/d
 
 # Project source
 COPY src/ /app/src/
-COPY pyproject.toml /app/
+COPY pyproject.toml README.md /app/
 WORKDIR /app
 
 # Install project in the system Python (so cogent/mind CLIs are available)

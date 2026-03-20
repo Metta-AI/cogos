@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && rm -rf /tmp/aws /tmp/awscli.zip /var/lib/apt/lists/*
 
 # Install the cogent package (provides dashboard backend + all deps)
-COPY pyproject.toml /app/pyproject.toml
+COPY pyproject.toml README.md /app/
 COPY src/ /app/src/
 RUN pip install --no-cache-dir .
 

@@ -48,4 +48,6 @@ jobs:
           fi
 
           echo "Merging PR #${PR} (author: ${AUTHOR}, permission: ${PERM})"
-          gh pr merge "$PR" --repo "$REPO" --squash
+          gh api "repos/${REPO}/pulls/${PR}/merge" \
+            --method PUT \
+            -f merge_method=squash
