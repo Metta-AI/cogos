@@ -330,6 +330,21 @@ class CogentStack(Stack):
             )
 
         # -----------------------------------------------------------------
+        # 6. Discord Bridge (Fargate service)
+        # -----------------------------------------------------------------
+        self._create_discord_bridge(
+            cogtainer_name=cogtainer_name,
+            cogent_name=cogent_name,
+            safe_name=safe_name,
+            db_cluster_arn=db_cluster_arn,
+            db_secret_arn=db_secret_arn,
+            db_name=db_name,
+            bucket_name=bucket_name,
+            event_bus_name=event_bus_name,
+            ecr_repo_uri=ecr_repo_uri,
+        )
+
+        # -----------------------------------------------------------------
         # Outputs
         # -----------------------------------------------------------------
         CfnOutput(self, "CogtainerName", value=cogtainer_name)
@@ -543,3 +558,143 @@ class CogentStack(Stack):
 
         self.dashboard_service = service
         self.dashboard_url = f"https://{safe_name}.{domain}"
+
+    # ------------------------------------------------------------------
+    # Discord Bridge: Fargate service running the discord-bridge process
+    # ------------------------------------------------------------------
+    def _create_discord_bridge(
+        self,
+        *,
+        cogtainer_name: str,
+        cogent_name: str,
+        safe_name: str,
+        db_cluster_arn: str,
+        db_secret_arn: str,
+        db_name: str,
+        bucket_name: str,
+        event_bus_name: str,
+        ecr_repo_uri: str,
+    ) -> None:
+        vpc = ec2.Vpc.from_lookup(self, "BridgeVpc", is_default=True)
+
+        cluster = ecs.Cluster.from_cluster_attributes(
+            self,
+            "BridgeCluster",
+            cluster_name=f"cogtainer-{cogtainer_name}",
+            vpc=vpc,
+            security_groups=[],
+        )
+
+        # Task definition
+        bridge_task_def = ecs.FargateTaskDefinition(
+            self, "BridgeTaskDef", cpu=256, memory_limit_mib=512,
+        )
+
+        # Use the executor image from ECR (same codebase)
+        image_tag = self.node.try_get_context("bridge_image_tag") or "executor-latest"
+        if ecr_repo_uri:
+            image = ecs.ContainerImage.from_registry(f"{ecr_repo_uri}:{image_tag}")
+        else:
+            image = ecs.ContainerImage.from_registry(
+                f"901289084804.dkr.ecr.us-east-1.amazonaws.com/cogtainer-{cogtainer_name}:{image_tag}"
+            )
+
+        bridge_env = {
+            "COGENT_NAME": cogent_name,
+            "COGTAINER_NAME": cogtainer_name,
+            "DYNAMO_TABLE": f"cogtainer-{cogtainer_name}-status",
+            "DB_RESOURCE_ARN": db_cluster_arn,
+            "DB_CLUSTER_ARN": db_cluster_arn,
+            "DB_SECRET_ARN": db_secret_arn,
+            "DB_NAME": db_name,
+            "EVENT_BUS_NAME": event_bus_name,
+            "SESSIONS_BUCKET": bucket_name,
+            "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
+        }
+
+        bridge_task_def.add_container(
+            "bridge",
+            image=image,
+            command=["python", "-m", "cogos.io.discord.bridge"],
+            environment=bridge_env,
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="discord-bridge"),
+        )
+
+        # Bridge task role permissions
+        bridge_role = bridge_task_def.task_role
+        assert isinstance(bridge_role, iam.Role)
+
+        # RDS Data API
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["rds-data:ExecuteStatement", "rds-data:BatchExecuteStatement"],
+                resources=[db_cluster_arn],
+            )
+        )
+
+        # Secrets Manager — DB secret + cogent discord secrets + shared discord secret
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[
+                    db_secret_arn,
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogent/{cogent_name}/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:agora/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polis/*",
+                ],
+            )
+        )
+
+        # DynamoDB — read cogent-status table for config
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:Scan", "dynamodb:GetItem"],
+                resources=[
+                    f"arn:aws:dynamodb:{self.region}:{self.account}:table/cogtainer-{cogtainer_name}-status",
+                    f"arn:aws:dynamodb:{self.region}:{self.account}:table/cogent-status",
+                ],
+            )
+        )
+
+        # EventBridge
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["events:PutEvents"],
+                resources=["*"],
+            )
+        )
+
+        # Lambda invoke (executor)
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    f"arn:aws:lambda:*:*:function:{_lambda_name(cogtainer_name, safe_name, '*')}",
+                ],
+            )
+        )
+
+        # SQS — ingress queue
+        self.ingress_queue.grant_send_messages(bridge_role)
+
+        # S3
+        bridge_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject"],
+                resources=[f"arn:aws:s3:::{bucket_name}/*"],
+            )
+        )
+
+        # Fargate service (desired_count=1 to start)
+        ecs.FargateService(
+            self,
+            "BridgeService",
+            service_name=f"cogtainer-{cogtainer_name}-{safe_name}-discord",
+            cluster=cluster,
+            task_definition=bridge_task_def,
+            desired_count=1,
+            assign_public_ip=True,
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PUBLIC, one_per_az=True,
+            ),
+        )
