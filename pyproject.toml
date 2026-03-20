@@ -76,7 +76,7 @@ packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboa
 [tool.pyright]
 pythonVersion = "3.12"
 include = ["src/cogtainer", "src/cli", "src/memory", "src/polis", "src/dashboard", "tests"]
-exclude = [".venv", "dist", "node_modules"]
+exclude = [".venv", "dist", "node_modules", "src/cogtainer/cdk", "src/polis/cdk"]
 typeCheckingMode = "basic"
 reportMissingImports = true
 reportMissingTypeStubs = false
