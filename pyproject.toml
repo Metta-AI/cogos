@@ -73,6 +73,8 @@ packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboa
 
 [tool.pyright]
 pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
 include = ["src/cogtainer", "src/cli", "src/memory", "src/dashboard", "tests"]
 exclude = [".venv", "dist", "node_modules", "src/cogtainer/cdk"]
 typeCheckingMode = "basic"

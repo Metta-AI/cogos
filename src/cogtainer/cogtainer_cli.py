@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 import yaml
 
+from cogtainer import naming
 from cogtainer.config import (
     CogtainerEntry,
     CogtainersConfig,
