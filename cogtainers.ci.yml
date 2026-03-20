@@ -6,18 +6,10 @@
 ci_artifacts_bucket: cogent-polis-ci-artifacts
 
 cogtainers:
-  polis:
-    account_id: "901289084804"
-    region: us-east-1
-    ecr_repo: cogent
-    aws_role: ""  # uses vars.AWS_ROLE default
-    components: all
-    cogents: []
-
   agora:
     account_id: "901289084804"
     region: us-east-1
     ecr_repo: cogtainer-agora
-    aws_role: ""  # same account, same role
+    aws_role: ""  # uses vars.AWS_ROLE default
     components: all
     cogents: [alpha]
