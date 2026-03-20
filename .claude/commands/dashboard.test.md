@@ -13,7 +13,7 @@ This prints the PAT. Also fetch the CF service token:
 ```python
 from polis.aws import get_polis_session, set_profile
 import json
-set_profile('softmax-org')
+set_profile('!`.venv/bin/python scripts/deploy-config org_profile softmax-org`')
 session, _ = get_polis_session()
 sm = session.client('secretsmanager', region_name='us-east-1')
 cf_token = json.loads(sm.get_secret_value(SecretId="cogent/polis/cloudflare-service-token")["SecretString"])
@@ -39,7 +39,7 @@ Use curl with CF service token headers to bypass Cloudflare Access:
 ```bash
 curl -s -H "CF-Access-Client-Id: <client_id>" \
      -H "CF-Access-Client-Secret: <client_secret>" \
-     "https://<safe-name>.softmax-cogents.com/api/cogents/<name>/cogos-status"
+     "https://<safe-name>.!`.venv/bin/python scripts/deploy-config domain softmax-cogents.com`/api/cogents/<name>/cogos-status"
 ```
 
 Verify:

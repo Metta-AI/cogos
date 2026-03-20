@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Print a deploy_config value. Usage: scripts/deploy-config <key> [default]"""
+import sys
+
+from polis.config import deploy_config
+
+if len(sys.argv) < 2:
+    print("Usage: deploy-config <key> [default]", file=sys.stderr)
+    sys.exit(1)
+
+key = sys.argv[1]
+default = sys.argv[2] if len(sys.argv) > 2 else ""
+print(deploy_config(key, default))

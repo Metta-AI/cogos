@@ -24,7 +24,7 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
    - Write a 1-3 sentence human-readable summary of the changes
 9. Post the summary to Discord #cogents using the webhook:
    ```bash
-   WEBHOOK_URL=$(aws secretsmanager get-secret-value --secret-id "discord/channel-webhook/cogents" --query SecretString --output text --profile softmax)
+   WEBHOOK_URL=$(aws secretsmanager get-secret-value --secret-id "discord/channel-webhook/cogents" --query SecretString --output text --profile !`.venv/bin/python scripts/deploy-config org_profile softmax-org`)
    curl -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" \
      -d "{\"username\": \"cogents.2\", \"content\": \"$SUMMARY\"}"
    ```
