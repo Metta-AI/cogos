@@ -1,7 +1,7 @@
 """End-to-end tests for the versioned memory system.
 
 Exercises the full stack: MemoryStore + LocalRepository + persistence,
-including polis sync logic, read-only enforcement, version management,
+including cogtainer sync logic, read-only enforcement, version management,
 hierarchical key resolution, and CLI commands.
 """
 
@@ -91,17 +91,17 @@ class TestFullLifecycle:
         assert result.version == 2
 
 
-# ── 2. Polis sync logic ──────────────────────────────────────────
+# ── 2. Cogtainer sync logic ──────────────────────────────────────
 
 
-class TestPolisSync:
-    """Simulate what `cogos file load` does when syncing polis memories."""
+class TestCogtainerSync:
+    """Simulate what `cogos file load` does when syncing cogtainer memories."""
 
     def _sync_memory(self, store: MemoryStore, name: str, content: str):
-        """Replicate the polis sync logic from cogos CLI."""
+        """Replicate the cogtainer sync logic from cogos CLI."""
         existing = store.get(name)
         if existing is None:
-            store.create(name, content, source="polis", read_only=True)
+            store.create(name, content, source="cogtainer", read_only=True)
             return "created"
 
         mv = existing.versions.get(existing.active_version)
@@ -111,27 +111,27 @@ class TestPolisSync:
         if mv and mv.content == content:
             return "unchanged"
 
-        store.new_version(name, content, source="polis", read_only=True)
+        store.new_version(name, content, source="cogtainer", read_only=True)
         return "updated"
 
     def test_new_memory_created_readonly(self, store):
         result = self._sync_memory(store, "/cogtainer/init", "base personality")
         assert result == "created"
         mem = store.get("/cogtainer/init")
-        assert mem.versions[1].source == "polis"
+        assert mem.versions[1].source == "cogtainer"
         assert mem.versions[1].read_only is True
 
     def test_user_override_skipped(self, store):
-        # Create polis version first
-        store.create("/cogtainer/init", "polis content", source="polis", read_only=True)
+        # Create cogtainer version first
+        store.create("/cogtainer/init", "cogtainer content", source="cogtainer", read_only=True)
         # User overrides with new_version (bypasses read-only)
         store.new_version("/cogtainer/init", "user override", source="user:dave")
         # Active version is now user's
         mem = store.get("/cogtainer/init")
         assert mem.versions[mem.active_version].source == "user:dave"
 
-        # Polis sync should skip
-        result = self._sync_memory(store, "/cogtainer/init", "updated polis content")
+        # Cogtainer sync should skip
+        result = self._sync_memory(store, "/cogtainer/init", "updated cogtainer content")
         assert result == "skipped_user_override"
 
         # Content unchanged
@@ -147,7 +147,7 @@ class TestPolisSync:
         history = store.history("/cogtainer/tools")
         assert len(history) == 1
 
-    def test_changed_polis_content_creates_new_version(self, store):
+    def test_changed_cogtainer_content_creates_new_version(self, store):
         self._sync_memory(store, "/cogtainer/tools", "v1 tools")
         result = self._sync_memory(store, "/cogtainer/tools", "v2 tools")
         assert result == "updated"
@@ -155,20 +155,20 @@ class TestPolisSync:
         mem = store.get("/cogtainer/tools")
         assert mem.active_version == 2
         assert mem.versions[2].content == "v2 tools"
-        assert mem.versions[2].source == "polis"
+        assert mem.versions[2].source == "cogtainer"
         assert mem.versions[2].read_only is True
 
     def test_cogent_override_not_skipped(self, store):
-        """Polis sync should update when active version is from cogent."""
-        store.create("/cogtainer/init", "polis v1", source="polis", read_only=True)
+        """Cogtainer sync should update when active version is from cogent."""
+        store.create("/cogtainer/init", "cogtainer v1", source="cogtainer", read_only=True)
         store.new_version("/cogtainer/init", "cogent modified", source="cogent")
 
         # Active is cogent, NOT user:* so sync should proceed
-        result = self._sync_memory(store, "/cogtainer/init", "polis v2")
+        result = self._sync_memory(store, "/cogtainer/init", "cogtainer v2")
         assert result == "updated"
 
         mem = store.get("/cogtainer/init")
-        assert mem.versions[mem.active_version].source == "polis"
+        assert mem.versions[mem.active_version].source == "cogtainer"
 
 
 # ── 3. Delete operations ─────────────────────────────────────────
@@ -227,7 +227,7 @@ class TestPersistence:
         repo1 = LocalRepository(data_dir=str(tmp_path))
         store1 = MemoryStore(repo1)
 
-        store1.create("/persist/a", "content a", source="polis", read_only=True)
+        store1.create("/persist/a", "content a", source="cogtainer", read_only=True)
         store1.create("/persist/b", "content b v1")
         store1.new_version("/persist/b", "content b v2")
         store1.set_read_only("/persist/b", True, version=1)
@@ -241,7 +241,7 @@ class TestPersistence:
         assert a is not None
         assert a.versions[1].content == "content a"
         assert a.versions[1].read_only is True
-        assert a.versions[1].source == "polis"
+        assert a.versions[1].source == "cogtainer"
 
         # Memory b
         b = store2.get("/persist/b")
@@ -425,14 +425,14 @@ class TestCLI:
     def test_status_command(self, runner):
         from memory.cli import memory
 
-        self._store.create("/s1", "c1", source="polis", read_only=True)
+        self._store.create("/s1", "c1", source="cogtainer", read_only=True)
         self._store.create("/s2", "c2", source="cogent")
         self._store.create("/s3", "c3", source="user:dave")
 
         result = runner.invoke(memory, ["status"])
         assert result.exit_code == 0
         assert "Total memories: 3" in result.output
-        assert "polis: 1" in result.output
+        assert "cogtainer: 1" in result.output
         assert "cogent: 1" in result.output
         assert "user:dave: 1" in result.output
         assert "Read-only: 1" in result.output
@@ -456,7 +456,7 @@ class TestCLI:
     def test_put_force_bypasses_readonly(self, runner):
         from memory.cli import memory
 
-        self._store.create("/t/note", "original", source="polis", read_only=True)
+        self._store.create("/t/note", "original", source="cogtainer", read_only=True)
 
         md_dir = self._tmp_path / "mds3"
         md_dir.mkdir()

@@ -66,7 +66,7 @@ class Repository:
     ) -> Repository:
         """Create repository from arguments or environment variables.
 
-        Callers must ensure AWS credentials are set for the polis account
+        Callers must ensure AWS credentials are set for the cogtainer account
         (where all cogent databases live). The CLI does this via
         _ensure_db_env(); the dashboard container has credentials from its
         ECS task role.
@@ -599,7 +599,7 @@ class Repository:
         3. Look for children matching key/ prefix that end in /init
 
         If two memories share the same name, prefer the one whose active
-        version source is not 'polis'.
+        version source is not 'cogtainer'.
         Sort results by path depth (count of '/' in name).
         """
         if not keys:
@@ -691,7 +691,7 @@ class Repository:
         records_by_name: dict[str, Memory],
         mem: Memory,
     ) -> None:
-        """Insert mem into records_by_name, preferring non-polis source on collision."""
+        """Insert mem into records_by_name, preferring non-cogtainer source on collision."""
         existing = records_by_name.get(mem.name)
         if existing is None:
             records_by_name[mem.name] = mem
@@ -700,7 +700,7 @@ class Repository:
             old_active = existing.versions.get(existing.active_version)
             new_source = new_active.source if new_active else "cogent"
             old_source = old_active.source if old_active else "cogent"
-            if old_source == "polis" and new_source != "polis":
+            if old_source == "cogtainer" and new_source != "cogtainer":
                 records_by_name[mem.name] = mem
 
     # ═══════════════════════════════════════════════════════════

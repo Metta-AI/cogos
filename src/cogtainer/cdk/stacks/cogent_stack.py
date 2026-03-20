@@ -4,7 +4,7 @@ Creates: IAM role, S3 sessions bucket, SQS FIFO ingress queue,
 EventBridge rules, Lambdas (event-router, executor, dispatcher, ingress),
 and (optionally) a dashboard Fargate service.
 
-Adapted from polis/cdk/stacks/cogent.py but with cogtainer-scoped naming.
+CDK stack for a single cogent with cogtainer-scoped naming.
 """
 
 from __future__ import annotations
@@ -673,7 +673,7 @@ class CogentStack(Stack):
                     db_secret_arn,
                     f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogent/{cogent_name}/*",
                     f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:agora/*",
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polis/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogtainer/*",
                 ],
             )
         )

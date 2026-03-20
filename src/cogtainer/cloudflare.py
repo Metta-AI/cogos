@@ -12,7 +12,7 @@ from cogtainer.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
 
-SECRET_PATH = "cogent/polis/cloudflare"
+SECRET_PATH = "cogent/cogtainer/cloudflare"
 
 # Single Access Application protects all cogent dashboards via wildcard.
 ACCESS_APP_NAME = "cogent-dashboards"
@@ -22,7 +22,7 @@ _EMAIL_POLICY_NAME = deploy_config("cloudflare_email_policy", "allow-softmax")
 def _load_cf_config(store: SecretStore) -> dict:
     """Load Cloudflare credentials from Secrets Manager.
 
-    Expected secret structure at cogent/polis/cloudflare:
+    Expected secret structure at cogent/cogtainer/cloudflare:
         {
             "api_token": "...",
             "account_id": "...",

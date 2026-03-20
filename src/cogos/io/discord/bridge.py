@@ -145,7 +145,7 @@ class DiscordBridge:
         if not self.bot_token:
             raise RuntimeError(
                 "No Discord token found. Set DISCORD_BOT_TOKEN env var "
-                "or store bot_token in polis/discord secret."
+                "or store bot_token in cogtainer/discord secret."
             )
 
         self.reply_queue_url = os.environ.get(

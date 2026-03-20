@@ -227,7 +227,7 @@ $$ LANGUAGE plpgsql""",
              AND NOT EXISTS (SELECT 1 FROM memory WHERE memory.name = memory.name)""",
         """INSERT INTO memory_version (memory_id, version, read_only, content, source, created_at)
            SELECT id, 1,
-                  CASE WHEN scope = 'polis' THEN TRUE ELSE FALSE END,
+                  CASE WHEN scope = 'cogtainer' THEN TRUE ELSE FALSE END,
                   content,
                   scope,
                   created_at

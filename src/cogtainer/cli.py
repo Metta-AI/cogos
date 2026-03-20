@@ -9,7 +9,7 @@ from cogtainer import naming
 from cogtainer.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV
 
 _PROFILE_HELP = (
-    f"AWS profile for polis account (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
+    f"AWS profile for cogtainer account (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 )
 
 
@@ -36,11 +36,11 @@ def status_cmd(ctx: click.Context):
     table.add_column("Status")
     table.add_column("Details")
 
-    from cogtainer.aws import get_polis_session, set_org_profile
+    from cogtainer.aws import get_aws_session, set_org_profile
 
     set_org_profile()
     try:
-        session, _ = get_polis_session()
+        session, _ = get_aws_session()
     except Exception as e:
         table.add_row("AWS", "[red]cannot connect[/red]", str(e)[:60])
         console.print(table)
@@ -141,7 +141,7 @@ def status_cmd(ctx: click.Context):
     except Exception as e:
         table.add_row("ECR Image", "[red]error[/red]", str(e)[:60])
 
-    # Dashboard (ALB + ECS service on shared cogent-polis cluster)
+    # Dashboard (ALB + ECS service on shared cogtainer cluster)
     alb_dns = outputs.get("AlbDns", "")
     dashboard_url = outputs.get("DashboardUrl", "")
     if alb_dns:
@@ -160,13 +160,13 @@ def status_cmd(ctx: click.Context):
     else:
         table.add_row("Dashboard ALB", "[dim]no output[/dim]", "no certificate configured")
 
-    # ECS — shared cogent-polis cluster, look for dashboard service
+    # ECS — shared cogtainer cluster, look for dashboard service
     ecs_client = session.client("ecs")
     try:
-        services = ecs_client.list_services(cluster="cogent-polis").get("serviceArns", [])
+        services = ecs_client.list_services(cluster=naming.cluster_name()).get("serviceArns", [])
         cogent_services = [s for s in services if safe_name in s]
         if cogent_services:
-            svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=cogent_services)["services"]
+            svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=cogent_services)["services"]
             for svc in svc_desc:
                 svc_name = svc["serviceName"]
                 svc_status = svc.get("status", "?")
@@ -189,13 +189,13 @@ def status_cmd(ctx: click.Context):
 @click.pass_context
 def cleanup_cmd(ctx: click.Context, profile: str | None, keep: int, dry_run: bool):
     """Clean up old ECS task definitions and stale Lambda functions."""
-    from cogtainer.aws import get_polis_session, resolve_org_profile, set_org_profile
+    from cogtainer.aws import get_aws_session, resolve_org_profile, set_org_profile
 
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
     profile = resolve_org_profile(profile)
     set_org_profile(profile)
-    session, _ = get_polis_session()
+    session, _ = get_aws_session()
 
     click.echo(f"Cleaning up old resources for cogent-{name}...")
 
@@ -317,7 +317,7 @@ def await_cmd(prefix: str, tag: str | None, timeout: int, profile: str | None):
     import subprocess
     import time
 
-    from cogtainer.aws import get_polis_session, set_org_profile
+    from cogtainer.aws import get_aws_session, set_org_profile
 
     if tag:
         expected_tag = tag
@@ -330,7 +330,7 @@ def await_cmd(prefix: str, tag: str | None, timeout: int, profile: str | None):
     click.echo(f"Waiting for ECR tag '{expected_tag}'...")
 
     set_org_profile(profile)
-    session, _ = get_polis_session()
+    session, _ = get_aws_session()
     ecr_client = session.client("ecr", region_name="us-east-1")
 
     deadline = time.monotonic() + timeout

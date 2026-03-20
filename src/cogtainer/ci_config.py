@@ -22,7 +22,7 @@ class CICogtainerEntry(BaseModel):
 class CIConfig(BaseModel):
     """Top-level cogtainers.ci.yml schema."""
 
-    ci_artifacts_bucket: str = "cogent-polis-ci-artifacts"
+    ci_artifacts_bucket: str = "cogtainer-ci-artifacts"
     cogtainers: dict[str, CICogtainerEntry] = Field(default_factory=dict)
 
     def deploy_targets(self) -> list[dict]:

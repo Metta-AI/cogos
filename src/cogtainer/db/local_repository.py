@@ -796,7 +796,7 @@ class LocalRepository(Repository):
         2. Include the key itself
         3. Look for children matching key/ prefix that end in /init
 
-        If two memories have the same name, keep the one with source != 'polis'.
+        If two memories have the same name, keep the one with source != 'cogtainer'.
         Sort results by path depth (count of '/' in name).
         """
         if not keys:
@@ -820,7 +820,7 @@ class LocalRepository(Repository):
             child_prefixes.append(key + "/")
 
         # Collect matching memories by name
-        # If duplicate names, prefer non-polis source
+        # If duplicate names, prefer non-cogtainer source
         records_by_name: dict[str, Memory] = {}
 
         for mem in self._memories.values():
@@ -846,12 +846,12 @@ class LocalRepository(Repository):
             if existing is None:
                 records_by_name[mem.name] = mem_copy
             else:
-                # Prefer non-polis: check active version source
+                # Prefer non-cogtainer: check active version source
                 new_active = mem_copy.versions.get(mem_copy.active_version)
                 old_active = existing.versions.get(existing.active_version)
                 new_source = new_active.source if new_active else "cogent"
                 old_source = old_active.source if old_active else "cogent"
-                if old_source == "polis" and new_source != "polis":
+                if old_source == "cogtainer" and new_source != "cogtainer":
                     records_by_name[mem.name] = mem_copy
 
         return sorted(

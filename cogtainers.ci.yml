@@ -1,7 +1,7 @@
 # CI deploy targets — each cogtainer gets its own ECR repo.
 # GitHub Actions reads this to build a matrix of deploy targets.
 
-ci_artifacts_bucket: cogent-polis-ci-artifacts
+ci_artifacts_bucket: cogtainer-ci-artifacts
 
 cogtainers:
   agora:

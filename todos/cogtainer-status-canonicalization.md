@@ -1,4 +1,4 @@
-# Polis Status Canonicalization
+# Cogtainer Status Canonicalization
 
 ## Problem
 

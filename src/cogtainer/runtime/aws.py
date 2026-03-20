@@ -30,7 +30,7 @@ class AwsRuntime(CogtainerRuntime):
         self._session = session
         self._region = entry.region or "us-east-1"
         self._cogtainer_name = cogtainer_name
-        # New cogtainers use cogtainer-{name}-status, legacy polis uses cogent-status
+        # New cogtainers use cogtainer-{name}-status, legacy uses cogent-status
         self._status_table = (
             f"cogtainer-{cogtainer_name}-status" if cogtainer_name else _LEGACY_STATUS_TABLE
         )
@@ -73,7 +73,7 @@ class AwsRuntime(CogtainerRuntime):
         db_name = f"cogent_{safe.replace('-', '_')}"
 
         # For new cogtainers, get DB ARNs from stack outputs
-        # For legacy polis, get from DynamoDB cogent-status table
+        # For legacy cogtainers, get from DynamoDB cogent-status table
         if self._cogtainer_name:
             db_info = self._get_db_info()
             cluster_arn = db_info["cluster_arn"]
@@ -229,7 +229,7 @@ class AwsRuntime(CogtainerRuntime):
             }
         )
 
-        # 3. Apply schema using the polis session's RDS client
+        # 3. Apply schema using the cogtainer session's RDS client
         from cogos.db.migrations import apply_schema_with_client
         rds_client = self._session.client("rds-data", region_name=self._region)
         apply_schema_with_client(
@@ -264,7 +264,7 @@ class AwsRuntime(CogtainerRuntime):
     # ── Blob URLs + email ────────────────────────────────────
 
     def get_file_url(self, cogent_name: str, key: str, expires_in: int = 604800) -> str:
-        from polis.naming import bucket_name
+        from cogtainer.naming import bucket_name
         s3 = self._session.client("s3", region_name=self._region)
         return s3.generate_presigned_url(
             "get_object",

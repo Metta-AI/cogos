@@ -31,7 +31,7 @@ jobs:
           import yaml, json
           with open('cogtainers.ci.yml') as f:
               cfg = yaml.safe_load(f) or {}
-          s3_bucket = cfg.get('ci_artifacts_bucket', 'cogent-polis-ci-artifacts')
+          s3_bucket = cfg.get('ci_artifacts_bucket', 'cogtainer-ci-artifacts')
           targets = []
           for name, entry in (cfg.get('cogtainers') or {}).items():
               components = entry.get('components', 'all')

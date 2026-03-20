@@ -39,7 +39,7 @@ def _ensure_db_env(cogent_name: str) -> None:
         return
 
     try:
-        from cogtainer.aws import get_polis_session, set_org_profile
+        from cogtainer.aws import get_aws_session, set_org_profile
     except ImportError:
         # cogtainer.aws not available — skip legacy DB env setup
         return
@@ -49,7 +49,7 @@ def _ensure_db_env(cogent_name: str) -> None:
 
     try:
         set_org_profile()
-        session, _ = get_polis_session()
+        session, _ = get_aws_session()
     except Exception:
         return
 
@@ -277,7 +277,7 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
                     components,
                     ecr_client=session.client("ecr", region_name="us-east-1"),
                     s3_client=session.client("s3"),
-                    artifacts_bucket="cogent-polis-ci-artifacts",
+                    artifacts_bucket="cogtainer-ci-artifacts",
                 )
                 click.echo("All artifacts verified.")
         except ArtifactMissing as e:
@@ -1358,7 +1358,8 @@ def _discord_service_name(cogent_name: str) -> str:
 
 
 def _discord_cluster_name(cogent_name: str) -> str:
-    return "cogent-polis"
+    from cogtainer import naming
+    return naming.cluster_name()
 
 
 def _get_service_status(cogent_name: str) -> dict | None:

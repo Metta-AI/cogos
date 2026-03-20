@@ -50,7 +50,7 @@ class DiscordError(BaseModel):
 
 
 _DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-_DISCORD_REPLIES_QUEUE = os.environ.get("DISCORD_REPLIES_QUEUE", "cogent-polis-discord-replies")
+_DISCORD_REPLIES_QUEUE = os.environ.get("DISCORD_REPLIES_QUEUE", "cogtainer-discord-replies")
 
 
 def _send_sqs(body: dict, *, runtime=None) -> None:

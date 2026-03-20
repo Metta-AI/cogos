@@ -9,7 +9,7 @@ Your organization builds autonomous AI agents that work alongside humans as full
 
 - **CogOS** — an operating system for AI agents. Manages processes, events, capabilities, files, and memory.
 - **Cogents** — autonomous agents that run on CogOS. Each cogent has its own identity, context, and set of responsibilities.
-- **Polis** — the infrastructure layer. Handles deployment, scaling, and multi-agent coordination across AWS.
+- **Cogtainer** — the infrastructure layer. Handles deployment, scaling, and multi-agent coordination across AWS.
 
 ## Culture
 

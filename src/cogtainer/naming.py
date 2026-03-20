@@ -17,8 +17,8 @@ def stack_name(cogent_name: str) -> str:
     return f"{RESOURCE_PREFIX}-{safe(cogent_name)}-cogtainer"
 
 
-def polis_stack_name() -> str:
-    return f"{RESOURCE_PREFIX}-polis"
+def cogtainer_stack_name() -> str:
+    return "cogtainer"
 
 
 def secrets_stack_name() -> str:
@@ -33,8 +33,8 @@ def bucket_name(cogent_name: str) -> str:
     return f"{RESOURCE_PREFIX}-{safe(cogent_name)}-cogtainer-sessions"
 
 
-def polis_bucket_name(suffix: str) -> str:
-    return _join(RESOURCE_PREFIX, "polis", suffix)
+def cogtainer_bucket_name(suffix: str) -> str:
+    return _join("cogtainer", suffix)
 
 
 def queue_name(safe_name: str, suffix: str) -> str:
@@ -46,7 +46,7 @@ def event_bus_name(safe_name: str) -> str:
 
 
 def shared_event_bus_name() -> str:
-    return f"{RESOURCE_PREFIX}-polis-events"
+    return "cogtainer-events"
 
 
 def rule_name(safe_name: str, suffix: str) -> str:
@@ -70,7 +70,7 @@ def log_group_name(safe_name: str, suffix: str) -> str:
 
 
 def cluster_name() -> str:
-    return f"{RESOURCE_PREFIX}-polis"
+    return "cogtainer"
 
 
 def iam_role_name(suffix: str) -> str:

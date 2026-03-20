@@ -1,5 +1,5 @@
 /**
- * Cloudflare Email Worker — forwards inbound emails to the polis ingest Lambda.
+ * Cloudflare Email Worker — forwards inbound emails to the cogtainer ingest Lambda.
  *
  * Deployed once for the whole domain. Parses the email, extracts the cogent
  * name from the recipient local part, and POSTs to a single ingest endpoint.

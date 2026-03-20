@@ -91,9 +91,9 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         cogos_initialized = False
         cogos_error = type(exc).__name__
 
-    # Shared bot token (polis-level)
+    # Shared bot token (cogtainer-level)
     secret_configured, secret_check_error = discord_secret_status(region, secrets_provider=_secrets_provider)
-    # Shared bridge service (polis-level)
+    # Shared bridge service (cogtainer-level)
     service_status, service_check_error = discord_service_status(region, ecs_client=_get_ecs_client())
     bridge_running = (
         service_status["bridge_running_count"] is not None
@@ -167,7 +167,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
             action=SetupAction(
                 label="Set persona config",
                 command=(
-                    f"uv run polis secrets set cogent/{name}/discord "
+                    f"uv run cogtainer secrets set cogent/{name}/discord "
                     f"""--value '{{"display_name":"{name}","avatar_url":"","color":0,"default_channels":[]}}'"""
                 ),
             ),
@@ -178,20 +178,20 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         bridge_step = SetupStep(
             key="bridge-status",
             title="Shared Discord bridge",
-            description="The shared Discord bridge runs as a polis-level ECS service.",
+            description="The shared Discord bridge runs as a cogtainer-level ECS service.",
             status=SetupStatus.READY,
-            detail="cogent-polis-discord is running.",
+            detail="cogtainer-discord is running.",
         )
     else:
         bridge_step = SetupStep(
             key="bridge-status",
             title="Shared Discord bridge",
-            description="The shared Discord bridge runs as a polis-level ECS service.",
+            description="The shared Discord bridge runs as a cogtainer-level ECS service.",
             status=SetupStatus.NEEDS_ACTION,
-            detail="cogent-polis-discord is not running.",
+            detail="cogtainer-discord is not running.",
             action=SetupAction(
-                label="Deploy polis stack",
-                command="uv run polis deploy",
+                label="Deploy cogtainer stack",
+                command="uv run cogtainer deploy",
             ),
         )
 
@@ -305,12 +305,12 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
         store_key_step = SetupStep(
             key="store-api-key",
             title="Store the API key",
-            description="Write the API key into polis secrets so the image capability can use it.",
+            description="Write the API key into cogtainer secrets so the image capability can use it.",
             status=SetupStatus.NEEDS_ACTION,
             detail=f"Expected secret path: {secret_path}.",
             action=SetupAction(
                 label="Write Gemini API key",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
+                command=f"""uv run cogtainer secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
             ),
         )
     else:
@@ -328,12 +328,12 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
         store_key_step = SetupStep(
             key="store-api-key",
             title="Store the API key",
-            description="Write the API key into polis secrets so the image capability can use it.",
+            description="Write the API key into cogtainer secrets so the image capability can use it.",
             status=SetupStatus.UNKNOWN,
             detail=f"Expected secret path: {secret_path}. Latest check error: {secret_check_error}.",
             action=SetupAction(
                 label="Write Gemini API key",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
+                command=f"""uv run cogtainer secrets set {secret_path} --value '{{"api_key":"YOUR_GEMINI_API_KEY"}}'""",
             ),
         )
 
@@ -442,12 +442,12 @@ def _build_asana_setup(name: str) -> ChannelSetup:
         store_token_step = SetupStep(
             key="store-access-token",
             title="Store the access token",
-            description="Write the access token into polis secrets so the Asana capability can use it.",
+            description="Write the access token into cogtainer secrets so the Asana capability can use it.",
             status=SetupStatus.NEEDS_ACTION,
             detail=f"Expected secret path: {secret_path}.",
             action=SetupAction(
                 label="Write Asana access token",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
+                command=f"""uv run cogtainer secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
             ),
         )
     else:
@@ -465,12 +465,12 @@ def _build_asana_setup(name: str) -> ChannelSetup:
         store_token_step = SetupStep(
             key="store-access-token",
             title="Store the access token",
-            description="Write the access token into polis secrets so the Asana capability can use it.",
+            description="Write the access token into cogtainer secrets so the Asana capability can use it.",
             status=SetupStatus.UNKNOWN,
             detail=f"Expected secret path: {secret_path}. Latest check error: {secret_check_error}.",
             action=SetupAction(
                 label="Write Asana access token",
-                command=f"""uv run polis secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
+                command=f"""uv run cogtainer secrets set {secret_path} --value '{{"access_token":"YOUR_ASANA_PAT"}}'""",
             ),
         )
 

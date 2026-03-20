@@ -186,7 +186,7 @@ class TestListMemories:
         repo = _repo(tmp_path)
         m1 = _make_memory("/s1")
         repo.insert_memory(m1)
-        repo.insert_memory_version(_make_version(m1.id, 1, source="polis"))
+        repo.insert_memory_version(_make_version(m1.id, 1, source="cogtainer"))
         repo.update_active_version(m1.id, 1)
 
         m2 = _make_memory("/s2")
@@ -287,12 +287,12 @@ class TestResolveMemoryKeys:
         assert names.index("/a/init") < names.index("/a/b/init")
         assert names.index("/a/init") < names.index("/a/b/c")
 
-    def test_cogent_shadows_polis(self, tmp_path):
+    def test_cogent_shadows_cogtainer(self, tmp_path):
         repo = _repo(tmp_path)
-        # Insert polis version first, then cogent with same name
+        # Insert cogtainer version first, then cogent with same name
         m1 = _make_memory("/shadow")
         repo.insert_memory(m1)
-        repo.insert_memory_version(_make_version(m1.id, 1, source="polis", content="polis"))
+        repo.insert_memory_version(_make_version(m1.id, 1, source="cogtainer", content="cogtainer"))
         repo.update_active_version(m1.id, 1)
 
         m2 = _make_memory("/shadow")
@@ -305,7 +305,7 @@ class TestResolveMemoryKeys:
         # Should only have one entry for /shadow, the cogent one
         shadow_entries = [m for m in result if m.name == "/shadow"]
         assert len(shadow_entries) == 1
-        assert shadow_entries[0].versions[shadow_entries[0].active_version].source != "polis"
+        assert shadow_entries[0].versions[shadow_entries[0].active_version].source != "cogtainer"
 
     def test_empty_keys(self, tmp_path):
         repo = _repo(tmp_path)

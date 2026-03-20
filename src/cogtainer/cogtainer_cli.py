@@ -216,15 +216,15 @@ def _get_aws_session(
     region: str = "us-east-1",
     profile: str | None = None,
 ) -> tuple:
-    """Get an AWS session for the polis account. Separated for testability."""
-    from cogtainer.aws import get_polis_session, set_org_profile
+    """Get an AWS session for the cogtainer account. Separated for testability."""
+    from cogtainer.aws import get_aws_session, set_org_profile
 
     if profile:
         set_org_profile(profile)
     else:
         set_org_profile()
 
-    return get_polis_session()
+    return get_aws_session()
 
 
 @cli.command("discover-aws")
@@ -362,11 +362,11 @@ def _update_services(
     ecs_client = session.client("ecs", region_name=region)
     cluster = f"cogent-{cogtainer_name}"
 
-    # Try default cluster name, fall back to cogent-polis
+    # Try default cluster name, fall back to cogtainer
     try:
         ecs_client.describe_clusters(clusters=[cluster])["clusters"]
     except Exception:
-        cluster = "cogent-polis"
+        cluster = naming.cluster_name()
 
     service_types = ["dashboard", "discord"]
 

@@ -14,7 +14,7 @@ import click
 from cli import DefaultCommandGroup, get_cogent_name
 from cogtainer import naming
 from cogtainer.aws import DEFAULT_ORG_PROFILE, DEFAULT_REGION, ORG_PROFILE_ENV, resolve_org_profile, set_org_profile
-from cogtainer.deploy_config import PolisConfig
+from cogtainer.deploy_config import CogtainerConfig
 
 _PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
@@ -73,16 +73,16 @@ def update():
 
 
 def _get_session(profile: str | None = None) -> boto3.Session:
-    """Get a boto3 session for the polis account (all cogtainer resources live there)."""
-    from cogtainer.aws import get_polis_session
+    """Get a boto3 session for the cogtainer account."""
+    from cogtainer.aws import get_aws_session
 
     set_org_profile(profile)
-    session, _ = get_polis_session()
+    session, _ = get_aws_session()
     return session
 
 
 def _ensure_db_env(name: str, profile: str | None = None) -> None:
-    """Ensure DB_CLUSTER_ARN, DB_SECRET_ARN, and DB_NAME are set from the shared polis Aurora cluster."""
+    """Ensure DB_CLUSTER_ARN, DB_SECRET_ARN, and DB_NAME are set from the shared cogtainer Aurora cluster."""
     safe_name = name.replace(".", "-")
     db_name = f"cogent_{safe_name.replace('-', '_')}"
     os.environ["DB_NAME"] = db_name
@@ -90,10 +90,10 @@ def _ensure_db_env(name: str, profile: str | None = None) -> None:
     if os.environ.get("DB_CLUSTER_ARN") and os.environ.get("DB_SECRET_ARN"):
         return
 
-    from cogtainer.aws import get_polis_session
+    from cogtainer.aws import get_aws_session
 
     set_org_profile(profile)
-    session, _ = get_polis_session()
+    session, _ = get_aws_session()
 
     # Look up DB connection info from DynamoDB cogent-status table
     ddb = session.resource("dynamodb", region_name=DEFAULT_REGION)
@@ -297,7 +297,7 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
 
 def _find_ecs_service(ecs_client, safe_name: str, service_type: str = "dashboard") -> str | None:
     """Find an ECS service for a cogent by type (dashboard or discord)."""
-    cluster = "cogent-polis"
+    cluster = naming.cluster_name()
     try:
         service_arns = ecs_client.list_services(cluster=cluster)["serviceArns"]
     except Exception:
@@ -319,9 +319,9 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
 
     Returns (new_task_def_arn, old_task_def_arn).
     """
-    from cogtainer.aws import POLIS_ACCOUNT_ID
+    from cogtainer.aws import ACCOUNT_ID
 
-    repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
+    repo_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
     new_image = f"{repo_uri}:{tag}"
     click.echo(f"  Image: {new_image}")
 
@@ -341,7 +341,7 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
             f"Check CI build status: gh run list --repo Metta-AI/cogos --workflow docker-build-{prefix}.yml"
         )
 
-    svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=[service_arn])["services"][0]
+    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
 
@@ -397,21 +397,21 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
             click.echo(f"  Using dashboard version from boot manifest: {tag}")
     session = _get_session(profile)
     safe_name = name.replace(".", "-")
-    cluster_name = "cogent-polis"
+    cluster = naming.cluster_name()
 
     ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
 
     service_arn = _find_ecs_service(ecs_client, safe_name, "dashboard")
     if not service_arn:
-        click.echo(f"  No dashboard ECS service found for cogent-{name} in {cluster_name}.")
+        click.echo(f"  No dashboard ECS service found for cogent-{name} in {cluster}.")
         return
 
     click.echo(f"Forcing new ECS deployment for cogent-{name}...")
-    click.echo(f"  Cluster: {cluster_name}")
+    click.echo(f"  Cluster: {cluster}")
     click.echo(f"  Service: {service_arn}")
 
     update_kwargs: dict = {
-        "cluster": cluster_name,
+        "cluster": cluster,
         "service": service_arn,
         "forceNewDeployment": True,
     }
@@ -434,7 +434,7 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
         click.echo("  Waiting for service to stabilize...")
         try:
             waiter = ecs_client.get_waiter("services_stable")
-            waiter.wait(cluster=cluster_name, services=[service_arn])
+            waiter.wait(cluster=cluster, services=[service_arn])
             click.echo(f"  ECS deployment for cogent-{name} completed.")
         except Exception as e:
             click.echo(f"  Service did not stabilize: {e}", err=True)
@@ -475,13 +475,13 @@ def update_rds(ctx: click.Context, profile: str | None, force: bool):
     click.echo(f"  CogOS SQL migrations applied ({statements} statements). ({time.monotonic() - t0:.1f}s)")
 
 
-def _get_polis_admin_session(profile: str | None = None):
-    """Get a polis session with full admin (OrganizationAccountAccessRole)."""
-    from cogtainer.aws import POLIS_ACCOUNT_ID, _assume_role
+def _get_admin_session(profile: str | None = None):
+    """Get a cogtainer session with full admin (OrganizationAccountAccessRole)."""
+    from cogtainer.aws import ACCOUNT_ID, _assume_role
 
     resolved_profile = resolve_org_profile(profile)
     org_session = boto3.Session(profile_name=resolved_profile, region_name=DEFAULT_REGION)
-    return _assume_role(org_session, POLIS_ACCOUNT_ID, "OrganizationAccountAccessRole")
+    return _assume_role(org_session, ACCOUNT_ID, "OrganizationAccountAccessRole")
 
 
 def _dashboard_project_root() -> str:
@@ -554,7 +554,7 @@ def _upload_dashboard_tarball(
     return f"s3://{bucket}/{s3_key}"
 
 
-CI_ARTIFACTS_BUCKET = "cogent-polis-ci-artifacts"
+CI_ARTIFACTS_BUCKET = "cogtainer-ci-artifacts"
 
 
 def _resolve_commit_sha(sha: str) -> str:
@@ -622,11 +622,12 @@ def _is_dashboard_service_name(service_name: str, safe_name: str) -> bool:
 
 
 def _find_dashboard_service(ecs_client, safe_name: str) -> str:
-    """Find the dashboard ECS service ARN on cogent-polis cluster."""
-    services = ecs_client.list_services(cluster="cogent-polis").get("serviceArns", [])
+    """Find the dashboard ECS service ARN on the cogtainer cluster."""
+    cluster = naming.cluster_name()
+    services = ecs_client.list_services(cluster=cluster).get("serviceArns", [])
     dash_services = [s for s in services if _is_dashboard_service_name(s.rsplit("/", 1)[-1], safe_name)]
     if not dash_services:
-        raise click.ClickException(f"No dashboard service found for {safe_name} on cogent-polis cluster")
+        raise click.ClickException(f"No dashboard service found for {safe_name} on {cluster} cluster")
     return dash_services[0]
 
 
@@ -634,7 +635,7 @@ def _restart_ecs_service(ecs_client, service_arn: str, skip_health: bool, t0: fl
     """Force a new ECS deployment and optionally wait for stability."""
     click.echo("  Restarting ECS service...")
     ecs_client.update_service(
-        cluster="cogent-polis",
+        cluster=naming.cluster_name(),
         service=service_arn,
         forceNewDeployment=True,
     )
@@ -644,7 +645,7 @@ def _restart_ecs_service(ecs_client, service_arn: str, skip_health: bool, t0: fl
         try:
             waiter = ecs_client.get_waiter("services_stable")
             waiter.wait(
-                cluster="cogent-polis",
+                cluster=naming.cluster_name(),
                 services=[service_arn],
                 WaiterConfig={"Delay": 10, "MaxAttempts": 60},
             )
@@ -666,7 +667,7 @@ def _read_docker_version(project_root: str) -> str:
 
 def _get_deployed_docker_version(ecs_client, service_arn: str) -> str:
     """Read the DOCKER_VERSION label from the currently deployed container."""
-    svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=[service_arn])["services"][0]
+    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
     for c in task_def.get("containerDefinitions", []):
@@ -695,7 +696,7 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
     project_root = _dashboard_project_root()
 
     click.echo(f"Updating dashboard for cogent-{name}...")
-    session = _get_polis_admin_session()
+    session = _get_admin_session()
 
     # Auto-detect if Docker rebuild is needed
     if not docker:
@@ -717,14 +718,14 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
     # 4. Signal running container to reload frontend (no ECS restart needed)
     click.echo("  Reloading frontend...")
     t1 = time.monotonic()
-    reload_url = f"https://{safe_name}.{PolisConfig().domain}/admin/reload-frontend"
+    reload_url = f"https://{safe_name}.{CogtainerConfig().domain}/admin/reload-frontend"
     try:
         import json
         import urllib.request
 
         # Load Cloudflare Access service token + dashboard API key
         sm = session.client("secretsmanager", region_name=DEFAULT_REGION)
-        cf_token = json.loads(sm.get_secret_value(SecretId="cogent/polis/cloudflare-service-token")["SecretString"])
+        cf_token = json.loads(sm.get_secret_value(SecretId="cogent/cogtainer/cloudflare-service-token")["SecretString"])
         api_key = json.loads(sm.get_secret_value(SecretId=f"cogent/{name}/dashboard-api-key")["SecretString"])[
             "api_key"
         ]
@@ -792,7 +793,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     import base64
     import subprocess
 
-    from cogtainer.aws import POLIS_ACCOUNT_ID
+    from cogtainer.aws import ACCOUNT_ID
 
     # Build and upload frontend assets to S3 first
     _build_and_upload_frontend(session, safe_name, project_root)
@@ -825,7 +826,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
 
     # 2. ECR login
     ecr = session.client("ecr", region_name=DEFAULT_REGION)
-    repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
+    repo_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
     click.echo("  Logging into ECR...")
     token_resp = ecr.get_authorization_token()
     auth = token_resp["authorizationData"][0]
@@ -855,7 +856,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     service_arn = _find_dashboard_service(ecs_client, safe_name)
 
     click.echo("  Updating task definition...")
-    svc_desc = ecs_client.describe_services(cluster="cogent-polis", services=[service_arn])["services"][0]
+    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
 
@@ -903,7 +904,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     # 5. Deploy
     click.echo("  Deploying...")
     ecs_client.update_service(
-        cluster="cogent-polis",
+        cluster=naming.cluster_name(),
         service=service_arn,
         taskDefinition=new_td_arn,
         forceNewDeployment=True,
@@ -914,7 +915,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
         try:
             waiter = ecs_client.get_waiter("services_stable")
             waiter.wait(
-                cluster="cogent-polis",
+                cluster=naming.cluster_name(),
                 services=[service_arn],
                 WaiterConfig={"Delay": 10, "MaxAttempts": 60},
             )
@@ -930,22 +931,22 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
 @click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
 def update_stack(ctx: click.Context, profile: str | None):
-    """Full CDK stack update via the polis CDK app."""
+    """Full CDK stack update via the cogtainer CDK app."""
     import subprocess
 
-    from cogtainer.aws import get_polis_session, resolve_org_profile, set_profile
+    from cogtainer.aws import get_aws_session, resolve_org_profile, set_profile
 
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
     profile = resolve_org_profile(profile)
 
-    # Look up certificate ARN from polis account
+    # Look up certificate ARN from cogtainer account
     set_profile(profile)
-    session, _ = get_polis_session()
+    session, _ = get_aws_session()
     cf = session.client("cloudformation", region_name=DEFAULT_REGION)
     acm = session.client("acm", region_name=DEFAULT_REGION)
     cert_arn = ""
-    domain = f"{safe_name}.{PolisConfig().domain}"
+    domain = f"{safe_name}.{CogtainerConfig().domain}"
     for cert in acm.list_certificates()["CertificateSummaryList"]:
         if cert["DomainName"] == domain:
             cert_arn = cert["CertificateArn"]
@@ -958,15 +959,15 @@ def update_stack(ctx: click.Context, profile: str | None):
         repos = ecr_client.describe_repositories(repositoryNames=[naming.ecr_repo_name()])["repositories"]
         ecr_repo_uri = repos[0]["repositoryUri"]
     except Exception:
-        click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
+        click.echo("Warning: Could not resolve cogtainer ECR repo. Using default image.")
 
-    # Resolve shared infra from polis stack outputs (source of truth)
-    polis_stack = cf.describe_stacks(StackName=naming.polis_stack_name())["Stacks"][0]
-    polis_outputs = {o["OutputKey"]: o["OutputValue"] for o in polis_stack.get("Outputs", [])}
-    shared_db_cluster_arn = polis_outputs.get("SharedDbClusterArn", "")
-    shared_db_secret_arn = polis_outputs.get("SharedDbSecretArn", "")
-    shared_alb_listener_arn = polis_outputs.get("SharedHttpsListenerArn", "")
-    shared_alb_sg_id = polis_outputs.get("SharedAlbSecurityGroupId", "")
+    # Resolve shared infra from cogtainer stack outputs (source of truth)
+    cogtainer_stack = cf.describe_stacks(StackName=naming.cogtainer_stack_name())["Stacks"][0]
+    cogtainer_outputs = {o["OutputKey"]: o["OutputValue"] for o in cogtainer_stack.get("Outputs", [])}
+    shared_db_cluster_arn = cogtainer_outputs.get("SharedDbClusterArn", "")
+    shared_db_secret_arn = cogtainer_outputs.get("SharedDbSecretArn", "")
+    shared_alb_listener_arn = cogtainer_outputs.get("SharedHttpsListenerArn", "")
+    shared_alb_sg_id = cogtainer_outputs.get("SharedAlbSecurityGroupId", "")
 
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [

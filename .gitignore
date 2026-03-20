@@ -14,7 +14,7 @@ build/
 develop-eggs/
 dist/
 downloads/
-# eggs/  — excluded: polis/eggs/ is a project directory
+# eggs/
 .eggs/
 lib/
 !dashboard/frontend/src/lib/

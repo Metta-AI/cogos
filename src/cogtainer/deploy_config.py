@@ -43,7 +43,7 @@ class ServiceQuotaTarget(BaseModel):
 
 
 def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
-    """Default Bedrock quota targets for the shared polis account."""
+    """Default Bedrock quota targets for the shared cogtainer account."""
     return [
         ServiceQuotaTarget(
             quota_code="L-59759B4A",
@@ -98,8 +98,8 @@ def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
     ]
 
 
-class PolisConfig(BaseModel):
-    name: str = Field(default_factory=lambda: deploy_config("polis_name", "softmax-polis"))
+class CogtainerConfig(BaseModel):
+    name: str = Field(default_factory=lambda: deploy_config("cogtainer_name", ""))
     organization: str = Field(default_factory=lambda: deploy_config("organization", "Softmax"))
     owner: str = Field(default_factory=lambda: deploy_config("owner", ""))
     domain: str = Field(default_factory=lambda: deploy_config("domain", "softmax-cogents.com"))
@@ -111,7 +111,7 @@ class PolisConfig(BaseModel):
         cogent = self.cogents.get(cogent_name, CogentMeta())
         return {
             "cogent_name": cogent_name,
-            "polis_name": self.name,
+            "cogtainer_name": self.name,
             "organization": self.organization,
             "owner": self.owner,
             "description": cogent.description,

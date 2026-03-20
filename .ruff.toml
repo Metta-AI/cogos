@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [lint.isort]
-known-first-party = ["body", "cogtainer", "cli", "memory", "cogos", "polis"]
+known-first-party = ["body", "cogtainer", "cli", "memory", "cogos"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [lint]

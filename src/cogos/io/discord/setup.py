@@ -10,7 +10,7 @@ from cogos.capabilities._secrets_helper import fetch_secret
 
 logger = logging.getLogger(__name__)
 
-POLIS_BRIDGE_SERVICE = "cogent-polis-discord"
+DISCORD_BRIDGE_SERVICE = "cogtainer-discord"
 
 
 def discord_secret_status(
@@ -19,9 +19,9 @@ def discord_secret_status(
     secrets_provider: object,
     session: Any = None,
 ) -> tuple[bool | None, str | None]:
-    """Return whether the shared polis Discord token exists."""
+    """Return whether the shared cogtainer Discord token exists."""
     try:
-        raw = fetch_secret("polis/discord", secrets_provider=secrets_provider)
+        raw = fetch_secret("cogtainer/discord", secrets_provider=secrets_provider)
         data = json.loads(raw)
         return bool(data.get("access_token")), None
     except (RuntimeError, KeyError):
@@ -55,7 +55,9 @@ def discord_service_status(
     *,
     ecs_client: Any,
 ) -> tuple[dict[str, int | str | bool | None], str | None]:
-    """Return ECS status for the shared polis Discord bridge service."""
+    """Return ECS status for the shared cogtainer Discord bridge service."""
+    from cogtainer import naming
+
     _empty = {
         "bridge_service_exists": None,
         "bridge_status": None,
@@ -64,7 +66,7 @@ def discord_service_status(
         "bridge_pending_count": None,
     }
     try:
-        resp = ecs_client.describe_services(cluster="cogent-polis", services=[POLIS_BRIDGE_SERVICE])
+        resp = ecs_client.describe_services(cluster=naming.cluster_name(), services=[DISCORD_BRIDGE_SERVICE])
         services = resp.get("services", [])
         if not services:
             return {**_empty, "bridge_service_exists": False}, None

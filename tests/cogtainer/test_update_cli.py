@@ -8,7 +8,8 @@ from cogtainer.update_cli import (
     _is_dashboard_service_name,
     update,
 )
-from cogtainer.aws import POLIS_ACCOUNT_ID
+from cogtainer.aws import ACCOUNT_ID
+from cogtainer import naming
 
 
 class _FakeEcsClient:
@@ -16,7 +17,7 @@ class _FakeEcsClient:
         self.service_arns = service_arns
 
     def list_services(self, cluster: str) -> dict[str, list[str]]:
-        assert cluster == "cogent-polis"
+        assert cluster == naming.cluster_name()
         return {"serviceArns": self.service_arns}
 
 
@@ -27,10 +28,11 @@ def test_is_dashboard_service_name_rejects_non_dashboard_services():
 
 
 def test_find_dashboard_service_prefers_dashboard_service_over_discord():
+    cluster = naming.cluster_name()
     ecs_client = _FakeEcsClient(
         [
-            f"arn:aws:ecs:us-east-1:{POLIS_ACCOUNT_ID}:service/cogent-polis/cogent-dr-gamma-discord",
-            f"arn:aws:ecs:us-east-1:{POLIS_ACCOUNT_ID}:service/cogent-polis/cogent-dr-gamma-cogtainer-DashService09A25EB6-mc4IBPRXHnGZ",
+            f"arn:aws:ecs:us-east-1:{ACCOUNT_ID}:service/{cluster}/cogent-dr-gamma-discord",
+            f"arn:aws:ecs:us-east-1:{ACCOUNT_ID}:service/{cluster}/cogent-dr-gamma-cogtainer-DashService09A25EB6-mc4IBPRXHnGZ",
         ]
     )
 
@@ -40,8 +42,9 @@ def test_find_dashboard_service_prefers_dashboard_service_over_discord():
 
 
 def test_find_dashboard_service_raises_when_dashboard_service_missing():
+    cluster = naming.cluster_name()
     ecs_client = _FakeEcsClient(
-        [f"arn:aws:ecs:us-east-1:{POLIS_ACCOUNT_ID}:service/cogent-polis/cogent-dr-gamma-discord"]
+        [f"arn:aws:ecs:us-east-1:{ACCOUNT_ID}:service/{cluster}/cogent-dr-gamma-discord"]
     )
 
     with pytest.raises(Exception, match="No dashboard service found"):

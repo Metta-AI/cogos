@@ -130,7 +130,7 @@ def _anthropic_response_to_bedrock(response: Any) -> dict:
     }
 
 
-ANTHROPIC_SECRET_PATH = os.environ.get("ANTHROPIC_SECRET_PATH", "cogent/polis/anthropic")
+ANTHROPIC_SECRET_PATH = os.environ.get("ANTHROPIC_SECRET_PATH", "cogent/cogtainer/anthropic")
 
 
 def _resolve_anthropic_api_key(

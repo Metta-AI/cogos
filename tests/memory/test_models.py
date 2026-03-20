@@ -14,7 +14,7 @@ class TestMemoryVersion:
         assert mv.source == "cogent"
 
     def test_source_values(self):
-        for source in ["polis", "cogent", "user:daveey"]:
+        for source in ["cogtainer", "cogent", "user:daveey"]:
             mv = MemoryVersion(
                 memory_id=UUID("00000000-0000-0000-0000-000000000001"),
                 version=1,

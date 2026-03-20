@@ -18,7 +18,7 @@ inputs:
   bucket:
     description: "S3 bucket name"
     required: true
-    default: "cogent-polis-ci-artifacts"
+    default: "cogtainer-ci-artifacts"
 
 runs:
   using: "composite"

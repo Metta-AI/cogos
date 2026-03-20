@@ -1,12 +1,13 @@
 """Per-cogtainer CDK stack: fully isolated AWS infrastructure.
 
 Each cogtainer gets its own Aurora, ECS, ALB, ECR, EventBridge, and DynamoDB.
-Adapted from polis/cdk/stacks/core.py but scoped to a single cogtainer.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from cogtainer import naming
 
 import aws_cdk as cdk
 from aws_cdk import CfnOutput, Duration, RemovalPolicy

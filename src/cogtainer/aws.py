@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 
 import boto3
 
@@ -12,8 +11,8 @@ from cogtainer.deploy_config import deploy_config
 
 logger = logging.getLogger(__name__)
 
-POLIS_ACCOUNT_NAME = deploy_config("account_name", "cogent-polis")
-POLIS_ACCOUNT_ID = deploy_config("account_id", "901289084804")
+ACCOUNT_NAME = deploy_config("account_name", "")
+ACCOUNT_ID = deploy_config("account_id", "")
 DEFAULT_REGION = deploy_config("region", "us-east-1")
 DEFAULT_ORG_PROFILE = deploy_config("org_profile", "softmax-org")
 ORG_PROFILE_ENV = "COGENT_ORG_PROFILE"
@@ -30,7 +29,7 @@ def set_profile(profile: str | None) -> None:
 
 
 def resolve_org_profile(profile: str | None = None) -> str:
-    """Resolve the org-admin AWS profile for polis-targeting operations."""
+    """Resolve the org-admin AWS profile for cogtainer-targeting operations."""
     for candidate in (profile, os.getenv(ORG_PROFILE_ENV)):
         if candidate:
             cleaned = candidate.strip()
@@ -58,56 +57,14 @@ def get_org_id(session: boto3.Session | None = None) -> str:
     return org.describe_organization()["Organization"]["Id"]
 
 
-def find_polis_account(session: boto3.Session | None = None) -> str | None:
-    """Find the polis account ID in the org."""
+def get_aws_session(session: boto3.Session | None = None) -> tuple[boto3.Session, str]:
+    """Assume a role into the cogtainer account. Returns (session, account_id)."""
     session = session or get_org_session()
-    org = session.client("organizations")
-    paginator = org.get_paginator("list_accounts")
-    for page in paginator.paginate():
-        for acct in page["Accounts"]:
-            if acct["Name"] == POLIS_ACCOUNT_NAME and acct["Status"] == "ACTIVE":
-                return acct["Id"]
-    return None
+    account_id = ACCOUNT_ID
 
-
-def create_polis_account(session: boto3.Session | None = None) -> str:
-    """Create the cogent-polis org account. Returns account ID."""
-    session = session or get_org_session()
-    org = session.client("organizations")
-    tag = os.urandom(3).hex()
-    email = f"cogent-polis+{tag}@{ORG_EMAIL_DOMAIN}"
-
-    resp = org.create_account(Email=email, AccountName=POLIS_ACCOUNT_NAME)
-    request_id = resp["CreateAccountStatus"]["Id"]
-
-    while True:
-        status = org.describe_create_account_status(
-            CreateAccountRequestId=request_id,
-        )["CreateAccountStatus"]
-        state = status["State"]
-        if state == "SUCCEEDED":
-            return status["AccountId"]
-        if state == "FAILED":
-            reason = status.get("FailureReason", "unknown")
-            if reason == "EMAIL_ALREADY_EXISTS":
-                tag = os.urandom(3).hex()
-                email = f"cogent-polis+{tag}@{ORG_EMAIL_DOMAIN}"
-                resp = org.create_account(Email=email, AccountName=POLIS_ACCOUNT_NAME)
-                request_id = resp["CreateAccountStatus"]["Id"]
-                continue
-            raise RuntimeError(f"Account creation failed: {reason}")
-        logger.info("Account creation: %s", state)
-        time.sleep(5)
-
-
-def get_polis_session(session: boto3.Session | None = None) -> tuple[boto3.Session, str]:
-    """Assume a role into the polis account. Returns (session, account_id)."""
-    session = session or get_org_session()
-    account_id = POLIS_ACCOUNT_ID
-
-    # Try cogent-polis-admin (works from any account in the org)
+    # Try {account_name}-admin (works from any account in the org)
     try:
-        return _assume_role(session, account_id, "cogent-polis-admin"), account_id
+        return _assume_role(session, account_id, f"{ACCOUNT_NAME}-admin"), account_id
     except Exception:
         pass
 
@@ -118,8 +75,8 @@ def get_polis_session(session: boto3.Session | None = None) -> tuple[boto3.Sessi
         pass
 
     raise ValueError(
-        f"Cannot assume into polis account {account_id}. "
-        "Ensure your AWS profile has permission to assume cogent-polis-admin."
+        f"Cannot assume into cogtainer account {account_id}. "
+        f"Ensure your AWS profile has permission to assume {ACCOUNT_NAME}-admin."
     )
 
 

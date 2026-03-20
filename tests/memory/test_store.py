@@ -78,9 +78,9 @@ class TestCreate:
         repo.get_memory_by_name.return_value = None
         repo.insert_memory.return_value = uuid4()
 
-        result = store.create("notes", "content", source="polis")
+        result = store.create("notes", "content", source="cogtainer")
 
-        assert result.versions[1].source == "polis"
+        assert result.versions[1].source == "cogtainer"
 
     def test_create_calls_repo_insert(self, store, repo):
         repo.get_memory_by_name.return_value = None

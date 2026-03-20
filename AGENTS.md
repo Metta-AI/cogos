@@ -267,9 +267,9 @@ When deploying to AWS, **actively diagnose failures**. Do not sleep/poll CloudFo
 ### 1. Check CloudFormation events (not just status)
 
 ```python
-from cogtainer.aws import get_polis_session, set_org_profile
+from cogtainer.aws import get_aws_session, set_org_profile
 set_org_profile()
-session, _ = get_polis_session()
+session, _ = get_aws_session()
 cf = session.client('cloudformation', region_name='us-east-1')
 
 # Events show WHAT failed and WHY
