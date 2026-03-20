@@ -17,12 +17,12 @@ class CICogtainerEntry(BaseModel):
     components: str | list[str] = "all"  # "all" or list like ["lambdas", "dashboard"]
     cogents: list[str] = Field(default_factory=list)
     aws_role: str = ""  # OIDC role ARN
-    s3_artifacts_bucket: str = ""
 
 
 class CIConfig(BaseModel):
     """Top-level cogtainers.ci.yml schema."""
 
+    ci_artifacts_bucket: str = "cogent-polis-ci-artifacts"
     cogtainers: dict[str, CICogtainerEntry] = Field(default_factory=dict)
 
     def deploy_targets(self) -> list[dict]:

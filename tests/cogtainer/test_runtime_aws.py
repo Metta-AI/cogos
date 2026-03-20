@@ -131,14 +131,40 @@ def test_aws_runtime_spawn_executor(aws_runtime: AwsRuntime):
     assert "cogent-alpha-executor" in call_kwargs["FunctionName"]
 
 
-# ── create/destroy raise ─────────────────────────────────────
+# ── create/destroy ───────────────────────────────────────────
 
 
-def test_aws_runtime_create_cogent_raises(aws_runtime: AwsRuntime):
-    with pytest.raises(NotImplementedError):
-        aws_runtime.create_cogent("x")
+def test_aws_runtime_create_cogent(aws_runtime: AwsRuntime):
+    """create_cogent creates DB, registers in status table, applies schema."""
+    aws_runtime._cogtainer_name = "test"
+    aws_runtime._status_table = "cogtainer-test-status"
+
+    rds_client = MagicMock()
+    cf_client = MagicMock()
+    cf_client.describe_stacks.return_value = {
+        "Stacks": [{"Outputs": [
+            {"OutputKey": "DbClusterArn", "OutputValue": "arn:rds:cluster"},
+            {"OutputKey": "DbSecretArn", "OutputValue": "arn:secret"},
+        ]}]
+    }
+
+    def mock_client(service, **kw):
+        return cf_client if service == "cloudformation" else rds_client
+    aws_runtime._session.client.side_effect = mock_client
+
+    mock_table = MagicMock()
+    aws_runtime._session.resource.return_value.Table.return_value = mock_table
+
+    with patch("cogos.db.migrations.apply_schema_with_client"):
+        aws_runtime.create_cogent("alpha")
+
+    mock_table.put_item.assert_called_once()
+    rds_client.execute_statement.assert_called_once()  # CREATE DATABASE
 
 
-def test_aws_runtime_destroy_cogent_raises(aws_runtime: AwsRuntime):
-    with pytest.raises(NotImplementedError):
-        aws_runtime.destroy_cogent("x")
+def test_aws_runtime_destroy_cogent(aws_runtime: AwsRuntime):
+    """destroy_cogent removes from status table."""
+    mock_table = MagicMock()
+    aws_runtime._session.resource.return_value.Table.return_value = mock_table
+    aws_runtime.destroy_cogent("alpha")
+    mock_table.delete_item.assert_called_once_with(Key={"cogent_name": "alpha"})

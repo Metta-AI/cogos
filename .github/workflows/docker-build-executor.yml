@@ -31,6 +31,7 @@ jobs:
           import yaml, json
           with open('cogtainers.ci.yml') as f:
               cfg = yaml.safe_load(f) or {}
+          s3_bucket = cfg.get('ci_artifacts_bucket', 'cogent-polis-ci-artifacts')
           targets = []
           for name, entry in (cfg.get('cogtainers') or {}).items():
               components = entry.get('components', 'all')
@@ -40,10 +41,10 @@ jobs:
                       'ecr_repo': entry.get('ecr_repo', 'cogent'),
                       'aws_role': entry.get('aws_role', ''),
                       'region': entry.get('region', 'us-east-1'),
-                      's3_bucket': entry.get('s3_artifacts_bucket', 'cogent-polis-ci-artifacts'),
+                      's3_bucket': s3_bucket,
                   })
           if not targets:
-              targets = [{'name': 'default', 'ecr_repo': 'cogent', 'aws_role': '', 'region': 'us-east-1', 's3_bucket': 'cogent-polis-ci-artifacts'}]
+              targets = [{'name': 'default', 'ecr_repo': 'cogent', 'aws_role': '', 'region': 'us-east-1', 's3_bucket': s3_bucket}]
           print(json.dumps({'include': targets}))
           " > /tmp/matrix.json
           echo "matrix=$(cat /tmp/matrix.json)" >> "$GITHUB_OUTPUT"

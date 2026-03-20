@@ -96,4 +96,3 @@ def test_ci_config_defaults():
     assert entry.components == "all"
     assert entry.cogents == []
     assert entry.aws_role == ""
-    assert entry.s3_artifacts_bucket == ""

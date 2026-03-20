@@ -1,12 +1,16 @@
-# CI deploy targets — each cogtainer gets its own ECR repo and Lambda zips.
+# CI deploy targets — each cogtainer gets its own ECR repo.
+# Lambda zips are shared (same code) so they use a common S3 bucket.
 # GitHub Actions reads this to build a matrix of deploy targets.
+
+# Shared CI artifacts bucket (Lambda zips are identical across cogtainers)
+ci_artifacts_bucket: cogent-polis-ci-artifacts
+
 cogtainers:
   polis:
     account_id: "901289084804"
     region: us-east-1
     ecr_repo: cogent
     aws_role: ""  # uses vars.AWS_ROLE default
-    s3_artifacts_bucket: cogent-polis-ci-artifacts
     components: all
     cogents: []
 
@@ -15,6 +19,5 @@ cogtainers:
     region: us-east-1
     ecr_repo: cogtainer-agora
     aws_role: ""  # same account, same role
-    s3_artifacts_bucket: cogent-polis-ci-artifacts
     components: all
     cogents: [alpha]
