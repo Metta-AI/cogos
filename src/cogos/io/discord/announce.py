@@ -32,8 +32,9 @@ DISCORD_API = "https://discord.com/api/v10"
 
 def _get_bot_token() -> str:
     """Get the Discord bot token from agora/discord in Secrets Manager."""
-    from polis.aws import get_polis_session
+    from polis.aws import get_polis_session, set_org_profile
 
+    set_org_profile()
     session, _ = get_polis_session()
     sm = session.client("secretsmanager", region_name="us-east-1")
     secret = json.loads(
