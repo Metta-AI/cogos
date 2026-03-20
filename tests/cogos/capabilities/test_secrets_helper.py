@@ -9,94 +9,58 @@ import pytest
 from cogos.capabilities._secrets_helper import fetch_secret
 
 
-class TestFetchSecretSSM:
-    def test_returns_value_from_ssm(self):
-        with patch("boto3.client") as mock_client:
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.return_value = {
-                "Parameter": {"Value": "my-secret-value"}
-            }
-            mock_client.return_value = mock_ssm
-            result = fetch_secret("cogos/api-key")
-            assert result == "my-secret-value"
-            mock_client.assert_called_with("ssm")
+def _mock_provider(secrets=None, raise_on=None):
+    """Create a mock SecretsProvider.
 
-    def test_falls_back_to_secrets_manager(self):
-        with patch("boto3.client") as mock_client:
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.side_effect = Exception("not found")
-            mock_sm = MagicMock()
-            mock_sm.get_secret_value.return_value = {"SecretString": "sm-value"}
+    secrets: dict mapping key -> value (or key -> {field: value} for JSON)
+    raise_on: set of keys that should raise KeyError
+    """
+    provider = MagicMock()
 
-            def pick_client(service):
-                return mock_ssm if service == "ssm" else mock_sm
+    def _get(key, field=None):
+        if raise_on and key in raise_on:
+            raise KeyError(key)
+        if secrets and key in secrets:
+            return secrets[key] if field is None else secrets[key]
+        raise KeyError(key)
 
-            mock_client.side_effect = pick_client
-            result = fetch_secret("cogos/api-key")
-            assert result == "sm-value"
-
-    def test_raises_on_both_fail(self):
-        with patch("boto3.client") as mock_client:
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.side_effect = Exception("ssm fail")
-            mock_sm = MagicMock()
-            mock_sm.get_secret_value.side_effect = Exception("sm fail")
-
-            def pick_client(service):
-                return mock_ssm if service == "ssm" else mock_sm
-
-            mock_client.side_effect = pick_client
-            with pytest.raises(RuntimeError, match="Could not fetch secret"):
-                fetch_secret("cogos/api-key")
+    provider.get_secret.side_effect = _get
+    return provider
 
 
-class TestFetchSecretField:
-    def test_extracts_json_field(self):
-        with patch("boto3.client") as mock_client:
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.side_effect = Exception("not found")
-            mock_sm = MagicMock()
-            mock_sm.get_secret_value.return_value = {
-                "SecretString": '{"access_token": "tok123", "type": "pat"}'
-            }
+class TestFetchSecretBasic:
+    def test_returns_value(self):
+        provider = MagicMock()
+        provider.get_secret.return_value = "my-secret-value"
+        result = fetch_secret("cogos/api-key", secrets_provider=provider)
+        assert result == "my-secret-value"
+        provider.get_secret.assert_called_with("cogos/api-key", field=None)
 
-            def pick_client(service):
-                return mock_ssm if service == "ssm" else mock_sm
+    def test_passes_field(self):
+        provider = MagicMock()
+        provider.get_secret.return_value = "tok123"
+        result = fetch_secret("my/secret", field="access_token", secrets_provider=provider)
+        assert result == "tok123"
+        provider.get_secret.assert_called_with("my/secret", field="access_token")
 
-            mock_client.side_effect = pick_client
-            result = fetch_secret("my/secret", field="access_token")
-            assert result == "tok123"
-
-    def test_missing_field_raises(self):
-        with patch("boto3.client") as mock_client:
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.side_effect = Exception("not found")
-            mock_sm = MagicMock()
-            mock_sm.get_secret_value.return_value = {
-                "SecretString": '{"type": "pat"}'
-            }
-
-            def pick_client(service):
-                return mock_ssm if service == "ssm" else mock_sm
-
-            mock_client.side_effect = pick_client
-            with pytest.raises(RuntimeError, match="does not contain field"):
-                fetch_secret("my/secret", field="access_token")
+    def test_raises_on_not_found(self):
+        provider = MagicMock()
+        provider.get_secret.side_effect = KeyError("not found")
+        with pytest.raises(RuntimeError, match="Could not fetch secret"):
+            fetch_secret("cogos/api-key", secrets_provider=provider)
 
 
 class TestCogentPlaceholder:
     @patch.dict("os.environ", {"COGENT_NAME": "dr.alpha"})
     def test_resolves_cogent_placeholder(self):
-        with patch("boto3.client") as mock_client:
-            mock_sm = MagicMock()
-            mock_sm.get_secret_value.return_value = {"SecretString": "val"}
-            mock_ssm = MagicMock()
-            mock_ssm.get_parameter.side_effect = Exception("nope")
+        provider = MagicMock()
+        provider.get_secret.return_value = "val"
+        result = fetch_secret("cogent/{cogent}/github", secrets_provider=provider)
+        assert result == "val"
+        provider.get_secret.assert_called_with("cogent/dr.alpha/github", field=None)
 
-            def pick_client(service):
-                return mock_ssm if service == "ssm" else mock_sm
-
-            mock_client.side_effect = pick_client
-            result = fetch_secret("cogent/{cogent}/github")
-            assert result == "val"
-            mock_sm.get_secret_value.assert_called_with(SecretId="cogent/dr.alpha/github")
+    def test_raises_without_cogent_name(self):
+        provider = MagicMock()
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(RuntimeError, match="COGENT_NAME env var is not set"):
+                fetch_secret("cogent/{cogent}/github", secrets_provider=provider)

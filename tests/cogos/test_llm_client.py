@@ -174,7 +174,7 @@ def test_llm_client_raises_throttling_without_anthropic_fallback(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(
         "cogos.executor.llm_client._resolve_anthropic_api_key",
-        lambda explicit_key=None: None,
+        lambda explicit_key=None, secrets_provider=None: None,
     )
     fake_bedrock = MagicMock()
     fake_bedrock.converse.side_effect = _throttling_error()
@@ -218,19 +218,14 @@ def test_resolve_env_var(monkeypatch):
 
 def test_resolve_from_secrets(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "cogos.capabilities._secrets_helper.fetch_secret",
-        lambda path, field=None: "sk-secret",
-    )
-    assert _resolve_anthropic_api_key() == "sk-secret"
+    provider = MagicMock()
+    provider.get_secret.return_value = "sk-secret"
+    assert _resolve_anthropic_api_key(secrets_provider=provider) == "sk-secret"
 
 
 def test_resolve_returns_none_when_nothing_available(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "cogos.capabilities._secrets_helper.fetch_secret",
-        MagicMock(side_effect=RuntimeError("not found")),
-    )
+    # No secrets_provider → returns None
     assert _resolve_anthropic_api_key() is None
 
 
@@ -346,7 +341,7 @@ def test_anthropic_primary_requires_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(
         "cogos.executor.llm_client._resolve_anthropic_api_key",
-        lambda explicit_key=None: None,
+        lambda explicit_key=None, secrets_provider=None: None,
     )
     with pytest.raises(RuntimeError, match="LLM_PROVIDER=anthropic"):
         LLMClient(bedrock_client=MagicMock(), provider="anthropic")
