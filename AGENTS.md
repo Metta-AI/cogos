@@ -78,54 +78,50 @@ polis/shared/{key}         # Org-wide shared keys (e.g., polis/shared/jwt-signin
 
 ## Running a Cogent Locally vs on AWS
 
-`cogos local ...` means run on this machine using LocalRepository. By default, each checkout gets its own local JSON store at `.local/cogos/cogos_data.json` under that repo. Set `COGENT_LOCAL_DATA` to override it. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
+Set `COGENT_ID=local` to run on this machine using LocalRepository. By default, each checkout gets its own local JSON store at `.local/cogos/cogos_data.json` under that repo. Set `COGENT_LOCAL_DATA` to override it. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
+
+The `cogos` CLI reads the cogent name from the `COGENT_ID` env var or `default_cogent` in `~/.cogos/config.yml`.
 
 ### Local: Run CogOS on this machine
 
 Requires AWS credentials for Bedrock (LLM calls). No Lambda, no RDS, no EventBridge.
 
 ```bash
+export COGENT_ID=local
+
 # 1. Boot an image into local DB
-cogos local cogos image boot cogos --clean
+cogos image boot cogos --clean
 
-# 2. Start the local executor (daemon loop, replaces Lambda dispatch)
-cogos local cogos run-local
+# 2. (Optional) Start Discord bridge locally
+cogos io discord run-local
 
-# 3. (Optional) Start Discord bridge locally
-cogos local cogos io discord run-local
+# 3. Run a single process manually
+cogos process run <process-name> --executor local
 
-# 4. Run a single process manually
-cogos local cogos process run <process-name> --local
-
-# 5. Check status
-cogos local cogos status
-cogos local cogos run list
+# 4. Check status
+cogos status
+cogos run list
 ```
-
-`run-local` options:
-- `--poll-interval 5` — change polling frequency (default 2s)
-- `--once` — run one tick and exit (useful for testing)
 
 ### Validated Local Operations
 
-All of the following have been tested and work with `cogos local`:
+All of the following work with `COGENT_ID=local`:
 
 | Operation | Command |
 |-----------|---------|
-| Boot image | `cogos local cogos image boot cogos --clean` |
-| Check status | `cogos local cogos status` |
-| List capabilities | `cogos local cogos capability list` |
-| Inspect capability | `cogos local cogos capability get <name>` |
-| List/read/create files | `cogos local cogos file list`, `file get`, `file create` |
-| List handlers | `cogos local cogos handler list` |
-| Emit channel message | `cogos local cogos channel send <channel> --payload '{...}'` |
-| Run executor tick | `cogos local cogos run-local --once` |
-| Run process directly | `cogos local cogos process run <name> --local` |
-| Disable process | `cogos local cogos process disable <name>` |
-| View run history | `cogos local cogos run list`, `run show <id>` |
-| Wipe all data | `cogos local cogos wipe -y` |
-| Reload from image | `cogos local cogos reload -i cogos -y` |
-| Discord IO help | `cogos local cogos io discord --help` |
+| Boot image | `cogos image boot cogos --clean` |
+| Check status | `cogos status` |
+| List capabilities | `cogos capability list` |
+| Inspect capability | `cogos capability get <name>` |
+| List/read/create files | `cogos file list`, `file get`, `file create` |
+| List handlers | `cogos handler list` |
+| Emit channel message | `cogos channel send <channel> --payload '{...}'` |
+| Run process directly | `cogos process run <name> --executor local` |
+| Disable process | `cogos process disable <name>` |
+| View run history | `cogos run list`, `run show <id>` |
+| Wipe all data | `cogos wipe -y` |
+| Reload from image | `cogos reload -i cogos -y` |
+| Discord IO help | `cogos io discord --help` |
 
 Validation checklist with step-by-step commands: `tests/cogos/local_validation.md`
 
@@ -147,25 +143,20 @@ In production (Docker), both are served on a single port (8100) — Next.js is s
 ### Starting the dashboard
 
 ```bash
-# Background (recommended for dev):
-cogos local cogos dashboard start             # local JSON DB, runs in background
-cogos local cogos dashboard stop              # stop both servers
-cogos local cogos dashboard reload            # restart (stop + start)
-
-# Foreground (opens browser):
-cogos local dashboard serve --db local        # local JSON DB
-cogos <name> dashboard serve --db prod          # live polis DB
+# Background (recommended for dev, with COGENT_ID=local):
+cogos dashboard start             # local JSON DB, runs in background
+cogos dashboard stop              # stop both servers
+cogos dashboard reload            # restart (stop + start)
 ```
 
 `cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. Logs go to `/tmp/cogos-backend.log` and `/tmp/cogos-frontend.log`.
 
-# Manual (two terminals):
+Manual (two terminals):
+```bash
 source dashboard/ports.sh
 USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port "$DASHBOARD_BE_PORT"
 cd dashboard/frontend && npm run dev
 ```
-
-`--db local` sets `USE_LOCAL_DB=1` and defaults `COGENT_LOCAL_DATA` to this checkout's `.local/cogos` directory. `--db prod` assumes into the polis account to get live RDS credentials.
 
 ## Remote Deployment and Testing
 
@@ -283,7 +274,7 @@ Use the `agent-browser` skill to test the CogOS Dashboard interactively.
 Start the dashboard:
 
 ```bash
-cogos local cogos dashboard start
+COGENT_ID=local cogos dashboard start
 ```
 
 Or manually:

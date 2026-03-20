@@ -128,14 +128,20 @@ def _default_cogent() -> str:
 
 
 @click.group()
-@click.option("--cogent", "-c", envvar="COGENT_ID", default=_default_cogent,
-              help="Cogent name (from COGENT_ID env or default_cogent in ~/.cogos/config.yml)")
 @click.pass_context
-def cogos(ctx: click.Context, cogent: str):
-    """CogOS — management CLI for processes, files, capabilities, and channels."""
+def cogos(ctx: click.Context):
+    """CogOS — management CLI for processes, files, capabilities, and channels.
+
+    \b
+    Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml to target a cogent.
+    """
     ctx.ensure_object(dict)
+    cogent = os.environ.get("COGENT_ID") or _default_cogent()
     if not cogent:
-        raise click.UsageError("No cogent specified. Use --cogent/-c, set COGENT_ID, or set default_cogent in ~/.cogos/config.yml")
+        # Allow --help on subcommands without requiring a cogent
+        if ctx.invoked_subcommand is None or "--help" in sys.argv or "-h" in sys.argv:
+            return
+        raise click.UsageError("No cogent specified. Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml")
     ctx.obj["cogent_name"] = cogent
     if cogent == "local":
         apply_local_checkout_env()
@@ -419,9 +425,10 @@ def process_create(name: str, mode: str, content: str,
 
 @process.command("run")
 @click.argument("name")
-@click.option("--local", is_flag=True, help="Run locally via Bedrock (no Lambda)")
+@click.option("--executor", "executor_override", type=click.Choice(["lambda", "ecs", "local"]),
+              default=None, help="Executor backend (default: from process runner field)")
 @click.option("--event", default=None, help="JSON event data (e.g. '{\"channel_name\":\"system:tick:hour\"}')")
-def process_run(name: str, local: bool, event: str | None):
+def process_run(name: str, executor_override: str | None, event: str | None):
     """Trigger a process to run."""
     repo = _repo()
     p = repo.get_process_by_name(name)
@@ -429,7 +436,9 @@ def process_run(name: str, local: bool, event: str | None):
         click.echo(f"Process not found: {name}")
         return
 
-    if local:
+    executor = executor_override or p.runner
+
+    if executor == "local":
         from cogos.db.models import ProcessStatus, Run, RunStatus
         from cogos.executor.handler import get_config
         from cogos.runtime.local import run_and_complete
@@ -463,10 +472,10 @@ def process_run(name: str, local: bool, event: str | None):
             error = (db_run.error if db_run else None) or run.error or "(unknown)"
             click.echo(f"Run failed: {error}")
     else:
-        # Mark as runnable for scheduler to pick up
+        # lambda or ecs: mark as runnable for scheduler
         from cogos.db.models import ProcessStatus
         repo.update_process_status(p.id, ProcessStatus.RUNNABLE)
-        click.echo(f"Process {name} marked RUNNABLE")
+        click.echo(f"Process {name} marked RUNNABLE (executor={executor})")
 
 
 @process.command("disable")
@@ -1089,35 +1098,6 @@ def reboot_cmd(ctx: click.Context, yes: bool):
 # LOCAL EXECUTOR
 # ═══════════════════════════════════════════════════════════
 
-@cogos.command("run-local")
-@click.option("--poll-interval", type=float, default=2.0, help="Seconds between ticks (default: 2)")
-@click.option("--once", is_flag=True, help="Run one tick and exit")
-@click.pass_context
-def run_local(ctx: click.Context, poll_interval: float, once: bool):
-    """Run the local executor loop (replaces Lambda dispatch)."""
-    from cogos.executor.handler import get_config
-    from cogos.runtime.local import run_local_loop
-
-    os.environ.setdefault("COGENT_NAME", ctx.obj["cogent_name"])
-
-    repo = _repo()
-    config = get_config()
-    bedrock = _bedrock_client()
-
-    click.echo(f"Local executor running (poll={poll_interval}s, once={once})")
-    if not once:
-        click.echo("Press Ctrl+C to stop.")
-
-    try:
-        run_local_loop(
-            repo, config,
-            poll_interval=poll_interval,
-            once=once,
-            bedrock_client=bedrock,
-        )
-    except KeyboardInterrupt:
-        click.echo("\nLocal executor stopped.")
-
 
 # ═══════════════════════════════════════════════════════════
 # DASHBOARD commands
@@ -1415,6 +1395,24 @@ def discord_run_local(ctx: click.Context):
     from cogos.io.discord.bridge import main as bridge_main
     click.echo(f"Starting local Discord bridge for {cogent_name}...")
     bridge_main()
+
+
+# Memory management CLI
+from memory.cli import memory  # noqa: E402
+
+cogos.add_command(memory)
+
+
+@cogos.command("shell")
+@click.pass_context
+def shell_cmd(ctx: click.Context):
+    """Interactive CogOS shell."""
+    from cogos.shell import CogentShell
+
+    cogent_name = ctx.obj.get("cogent_name")
+    if not cogent_name:
+        raise click.UsageError("No cogent specified. Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml")
+    CogentShell(cogent_name).run()
 
 
 def entry():

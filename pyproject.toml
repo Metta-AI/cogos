@@ -56,7 +56,7 @@ dev = [
 ]
 
 [project.scripts]
-cogos = "cli.__main__:entry"
+cogos = "cogos.cli.__main__:entry"
 polis = "polis.cli:polis"
 discord-bridge = "cogos.io.discord.bridge:main"
 
@@ -66,7 +66,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
-packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboard", "src/memory", "src/polis", "src/run"]
+packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboard", "src/memory", "src/polis"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "images" = "cogos/_bundled_images"
