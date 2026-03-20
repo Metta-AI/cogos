@@ -12,7 +12,6 @@ import boto3
 import click
 
 from cli import DefaultCommandGroup, get_cogent_name
-# Discord bridge is now polis-level; per-cogent bridge management removed
 from polis import naming
 from polis.aws import DEFAULT_ORG_PROFILE, DEFAULT_REGION, ORG_PROFILE_ENV, resolve_org_profile, set_org_profile
 from polis.config import PolisConfig
@@ -627,22 +626,6 @@ def _find_dashboard_service(ecs_client, safe_name: str) -> str:
     return dash_services[0]
 
 
-def _get_discord_desired_count(session: boto3.Session, name: str) -> int | None:
-    """No-op: Discord bridge is now polis-level."""
-    return None
-
-
-def _ensure_discord_bridge_state(
-    session: boto3.Session,
-    name: str,
-    safe_name: str,
-    *,
-    previous_desired_count: int | None,
-) -> tuple[str, int] | None:
-    """No-op: Discord bridge is now polis-level."""
-    return None
-
-
 def _restart_ecs_service(ecs_client, service_arn: str, skip_health: bool, t0: float):
     """Force a new ECS deployment and optionally wait for stability."""
     click.echo("  Restarting ECS service...")
@@ -943,7 +926,7 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
 @click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context
 def update_stack(ctx: click.Context, profile: str | None):
-    """Full CDK stack update (rebuilds dashboard container)."""
+    """Full CDK stack update via the polis CDK app."""
     import subprocess
 
     from polis.aws import get_polis_session, resolve_org_profile, set_profile
@@ -972,22 +955,38 @@ def update_stack(ctx: click.Context, profile: str | None):
     except Exception:
         click.echo("Warning: Could not resolve polis ECR repo. Using default image.")
 
-    discord_desired_count = _get_discord_desired_count(session, name)
+    # Resolve shared DB ARNs from polis stack
+    shared_db_cluster_arn = ""
+    shared_db_secret_arn = ""
+    try:
+        cfn = session.client("cloudformation", region_name=DEFAULT_REGION)
+        polis_outputs = {
+            o["OutputKey"]: o["OutputValue"]
+            for o in cfn.describe_stacks(StackName=naming.polis_stack_name())["Stacks"][0].get("Outputs", [])
+        }
+        shared_db_cluster_arn = polis_outputs.get("SharedDbClusterArn", "")
+        shared_db_secret_arn = polis_outputs.get("SharedDbSecretArn", "")
+    except Exception:
+        click.echo("Warning: Could not resolve shared DB from polis stack.")
 
     click.echo(f"Updating CDK stack for cogent-{name}...")
     cmd = [
         "npx",
         "cdk",
         "deploy",
-        f"cogent-{safe_name}-cogtainer",
+        naming.stack_name(name),
         "-c",
         f"cogent_name={name}",
         "-c",
         f"certificate_arn={cert_arn}",
         "-c",
         f"ecr_repo_uri={ecr_repo_uri}",
+        "-c",
+        f"shared_db_cluster_arn={shared_db_cluster_arn}",
+        "-c",
+        f"shared_db_secret_arn={shared_db_secret_arn}",
         "--app",
-        "python -m cogtainer.cdk.app",
+        "python -m polis.cdk.app",
         "--require-approval",
         "never",
     ]
@@ -995,20 +994,6 @@ def update_stack(ctx: click.Context, profile: str | None):
     result = subprocess.run(cmd, capture_output=False, env=env)
     if result.returncode != 0:
         raise click.ClickException("CDK deploy failed")
-    try:
-        discord_action = _ensure_discord_bridge_state(
-            session,
-            name,
-            safe_name,
-            previous_desired_count=discord_desired_count,
-        )
-    except Exception as e:
-        click.echo(f"Warning: could not reconcile Discord bridge state: {e}")
-    else:
-        if discord_action == ("restored", discord_desired_count):
-            click.echo(f"Restoring Discord bridge desired count to {discord_desired_count} for cogent-{name}...")
-        elif discord_action == ("autostarted", 1):
-            click.echo(f"Starting Discord bridge for cogent-{name} because a token is configured...")
 
     # Record stack update timestamp
     try:
