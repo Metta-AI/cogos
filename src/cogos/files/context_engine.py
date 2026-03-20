@@ -85,11 +85,13 @@ class ContextEngine:
 
         # Append process.content last
         if process.content:
-            result.append({
-                "key": "<content>",
-                "content": process.content,
-                "is_direct": True,
-            })
+            result.append(
+                {
+                    "key": "<content>",
+                    "content": process.content,
+                    "is_direct": True,
+                }
+            )
 
         return result
 
@@ -130,7 +132,21 @@ class ContextEngine:
 
     def _can_process_read_key(self, process: Process, key: str) -> bool:
         repo = self._store.repo
-        for grant in repo.list_process_capabilities(process.id):
+        current: Process | None = process
+        while current is not None:
+            if self._grants_allow_read(repo, current.id, key):
+                return True
+            if current.parent_process:
+                current = repo.get_process(current.parent_process)
+            else:
+                current = None
+        return False
+
+    def _grants_allow_read(self, repo, process_id, key: str) -> bool:
+        grants = list(repo.list_process_capabilities(process_id))
+        if not grants:
+            return False
+        for grant in grants:
             capability = repo.get_capability(grant.capability)
             if not capability:
                 continue

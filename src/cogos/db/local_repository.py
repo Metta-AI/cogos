@@ -144,6 +144,9 @@ class LocalRepository(Repository):
             "discord_guilds": [g.model_dump(mode="json") for g in self._discord_guilds.values()],
             "discord_channels": [ch.model_dump(mode="json") for ch in self._discord_channels.values()],
             "operations": [op.model_dump(mode="json") for op in self._operations.values()],
+            "request_traces": [t.model_dump(mode="json") for t in self._request_traces.values()],
+            "spans": [s.model_dump(mode="json") for s in self._spans.values()],
+            "span_events": [e.model_dump(mode="json") for e in self._span_events.values()],
             "reboot_epoch": self._reboot_epoch,
             "meta": self._meta,
         }
@@ -223,6 +226,9 @@ class LocalRepository(Repository):
             "discord_guilds": (("guild_id",), None),
             "discord_channels": (("channel_id",), None),
             "operations": (("id",), None),
+            "request_traces": (("id",), None),
+            "spans": (("id",), None),
+            "span_events": (("id",), None),
         }
 
         merged = {}
@@ -300,6 +306,15 @@ class LocalRepository(Repository):
         for op in data.get("operations", []):
             operation = CogosOperation(**op)
             self._operations[operation.id] = operation
+        for t in data.get("request_traces", []):
+            trace = RequestTrace(**t)
+            self._request_traces[trace.id] = trace
+        for s in data.get("spans", []):
+            span = Span(**s)
+            self._spans[span.id] = span
+        for e in data.get("span_events", []):
+            event = SpanEvent(**e)
+            self._span_events[event.id] = event
 
     def _migrate_legacy_process_prompt(self, raw: dict[str, Any]) -> dict[str, Any]:
         migrated = dict(raw)
@@ -576,8 +591,7 @@ class LocalRepository(Repository):
     def get_runnable_processes(self, limit: int = 50) -> list[Process]:
         self._maybe_reload()
         runnable = [
-            p for p in self._processes.values()
-            if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch
+            p for p in self._processes.values() if p.status == ProcessStatus.RUNNABLE and p.epoch == self._reboot_epoch
         ]
         _MAX_DT = datetime.max.replace(tzinfo=UTC)
         runnable.sort(key=lambda p: (-p.priority, p.runnable_since or _MAX_DT, p.name))
