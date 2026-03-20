@@ -229,6 +229,79 @@ def delete_dns_record(
     return True
 
 
+def ensure_dns_record_unproxied(
+    store: SecretStore,
+    name: str,
+    target: str,
+    domain: str,
+    record_type: str = "CNAME",
+) -> dict:
+    """Create or update an unproxied DNS record (e.g. for ACM validation)."""
+    cf = _load_cf_config(store)
+    zone_id = cf["zone_id"]
+    api_token = cf["api_token"]
+    fqdn = f"{name}.{domain}" if not name.endswith(domain) else name
+
+    resp = requests.get(
+        f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+        headers=_headers(api_token),
+        params={"name": fqdn, "type": record_type},
+    )
+    resp.raise_for_status()
+    existing = resp.json().get("result", [])
+
+    body = {
+        "type": record_type,
+        "name": fqdn,
+        "content": target,
+        "proxied": False,
+    }
+
+    if existing:
+        record_id = existing[0]["id"]
+        resp = requests.put(
+            f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}",
+            headers=_headers(api_token),
+            json=body,
+        )
+        resp.raise_for_status()
+        logger.info("Updated unproxied DNS record: %s -> %s", fqdn, target)
+    else:
+        resp = requests.post(
+            f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+            headers=_headers(api_token),
+            json=body,
+        )
+        resp.raise_for_status()
+        logger.info("Created unproxied DNS record: %s -> %s", fqdn, target)
+
+    return resp.json()["result"]
+
+
+def list_dns_records(store: SecretStore) -> list[dict]:
+    """List all DNS records in the Cloudflare zone."""
+    cf = _load_cf_config(store)
+    zone_id = cf["zone_id"]
+    api_token = cf["api_token"]
+
+    records: list[dict] = []
+    page = 1
+    while True:
+        resp = requests.get(
+            f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
+            headers=_headers(api_token),
+            params={"page": page, "per_page": 100},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        records.extend(data.get("result", []))
+        if page >= data.get("result_info", {}).get("total_pages", 1):
+            break
+        page += 1
+
+    return records
+
+
 def purge_cache(store: SecretStore) -> None:
     """Purge entire Cloudflare cache for the zone."""
     cf = _load_cf_config(store)
