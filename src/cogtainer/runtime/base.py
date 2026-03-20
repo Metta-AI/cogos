@@ -63,3 +63,15 @@ class CogtainerRuntime(ABC):
     @abstractmethod
     def get_queue_url(self, queue_name: str) -> str:
         """Return the URL for a named queue."""
+
+    @abstractmethod
+    def get_file_url(self, cogent_name: str, key: str, expires_in: int = 604800) -> str:
+        """Return a URL for a stored blob."""
+
+    @abstractmethod
+    def send_email(self, *, source: str, to: str, subject: str, body: str, reply_to: str | None = None) -> str:
+        """Send an email. Returns message ID."""
+
+    @abstractmethod
+    def verify_email_domain(self, domain: str) -> bool:
+        """Check if a domain is verified for sending."""

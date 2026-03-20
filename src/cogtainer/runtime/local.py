@@ -145,3 +145,17 @@ class LocalRuntime(CogtainerRuntime):
 
     def get_queue_url(self, queue_name: str) -> str:
         return f"local://{queue_name}"
+
+    # ── Blob URLs + email ────────────────────────────────────
+
+    def get_file_url(self, cogent_name: str, key: str, expires_in: int = 604800) -> str:
+        path = self._data_dir / cogent_name / "files" / key
+        return f"file://{path}"
+
+    def send_email(self, *, source: str, to: str, subject: str, body: str, reply_to: str | None = None) -> str:
+        logger.info("local email [%s -> %s]: %s", source, to, subject)
+        import uuid
+        return str(uuid.uuid4())
+
+    def verify_email_domain(self, domain: str) -> bool:
+        return True

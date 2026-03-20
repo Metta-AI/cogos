@@ -248,3 +248,35 @@ class AwsRuntime(CogtainerRuntime):
         sts = self._session.client("sts", region_name=self._region)
         account_id = sts.get_caller_identity()["Account"]
         return f"https://sqs.{self._region}.amazonaws.com/{account_id}/{queue_name}"
+
+    # ── Blob URLs + email ────────────────────────────────────
+
+    def get_file_url(self, cogent_name: str, key: str, expires_in: int = 604800) -> str:
+        from polis.naming import bucket_name
+        s3 = self._session.client("s3", region_name=self._region)
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket_name(cogent_name), "Key": key},
+            ExpiresIn=expires_in,
+        )
+
+    def send_email(self, *, source: str, to: str, subject: str, body: str, reply_to: str | None = None) -> str:
+        ses = self._session.client("ses", region_name=self._region)
+        kwargs: dict = {
+            "Source": source,
+            "Destination": {"ToAddresses": [to]},
+            "Message": {
+                "Subject": {"Data": subject},
+                "Body": {"Text": {"Data": body}},
+            },
+        }
+        if reply_to:
+            kwargs["ReplyToAddresses"] = [reply_to]
+        resp = ses.send_email(**kwargs)
+        return resp["MessageId"]
+
+    def verify_email_domain(self, domain: str) -> bool:
+        ses = self._session.client("ses", region_name=self._region)
+        resp = ses.get_identity_verification_attributes(Identities=[domain])
+        attrs = resp.get("VerificationAttributes", {}).get(domain, {})
+        return attrs.get("VerificationStatus") == "Success"
