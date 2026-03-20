@@ -632,6 +632,14 @@ class CogentStack(Stack):
                 f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/cogtainer-{cogtainer_name}:{image_tag}"
             )
 
+        # SQS queue for executor -> bridge reply messages
+        replies_queue = sqs.Queue(
+            self,
+            "DiscordRepliesQueue",
+            queue_name=f"cogent-{safe_name}-discord-replies",
+            visibility_timeout=Duration.seconds(30),
+        )
+
         bridge_env = {
             "COGENT_NAME": cogent_name,
             "COGTAINER_NAME": cogtainer_name,
@@ -643,6 +651,7 @@ class CogentStack(Stack):
             "EVENT_BUS_NAME": event_bus_name,
             "SESSIONS_BUCKET": bucket_name,
             "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
+            "DISCORD_REPLY_QUEUE_URL": replies_queue.queue_url,
         }
 
         bridge_task_def.add_container(
@@ -709,6 +718,10 @@ class CogentStack(Stack):
 
         # SQS — ingress queue
         self.ingress_queue.grant_send_messages(bridge_role)
+
+        # SQS — replies queue (bridge receives, executor sends)
+        replies_queue.grant_consume_messages(bridge_role)
+        replies_queue.grant_send_messages(self.cogent_role)
 
         # S3
         bridge_role.add_to_policy(

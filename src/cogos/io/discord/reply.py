@@ -26,11 +26,8 @@ def _get_queue_url(runtime, cogent_name: str) -> str:
 
 
 def _send(queue_url: str, body: dict, *, runtime) -> None:
-    """Queue a reply message via the runtime."""
-    import json as _json
-    queue_name = os.environ.get("DISCORD_REPLIES_QUEUE", "cogent-polis-discord-replies")
-    # Extract queue name from URL if we have a full URL, otherwise use the URL directly
-    runtime.send_queue_message(queue_name, _json.dumps(body))
+    queue_name = queue_url.rsplit("/", 1)[-1] if "/" in queue_url else queue_url
+    runtime.send_queue_message(queue_name, json.dumps(body))
 
 
 async def queue_reply(
