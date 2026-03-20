@@ -248,7 +248,8 @@ class DiscordBridge:
         """Load configs from DynamoDB, sync roles/webhooks in all guilds."""
         loop = asyncio.get_event_loop()
         sp = self._secrets_provider
-        configs = await loop.run_in_executor(None, lambda: load_cogent_configs(secrets_provider=sp))
+        ddb = self._runtime.get_dynamodb_resource()
+        configs = await loop.run_in_executor(None, lambda: load_cogent_configs(secrets_provider=sp, dynamodb_resource=ddb))
 
         # Update local config cache (and invalidate repos for changed configs)
         new_config_map: dict[str, CogentDiscordConfig] = {}

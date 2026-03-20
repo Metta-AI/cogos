@@ -251,7 +251,8 @@ class AwsRuntime(CogtainerRuntime):
 
         from cogtainer.cogtainer_cli import resolve_org_profile
 
-        stack_name = f"cogtainer-{self._cogtainer_name}-{cogent_name}"
+        safe_name = self._safe(cogent_name)
+        stack_name = f"cogtainer-{self._cogtainer_name}-{safe_name}"
         cmd = [
             "npx", "cdk", "deploy", stack_name,
             "--app", "python -m cogtainer.cdk.app",

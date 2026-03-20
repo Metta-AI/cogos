@@ -82,11 +82,14 @@ def build_app() -> cdk.App:
         db_cluster_arn = _ctx(app, "db_cluster_arn")
         db_secret_arn = _ctx(app, "db_secret_arn")
         event_bus_name = _ctx(app, "event_bus_name", f"cogtainer-{cogtainer_name}")
+        alb_listener_arn = _ctx(app, "alb_listener_arn")
+        alb_security_group_id = _ctx(app, "alb_security_group_id")
+        certificate_arn = _ctx(app, "certificate_arn")
+        ecr_repo_uri = _ctx(app, "ecr_repo_uri")
 
         if not db_cluster_arn or not db_secret_arn:
             import boto3
             try:
-                # Assume into cogtainer account to read stack outputs
                 org_session = boto3.Session()
                 region = entry.region or "us-east-1"
                 sts = org_session.client("sts")
@@ -104,24 +107,28 @@ def build_app() -> cdk.App:
                 db_cluster_arn = db_cluster_arn or outputs.get("DbClusterArn", "")
                 db_secret_arn = db_secret_arn or outputs.get("DbSecretArn", "")
                 event_bus_name = event_bus_name or outputs.get("EventBusName", f"cogtainer-{cogtainer_name}")
-                ecr_repo_uri = _ctx(app, "ecr_repo_uri") or outputs.get("ECRRepositoryUri", "")
+                ecr_repo_uri = ecr_repo_uri or outputs.get("ECRRepositoryUri", "")
+                alb_listener_arn = alb_listener_arn or outputs.get("HttpsListenerArn", "")
+                alb_security_group_id = alb_security_group_id or outputs.get("AlbSecurityGroupId", "")
+                certificate_arn = certificate_arn or outputs.get("WildcardCertArn", "")
             except Exception as e:
                 print(f"WARNING: Could not resolve cogtainer stack outputs: {e}", file=sys.stderr)
 
-        # Deploy per-cogent resources within this cogtainer
+        from cogtainer.naming import safe as _safe
+        safe_cogent = _safe(cogent_name)
         CogentStack(
             app,
-            f"cogtainer-{cogtainer_name}-{cogent_name}",
+            f"cogtainer-{cogtainer_name}-{safe_cogent}",
             cogtainer_name=cogtainer_name,
             cogent_name=cogent_name,
             domain=entry.domain or "",
             db_cluster_arn=db_cluster_arn,
             db_secret_arn=db_secret_arn,
             event_bus_name=event_bus_name,
-            alb_listener_arn=_ctx(app, "alb_listener_arn"),
-            alb_security_group_id=_ctx(app, "alb_security_group_id"),
-            certificate_arn=_ctx(app, "certificate_arn"),
-            ecr_repo_uri=_ctx(app, "ecr_repo_uri"),
+            alb_listener_arn=alb_listener_arn,
+            alb_security_group_id=alb_security_group_id,
+            certificate_arn=certificate_arn,
+            ecr_repo_uri=ecr_repo_uri,
             env=env,
         )
     else:

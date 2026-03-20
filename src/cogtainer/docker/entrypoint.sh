@@ -17,7 +17,11 @@ cat > /tmp/run-ecs-entry.sh << 'SCRIPT'
 set -uo pipefail
 cd /app
 
-if [ -n "${EXECUTOR_PAYLOAD:-}" ]; then
+if [ $# -gt 0 ]; then
+    echo "[runner] Running command: $*"
+    "$@" 2>&1 | tee /tmp/ecs-entry.log
+    EXIT_CODE=${PIPESTATUS[0]}
+elif [ -n "${EXECUTOR_PAYLOAD:-}" ]; then
     python -m cogtainer.lambdas.executor.ecs_entry 2>&1 | tee /tmp/ecs-entry.log
     EXIT_CODE=${PIPESTATUS[0]}
 else
