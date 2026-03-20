@@ -12,7 +12,6 @@ import type {
   CogosRun,
   CogosRunLogsResponse,
   CogosOperation,
-  EventType,
   Resource,
   Alert,
   SetupResponse,
@@ -415,12 +414,6 @@ export async function getResources(name: string): Promise<Resource[]> {
   return r.resources;
 }
 
-export async function getEventTypes(name: string): Promise<EventType[]> {
-  const r = await fetchJSON<{ event_types: EventType[] }>(
-    `/api/cogents/${name}/event-types`,
-  );
-  return r.event_types;
-}
 
 export async function getHandlers(name: string): Promise<CogosHandler[]> {
   const r = await fetchJSON<{ handlers: CogosHandler[] }>(
