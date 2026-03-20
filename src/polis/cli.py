@@ -708,37 +708,7 @@ def cogents_create(ctx: click.Context, name: str):
     apply_schema()
     console.print("  [green]Schema applied[/green]")
 
-    # 6. S3 sessions bucket
-    bucket = naming.bucket_name(name)
-    console.print(f"  Creating sessions bucket: [cyan]{bucket}[/cyan]")
-    s3_client = session.client("s3")
-    try:
-        region = session.region_name or "us-east-1"
-        create_args: dict = {"Bucket": bucket}
-        if region != "us-east-1":
-            create_args["CreateBucketConfiguration"] = {"LocationConstraint": region}
-        s3_client.create_bucket(**create_args)
-        # Lifecycle rule: expire sessions after 30 days
-        s3_client.put_bucket_lifecycle_configuration(
-            Bucket=bucket,
-            LifecycleConfiguration={
-                "Rules": [
-                    {
-                        "ID": "expire-old-sessions",
-                        "Filter": {"Prefix": "sessions/"},
-                        "Status": "Enabled",
-                        "Expiration": {"Days": 30},
-                    },
-                ],
-            },
-        )
-        console.print(f"  [green]Bucket {bucket} created[/green]")
-    except s3_client.exceptions.BucketAlreadyOwnedByYou:
-        console.print(f"  Bucket {bucket} already exists")
-    except s3_client.exceptions.BucketAlreadyExists:
-        console.print(f"  Bucket {bucket} already exists")
-
-    # 7. Secrets — create identity secret for the cogent
+    # 6. Secrets — create identity secret for the cogent
     console.print("  Creating identity secret...")
     store = SecretStore(session=session)
     identity_path = f"cogent/{name}/identity"
@@ -757,7 +727,7 @@ def cogents_create(ctx: click.Context, name: str):
         )
         console.print(f"  [green]Secret created: {identity_path}[/green]")
 
-    # 8. Deploy per-cogent CDK stack
+    # 7. Deploy per-cogent CDK stack (also creates the S3 sessions bucket)
     console.print("  Deploying cogent infrastructure stack...")
     _deploy_cogent_stack(
         name=name,
