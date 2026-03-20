@@ -49,6 +49,14 @@ class SecretsProvider(Protocol):
         """Persist *value* under *key*."""
         ...
 
+    def list_secrets(self, prefix: str) -> list[str]:
+        """Return secret keys matching *prefix*."""
+        ...
+
+    def delete_secret(self, key: str) -> None:
+        """Delete the secret identified by *key*."""
+        ...
+
 
 # ── Local implementation ─────────────────────────────────────
 
@@ -75,6 +83,15 @@ class LocalSecretsProvider:
         data = self._load()
         data[key] = value
         self._path.write_text(json.dumps(data, indent=2))
+
+    def list_secrets(self, prefix: str) -> list[str]:
+        secrets = self._load()
+        return [k for k in secrets if k.startswith(prefix)]
+
+    def delete_secret(self, key: str) -> None:
+        secrets = self._load()
+        secrets.pop(key, None)
+        self._path.write_text(json.dumps(secrets, indent=2))
 
     # -- private --
 
@@ -122,6 +139,19 @@ class AwsSecretsProvider:
             client.put_secret_value(SecretId=key, SecretString=value)
         except client.exceptions.ResourceNotFoundException:
             client.create_secret(Name=key, SecretString=value)
+
+    def list_secrets(self, prefix: str) -> list[str]:
+        client = self._session.client("secretsmanager", region_name=self._region)
+        keys: list[str] = []
+        paginator = client.get_paginator("list_secrets")
+        for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
+            for secret in page.get("SecretList", []):
+                keys.append(secret["Name"])
+        return keys
+
+    def delete_secret(self, key: str) -> None:
+        client = self._session.client("secretsmanager", region_name=self._region)
+        client.delete_secret(SecretId=key, ForceDeleteWithoutRecovery=True)
 
     # -- private --
 

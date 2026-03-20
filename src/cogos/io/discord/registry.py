@@ -1,4 +1,4 @@
-"""Read cogent registry from DynamoDB + Secrets Manager for Discord bridge routing."""
+"""Read cogent registry from DynamoDB + secrets provider for Discord bridge routing."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import os
 from dataclasses import dataclass, field
 
 import boto3
+
+from cogos.capabilities._secrets_helper import fetch_secret
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ class CogentDiscordConfig:
 
 
 def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordConfig]:
-    """Load all cogent configs from DynamoDB + Secrets Manager.
+    """Load all cogent configs from DynamoDB + secrets provider.
 
     Reads cogent-status table for DB connection info, and
     cogent/{name}/discord secrets for persona config.
@@ -40,7 +42,6 @@ def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordCon
     region = os.environ.get("AWS_REGION", "us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name=region)
     table = dynamodb.Table(table_name)
-    sm = boto3.client("secretsmanager", region_name=region)
 
     items = table.scan().get("Items", [])
     configs = []
@@ -63,8 +64,8 @@ def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordCon
         # DB info: check top-level item first, then manifest
         db_info = item.get("database") or manifest.get("database") or {}
 
-        # Read persona config from Secrets Manager
-        persona = _read_persona_secret(sm, name)
+        # Read persona config from secrets provider
+        persona = _read_persona_secret(name)
 
         configs.append(CogentDiscordConfig(
             cogent_name=name,
@@ -81,13 +82,12 @@ def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordCon
     return configs
 
 
-def _read_persona_secret(sm_client, cogent_name: str) -> dict:
+def _read_persona_secret(cogent_name: str) -> dict:
     """Read persona config from cogent/{name}/discord secret. Returns empty dict on failure."""
     try:
-        resp = sm_client.get_secret_value(SecretId=f"cogent/{cogent_name}/discord")
-        data = json.loads(resp["SecretString"])
-        return data
-    except sm_client.exceptions.ResourceNotFoundException:
+        raw = fetch_secret(f"cogent/{cogent_name}/discord")
+        return json.loads(raw)
+    except (RuntimeError, KeyError):
         return {}
     except Exception:
         logger.debug("Failed to read discord secret for %s", cogent_name, exc_info=True)

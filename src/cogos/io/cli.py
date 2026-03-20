@@ -39,18 +39,14 @@ def io():
 @click.argument("cogent_name")
 def list_cmd(profile: str | None, cogent_name: str):
     """List provisioned IO integrations for a cogent."""
-    import boto3
+    from cogtainer.secrets import create_secrets_provider
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sm = boto3.client("secretsmanager", region_name=region)
     prefix = f"identity_service/{cogent_name}/"
 
     try:
-        paginator = sm.get_paginator("list_secrets")
-        io_list = []
-        for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
-            for s in page["SecretList"]:
-                io_list.append(s["Name"].removeprefix(prefix))
+        provider = create_secrets_provider(provider_type="aws")
+        keys = provider.list_secrets(prefix)
+        io_list = [k.removeprefix(prefix) for k in keys]
     except Exception as e:
         click.echo(f"Failed to list IO integrations: {e}", err=True)
         sys.exit(1)
@@ -121,17 +117,16 @@ def create(io_name: str | None, cogent_name: str | None):
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
 def destroy(io_name: str, cogent_name: str, yes: bool):
     """Remove an IO integration from a cogent."""
-    import boto3
+    from cogtainer.secrets import create_secrets_provider
 
     if not yes:
         click.confirm(f"Delete {io_name} IO integration for {cogent_name}?", abort=True)
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sm = boto3.client("secretsmanager", region_name=region)
     secret_id = f"identity_service/{cogent_name}/{io_name}"
 
     try:
-        sm.delete_secret(SecretId=secret_id, ForceDeleteWithoutRecovery=True)
+        provider = create_secrets_provider(provider_type="aws")
+        provider.delete_secret(secret_id)
         click.echo(f"Deleted {secret_id}.")
     except Exception as e:
         click.echo(f"Failed to delete {secret_id}: {e}", err=True)
@@ -142,32 +137,28 @@ def destroy(io_name: str, cogent_name: str, yes: bool):
 @click.argument("cogent_name")
 def status(cogent_name: str):
     """Show provisioned IO integrations and token status."""
-    import boto3
+    from cogos.capabilities._secrets_helper import fetch_secret
+    from cogtainer.secrets import create_secrets_provider
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sm = boto3.client("secretsmanager", region_name=region)
     prefix = f"identity_service/{cogent_name}/"
 
     try:
-        paginator = sm.get_paginator("list_secrets")
-        secrets = []
-        for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
-            for s in page["SecretList"]:
-                secrets.append(s)
+        provider = create_secrets_provider(provider_type="aws")
+        secret_keys = provider.list_secrets(prefix)
     except Exception as e:
         click.echo(f"Failed to list IO integrations: {e}", err=True)
         sys.exit(1)
 
-    if not secrets:
+    if not secret_keys:
         click.echo(f"No IO integrations provisioned for '{cogent_name}'.")
         return
 
     click.echo(f"\nIO integrations for {cogent_name}:\n")
-    for s in sorted(secrets, key=lambda x: x["Name"]):
-        io_name = s["Name"].split("/")[-1]
+    for key in sorted(secret_keys):
+        io_name = key.split("/")[-1]
         try:
-            val = sm.get_secret_value(SecretId=s["Name"])
-            data = json.loads(val["SecretString"])
+            raw = fetch_secret(key)
+            data = json.loads(raw)
             secret_type = data.get("type", "unknown")
             has_token = bool(data.get("access_token") or data.get("bot_token"))
             status_str = "ready" if has_token else "missing"

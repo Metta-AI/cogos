@@ -8,6 +8,8 @@ import logging
 import boto3
 from botocore.exceptions import ClientError
 
+from cogos.capabilities._secrets_helper import fetch_secret
+
 logger = logging.getLogger(__name__)
 
 POLIS_BRIDGE_SERVICE = "cogent-polis-discord"
@@ -19,21 +21,12 @@ def discord_secret_status(
     session: boto3.Session | None = None,
 ) -> tuple[bool | None, str | None]:
     """Return whether the shared polis Discord token exists."""
-    secret_id = "polis/discord"
-    sm = session.client("secretsmanager", region_name=region) if session else boto3.client(
-        "secretsmanager",
-        region_name=region,
-    )
     try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        data = json.loads(resp.get("SecretString", "{}"))
+        raw = fetch_secret("polis/discord")
+        data = json.loads(raw)
         return bool(data.get("access_token")), None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code == "ResourceNotFoundException":
-            return False, None
-        logger.warning("Discord secret check failed: %s", code or exc)
-        return None, code or type(exc).__name__
+    except (RuntimeError, KeyError):
+        return False, None
     except Exception as exc:
         logger.warning("Discord secret check failed: %s", exc)
         return None, type(exc).__name__
@@ -45,22 +38,13 @@ def discord_persona_status(
     *,
     session: boto3.Session | None = None,
 ) -> tuple[dict | None, str | None]:
-    """Return persona config for a cogent from Secrets Manager."""
-    secret_id = f"cogent/{name}/discord"
-    sm = session.client("secretsmanager", region_name=region) if session else boto3.client(
-        "secretsmanager",
-        region_name=region,
-    )
+    """Return persona config for a cogent from the secrets provider."""
     try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        data = json.loads(resp.get("SecretString", "{}"))
+        raw = fetch_secret(f"cogent/{name}/discord")
+        data = json.loads(raw)
         return data, None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code == "ResourceNotFoundException":
-            return None, None
-        logger.warning("Discord persona check failed for %s: %s", name, code or exc)
-        return None, code or type(exc).__name__
+    except (RuntimeError, KeyError):
+        return None, None
     except Exception as exc:
         logger.warning("Discord persona check failed for %s: %s", name, exc)
         return None, type(exc).__name__
