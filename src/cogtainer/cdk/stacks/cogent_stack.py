@@ -15,7 +15,6 @@ from typing import Any
 import aws_cdk as cdk
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_ecr_assets
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_events as events
@@ -438,6 +437,19 @@ class CogentStack(Stack):
             self, "DashTaskDef", cpu=256, memory_limit_mib=512,
         )
 
+        # Grant ECR pull to execution role (needed for private ECR images)
+        task_def.add_to_execution_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                ],
+                resources=["*"],
+            )
+        )
+
         docker_version = (
             (Path(_PROJECT_ROOT) / "dashboard" / "DOCKER_VERSION")
             .read_text()
@@ -464,13 +476,18 @@ class CogentStack(Stack):
             ),
         }
 
+        # Use CI-built dashboard image from cogtainer ECR
+        dash_image_tag = self.node.try_get_context("dashboard_image_tag") or "dashboard-latest"
+        if ecr_repo_uri:
+            dash_image = ecs.ContainerImage.from_registry(f"{ecr_repo_uri}:{dash_image_tag}")
+        else:
+            dash_image = ecs.ContainerImage.from_registry(
+                f"901289084804.dkr.ecr.us-east-1.amazonaws.com/cogtainer-{cogtainer_name}:{dash_image_tag}"
+            )
+
         task_def.add_container(
             "web",
-            image=ecs.ContainerImage.from_asset(
-                _PROJECT_ROOT,
-                file="dashboard/Dockerfile",
-                platform=aws_ecr_assets.Platform.LINUX_AMD64,
-            ),
+            image=dash_image,
             port_mappings=[ecs.PortMapping(container_port=5174)],
             environment=db_env,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="dashboard"),
