@@ -267,5 +267,171 @@ def discover_aws(region: str, profile: str | None) -> None:
         click.echo(f"  - {name}")
 
 
+def _get_cogent_names(session, cogtainer_name: str, region: str) -> list[str]:
+    """Get cogent names for a cogtainer from DynamoDB cogent-status table."""
+    ddb = session.resource("dynamodb", region_name=region)
+    table = ddb.Table("cogent-status")
+
+    items: list[dict] = []
+    params: dict = {}
+    while True:
+        resp = table.scan(**params)
+        items.extend(resp.get("Items", []))
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        params["ExclusiveStartKey"] = last_key
+
+    return sorted(
+        item["cogent_name"]
+        for item in items
+        if item.get("cogent_name")
+    )
+
+
+def _update_lambdas(
+    session,
+    cogtainer_name: str,
+    cogent_names: list[str],
+    region: str,
+    s3_bucket: str = "",
+    s3_key: str = "",
+    image_tag: str = "",
+) -> None:
+    """Update Lambda function code for all cogents."""
+    lambda_client = session.client("lambda", region_name=region)
+    suffixes = ["orchestrator", "executor", "dispatcher", "ingress"]
+
+    for cogent_name in cogent_names:
+        safe_name = cogent_name.replace(".", "-")
+        for suffix in suffixes:
+            fn_name = f"cogent-{safe_name}-{suffix}"
+            try:
+                kwargs: dict = {"FunctionName": fn_name}
+                if s3_bucket and s3_key:
+                    kwargs["S3Bucket"] = s3_bucket
+                    kwargs["S3Key"] = s3_key
+                elif image_tag:
+                    # Get function config to find the image URI base
+                    func_cfg = lambda_client.get_function_configuration(
+                        FunctionName=fn_name,
+                    )
+                    current_image = func_cfg.get("Code", {}).get("ImageUri", "")
+                    if current_image:
+                        repo = current_image.rsplit(":", 1)[0]
+                        kwargs["ImageUri"] = f"{repo}:{image_tag}"
+                    else:
+                        click.echo(f"  {fn_name}: no image URI, skipping --image-tag")
+                        continue
+                else:
+                    click.echo(f"  {fn_name}: no update source specified, skipping")
+                    continue
+
+                lambda_client.update_function_code(**kwargs)
+                click.echo(f"  {fn_name}: updated")
+            except lambda_client.exceptions.ResourceNotFoundException:
+                click.echo(f"  {fn_name}: not found (skip)")
+            except Exception as e:
+                click.echo(f"  {fn_name}: {e}")
+
+
+def _update_services(
+    session,
+    cogtainer_name: str,
+    cogent_names: list[str],
+    region: str,
+    image_tag: str = "",
+) -> None:
+    """Force new ECS deployment for all cogent services."""
+    ecs_client = session.client("ecs", region_name=region)
+    cluster = f"cogent-{cogtainer_name}"
+
+    # Try default cluster name, fall back to cogent-polis
+    try:
+        ecs_client.describe_clusters(clusters=[cluster])["clusters"]
+    except Exception:
+        cluster = "cogent-polis"
+
+    service_types = ["dashboard", "discord"]
+
+    for cogent_name in cogent_names:
+        safe_name = cogent_name.replace(".", "-")
+        for stype in service_types:
+            service_name = f"cogent-{safe_name}-{stype}"
+            try:
+                ecs_client.update_service(
+                    cluster=cluster,
+                    service=service_name,
+                    forceNewDeployment=True,
+                )
+                click.echo(f"  {service_name}: restarted")
+            except ecs_client.exceptions.ServiceNotFoundException:
+                click.echo(f"  {service_name}: not found (skip)")
+            except Exception as e:
+                click.echo(f"  {service_name}: {e}")
+
+
+@cli.command("update")
+@click.argument("name")
+@click.option("--lambdas", "update_lambdas", is_flag=True, help="Update Lambda function code")
+@click.option("--services", "update_services", is_flag=True, help="Restart ECS services with new image")
+@click.option("--all", "update_all", is_flag=True, help="Update both lambdas and services")
+@click.option("--lambda-s3-bucket", default="", help="S3 bucket for Lambda zip")
+@click.option("--lambda-s3-key", default="", help="S3 key for Lambda zip")
+@click.option("--image-tag", default="", help="ECR image tag for Lambda/ECS update")
+@click.option("--region", default="us-east-1", help="AWS region")
+@click.option("--profile", default=None, help="AWS profile name")
+def update_cmd(
+    name: str,
+    update_lambdas: bool,
+    update_services: bool,
+    update_all: bool,
+    lambda_s3_bucket: str,
+    lambda_s3_key: str,
+    image_tag: str,
+    region: str,
+    profile: str | None,
+) -> None:
+    """Update a cogtainer's running services.
+
+    If neither --lambdas nor --services is specified, updates both (same as --all).
+    """
+    # If neither flag is set, update both
+    if not update_lambdas and not update_services:
+        update_all = True
+
+    if update_all:
+        update_lambdas = True
+        update_services = True
+
+    session, _account_id = _get_aws_session(region=region, profile=profile)
+
+    # Get cogent list from DynamoDB
+    cogent_names = _get_cogent_names(session, name, region)
+    if not cogent_names:
+        click.echo(f"No cogents found for cogtainer '{name}'.")
+        return
+
+    click.echo(f"Updating cogtainer '{name}' ({len(cogent_names)} cogent(s))...")
+
+    if update_lambdas:
+        click.echo("Updating Lambda functions...")
+        _update_lambdas(
+            session, name, cogent_names, region,
+            s3_bucket=lambda_s3_bucket,
+            s3_key=lambda_s3_key,
+            image_tag=image_tag,
+        )
+
+    if update_services:
+        click.echo("Restarting ECS services...")
+        _update_services(
+            session, name, cogent_names, region,
+            image_tag=image_tag,
+        )
+
+    click.echo("Done.")
+
+
 if __name__ == "__main__":
     cli()

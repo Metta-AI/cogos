@@ -1,0 +1,9 @@
+cogtainers:
+  prod:
+    account_id: "901289084804"
+    region: us-east-1
+    ecr_repo: cogtainer-prod
+    aws_role: ""
+    s3_artifacts_bucket: ""
+    components: all
+    cogents: []
