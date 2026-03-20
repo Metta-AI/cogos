@@ -24,47 +24,22 @@ else:
         print(f"  {t['name']} -> {t['assignee']}")
 ```
 
-## Step 2: Get GitHub commits via capability
+## Step 2: Discover GitHub capability
+
+The `github` capability doesn't have a `list_commits` method yet. Search for
+what's available and use what you can:
 
 ```python
-repos_to_check = ["metta-ai/metta", "metta-ai/cogos", "metta-ai/cogents-v1"]
-all_commits = {}
-for rp in repos_to_check:
-    owner, name = rp.split("/")
-    info = github.get_repo(owner, name)
-    if hasattr(info, 'error'):
-        print(f"{rp}: {info.error}")
-        all_commits[name] = []
-    else:
-        contribs = github.list_contributions(owner, limit=100)
-        if hasattr(contribs, 'error'):
-            print(f"{rp} contributions: {contribs.error}")
-            all_commits[name] = []
-        else:
-            all_commits[name] = [{"author": c.repo.split("/")[-1] if "/" in c.repo else c.repo, "type": c.type, "date": c.date} for c in contribs]
-            print(f"{name}: {len(all_commits[name])} events")
-```
-
-Actually, `list_contributions` takes a username not owner. Let me use a different approach. Search for what github methods exist first.
-
-## Step 2 (revised): Search github capability
-
-Run this:
-```python
-print(dir(github))
 print(github)
 ```
 
-Then based on the output, figure out how to get recent commits. If the github
-capability doesn't support listing commits directly, that's ok — just note it
-and move on.
+Use `github.get_repo(owner, name)` to verify access to each repo. If there's
+no way to get recent commits, skip this step — the report will be Asana-only.
 
 ## Step 3: Build the report from Asana data
 
-Even without commit data, build a report showing the sprint threads and their
-assignees. Use whatever GitHub data you managed to get.
-
-Build two views per the brief:
+Build a report showing sprint threads and assignees. Use whatever GitHub data
+you managed to get. Build two views per the brief:
 - By Thread: each thread, who's assigned
 - By Person: each person, their threads
 
@@ -79,9 +54,10 @@ print("Saved report")
 
 ## Step 5: Post to Discord
 
+Use the channel ID from the brief directly:
+
 ```python
-raw = secrets.get("cogent/{cogent}/discord_channel_id")
-channel_id = raw.value
+channel_id = "1483962779336446114"
 thread = discord.create_thread(channel_id, f"Standup — {today}")
 if hasattr(thread, 'error'):
     print(f"Thread error: {thread.error}")

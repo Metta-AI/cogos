@@ -6,7 +6,7 @@ config = CogConfig(
     executor="llm",
     capabilities=[
         "me", "procs", "channels", "discord",
-        "asana", "github", "secrets",
+        "asana", "github",
     ],
     handlers=[
         "standup:tick",
