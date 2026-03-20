@@ -157,7 +157,7 @@ def status(cogent_name: str):
     for key in sorted(secret_keys):
         io_name = key.split("/")[-1]
         try:
-            raw = fetch_secret(key)
+            raw = fetch_secret(key, secrets_provider=provider)
             data = json.loads(raw)
             secret_type = data.get("type", "unknown")
             has_token = bool(data.get("access_token") or data.get("bot_token"))

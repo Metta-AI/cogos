@@ -635,7 +635,7 @@ def execute_process(
         return _execute_python_process(process, event_data, run, config, repo, trace_id=trace_id)
 
     from cogos.executor.llm_client import LLMClient
-    llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider)
+    llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider, secrets_provider=_get_secrets_provider())
 
     # Build system prompt using the shared ContextEngine
     from cogos.files.context_engine import ContextEngine

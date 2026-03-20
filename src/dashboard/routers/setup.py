@@ -5,15 +5,16 @@ import logging
 import os
 from enum import Enum
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from cogtainer.secrets import AwsSecretsProvider
 from cogos.io.discord.setup import discord_persona_status, discord_secret_status, discord_service_status
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
+
+_secrets_provider = AwsSecretsProvider(region=os.environ.get("AWS_REGION", "us-east-1"))
 
 router = APIRouter(tags=["setup"])
 
@@ -86,7 +87,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         cogos_error = type(exc).__name__
 
     # Shared bot token (polis-level)
-    secret_configured, secret_check_error = discord_secret_status(region)
+    secret_configured, secret_check_error = discord_secret_status(region, secrets_provider=_secrets_provider)
     # Shared bridge service (polis-level)
     service_status, service_check_error = discord_service_status(region)
     bridge_running = (
@@ -94,7 +95,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
         and int(service_status["bridge_running_count"]) > 0
     )
     # Per-cogent persona config
-    persona_data, persona_error = discord_persona_status(name, region)
+    persona_data, persona_error = discord_persona_status(name, region, secrets_provider=_secrets_provider)
     has_persona = persona_data is not None and bool(persona_data.get("display_name"))
 
     wiring_ready = (
@@ -241,17 +242,12 @@ def _gemini_secret_status(
     region: str,
 ) -> tuple[bool | None, str | None]:
     secret_id = f"cogent/{name}/gemini"
-    sm = boto3.client("secretsmanager", region_name=region)
     try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        data = json.loads(resp.get("SecretString", "{}"))
+        raw = _secrets_provider.get_secret(secret_id)
+        data = json.loads(raw)
         return bool(data.get("api_key")), None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code == "ResourceNotFoundException":
-            return False, None
-        logger.warning("Gemini secret check failed for %s: %s", name, code or exc)
-        return None, code or type(exc).__name__
+    except KeyError:
+        return False, None
     except Exception as exc:
         logger.warning("Gemini secret check failed for %s: %s", name, exc)
         return None, type(exc).__name__
@@ -381,17 +377,12 @@ def _asana_secret_status(
     region: str,
 ) -> tuple[bool | None, str | None]:
     secret_id = f"cogent/{name}/asana"
-    sm = boto3.client("secretsmanager", region_name=region)
     try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        data = json.loads(resp.get("SecretString", "{}"))
+        raw = _secrets_provider.get_secret(secret_id)
+        data = json.loads(raw)
         return bool(data.get("access_token")), None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code == "ResourceNotFoundException":
-            return False, None
-        logger.warning("Asana secret check failed for %s: %s", name, code or exc)
-        return None, code or type(exc).__name__
+    except KeyError:
+        return False, None
     except Exception as exc:
         logger.warning("Asana secret check failed for %s: %s", name, exc)
         return None, type(exc).__name__
@@ -582,10 +573,8 @@ class IdentitySecrets(BaseModel):
 
 def _read_secret_value(secret_id: str, region: str) -> str:
     """Read a plain string secret. Returns empty string on failure."""
-    sm = boto3.client("secretsmanager", region_name=region)
     try:
-        resp = sm.get_secret_value(SecretId=secret_id)
-        raw = resp.get("SecretString", "")
+        raw = _secrets_provider.get_secret(secret_id)
         # Unwrap JSON-encoded strings (e.g. "\"dr.alpha\"" → "dr.alpha")
         try:
             parsed = json.loads(raw)
@@ -600,15 +589,8 @@ def _read_secret_value(secret_id: str, region: str) -> str:
 
 def _write_secret_value(secret_id: str, value: str, region: str) -> None:
     """Write a plain string as a JSON-encoded secret."""
-    sm = boto3.client("secretsmanager", region_name=region)
     encoded = json.dumps(value)
-    try:
-        sm.put_secret_value(SecretId=secret_id, SecretString=encoded)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
-            sm.create_secret(Name=secret_id, SecretString=encoded)
-        else:
-            raise
+    _secrets_provider.set_secret(secret_id, encoded)
 
 
 @router.get("/identity", response_model=IdentitySecrets)

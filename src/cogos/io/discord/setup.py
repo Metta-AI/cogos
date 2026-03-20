@@ -18,11 +18,12 @@ POLIS_BRIDGE_SERVICE = "cogent-polis-discord"
 def discord_secret_status(
     region: str,
     *,
+    secrets_provider: object,
     session: boto3.Session | None = None,
 ) -> tuple[bool | None, str | None]:
     """Return whether the shared polis Discord token exists."""
     try:
-        raw = fetch_secret("polis/discord")
+        raw = fetch_secret("polis/discord", secrets_provider=secrets_provider)
         data = json.loads(raw)
         return bool(data.get("access_token")), None
     except (RuntimeError, KeyError):
@@ -36,11 +37,12 @@ def discord_persona_status(
     name: str,
     region: str,
     *,
+    secrets_provider: object,
     session: boto3.Session | None = None,
 ) -> tuple[dict | None, str | None]:
     """Return persona config for a cogent from the secrets provider."""
     try:
-        raw = fetch_secret(f"cogent/{name}/discord")
+        raw = fetch_secret(f"cogent/{name}/discord", secrets_provider=secrets_provider)
         data = json.loads(raw)
         return data, None
     except (RuntimeError, KeyError):

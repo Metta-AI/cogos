@@ -1,4 +1,4 @@
-"""IO token access: fetches tokens from the secrets provider with env var fallback."""
+"""IO token access: fetches tokens from the secrets provider."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from cogos.capabilities._secrets_helper import fetch_secret
 logger = logging.getLogger(__name__)
 
 
-def get_io_token(channel: str) -> str | None:
+def get_io_token(channel: str, *, secrets_provider: object) -> str | None:
     """Get a channel's access token.
 
     Checks env var <CHANNEL>_BOT_TOKEN first, then the secrets provider.
@@ -30,14 +30,14 @@ def get_io_token(channel: str) -> str | None:
 
     try:
         secret_id = f"identity_service/{cogent_name}/{channel}"
-        raw = fetch_secret(secret_id, field="access_token")
+        raw = fetch_secret(secret_id, field="access_token", secrets_provider=secrets_provider)
         return raw
     except Exception:
         logger.exception("Failed to fetch %s token from secrets provider", channel)
         return None
 
 
-def get_io_secret(channel: str) -> dict[str, Any] | None:
+def get_io_secret(channel: str, *, secrets_provider: object) -> dict[str, Any] | None:
     """Get the full secret dict for a channel."""
     cogent_name = os.environ.get("COGENT_NAME")
     if not cogent_name:
@@ -46,7 +46,7 @@ def get_io_secret(channel: str) -> dict[str, Any] | None:
 
     try:
         secret_id = f"identity_service/{cogent_name}/{channel}"
-        raw = fetch_secret(secret_id)
+        raw = fetch_secret(secret_id, secrets_provider=secrets_provider)
         return json.loads(raw)
     except Exception:
         logger.exception("Failed to fetch %s secret from secrets provider", channel)

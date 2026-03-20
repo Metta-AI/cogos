@@ -137,16 +137,21 @@ def _anthropic_response_to_bedrock(response: Any) -> dict:
 ANTHROPIC_SECRET_PATH = os.environ.get("ANTHROPIC_SECRET_PATH", "cogent/polis/anthropic")
 
 
-def _resolve_anthropic_api_key(explicit_key: str | None = None) -> str | None:
-    """Resolve Anthropic API key: explicit arg > env var > secrets manager."""
+def _resolve_anthropic_api_key(
+    explicit_key: str | None = None,
+    secrets_provider: Any = None,
+) -> str | None:
+    """Resolve Anthropic API key: explicit arg > env var > secrets provider."""
     if explicit_key:
         return explicit_key
     env_key = os.environ.get("ANTHROPIC_API_KEY")
     if env_key:
         return env_key
+    if secrets_provider is None:
+        return None
     try:
         from cogos.capabilities._secrets_helper import fetch_secret
-        return fetch_secret(ANTHROPIC_SECRET_PATH, field="api_key")
+        return fetch_secret(ANTHROPIC_SECRET_PATH, field="api_key", secrets_provider=secrets_provider)
     except Exception as exc:
         logger.debug("Could not fetch Anthropic key from secrets: %s", exc)
         return None
@@ -170,6 +175,7 @@ class LLMClient:
         region: str = "us-east-1",
         anthropic_api_key: str | None = None,
         provider: str = "bedrock",
+        secrets_provider: Any = None,
     ) -> None:
         self._provider = provider
         self._openrouter = None
@@ -188,7 +194,7 @@ class LLMClient:
                 config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
             )
 
-        api_key = _resolve_anthropic_api_key(anthropic_api_key)
+        api_key = _resolve_anthropic_api_key(anthropic_api_key, secrets_provider=secrets_provider)
         self._anthropic = None
         if api_key:
             try:

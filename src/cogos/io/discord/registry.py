@@ -33,7 +33,7 @@ class CogentDiscordConfig:
             self.display_name = self.cogent_name
 
 
-def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordConfig]:
+def load_cogent_configs(table_name: str = DYNAMO_TABLE, *, secrets_provider: object) -> list[CogentDiscordConfig]:
     """Load all cogent configs from DynamoDB + secrets provider.
 
     Reads cogent-status table for DB connection info, and
@@ -65,7 +65,7 @@ def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordCon
         db_info = item.get("database") or manifest.get("database") or {}
 
         # Read persona config from secrets provider
-        persona = _read_persona_secret(name)
+        persona = _read_persona_secret(name, secrets_provider=secrets_provider)
 
         configs.append(CogentDiscordConfig(
             cogent_name=name,
@@ -82,10 +82,10 @@ def load_cogent_configs(table_name: str = DYNAMO_TABLE) -> list[CogentDiscordCon
     return configs
 
 
-def _read_persona_secret(cogent_name: str) -> dict:
+def _read_persona_secret(cogent_name: str, *, secrets_provider: object) -> dict:
     """Read persona config from cogent/{name}/discord secret. Returns empty dict on failure."""
     try:
-        raw = fetch_secret(f"cogent/{cogent_name}/discord")
+        raw = fetch_secret(f"cogent/{cogent_name}/discord", secrets_provider=secrets_provider)
         return json.loads(raw)
     except (RuntimeError, KeyError):
         return {}

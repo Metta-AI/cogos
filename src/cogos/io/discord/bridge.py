@@ -157,6 +157,8 @@ class DiscordBridge:
         self.region = os.environ.get("AWS_REGION", "us-east-1")
 
         self._sqs_client = boto3.client("sqs", region_name=self.region)
+        from cogtainer.secrets import AwsSecretsProvider
+        self._secrets_provider = AwsSecretsProvider(region=self.region)
         from cogos import get_sessions_bucket
         self._blob_bucket = get_sessions_bucket()
         self._s3_client = boto3.client("s3", region_name=self.region) if self._blob_bucket else None
@@ -249,7 +251,8 @@ class DiscordBridge:
     async def _sync_cogents(self) -> None:
         """Load configs from DynamoDB, sync roles/webhooks in all guilds."""
         loop = asyncio.get_event_loop()
-        configs = await loop.run_in_executor(None, load_cogent_configs)
+        sp = self._secrets_provider
+        configs = await loop.run_in_executor(None, lambda: load_cogent_configs(secrets_provider=sp))
 
         # Update local config cache (and invalidate repos for changed configs)
         new_config_map: dict[str, CogentDiscordConfig] = {}
