@@ -1,1 +1,0 @@
-"""Cogtainer CDK infrastructure."""
