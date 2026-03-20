@@ -7,6 +7,7 @@ import logging
 import requests
 
 from polis.aws import ORG_EMAIL_DOMAIN
+from polis.config import deploy_config
 from polis.secrets.store import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ SECRET_PATH = "cogent/polis/cloudflare"
 
 # Single Access Application protects all cogent dashboards via wildcard.
 ACCESS_APP_NAME = "cogent-dashboards"
+_EMAIL_POLICY_NAME = deploy_config("cloudflare_email_policy", "allow-softmax")
 
 
 def _load_cf_config(store: SecretStore) -> dict:
@@ -63,8 +65,8 @@ def _list_access_policies(account_id: str, app_id: str, api_token: str) -> list[
 def ensure_access(store: SecretStore, domain: str) -> dict:
     """Create or update the Cloudflare Access Application for cogent dashboards.
 
-    Sets up a wildcard self-hosted app for *.softmax-cogents.com with:
-      - Policy: allow @softmax.com emails
+    Sets up a wildcard self-hosted app for *.{domain} with:
+      - Policy: allow org emails (from deploy_config)
       - Policy: allow any valid service token (PAT bypass)
       - Policy: bypass CF Access entirely (dashboard has its own API key auth)
 
@@ -116,20 +118,20 @@ def _ensure_policies(account_id: str, app_id: str, api_token: str) -> None:
     existing = _list_access_policies(account_id, app_id, api_token)
     existing_names = {p["name"] for p in existing}
 
-    # Policy 1: allow @softmax.com emails
-    if "allow-softmax" not in existing_names:
+    # Policy 1: allow org emails
+    if _EMAIL_POLICY_NAME not in existing_names:
         resp = requests.post(
             f"https://api.cloudflare.com/client/v4/accounts/{account_id}/access/apps/{app_id}/policies",
             headers=_headers(api_token),
             json={
-                "name": "allow-softmax",
+                "name": _EMAIL_POLICY_NAME,
                 "decision": "allow",
                 "precedence": 1,
                 "include": [{"email_domain": {"domain": ORG_EMAIL_DOMAIN}}],
             },
         )
         resp.raise_for_status()
-        logger.info("Created policy: allow-softmax")
+        logger.info("Created policy: %s", _EMAIL_POLICY_NAME)
 
     # Policy 2: allow service tokens (PAT bypass)
     if "allow-service-tokens" not in existing_names:

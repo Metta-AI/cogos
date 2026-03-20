@@ -12,7 +12,9 @@ import boto3
 from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
-from cogos.db.models.discord_metadata import DiscordChannel as DiscordChannelInfo, DiscordGuild as DiscordGuildInfo
+from cogos.db.models.discord_metadata import DiscordChannel as DiscordChannelInfo
+from cogos.db.models.discord_metadata import DiscordGuild as DiscordGuildInfo
+from polis.config import deploy_config
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +51,21 @@ class DiscordError(BaseModel):
 # ── SQS helpers ──────────────────────────────────────────────
 
 
+_DEFAULT_REGION = deploy_config("region", "us-east-1")
+_DISCORD_REPLIES_QUEUE = deploy_config("discord_replies_queue", "cogent-polis-discord-replies")
+
+
 def _get_queue_url() -> str:
     override = os.environ.get("DISCORD_REPLY_QUEUE_URL")
     if override:
         return override
-    region = os.environ.get("AWS_REGION", "us-east-1")
+    region = os.environ.get("AWS_REGION", _DEFAULT_REGION)
     account_id = boto3.client("sts").get_caller_identity()["Account"]
-    return f"https://sqs.{region}.amazonaws.com/{account_id}/cogent-polis-discord-replies"
+    return f"https://sqs.{region}.amazonaws.com/{account_id}/{_DISCORD_REPLIES_QUEUE}"
 
 
 def _send_sqs(body: dict) -> None:
-    region = os.environ.get("AWS_REGION", "us-east-1")
+    region = os.environ.get("AWS_REGION", _DEFAULT_REGION)
     url = _get_queue_url()
     client = boto3.client("sqs", region_name=region)
     client.send_message(QueueUrl=url, MessageBody=json.dumps(body))
