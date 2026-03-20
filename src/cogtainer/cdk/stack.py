@@ -1,6 +1,7 @@
 """Cogtainer CDK stack — all per-cogent infrastructure in the polis account.
 
-Includes: database, lambdas, ECS tasks, storage, events, monitoring, dashboard.
+Includes: lambdas, ECS tasks, storage, events, monitoring, dashboard.
+Database is shared at polis level.
 """
 
 from __future__ import annotations
@@ -47,8 +48,9 @@ class CogtainerStack(Stack):
         self.dashboard_url: str | None = None
         cdk.Tags.of(self).add("cogent_name", config.cogent_name)
         cdk.Tags.of(self).add("cogent_safe_name", safe_name)
-        self._db_name = f"cogent_{safe_name.replace('-', '_')}"
-        db_name = self._db_name
+
+        # 1. Shared database (polis-level Aurora cluster)
+        db_name = f"cogent_{safe_name.replace('-', '_')}"
 
         # 2. Storage (S3 bucket for sessions)
         self.storage = StorageConstruct(self, "Storage", config=config)
@@ -220,7 +222,7 @@ class CogtainerStack(Stack):
             "DB_RESOURCE_ARN": config.shared_db_cluster_arn,
             "DB_CLUSTER_ARN": config.shared_db_cluster_arn,
             "DB_SECRET_ARN": config.shared_db_secret_arn,
-            "DB_NAME": self._db_name,
+            "DB_NAME": db_name,
             "EVENT_BUS_NAME": self.event_bus.event_bus_name,
             "SESSIONS_BUCKET": self.storage.bucket.bucket_name,
             "DASHBOARD_ASSETS_S3": f"s3://{self.storage.bucket.bucket_name}/dashboard/frontend.tar.gz",

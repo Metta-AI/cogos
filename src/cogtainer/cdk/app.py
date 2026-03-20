@@ -15,7 +15,6 @@ def main() -> None:
     certificate_arn = app.node.try_get_context("certificate_arn") or ""
     ecr_repo_uri = app.node.try_get_context("ecr_repo_uri") or ""
     llm_provider = app.node.try_get_context("llm_provider") or "bedrock"
-
     shared_db_cluster_arn = app.node.try_get_context("shared_db_cluster_arn") or ""
     shared_db_secret_arn = app.node.try_get_context("shared_db_secret_arn") or ""
 
