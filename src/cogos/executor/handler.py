@@ -1253,6 +1253,8 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
                 kwargs["run_id"] = run_id
             if "trace_id" in init_params or has_var_keyword:
                 kwargs["trace_id"] = trace_id
+            if "secrets_provider" in init_params or has_var_keyword:
+                kwargs["secrets_provider"] = _get_secrets_provider()
             instance = handler_cls(repo, process.id, **kwargs)
             # Apply scope from config if present
             if pc.config:
