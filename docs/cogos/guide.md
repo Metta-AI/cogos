@@ -8,25 +8,25 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 
 - AWS credentials configured (your SSO profile from `~/.cogos/cogtainers.yml`)
 - Python with `uv` for dependency management
-- Environment variables for DB: `DB_RESOURCE_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `AWS_REGION`
-- For local dev: `cogos local ...` defaults to a checkout-local JSON store at `.local/cogos/cogos_data.json`; set `COGENT_LOCAL_DATA` to override it
+- Environment variables for DB: `DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `AWS_REGION`
+- For local dev: set `COGENT=local` and source `dashboard/ports.sh` to use `.local/cogos/cogos_data.json` under the checkout; set `COGOS_LOCAL_DATA` to override the path
 
 ### Boot a Cogent
 
 ```bash
 # Boot from an image (upserts into DB, non-destructive)
-cogos <name> cogos image boot cogos
+COGENT=<name> cogos image boot cogos
 
 # Clean boot (wipes tables first)
-cogos <name> cogos image boot cogos --clean
+COGENT=<name> cogos image boot cogos --clean
 ```
 
 ### Check Status
 
 ```bash
-cogos <name> cogos process list
-cogos <name> cogos channel list --limit 20
-cogos <name> cogos capability list
+COGENT=<name> cogos process list
+COGENT=<name> cogos channel list --limit 20
+COGENT=<name> cogos capability list
 ```
 
 ## Images
@@ -157,10 +157,10 @@ Those references are expanded directly where they appear when building the promp
 
 ```bash
 # Snapshot running state
-cogos <name> cogos image snapshot my-snapshot
+COGENT=<name> cogos image snapshot my-snapshot
 
 # List available images
-cogos <name> cogos image list
+COGENT=<name> cogos image list
 ```
 
 ## Processes
@@ -203,7 +203,7 @@ add_process(
 Via CLI (for ad-hoc work):
 
 ```bash
-cogos <name> cogos process create \
+COGENT=<name> cogos process create \
   --name data-sync \
   --mode daemon \
   --runner lambda \
@@ -410,7 +410,7 @@ If resources are unavailable, the process transitions to BLOCKED and is rechecke
 Best for short-lived, stateless work. The executor Lambda receives `{process_id, channel_message_id, run_id}`, loads the process, builds the prompt, and runs a Bedrock converse loop.
 
 Key env vars:
-- `DB_CLUSTER_ARN` / `DB_RESOURCE_ARN` -- RDS cluster
+- `DB_CLUSTER_ARN` -- RDS cluster ARN
 - `DB_SECRET_ARN` -- database credentials
 - `DB_NAME` -- database name
 - `AWS_REGION` -- defaults to us-east-1
@@ -425,10 +425,10 @@ The MCP server (`python -m cogos.sandbox.server --process-id <UUID>`) loads the 
 
 ## CLI Reference
 
-All commands are scoped to a cogent instance:
+All commands are scoped to a cogent via the `COGENT` env var:
 
 ```bash
-cogos <instance> cogos <subcommand>
+COGENT=<name> cogos <subcommand>
 ```
 
 ### Process Commands
@@ -511,24 +511,25 @@ The dashboard provides a web UI for monitoring and managing CogOS. It runs as a 
 ### Starting Locally
 
 ```bash
-# One command: backend + frontend against the local JSON repo
-cogos local dashboard serve --db local
+# One command: backend + frontend in the background
+COGENT=local cogos dashboard start
 
-# Manual alternative:
-# Backend
+# Stop / restart
+cogos dashboard stop
+cogos dashboard reload
+
+# Manual alternative (two terminals):
 source dashboard/ports.sh
 USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port "$DASHBOARD_BE_PORT" --reload
-
-# Frontend
 cd dashboard/frontend && npm run dev
 ```
 
-If the repo root `.env` does not pin `DASHBOARD_BE_PORT` / `DASHBOARD_FE_PORT`, `dashboard/ports.sh` and `cogos local dashboard serve` derive a stable port pair from the checkout path so multiple clones can run side by side.
+If the repo root `.env` does not pin `DASHBOARD_BE_PORT` / `DASHBOARD_FE_PORT`, `dashboard/ports.sh` derives a stable port pair from the checkout path so multiple clones can run side by side.
 
-The dashboard reads from the same local repo as `cogos local cogos ...`, so boot local state first:
+The dashboard reads from the same local data as `cogos`, so boot local state first:
 
 ```bash
-cogos local cogos image boot cogos --clean
+COGENT=local cogos image boot cogos --clean
 ```
 
 ### Panels
@@ -550,14 +551,14 @@ All under `/api/cogents/{name}/`:
 
 | Endpoint | Description |
 |---|---|
-| `/cogos/status` | CogOS overview stats |
-| `/cogos/processes` | Process list |
-| `/cogos/files` | File list |
-| `/cogos/capabilities` | Capability list |
-| `/cogos/handlers` | Handler list |
-| `/cogos/channels` | Channel list |
-| `/cogos/runs` | Run list |
-| `/cogos/cron` | Cron rules |
+| `/cogos-status` | CogOS overview stats |
+| `/processes` | Process list |
+| `/files` | File list |
+| `/capabilities` | Capability list |
+| `/handlers` | Handler list |
+| `/channels` | Channel list |
+| `/runs` | Run list |
+| `/cron` | Cron rules |
 
 ## Operational Patterns
 
@@ -565,20 +566,20 @@ All under `/api/cogents/{name}/`:
 
 1. Write the prompt as a markdown file in `images/<image>/files/agents/<name>.md`
 2. Define the process in `images/<image>/init/processes.py` with capability bindings and channel handlers
-3. Boot the image: `cogos <instance> cogos image boot <image>`
-4. Verify: `cogos <instance> cogos process list`
+3. Boot the image: `COGENT=<name> cogos image boot <image>`
+4. Verify: `COGENT=<name> cogos process list`
 
 ### Debugging a Failed Process
 
-1. Check run history: `cogos <instance> cogos run list --process <name> --status failed`
-2. Inspect the run: `cogos <instance> cogos run show <run_id>` (shows error, tokens, duration)
-3. Check channels: `cogos <instance> cogos channel read process:run:failed`
+1. Check run history: `COGENT=<name> cogos run list --process <name> --status failed`
+2. Inspect the run: `COGENT=<name> cogos run show <run_id>` (shows error, tokens, duration)
+3. Check channels: `COGENT=<name> cogos channel read process:run:failed`
 4. Look at CloudWatch logs for the executor Lambda or ECS task
 
 ### Updating a Prompt
 
 1. Edit the file in `images/<image>/files/<key>.md`
-2. Re-boot the image: `cogos <instance> cogos image boot <image>`
+2. Re-boot the image: `COGENT=<name> cogos image boot <image>`
 3. The file store creates a new version only if content changed
 
 Or update at runtime via capability:
@@ -599,10 +600,10 @@ files.write("agents/my-agent.md", "updated prompt content")
 
 ```bash
 # Capture current state
-cogos <name> cogos image snapshot backup-2026-03-11
+COGENT=<name> cogos image snapshot backup-2026-03-11
 
 # Boot on a different instance
-cogos <name> cogos image boot backup-2026-03-11 --clean
+COGENT=<name> cogos image boot backup-2026-03-11 --clean
 ```
 
 This copies the entire configuration (capabilities, processes, files, handlers, cron) but not runtime state (channel messages, runs, conversations).

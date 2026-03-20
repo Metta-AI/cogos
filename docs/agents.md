@@ -55,7 +55,7 @@ Inject a DM into the cogent's Discord handler:
 
 ```bash
 # Send a test DM
-cogent $COGENT cogos channel send io:discord:dm --payload '{
+cogos channel send io:discord:dm --payload '{
   "content": "hello, what can you do?",
   "author": "testuser",
   "author_id": "000000000000000000",
@@ -73,20 +73,20 @@ Note: `message_id` must be a unique Discord snowflake (monotonically increasing 
 
 ```bash
 # Check handler stdout for processing output
-cogent $COGENT cogos process get discord/handler
+cogos process get discord/handler
 
 # Check the conversation log
-cogent $COGENT cogos file get data/discord/000000000000000000/recent.log
+cogos file get data/discord/000000000000000000/recent.log
 ```
 
 ### Verify the handler is alive
 
 ```bash
 # Handler should be "waiting" (daemon waiting for messages)
-cogent $COGENT cogos status | grep discord
+cogos status | grep discord
 
 # If handler is missing or disabled, kick discord cog to re-spawn it:
-cogent $COGENT cogos channel send discord-cog:review --payload '{"reason": "respawn handler"}'
+cogos channel send discord-cog:review --payload '{"reason": "respawn handler"}'
 ```
 
 ### Fix stale epochs after reboot
@@ -114,13 +114,13 @@ print('All updated to epoch', epoch)
 git push
 
 # 2. Deploy Lambda (executor + event-router + dispatcher)
-cogent $COGENT cogtainer update lambda
+cogtainer update $COGENT --lambdas
 
 # 3. Load image files into DB
-cogent $COGENT cogos image boot
+cogos image boot
 
 # 4. Reboot (creates fresh init, spawns all cogs)
-cogent $COGENT cogos reboot -y
+cogos reboot -y
 
 # 5. Wait ~90s for init + cogs to run
 
@@ -128,8 +128,8 @@ cogent $COGENT cogos reboot -y
 # (see script above)
 
 # 7. Kick discord to spawn handler
-cogent $COGENT cogos channel send discord-cog:review --payload '{"reason": "test"}'
+cogos channel send discord-cog:review --payload '{"reason": "test"}'
 
 # 8. Send test DM
-cogent $COGENT cogos channel send io:discord:dm --payload '{"content": "hello!", "author": "test", "author_id": "0", "channel_id": "0", "message_id": "1484200000000000000", "is_dm": true, "is_mention": false}'
+cogos channel send io:discord:dm --payload '{"content": "hello!", "author": "test", "author_id": "0", "channel_id": "0", "message_id": "1484200000000000000", "is_dm": true, "is_mention": false}'
 ```

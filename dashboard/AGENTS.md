@@ -13,20 +13,16 @@ Operational UI for each cogent. Runs as a single Docker container serving both t
 ## Deployment
 
 ```bash
-COGENT=<name> cogos dashboard deploy
+cogtainer update <name> --services --image-tag dashboard-latest
 ```
 
-This:
-1. Reads cogent identity from cogtainer secrets (cert ARN, domain)
-2. Reads cogtainer stack outputs (DB ARNs)
-3. CDK deploys the dashboard stack (ALB, ECS service, task definition)
-4. Updates Route53 DNS to point at the ALB
+CI builds the dashboard Docker image automatically. Deploy via the `cogtainer` CLI once the image is available.
 
 ### First-time setup
 
 ```bash
 cogent create <name>                    # Register identity (domain, cert, secrets)
-COGENT=<name> cogos dashboard deploy    # Deploy the dashboard
+cogtainer update <name> --services      # Deploy the dashboard
 ```
 
 ## Docker Image
@@ -44,8 +40,9 @@ The container serves everything on one port:
 ## Local Development
 
 ```bash
-cogos local dashboard serve --db local   # Backend (8100) + Next.js dev server (5200 by default)
-COGENT=<name> cogos dashboard serve --db prod  # Live DB via cogtainer
+COGENT=local cogos dashboard start       # Backend + Next.js dev server in background
+cogos dashboard stop                     # Stop both servers
+cogos dashboard reload                   # Restart (stop + start)
 ```
 
 In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`.
@@ -75,10 +72,10 @@ src/cli/cogtainer.py                    # cogtainer dashboard deploy/destroy
 | `DB_CLUSTER_ARN` | Aurora cluster ARN (Data API) |
 | `DB_SECRET_ARN` | Secrets Manager ARN for DB auth |
 | `DB_NAME` | Database name (`cogent`) |
-| `USE_LOCAL_DB` | Set to `1` to use LocalRepository (JSON file at `.local/cogos/cogos_data.json` under the checkout, override with `COGENT_LOCAL_DATA`) instead of RDS Data API. For local dev only. |
+| `USE_LOCAL_DB` | Set to `1` to use LocalRepository instead of RDS Data API. Default path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/` under the checkout, or set `COGOS_LOCAL_DATA` to override. For local dev only. |
 
 ## Database Connection
 
 The dashboard **requires** RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). If these are missing, the app will fail to start rather than silently returning empty data.
 
-For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository which persists to `.local/cogos/cogos_data.json` under the checkout. Populate it with `cogos local cogos image boot cogos --clean`.
+For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository. Source `dashboard/ports.sh` to use `.local/cogos/` under the checkout, or set `COGOS_LOCAL_DATA` to override the path. Populate it with `COGENT=local cogos image boot cogos --clean`.
