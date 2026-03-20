@@ -723,7 +723,7 @@ def cogents_create(ctx: click.Context, name: str):
             sql=f"CREATE DATABASE {db_name}",
         )
         console.print(f"  [green]Database {db_name} created[/green]")
-    except rds_client.exceptions.BadRequestException as e:
+    except (rds_client.exceptions.BadRequestException, rds_client.exceptions.DatabaseErrorException) as e:
         if "already exists" in str(e):
             console.print(f"  Database {db_name} already exists")
         else:
@@ -731,11 +731,26 @@ def cogents_create(ctx: click.Context, name: str):
 
     # 5. Apply schema to the new database
     console.print("  Applying schema...")
-    os.environ["DB_RESOURCE_ARN"] = cluster_arn
+    os.environ["DB_CLUSTER_ARN"] = cluster_arn
     os.environ["DB_SECRET_ARN"] = secret_arn
     os.environ["DB_NAME"] = db_name
+    # Inject polis session credentials so apply_schema's boto3.client() uses the right account
+    creds = session.get_credentials().get_frozen_credentials()
+    _saved_env = {}
+    for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        _saved_env[key] = os.environ.get(key)
+    os.environ["AWS_ACCESS_KEY_ID"] = creds.access_key
+    os.environ["AWS_SECRET_ACCESS_KEY"] = creds.secret_key
+    if creds.token:
+        os.environ["AWS_SESSION_TOKEN"] = creds.token
     from cogos.db.migrations import apply_schema
     apply_schema()
+    # Restore original env so CDK subprocess uses the org profile
+    for key, val in _saved_env.items():
+        if val is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = val
     console.print("  [green]Schema applied[/green]")
 
     # 6. Secrets — create identity secret for the cogent
