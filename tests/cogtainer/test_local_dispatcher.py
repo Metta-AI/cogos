@@ -30,3 +30,70 @@ def test_single_tick(local_runtime: LocalRuntime):
     assert isinstance(result, dict)
     assert "dispatched" in result
     assert result["dispatched"] >= 0
+
+
+def test_reap_dead_executors_fails_orphan_runs(local_runtime: LocalRuntime):
+    """Dead executor subprocesses should have their runs marked FAILED."""
+    from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
+
+    cogent_name = "test-cogent"
+    local_runtime.create_cogent(cogent_name)
+    repo = local_runtime.get_repository(cogent_name)
+
+    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, runner="local")
+    repo.upsert_process(p)
+    run = Run(process=p.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+
+    dead_proc = MagicMock()
+    dead_proc.poll.return_value = 1
+    local_runtime._child_procs = [(dead_proc, str(p.id))]
+
+    failed = local_runtime.reap_dead_executors(repo)
+
+    assert failed == 1
+    db_run = repo.get_run(run.id)
+    assert db_run is not None
+    assert db_run.status == RunStatus.FAILED
+    assert "exited with code 1" in (db_run.error or "")
+    assert local_runtime._child_procs == []
+
+
+def test_reap_dead_executors_keeps_alive_processes(local_runtime: LocalRuntime):
+    """Still-running subprocesses should be kept in the tracking list."""
+    cogent_name = "test-cogent"
+    local_runtime.create_cogent(cogent_name)
+    repo = local_runtime.get_repository(cogent_name)
+
+    alive_proc = MagicMock()
+    alive_proc.poll.return_value = None
+    local_runtime._child_procs = [(alive_proc, "some-id")]
+
+    failed = local_runtime.reap_dead_executors(repo)
+
+    assert failed == 0
+    assert len(local_runtime._child_procs) == 1
+
+
+def test_tick_reaps_dead_executors(local_runtime: LocalRuntime):
+    """run_tick should call reap_dead_executors and handle dead subprocesses."""
+    from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
+
+    cogent_name = "test-cogent"
+    local_runtime.create_cogent(cogent_name)
+    repo = local_runtime.get_repository(cogent_name)
+
+    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, runner="local")
+    repo.upsert_process(p)
+    run = Run(process=p.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+
+    dead_proc = MagicMock()
+    dead_proc.poll.return_value = 1
+    local_runtime._child_procs = [(dead_proc, str(p.id))]
+
+    run_tick(repo, local_runtime, cogent_name)
+
+    db_run = repo.get_run(run.id)
+    assert db_run is not None
+    assert db_run.status == RunStatus.FAILED

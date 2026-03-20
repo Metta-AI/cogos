@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,7 +49,8 @@ def test_local_runtime_file_storage(local_runtime: LocalRuntime):
 
 def test_local_runtime_converse_delegates(local_runtime: LocalRuntime):
     expected = {"output": {"message": {"role": "assistant", "content": []}}}
-    local_runtime._llm.converse.return_value = expected
+    mock_llm = cast(MagicMock, local_runtime._llm)
+    mock_llm.converse.return_value = expected
 
     result = local_runtime.converse(
         messages=[{"role": "user", "content": [{"text": "hi"}]}],
@@ -57,7 +59,7 @@ def test_local_runtime_converse_delegates(local_runtime: LocalRuntime):
     )
 
     assert result == expected
-    local_runtime._llm.converse.assert_called_once_with(
+    mock_llm.converse.assert_called_once_with(
         messages=[{"role": "user", "content": [{"text": "hi"}]}],
         system=[{"text": "sys"}],
         tool_config={},

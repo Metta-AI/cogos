@@ -18,7 +18,7 @@ def provision_ses_email(
     store: SecretStore,
     cogent_name: str,
     domain: str,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Create SES email identity for cogent. Returns {"email": "...", "status": "..."}."""
     email = f"{cogent_name}@{domain}"
     try:

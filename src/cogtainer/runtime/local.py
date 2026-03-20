@@ -26,6 +26,7 @@ class LocalRuntime(CogtainerRuntime):
         raw = entry.data_dir or str(Path.home() / ".cogos" / "local")
         self._data_dir = Path(os.path.expanduser(os.path.expandvars(raw)))
         self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._child_procs: list[tuple[subprocess.Popen, str]] = []
 
         from cogtainer.secrets import LocalSecretsProvider
 
@@ -87,10 +88,33 @@ class LocalRuntime(CogtainerRuntime):
             "SECRETS_PROVIDER": "local",
             "SECRETS_DATA_DIR": str(self._data_dir),
         }
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [sys.executable, "-m", "cogos.executor", process_id],
             env=env,
         )
+        self._child_procs.append((proc, process_id))
+
+    def reap_dead_executors(self, repo: Any) -> int:
+        """Check for executor subprocesses that exited with errors and fail their runs."""
+        from cogos.db.models import RunStatus
+
+        alive = []
+        failed = 0
+        for proc, process_id in self._child_procs:
+            rc = proc.poll()
+            if rc is None:
+                alive.append((proc, process_id))
+            elif rc != 0:
+                from uuid import UUID
+
+                runs = repo.list_runs(process_id=UUID(process_id), status="running")
+                for run in runs:
+                    error = f"Executor subprocess exited with code {rc}"
+                    repo.complete_run(run.id, status=RunStatus.FAILED, error=error)
+                    failed += 1
+            # rc == 0: completed successfully, run_and_complete already handled it
+        self._child_procs = alive
+        return failed
 
     # ── Cogent lifecycle ─────────────────────────────────────
 

@@ -43,7 +43,16 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
     except Exception:
         logger.debug("Heartbeat failed", exc_info=True)
 
-    # 2. Reap stale runs (15-minute timeout)
+    # 2a. Reap dead executor subprocesses
+    try:
+        if hasattr(runtime, "reap_dead_executors"):
+            dead = runtime.reap_dead_executors(repo)
+            if dead:
+                logger.warning("Failed %s runs from dead executor subprocesses", dead)
+    except Exception:
+        logger.debug("Reap dead executors failed", exc_info=True)
+
+    # 2b. Reap stale runs (15-minute timeout)
     try:
         reaped = repo.timeout_stale_runs(max_age_ms=900_000)
         if reaped:

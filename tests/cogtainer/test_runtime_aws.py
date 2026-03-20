@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,7 +29,8 @@ def aws_runtime() -> AwsRuntime:
 
 def test_aws_runtime_converse_delegates(aws_runtime: AwsRuntime):
     expected = {"output": {"message": {"role": "assistant", "content": []}}}
-    aws_runtime._llm.converse.return_value = expected
+    mock_llm = cast(MagicMock, aws_runtime._llm)
+    mock_llm.converse.return_value = expected
 
     result = aws_runtime.converse(
         messages=[{"role": "user", "content": [{"text": "hi"}]}],
@@ -37,7 +39,7 @@ def test_aws_runtime_converse_delegates(aws_runtime: AwsRuntime):
     )
 
     assert result == expected
-    aws_runtime._llm.converse.assert_called_once_with(
+    mock_llm.converse.assert_called_once_with(
         messages=[{"role": "user", "content": [{"text": "hi"}]}],
         system=[{"text": "sys"}],
         tool_config={},

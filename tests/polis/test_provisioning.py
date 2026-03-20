@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import requests
@@ -13,6 +14,7 @@ from polis.provisioning import (
     provision_github_credentials,
     provision_ses_email,
 )
+from polis.secrets.store import SecretStore
 
 
 class FakeSesClient:
@@ -37,16 +39,19 @@ class FakeSesClient:
 
 
 class FakeStore:
-    def __init__(self):
-        self.secrets: dict[str, dict] = {}
+    def __init__(self) -> None:
+        self.secrets: dict[str, dict[str, Any]] = {}
 
-    def put(self, path, value):
+    def put(self, path: str, value: dict[str, Any]) -> None:
         self.secrets[path] = value
 
-    def get(self, path, **kwargs):
+    def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
         if path in self.secrets:
             return self.secrets[path]
         raise Exception("not found")
+
+    def as_store(self) -> SecretStore:
+        return cast(SecretStore, self)
 
 
 # --- SES ---
@@ -56,7 +61,7 @@ def test_provision_ses_email_creates_identity():
     ses = FakeSesClient()
     store = FakeStore()
     result = provision_ses_email(
-        ses_client=ses, store=store, cogent_name="scout", domain="softmax-cogents.com"
+        ses_client=ses, store=store.as_store(), cogent_name="scout", domain="softmax-cogents.com"
     )
     assert result["email"] == "scout@softmax-cogents.com"
     assert ses.created == ["scout@softmax-cogents.com"]
@@ -67,7 +72,7 @@ def test_provision_ses_email_idempotent():
     ses = FakeSesClient(already_exists=True)
     store = FakeStore()
     result = provision_ses_email(
-        ses_client=ses, store=store, cogent_name="scout", domain="softmax-cogents.com"
+        ses_client=ses, store=store.as_store(), cogent_name="scout", domain="softmax-cogents.com"
     )
     assert result["email"] == "scout@softmax-cogents.com"
     assert ses.created == []
@@ -94,7 +99,7 @@ def test_provision_discord_role_creates_role(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda url, **kw: get_resp)
     monkeypatch.setattr(requests, "post", lambda url, **kw: post_resp)
 
-    result = provision_discord_role(store=store, cogent_name="scout")
+    result = provision_discord_role(store=store.as_store(), cogent_name="scout")
     assert result["role_id"] == "999888777"
     assert result["role_name"] == "cogent-scout"
     assert result["created"] is True
@@ -117,7 +122,7 @@ def test_provision_discord_role_idempotent(monkeypatch):
 
     monkeypatch.setattr(requests, "get", lambda url, **kw: get_resp)
 
-    result = provision_discord_role(store=store, cogent_name="scout")
+    result = provision_discord_role(store=store.as_store(), cogent_name="scout")
     assert result["role_id"] == "999888777"
     assert result["created"] is False
 
@@ -141,7 +146,7 @@ def test_provision_asana_guest_invites_user(monkeypatch):
     monkeypatch.setattr(requests, "post", lambda url, **kw: post_resp)
 
     result = provision_asana_guest(
-        store=store, cogent_name="scout", domain="softmax-cogents.com"
+        store=store.as_store(), cogent_name="scout", domain="softmax-cogents.com"
     )
     assert result["user_gid"] == "asana-user-456"
     assert result["status"] == "invited"
@@ -159,7 +164,7 @@ def test_provision_github_credentials_copies_shared_app():
         "private_key": "fake-key",
         "installation_id": "67890",
     }
-    result = provision_github_credentials(store=store, cogent_name="scout")
+    result = provision_github_credentials(store=store.as_store(), cogent_name="scout")
     assert result["type"] == "github_app"
     assert result["created"] is True
     assert store.secrets["cogent/scout/github"]["app_id"] == "12345"
@@ -179,7 +184,7 @@ def test_provision_github_credentials_idempotent():
         "private_key": "fake-key",
         "installation_id": "67890",
     }
-    result = provision_github_credentials(store=store, cogent_name="scout")
+    result = provision_github_credentials(store=store.as_store(), cogent_name="scout")
     assert result["created"] is False
 
 
@@ -202,7 +207,7 @@ def test_destroy_discord_role(monkeypatch):
         requests, "delete", lambda url, **kw: (deleted.append(url), mock_resp)[1]
     )
 
-    destroy_discord_role(store=store, cogent_name="scout")
+    destroy_discord_role(store=store.as_store(), cogent_name="scout")
     assert any("roles/999" in u for u in deleted)
 
 
@@ -232,5 +237,5 @@ def test_destroy_asana_guest(monkeypatch):
         requests, "post", lambda url, **kw: (posted.append(url), mock_resp)[1]
     )
 
-    destroy_asana_guest(store=store, cogent_name="scout")
+    destroy_asana_guest(store=store.as_store(), cogent_name="scout")
     assert any("removeUser" in u for u in posted)
