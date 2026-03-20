@@ -45,7 +45,7 @@ Pick an incomplete task from the Cogents Asana project, work on it, comment with
    - If the task is fully complete, mark it completed with `asana_update_task` (`completed: true`)
    - If partially done, leave it open and explain what remains in the comment
 
-8. **Commit changes** using `/done`
+8. **Submit changes** using the user's preferred submit workflow (check their CLAUDE.md for preference between `/submit.gt` and `/submit`; default to `/submit` if unspecified)
 
 9. **Print a summary** of what was accomplished:
    - Task name and link

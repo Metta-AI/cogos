@@ -1,7 +1,7 @@
-# Auto-merge PRs from repo admins that have auto-merge enabled.
-# Triggers after CI completes. Uses cogos-ci app token to bypass the ruleset's
-# review requirement (GitHub rulesets don't count app reviews, so we merge directly).
-name: Auto-merge admin PRs
+# Auto-approve PRs from repo admins that have auto-merge enabled.
+# Triggers after CI completes. Uses cogos-ci app token to submit an approving
+# review, then GitHub's built-in auto-merge handles the actual merge.
+name: Auto-approve admin PRs
 
 on:
   workflow_run:
@@ -9,7 +9,7 @@ on:
     types: [completed]
 
 jobs:
-  auto-merge:
+  auto-approve:
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'success'
@@ -22,7 +22,7 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Check eligibility and merge
+      - name: Check eligibility and approve
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -47,7 +47,5 @@ jobs:
             exit 0
           fi
 
-          echo "Merging PR #${PR} (author: ${AUTHOR}, permission: ${PERM})"
-          gh api "repos/${REPO}/pulls/${PR}/merge" \
-            --method PUT \
-            -f merge_method=squash
+          echo "Approving PR #${PR} (author: ${AUTHOR}, permission: ${PERM})"
+          gh pr review "$PR" --repo "$REPO" --approve
