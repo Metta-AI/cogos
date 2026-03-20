@@ -20,6 +20,7 @@ from cogos.db.models import (
     ResourceType,
     Schema,
 )
+from cogos.files.references import extract_file_references
 from cogos.files.store import FileStore
 from cogos.image.spec import ImageSpec
 
@@ -86,9 +87,16 @@ def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[st
 
     # 4. Files
     fs = FileStore(repo)
-    for key, content in spec.files.items():
-        fs.upsert(key, content, source="image")
-        counts["files"] += 1
+    if callable(getattr(repo, "bulk_upsert_files", None)) and spec.files:
+        bulk_entries = [
+            (key, content, "image", extract_file_references(content, exclude_key=key))
+            for key, content in spec.files.items()
+        ]
+        counts["files"] = repo.bulk_upsert_files(bulk_entries)
+    else:
+        for key, content in spec.files.items():
+            fs.upsert(key, content, source="image")
+            counts["files"] += 1
 
     # 5. Schemas
     for schema_dict in spec.schemas:

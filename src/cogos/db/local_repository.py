@@ -56,6 +56,9 @@ def _json_serial(obj: Any) -> Any:
 class LocalRepository(Repository):
     """In-memory CogOS repository backed by a JSON file."""
 
+    # Disable inherited batch method — LocalRepository uses in-memory dicts, not RDS Data API.
+    bulk_upsert_files = None  # type: ignore[assignment]
+
     def __init__(self, data_dir: str | None = None) -> None:
         if data_dir is None:
             data_dir = os.environ.get("COGOS_LOCAL_DATA", str(Path.home() / ".cogos" / "local"))

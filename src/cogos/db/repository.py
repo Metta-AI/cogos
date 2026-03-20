@@ -1012,6 +1012,104 @@ class Repository:
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
+    def bulk_upsert_files(
+        self,
+        files: list[tuple[str, str, str, list[str]]],
+        *,
+        batch_size: int = 100,
+    ) -> int:
+        """Bulk upsert files using batch_execute_statement.
+
+        Each entry is (key, content, source, includes).
+        Returns the number of files upserted.
+        """
+        if not files:
+            return 0
+
+        from uuid import uuid4
+
+        # Pre-generate IDs and models
+        file_records = []
+        for key, content, source, includes in files:
+            file_id = uuid4()
+            fv_id = uuid4()
+            file_records.append({
+                "file_id": file_id,
+                "fv_id": fv_id,
+                "key": key,
+                "content": content,
+                "source": source,
+                "includes": self._jsonb_safe(includes) or [],
+            })
+
+        base_kwargs = {
+            "resourceArn": self._resource_arn,
+            "secretArn": self._secret_arn,
+            "database": self._database,
+        }
+
+        # Batch insert into cogos_file
+        file_sql = """INSERT INTO cogos_file (id, key, includes)
+                      VALUES (:id, :key, :includes::jsonb)
+                      ON CONFLICT (key) DO UPDATE SET
+                          includes = EXCLUDED.includes, updated_at = now()"""
+
+        for i in range(0, len(file_records), batch_size):
+            chunk = file_records[i : i + batch_size]
+            param_sets = [
+                [
+                    self._param("id", r["file_id"]),
+                    self._param("key", r["key"]),
+                    self._param("includes", r["includes"]),
+                ]
+                for r in chunk
+            ]
+            self._client.batch_execute_statement(
+                **base_kwargs, sql=file_sql, parameterSets=param_sets
+            )
+
+        # Now get actual file IDs (ON CONFLICT keeps existing ID, not ours)
+        # Use string_to_array to batch-lookup keys efficiently
+        for i in range(0, len(file_records), batch_size):
+            chunk = file_records[i : i + batch_size]
+            keys_str = "\n".join(r["key"] for r in chunk)
+            response = self._execute(
+                "SELECT id, key FROM cogos_file WHERE key = ANY(string_to_array(:keys, chr(10)))",
+                [self._param("keys", keys_str)],
+            )
+            key_to_id = {
+                row["key"]: UUID(row["id"])
+                for row in self._rows_to_dicts(response)
+            }
+            for r in chunk:
+                r["file_id"] = key_to_id.get(r["key"], r["file_id"])
+
+        # Batch insert into cogos_file_version (version=1, is_active=true)
+        fv_sql = """INSERT INTO cogos_file_version
+                        (id, file_id, version, read_only, content, source, is_active)
+                    VALUES (:id, :file_id, 1, false, :content, :source, true)
+                    ON CONFLICT (file_id, version) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        source = EXCLUDED.source,
+                        is_active = EXCLUDED.is_active"""
+
+        for i in range(0, len(file_records), batch_size):
+            chunk = file_records[i : i + batch_size]
+            param_sets = [
+                [
+                    self._param("id", r["fv_id"]),
+                    self._param("file_id", r["file_id"]),
+                    self._param("content", r["content"]),
+                    self._param("source", r["source"]),
+                ]
+                for r in chunk
+            ]
+            self._client.batch_execute_statement(
+                **base_kwargs, sql=fv_sql, parameterSets=param_sets
+            )
+
+        return len(file_records)
+
     def delete_file(self, file_id: UUID) -> bool:
         response = self._execute(
             "DELETE FROM cogos_file WHERE id = :id",
