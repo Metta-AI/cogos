@@ -20,12 +20,11 @@ class SharedDatabaseConstruct(Construct):
         scope: Construct,
         id: str,
         *,
+        vpc: ec2.IVpc,
         min_acu: float = 0.5,
         max_acu: float = 16.0,
     ) -> None:
         super().__init__(scope, id)
-
-        vpc = ec2.Vpc.from_lookup(self, "DefaultVpc", is_default=True)
 
         self.cluster = rds.DatabaseCluster(
             self,

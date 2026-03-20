@@ -74,11 +74,15 @@ class PolisStack(cdk.Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # --- Shared VPC (default VPC, used by all constructs) ---
+        self.vpc = ec2.Vpc.from_lookup(self, "DefaultVpc", is_default=True)
+
         # --- ECS Cluster ---
         self.cluster = ecs.Cluster(
             self,
             "Cluster",
             cluster_name=naming.cluster_name(),
+            vpc=self.vpc,
             enable_fargate_capacity_providers=True,
             container_insights_v2=ecs.ContainerInsights.ENABLED,
         )
@@ -141,7 +145,7 @@ class PolisStack(cdk.Stack):
         )
 
         # --- Shared Aurora Database ---
-        self.database = SharedDatabaseConstruct(self, "SharedDb")
+        self.database = SharedDatabaseConstruct(self, "SharedDb", vpc=self.vpc)
 
         # --- Shared EventBridge Bus (all cogents share one bus) ---
         self.event_bus = events.EventBus(
@@ -151,7 +155,6 @@ class PolisStack(cdk.Stack):
         )
 
         # --- Shared ALB for cogent dashboards ---
-        vpc = ec2.Vpc.from_lookup(self, "SharedVpc", is_default=True)
         public_subnets = ec2.SubnetSelection(
             subnet_type=ec2.SubnetType.PUBLIC,
             one_per_az=True,
@@ -160,7 +163,7 @@ class PolisStack(cdk.Stack):
         self.shared_alb = elbv2.ApplicationLoadBalancer(
             self,
             "SharedALB",
-            vpc=vpc,
+            vpc=self.vpc,
             internet_facing=True,
             vpc_subnets=public_subnets,
         )
