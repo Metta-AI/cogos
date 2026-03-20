@@ -137,15 +137,30 @@ class CogtainerStack(cdk.Stack):
             "Allow ALB to reach dashboard containers",
         )
 
-        # HTTPS listener with wildcard cert (if domain configured)
-        wildcard_cert_arn = self.node.try_get_context("wildcard_cert_arn") or ""
-        if wildcard_cert_arn:
+        # --- Route53 Hosted Zone + Wildcard Cert ---
+        self.hosted_zone = None
+        self.https_listener = None
+        self.wildcard_cert = None
+
+        if domain:
+            # Look up existing hosted zone by domain name
+            self.hosted_zone = route53.HostedZone.from_lookup(
+                self, "HostedZone", domain_name=domain,
+            )
+
+            # Create wildcard ACM certificate with DNS validation
+            self.wildcard_cert = acm.Certificate(
+                self,
+                "WildcardCert",
+                domain_name=f"*.{domain}",
+                validation=acm.CertificateValidation.from_dns(self.hosted_zone),
+            )
+
+            # HTTPS listener
             self.https_listener = self.alb.add_listener(
                 "HttpsListener",
                 port=443,
-                certificates=[
-                    elbv2.ListenerCertificate.from_arn(wildcard_cert_arn)
-                ],
+                certificates=[self.wildcard_cert],
                 default_action=elbv2.ListenerAction.fixed_response(
                     status_code=404,
                     content_type="text/plain",
@@ -157,19 +172,6 @@ class CogtainerStack(cdk.Stack):
                 source_port=80,
                 target_port=443,
                 target_protocol=elbv2.ApplicationProtocol.HTTPS,
-            )
-        else:
-            self.https_listener = None
-
-        # --- Route53 Hosted Zone (if domain configured) ---
-        self.hosted_zone = None
-        hosted_zone_id = self.node.try_get_context("hosted_zone_id") or ""
-        if domain and hosted_zone_id:
-            self.hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
-                self,
-                "HostedZone",
-                hosted_zone_id=hosted_zone_id,
-                zone_name=domain,
             )
 
         # --- GitHub Actions OIDC provider (for CI deploys) ---
@@ -232,6 +234,8 @@ class CogtainerStack(cdk.Stack):
         )
         CfnOutput(self, "AlbArn", value=self.alb.load_balancer_arn)
         CfnOutput(self, "AlbDns", value=self.alb.load_balancer_dns_name)
+        if self.wildcard_cert:
+            CfnOutput(self, "WildcardCertArn", value=self.wildcard_cert.certificate_arn)
         if self.https_listener:
             CfnOutput(
                 self,
