@@ -18,35 +18,36 @@ from cogos.io.email.capability import (
 
 
 class TestSesSender:
-    @patch("cogos.io.email.sender.boto3")
-    def test_send_basic(self, mock_boto3):
-        mock_client = MagicMock()
-        mock_client.send_email.return_value = {"MessageId": "abc123"}
-        mock_boto3.client.return_value = mock_client
+    def test_send_basic_with_runtime(self):
+        runtime = MagicMock()
+        runtime.send_email.return_value = "abc123"
 
-        sender = SesSender(from_address="ovo@softmax-cogents.com")
+        sender = SesSender(from_address="ovo@softmax-cogents.com", runtime=runtime)
         result = sender.send(to="user@example.com", subject="Hello", body="Hi there")
 
         assert result["MessageId"] == "abc123"
-        mock_client.send_email.assert_called_once()
-        call_kwargs = mock_client.send_email.call_args[1]
-        assert call_kwargs["Source"] == "ovo@softmax-cogents.com"
-        assert call_kwargs["Destination"] == {"ToAddresses": ["user@example.com"]}
-        assert call_kwargs["Message"]["Subject"]["Data"] == "Hello"
-        assert call_kwargs["Message"]["Body"]["Text"]["Data"] == "Hi there"
-        assert "ReplyToAddresses" not in call_kwargs
+        runtime.send_email.assert_called_once_with(
+            source="ovo@softmax-cogents.com",
+            to="user@example.com",
+            subject="Hello",
+            body="Hi there",
+            reply_to=None,
+        )
 
-    @patch("cogos.io.email.sender.boto3")
-    def test_send_with_reply_to(self, mock_boto3):
-        mock_client = MagicMock()
-        mock_client.send_email.return_value = {"MessageId": "def456"}
-        mock_boto3.client.return_value = mock_client
+    def test_send_with_reply_to(self):
+        runtime = MagicMock()
+        runtime.send_email.return_value = "def456"
 
-        sender = SesSender(from_address="ovo@softmax-cogents.com")
+        sender = SesSender(from_address="ovo@softmax-cogents.com", runtime=runtime)
         sender.send(to="a@b.com", subject="Re: test", body="reply", reply_to="c@d.com")
 
-        call_kwargs = mock_client.send_email.call_args[1]
-        assert call_kwargs["ReplyToAddresses"] == ["c@d.com"]
+        runtime.send_email.assert_called_once_with(
+            source="ovo@softmax-cogents.com",
+            to="a@b.com",
+            subject="Re: test",
+            body="reply",
+            reply_to="c@d.com",
+        )
 
 
 # ── EmailCapability ──────────────────────────────────────────

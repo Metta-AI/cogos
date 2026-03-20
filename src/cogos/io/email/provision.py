@@ -92,6 +92,7 @@ def verify_ses_email(
     cogent_name: str,
     domain: str = _DEFAULT_DOMAIN,
     region: str = "us-east-1",
+    runtime=None,
 ) -> dict:
     """Verify a cogent's email identity in SES.
 
@@ -99,10 +100,20 @@ def verify_ses_email(
     verification. This is a no-op if the domain is already verified,
     but we call it to confirm.
     """
+    address = f"{cogent_name}@{domain}"
+
+    if runtime:
+        verified = runtime.verify_email_domain(domain)
+        if verified:
+            logger.info("Domain %s already verified, %s can send", domain, address)
+            return {"address": address, "domain_verified": True}
+        logger.warning("Domain %s not verified. Run domain verification first.", domain)
+        return {"address": address, "domain_verified": False}
+
+    # Fallback to boto3 for backward compatibility
     import boto3
 
     ses = boto3.client("ses", region_name=region)
-    address = f"{cogent_name}@{domain}"
 
     response = ses.get_identity_verification_attributes(Identities=[domain])
     domain_status = response["VerificationAttributes"].get(domain, {}).get("VerificationStatus")
@@ -123,13 +134,14 @@ def provision_email(
     cogent_name: str,
     domain: str = _DEFAULT_DOMAIN,
     region: str = "us-east-1",
+    runtime=None,
 ) -> dict:
     """Full provisioning: CF routing rule + KV entry + SES check."""
     ingest_url = f"https://{cogent_name}.{domain}/api/ingest/email"
 
     cf_result = create_email_route(cogent_name, domain)
     set_kv_route(cogent_name, ingest_url)
-    ses_result = verify_ses_email(cogent_name, domain, region)
+    ses_result = verify_ses_email(cogent_name, domain, region, runtime=runtime)
 
     return {
         "address": f"{cogent_name}@{domain}",

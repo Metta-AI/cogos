@@ -160,12 +160,15 @@ class Capability:
         run_id: UUID | None = None,
         trace_id: UUID | None = None,
         secrets_provider: typing.Any = None,
+        runtime: typing.Any = None,
     ) -> None:
         self.repo = repo
         self.process_id = process_id
         self.run_id = run_id
         self.trace_id = trace_id
-        self._secrets_provider = secrets_provider
+        self._runtime = runtime
+        # Derive secrets_provider from runtime if not explicitly given
+        self._secrets_provider = secrets_provider or (runtime.get_secrets_provider() if runtime else None)
         self._scope = {}
 
     def scope(self, **kwargs: object) -> Self:

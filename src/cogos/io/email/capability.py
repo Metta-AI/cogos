@@ -38,12 +38,12 @@ class EmailError(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────
 
 
-def _get_sender() -> SesSender:
+def _get_sender(runtime=None) -> SesSender:
     cogent_name = os.environ.get("COGENT_NAME", "")
     domain = os.environ.get("EMAIL_DOMAIN", "softmax-cogents.com")
     region = os.environ.get("AWS_REGION", "us-east-1")
     from_address = f"{cogent_name}@{domain}"
-    return SesSender(from_address=from_address, region=region)
+    return SesSender(from_address=from_address, region=region, runtime=runtime)
 
 
 def _email_from_event(e) -> EmailMessage:
@@ -150,7 +150,7 @@ class EmailCapability(Capability):
 
         self._check("send", to=to)
 
-        sender = _get_sender()
+        sender = _get_sender(runtime=self._runtime)
         response = sender.send(to=to, subject=subject, body=body, reply_to=reply_to)
         return SendResult(
             message_id=response.get("MessageId", ""),

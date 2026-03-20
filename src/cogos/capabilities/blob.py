@@ -1,11 +1,10 @@
-"""Blob store capability — upload/download files via S3 for cross-capability sharing."""
+"""Blob store capability — upload/download files via the runtime file store."""
 from __future__ import annotations
 
 import logging
 import os
 from uuid import uuid4
 
-import boto3
 from pydantic import BaseModel, ConfigDict
 
 from cogos.capabilities.base import Capability
@@ -35,7 +34,7 @@ class BlobError(BaseModel):
 
 
 class BlobCapability(Capability):
-    """Upload and download files via S3 for cross-capability sharing.
+    """Upload and download files via the runtime file store.
 
     Usage:
         ref = blob.upload(data, "chart.png", content_type="image/png")
@@ -44,11 +43,9 @@ class BlobCapability(Capability):
 
     ALL_OPS = {"upload", "download"}
 
-    def __init__(self, repo, process_id, run_id=None):
-        super().__init__(repo, process_id, run_id)
-        from cogos import get_sessions_bucket
-        self._bucket = get_sessions_bucket()
-        self._s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    def __init__(self, repo, process_id, run_id=None, **kwargs):
+        super().__init__(repo, process_id, run_id, **kwargs)
+        self._cogent_name = os.environ.get("COGENT_NAME", os.environ.get("COGENT", ""))
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result: dict = {}
@@ -88,15 +85,13 @@ class BlobCapability(Capability):
         if max_size is not None and len(data) > max_size:
             return BlobError(error=f"Data size {len(data)} exceeds max size {max_size}")
 
+        if not self._runtime:
+            return BlobError(error="No runtime available for blob storage")
+
         key = f"blobs/{uuid4()}/{filename}"
-        put_kwargs: dict = {"Bucket": self._bucket, "Key": key, "Body": data}
-        if content_type:
-            put_kwargs["ContentType"] = content_type
         try:
-            self._s3_client.put_object(**put_kwargs)
-            url = self._s3_client.generate_presigned_url(
-                "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=PRESIGNED_URL_EXPIRY,
-            )
+            self._runtime.put_file(self._cogent_name, key, data)
+            url = self._runtime.get_file_url(self._cogent_name, key, expires_in=PRESIGNED_URL_EXPIRY)
             return BlobRef(key=key, url=url, filename=filename, size=len(data))
         except Exception as e:
             return BlobError(error=str(e))
@@ -108,11 +103,14 @@ class BlobCapability(Capability):
             return BlobError(error=err)
         if not key:
             return BlobError(error="Key is required")
+
+        if not self._runtime:
+            return BlobError(error="No runtime available for blob storage")
+
         try:
-            resp = self._s3_client.get_object(Bucket=self._bucket, Key=key)
-            data = resp["Body"].read()
+            data = self._runtime.get_file(self._cogent_name, key)
             filename = key.rsplit("/", 1)[-1] if "/" in key else key
-            return BlobContent(data=data, filename=filename, content_type=resp.get("ContentType"))
+            return BlobContent(data=data, filename=filename, content_type=None)
         except Exception as e:
             return BlobError(error=str(e))
 

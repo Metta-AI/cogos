@@ -7,17 +7,17 @@ from uuid import uuid4
 from cogos.capabilities.blob import BlobCapability, BlobRef, BlobContent, BlobError
 
 
-def _make_cap(bucket="test-bucket"):
+def _make_cap():
     repo = MagicMock()
-    cap = BlobCapability(repo, uuid4())
-    cap._bucket = bucket
-    cap._s3_client = MagicMock()
+    runtime = MagicMock()
+    cap = BlobCapability(repo, uuid4(), runtime=runtime)
+    cap._cogent_name = "test-cogent"
     return cap
 
 
 def test_upload_returns_blob_ref():
     cap = _make_cap()
-    cap._s3_client.generate_presigned_url.return_value = "https://s3.../presigned"
+    cap._runtime.get_file_url.return_value = "https://s3.../presigned"
     result = cap.upload(b"hello world", "test.txt", content_type="text/plain")
     assert isinstance(result, BlobRef)
     assert result.filename == "test.txt"
@@ -25,11 +25,10 @@ def test_upload_returns_blob_ref():
     assert result.url == "https://s3.../presigned"
     assert result.key.startswith("blobs/")
     assert result.key.endswith("/test.txt")
-    cap._s3_client.put_object.assert_called_once()
-    call_kwargs = cap._s3_client.put_object.call_args.kwargs
-    assert call_kwargs["Bucket"] == "test-bucket"
-    assert call_kwargs["Body"] == b"hello world"
-    assert call_kwargs["ContentType"] == "text/plain"
+    cap._runtime.put_file.assert_called_once()
+    call_args = cap._runtime.put_file.call_args
+    assert call_args[0][0] == "test-cogent"
+    assert call_args[0][2] == b"hello world"
 
 
 def test_upload_empty_data():
@@ -41,14 +40,11 @@ def test_upload_empty_data():
 
 def test_download_returns_content():
     cap = _make_cap()
-    body_mock = MagicMock()
-    body_mock.read.return_value = b"file data"
-    cap._s3_client.get_object.return_value = {"Body": body_mock, "ContentType": "text/plain"}
+    cap._runtime.get_file.return_value = b"file data"
     result = cap.download("blobs/abc/test.txt")
     assert isinstance(result, BlobContent)
     assert result.data == b"file data"
     assert result.filename == "test.txt"
-    assert result.content_type == "text/plain"
 
 
 def test_download_invalid_key():
@@ -79,18 +75,19 @@ def test_download_scope_ops_blocked():
     assert isinstance(result, BlobError)
 
 
-def test_bucket_derived_from_cogent_name(monkeypatch):
-    """When SESSIONS_BUCKET is unset, derive bucket from COGENT_NAME."""
-    monkeypatch.delenv("SESSIONS_BUCKET", raising=False)
+def test_cogent_name_from_env(monkeypatch):
+    """When COGENT_NAME is set, use it."""
     monkeypatch.setenv("COGENT_NAME", "dr.alpha")
     repo = MagicMock()
-    cap = BlobCapability(repo, uuid4())
-    assert cap._bucket == "cogent-dr-alpha-cogtainer-sessions"
+    runtime = MagicMock()
+    cap = BlobCapability(repo, uuid4(), runtime=runtime)
+    assert cap._cogent_name == "dr.alpha"
 
 
-def test_bucket_from_env(monkeypatch):
-    """When SESSIONS_BUCKET is set, use it directly."""
-    monkeypatch.setenv("SESSIONS_BUCKET", "my-custom-bucket")
+def test_no_runtime_returns_error():
+    """When no runtime is available, operations return errors."""
     repo = MagicMock()
     cap = BlobCapability(repo, uuid4())
-    assert cap._bucket == "my-custom-bucket"
+    result = cap.upload(b"data", "test.txt")
+    assert isinstance(result, BlobError)
+    assert "runtime" in result.error.lower()
