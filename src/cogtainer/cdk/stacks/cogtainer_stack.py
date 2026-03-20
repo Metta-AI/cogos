@@ -233,7 +233,7 @@ class CogtainerStack(cdk.Stack):
             )
         CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
         CfnOutput(self, "ECRRepositoryUri", value=self.ecr_repo.repository_uri)
-        CfnOutput(self, "CIArtifactsBucket", value=self.ci_artifacts_bucket.bucket_name)
+        CfnOutput(self, "CIArtifactsBucketName", value=self.ci_artifacts_bucket.bucket_name)
         CfnOutput(self, "EventBusArn", value=self.event_bus.event_bus_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "StatusTableArn", value=self.status_table.table_arn)
