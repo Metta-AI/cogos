@@ -33,6 +33,9 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
     from cogos.capabilities.scheduler import SchedulerCapability
     from cogos.runtime.schedule import apply_scheduled_messages
 
+    if hasattr(repo, "_load"):
+        repo._load()
+
     scheduler = SchedulerCapability(repo, _NULL_UUID)
     dispatched = 0
 

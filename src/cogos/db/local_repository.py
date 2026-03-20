@@ -180,6 +180,27 @@ class LocalRepository(Repository):
 
         return list(merged.values())
 
+    _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "throttled", "cancelled"})
+
+    @classmethod
+    def _merge_runs(
+        cls,
+        latest_rows: list[dict[str, Any]],
+        current_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        merged = {str(row.get("id")): row for row in latest_rows}
+        for row in current_rows:
+            key = str(row.get("id"))
+            existing = merged.get(key)
+            if (
+                existing
+                and existing.get("status") in cls._TERMINAL_RUN_STATUSES
+                and row.get("status") not in cls._TERMINAL_RUN_STATUSES
+            ):
+                continue
+            merged[key] = row
+        return list(merged.values())
+
     @classmethod
     def _merge_serialized_data(
         cls,
@@ -196,7 +217,6 @@ class LocalRepository(Repository):
             "resources": (("id",), ("name",)),
             "cron_rules": (("id",), ("expression", "channel_name")),
             "deliveries": (("id",), ("message", "handler")),
-            "runs": (("id",), None),
             "schemas": (("id",), ("name",)),
             "channels": (("id",), ("name",)),
             "channel_messages": (("id",), None),
@@ -213,6 +233,11 @@ class LocalRepository(Repository):
                 primary_fields=primary_fields,
                 conflict_fields=conflict_fields,
             )
+
+        merged["runs"] = cls._merge_runs(
+            latest_data.get("runs", []),
+            current_data.get("runs", []),
+        )
 
         merged["meta"] = dict(latest_data.get("meta", {}))
         merged["meta"].update(current_data.get("meta", {}))
