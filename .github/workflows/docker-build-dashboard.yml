@@ -21,7 +21,7 @@ jobs:
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Parse deploy targets
         id: targets
         run: |
@@ -54,7 +54,7 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.load-targets.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build and push dashboard image
         id: build
@@ -68,7 +68,7 @@ jobs:
           tag_prefix: dashboard
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
 
@@ -112,12 +112,12 @@ jobs:
     steps:
       - name: Generate CI app token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           token: ${{ steps.app-token.outputs.token }}
