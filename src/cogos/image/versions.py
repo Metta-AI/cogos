@@ -72,7 +72,7 @@ def verify_artifacts(
     ecr_client,
     s3_client,
     artifacts_bucket: str,
-    ecr_repo: str = "cogent",
+    ecr_repo: str,
 ) -> None:
     for name, sha in components.items():
         if sha == "local" or name in _SKIP_VERIFY:

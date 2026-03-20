@@ -333,15 +333,22 @@ def await_cmd(prefix: str, tag: str | None, timeout: int, profile: str | None):
     session, _ = get_aws_session()
     ecr_client = session.client("ecr", region_name="us-east-1")
 
+    try:
+        from cogtainer.ci_config import load_ci_config
+        ci_cfg = load_ci_config()
+        ecr_repo = next(iter(ci_cfg.cogtainers.values())).ecr_repo if ci_cfg.cogtainers else naming.ecr_repo_name()
+    except Exception:
+        ecr_repo = naming.ecr_repo_name()
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             resp = ecr_client.describe_images(
-                repositoryName=naming.ecr_repo_name(),
+                repositoryName=ecr_repo,
                 imageIds=[{"imageTag": expected_tag}],
             )
             pushed = resp["imageDetails"][0].get("imagePushedAt", "")
-            click.echo(click.style(f"  Image found: cogent:{expected_tag} (pushed {pushed})", fg="green"))
+            click.echo(click.style(f"  Image found: {ecr_repo}:{expected_tag} (pushed {pushed})", fg="green"))
             return
         except Exception:
             remaining = int(deadline - time.monotonic())

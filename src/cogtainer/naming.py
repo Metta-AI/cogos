@@ -77,7 +77,9 @@ def iam_role_name(suffix: str) -> str:
     return f"{RESOURCE_PREFIX}-{suffix}"
 
 
-def ecr_repo_name() -> str:
+def ecr_repo_name(cogtainer_name: str | None = None) -> str:
+    if cogtainer_name:
+        return f"cogtainer-{cogtainer_name}"
     return RESOURCE_PREFIX
 
 

@@ -5,10 +5,6 @@ Each cogtainer gets its own Aurora, ECS, ALB, ECR, EventBridge, and DynamoDB.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from cogtainer import naming
-
 import aws_cdk as cdk
 from aws_cdk import CfnOutput, Duration, RemovalPolicy
 from aws_cdk import aws_certificatemanager as acm
@@ -21,6 +17,7 @@ from aws_cdk import aws_events as events
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_rds as rds
 from aws_cdk import aws_route53 as route53
+from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
 from cogtainer.config import CogtainerEntry
@@ -96,6 +93,26 @@ class CogtainerStack(cdk.Stack):
                 ),
             ],
             removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # --- CI Artifacts Bucket ---
+        ci_bucket_name = self.node.try_get_context("ci_artifacts_bucket") or "cogtainer-ci-artifacts"
+        self.ci_artifacts_bucket = s3.Bucket(
+            self,
+            "CIArtifactsBucket",
+            bucket_name=ci_bucket_name,
+            removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    expiration=Duration.days(90),
+                    prefix="lambda/",
+                ),
+                s3.LifecycleRule(
+                    expiration=Duration.days(90),
+                    prefix="dashboard/",
+                ),
+            ],
         )
 
         # --- EventBridge Bus ---
@@ -197,12 +214,7 @@ class CogtainerStack(cdk.Stack):
         self.db_cluster.grant_data_api_access(self.ci_role)
         self.ecr_repo.grant_pull_push(self.ci_role)
         # S3 for Lambda zips and frontend assets
-        self.ci_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-                resources=["*"],
-            )
-        )
+        self.ci_artifacts_bucket.grant_read_write(self.ci_role)
         # Lambda update
         self.ci_role.add_to_policy(
             iam.PolicyStatement(
@@ -221,6 +233,7 @@ class CogtainerStack(cdk.Stack):
             )
         CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
         CfnOutput(self, "ECRRepositoryUri", value=self.ecr_repo.repository_uri)
+        CfnOutput(self, "CIArtifactsBucket", value=self.ci_artifacts_bucket.bucket_name)
         CfnOutput(self, "EventBusArn", value=self.event_bus.event_bus_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         CfnOutput(self, "StatusTableArn", value=self.status_table.table_arn)

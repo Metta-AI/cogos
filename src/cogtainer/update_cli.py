@@ -19,6 +19,18 @@ from cogtainer.deploy_config import CogtainerConfig
 _PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
 
 
+def _ecr_repo_from_ci_config() -> str:
+    """Get the ECR repo name from CI config (first cogtainer entry)."""
+    try:
+        from cogtainer.ci_config import load_ci_config
+        cfg = load_ci_config()
+        if cfg.cogtainers:
+            return next(iter(cfg.cogtainers.values())).ecr_repo
+    except Exception:
+        pass
+    return naming.ecr_repo_name()
+
+
 def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor") -> str | None:
     """Check that an ECR image exists for the current git commit.
 
@@ -34,10 +46,11 @@ def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor"
 
     expected_tag = f"{prefix}-{sha_short}"
 
+    ecr_repo = _ecr_repo_from_ci_config()
     ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
     try:
         ecr_client.describe_images(
-            repositoryName=naming.ecr_repo_name(),
+            repositoryName=ecr_repo,
             imageIds=[{"imageTag": expected_tag}],
         )
         click.echo(f"  ECR image for HEAD ({sha_short}): {click.style('found', fg='green')}")
@@ -250,7 +263,7 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
                 zip_bytes = f.read()
         except Exception:
             raise click.ClickException(
-                f"CI artifact not found: s3://{CI_ARTIFACTS_BUCKET}/{s3_key}\n"
+                f"CI artifact not found: s3://{_ci_artifacts_bucket()}/{s3_key}\n"
                 f"Check CI: gh run list --repo Metta-AI/cogos --workflow docker-build-executor.yml"
             )
         finally:
@@ -321,7 +334,8 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
     """
     from cogtainer.aws import ACCOUNT_ID
 
-    repo_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
+    ecr_repo = _ecr_repo_from_ci_config()
+    repo_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/{ecr_repo}"
     new_image = f"{repo_uri}:{tag}"
     click.echo(f"  Image: {new_image}")
 
@@ -329,7 +343,7 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
     ecr_client = session.client("ecr", region_name=DEFAULT_REGION)
     try:
         ecr_client.describe_images(
-            repositoryName=naming.ecr_repo_name(),
+            repositoryName=ecr_repo,
             imageIds=[{"imageTag": tag}],
         )
         click.echo(f"  ECR tag '{tag}': {click.style('found', fg='green')}")
@@ -554,7 +568,9 @@ def _upload_dashboard_tarball(
     return f"s3://{bucket}/{s3_key}"
 
 
-CI_ARTIFACTS_BUCKET = "cogtainer-ci-artifacts"
+def _ci_artifacts_bucket() -> str:
+    from cogtainer.ci_config import load_ci_config
+    return load_ci_config().ci_artifacts_bucket
 
 
 def _resolve_commit_sha(sha: str) -> str:
@@ -572,14 +588,14 @@ def _resolve_commit_sha(sha: str) -> str:
 def _download_ci_artifact(session: boto3.Session, s3_key: str, dest_path: str) -> None:
     """Download a CI artifact from the shared bucket."""
     s3_client = session.client("s3", region_name=DEFAULT_REGION)
-    s3_client.download_file(CI_ARTIFACTS_BUCKET, s3_key, dest_path)
+    s3_client.download_file(_ci_artifacts_bucket(), s3_key, dest_path)
 
 
 def _check_ci_artifact_exists(session: boto3.Session, s3_key: str) -> bool:
     """Check if a CI artifact exists in the shared bucket."""
     s3_client = session.client("s3", region_name=DEFAULT_REGION)
     try:
-        s3_client.head_object(Bucket=CI_ARTIFACTS_BUCKET, Key=s3_key)
+        s3_client.head_object(Bucket=_ci_artifacts_bucket(), Key=s3_key)
         return True
     except Exception:
         return False
@@ -771,7 +787,7 @@ def _build_and_upload_frontend(session, safe_name, project_root, sha: str | None
             _download_ci_artifact(session, s3_key, tarball_path)
         except Exception:
             raise click.ClickException(
-                f"CI artifact not found: s3://{CI_ARTIFACTS_BUCKET}/{s3_key}\n"
+                f"CI artifact not found: s3://{_ci_artifacts_bucket()}/{s3_key}\n"
                 f"Check CI: gh run list --repo Metta-AI/cogos --workflow docker-build-dashboard.yml"
             )
     else:

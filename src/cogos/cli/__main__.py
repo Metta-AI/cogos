@@ -273,11 +273,20 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
             if session is None:
                 click.echo("WARNING: No AWS session available, skipping artifact verification.")
             else:
+                from cogtainer.ci_config import load_ci_config
+
+                ci_cfg = load_ci_config()
+                ct_name = ctx.obj.get("cogtainer_name")
+                ci_entry = ci_cfg.cogtainers.get(ct_name) if ct_name else None
+                ecr_repo = ci_entry.ecr_repo if ci_entry else f"cogtainer-{ct_name}" if ct_name else "cogent"
+                artifacts_bucket = ci_cfg.ci_artifacts_bucket
+
                 verify_artifacts(
                     components,
                     ecr_client=session.client("ecr", region_name="us-east-1"),
                     s3_client=session.client("s3"),
-                    artifacts_bucket="cogtainer-ci-artifacts",
+                    artifacts_bucket=artifacts_bucket,
+                    ecr_repo=ecr_repo,
                 )
                 click.echo("All artifacts verified.")
         except ArtifactMissing as e:

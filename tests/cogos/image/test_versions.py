@@ -1,8 +1,17 @@
 """Tests for version manifest model and resolution."""
 import json
-import pytest
 from unittest.mock import MagicMock
-from cogos.image.versions import VersionManifest, resolve_versions, verify_artifacts, ArtifactMissing, load_defaults, write_versions_to_filestore
+
+import pytest
+
+from cogos.image.versions import (
+    ArtifactMissing,
+    VersionManifest,
+    load_defaults,
+    resolve_versions,
+    verify_artifacts,
+    write_versions_to_filestore,
+)
 
 
 def test_manifest_roundtrip():
@@ -57,7 +66,7 @@ def test_verify_all_present(tmp_path):
     ecr.describe_images = MagicMock(return_value={})
     s3 = MagicMock()
     s3.head_object = MagicMock(return_value={})
-    verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+    verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket", ecr_repo="test-repo")
 
 
 def test_verify_ecr_missing():
@@ -68,7 +77,7 @@ def test_verify_ecr_missing():
     s3 = MagicMock()
     s3.head_object = MagicMock(return_value={})
     with pytest.raises(ArtifactMissing, match="executor"):
-        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket", ecr_repo="test-repo")
 
 
 def test_verify_s3_missing():
@@ -85,13 +94,13 @@ def test_verify_s3_missing():
 
     s3.head_object = MagicMock(side_effect=_head)
     with pytest.raises(ArtifactMissing, match="lambda"):
-        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket")
+        verify_artifacts(components, ecr_client=ecr, s3_client=s3, artifacts_bucket="test-bucket", ecr_repo="test-repo")
 
 
 def test_verify_skipped_for_local():
     components = {"executor": "local", "dashboard": "local", "dashboard_frontend": "local",
                   "discord_bridge": "local", "lambda": "local", "cogos": "local"}
-    verify_artifacts(components, ecr_client=None, s3_client=None, artifacts_bucket="test-bucket")
+    verify_artifacts(components, ecr_client=None, s3_client=None, artifacts_bucket="test-bucket", ecr_repo="test-repo")
 
 
 def test_load_defaults(tmp_path):
