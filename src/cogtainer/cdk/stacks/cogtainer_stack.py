@@ -17,6 +17,7 @@ from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_events as events
+from aws_cdk import aws_iam as iam
 from aws_cdk import aws_rds as rds
 from aws_cdk import aws_route53 as route53
 from constructs import Construct
@@ -163,6 +164,19 @@ class CogtainerStack(cdk.Stack):
                 hosted_zone_id=hosted_zone_id,
                 zone_name=domain,
             )
+
+        # --- Admin role: grant the polis admin access to cogtainer resources ---
+        admin_role_name = self.node.try_get_context("admin_role_name") or "cogent-polis-admin"
+        try:
+            admin_role = iam.Role.from_role_name(
+                self, "AdminRole", admin_role_name,
+                mutable=True,
+            )
+            self.status_table.grant_read_write_data(admin_role)
+            self.db_cluster.grant_data_api_access(admin_role)
+            self.ecr_repo.grant_pull_push(admin_role)
+        except Exception:
+            pass  # role may not exist yet on first deploy
 
         # --- Outputs ---
         CfnOutput(self, "CogtainerName", value=cogtainer_name)

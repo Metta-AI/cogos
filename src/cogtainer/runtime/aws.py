@@ -12,7 +12,7 @@ from cogtainer.runtime.base import CogtainerRuntime
 
 logger = logging.getLogger(__name__)
 
-_STATUS_TABLE = "cogent-status"
+_LEGACY_STATUS_TABLE = "cogent-status"
 
 
 class AwsRuntime(CogtainerRuntime):
@@ -23,27 +23,68 @@ class AwsRuntime(CogtainerRuntime):
         entry: CogtainerEntry,
         llm: LLMProvider,
         session: Any,
+        cogtainer_name: str = "",
     ) -> None:
         self._entry = entry
         self._llm = llm
         self._session = session
         self._region = entry.region or "us-east-1"
+        self._cogtainer_name = cogtainer_name
+        # New cogtainers use cogtainer-{name}-status, legacy polis uses cogent-status
+        self._status_table = (
+            f"cogtainer-{cogtainer_name}-status" if cogtainer_name else _LEGACY_STATUS_TABLE
+        )
+        self._db_info_cache: dict[str, dict] = {}
+
+    def _safe(self, name: str) -> str:
+        return name.replace(".", "-")
+
+    def _get_stack_outputs(self) -> dict[str, str]:
+        """Get CloudFormation stack outputs for this cogtainer."""
+        cf = self._session.client("cloudformation", region_name=self._region)
+        stack_name = f"cogtainer-{self._cogtainer_name}"
+        try:
+            resp = cf.describe_stacks(StackName=stack_name)
+            outputs = resp["Stacks"][0].get("Outputs", [])
+            return {o["OutputKey"]: o["OutputValue"] for o in outputs}
+        except Exception:
+            return {}
+
+    def _get_db_info(self) -> dict[str, str]:
+        """Get DB cluster ARN and secret ARN from stack outputs."""
+        if not self._db_info_cache:
+            outputs = self._get_stack_outputs()
+            self._db_info_cache = {
+                "cluster_arn": outputs.get("DbClusterArn", ""),
+                "secret_arn": outputs.get("DbSecretArn", ""),
+            }
+        return self._db_info_cache
 
     # ── Repository ───────────────────────────────────────────
 
     def get_repository(self, cogent_name: str) -> Any:
         from cogos.db.repository import Repository
 
-        ddb = self._session.resource("dynamodb", region_name=self._region)
-        item = (
-            ddb.Table(_STATUS_TABLE)
-            .get_item(Key={"cogent_name": cogent_name})
-            .get("Item", {})
-        )
-        db_info = item.get("database", {})
-        cluster_arn = db_info.get("cluster_arn", "")
-        secret_arn = db_info.get("secret_arn", "")
-        db_name = db_info.get("db_name", f"cogent_{cogent_name.replace('.', '_')}")
+        safe = self._safe(cogent_name)
+        db_name = f"cogent_{safe.replace('-', '_')}"
+
+        # For new cogtainers, get DB ARNs from stack outputs
+        # For legacy polis, get from DynamoDB cogent-status table
+        if self._cogtainer_name:
+            db_info = self._get_db_info()
+            cluster_arn = db_info["cluster_arn"]
+            secret_arn = db_info["secret_arn"]
+        else:
+            ddb = self._session.resource("dynamodb", region_name=self._region)
+            item = (
+                ddb.Table(_LEGACY_STATUS_TABLE)
+                .get_item(Key={"cogent_name": cogent_name})
+                .get("Item", {})
+            )
+            db_sub = item.get("database", {})
+            cluster_arn = db_sub.get("cluster_arn", "")
+            secret_arn = db_sub.get("secret_arn", "")
+            db_name = db_sub.get("db_name", db_name)
 
         client = self._session.client("rds-data", region_name=self._region)
         return Repository(
@@ -129,13 +170,58 @@ class AwsRuntime(CogtainerRuntime):
 
     def list_cogents(self) -> list[str]:
         ddb = self._session.resource("dynamodb", region_name=self._region)
-        table = ddb.Table(_STATUS_TABLE)
+        table = ddb.Table(self._status_table)
         resp = table.scan()
         items = resp.get("Items", [])
-        return sorted(item["cogent_name"] for item in items)
+        return sorted(item["cogent_name"] for item in items if "cogent_name" in item)
 
     def create_cogent(self, name: str) -> None:
-        raise NotImplementedError("Cogent provisioning is handled by CDK")
+        """Register a cogent in the status table and create its database."""
+        safe = self._safe(name)
+        db_name = f"cogent_{safe.replace('-', '_')}"
+        db_info = self._get_db_info()
+
+        # 1. Create database on the cogtainer's Aurora cluster
+        rds = self._session.client("rds-data", region_name=self._region)
+        try:
+            rds.execute_statement(
+                resourceArn=db_info["cluster_arn"],
+                secretArn=db_info["secret_arn"],
+                database="postgres",
+                sql=f"CREATE DATABASE {db_name}",
+            )
+            logger.info("Created database %s", db_name)
+        except Exception as e:
+            if "already exists" in str(e):
+                logger.info("Database %s already exists", db_name)
+            else:
+                raise
+
+        # 2. Register in status table
+        ddb = self._session.resource("dynamodb", region_name=self._region)
+        import time
+        ddb.Table(self._status_table).put_item(
+            Item={
+                "cogent_name": name,
+                "db_name": db_name,
+                "database": {
+                    "cluster_arn": db_info["cluster_arn"],
+                    "secret_arn": db_info["secret_arn"],
+                    "db_name": db_name,
+                },
+                "updated_at": int(time.time()),
+            }
+        )
+
+        # 3. Apply schema using the polis session's RDS client
+        from cogos.db.migrations import apply_schema_with_client
+        rds_client = self._session.client("rds-data", region_name=self._region)
+        apply_schema_with_client(
+            rds_client, db_info["cluster_arn"], db_info["secret_arn"], db_name
+        )
+        logger.info("Schema applied to %s", db_name)
 
     def destroy_cogent(self, name: str) -> None:
-        raise NotImplementedError("Cogent destruction is handled by CDK")
+        """Remove cogent from status table."""
+        ddb = self._session.resource("dynamodb", region_name=self._region)
+        ddb.Table(self._status_table).delete_item(Key={"cogent_name": name})

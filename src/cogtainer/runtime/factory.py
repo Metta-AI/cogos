@@ -7,7 +7,9 @@ from cogtainer.llm.provider import create_provider
 from cogtainer.runtime.base import CogtainerRuntime
 
 
-def create_runtime(entry: CogtainerEntry) -> CogtainerRuntime:
+def create_runtime(
+    entry: CogtainerEntry, cogtainer_name: str = ""
+) -> CogtainerRuntime:
     """Instantiate the appropriate runtime for the given cogtainer config."""
     llm = create_provider(entry.llm, region=entry.region or "us-east-1")
 
@@ -22,6 +24,8 @@ def create_runtime(entry: CogtainerEntry) -> CogtainerRuntime:
         from cogtainer.runtime.aws import AwsRuntime
 
         session, _ = get_polis_session()
-        return AwsRuntime(entry=entry, llm=llm, session=session)
+        return AwsRuntime(
+            entry=entry, llm=llm, session=session, cogtainer_name=cogtainer_name
+        )
 
     raise ValueError(f"Unknown cogtainer type: {entry.type}")

@@ -22,7 +22,7 @@ def _get_runtime() -> tuple[CogtainerRuntime, str]:
     cfg = load_config(_config_path())
     cogtainer_name = resolve_cogtainer_name(cfg)
     entry = cfg.cogtainers[cogtainer_name]
-    runtime = create_runtime(entry)
+    runtime = create_runtime(entry, cogtainer_name=cogtainer_name)
     return runtime, cogtainer_name
 
 

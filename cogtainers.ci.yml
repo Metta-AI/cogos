@@ -1,9 +1,20 @@
+# CI deploy targets — each cogtainer gets its own ECR repo and Lambda zips.
+# GitHub Actions reads this to build a matrix of deploy targets.
 cogtainers:
-  prod:
+  polis:
     account_id: "901289084804"
     region: us-east-1
-    ecr_repo: cogtainer-prod
-    aws_role: ""
-    s3_artifacts_bucket: ""
+    ecr_repo: cogent
+    aws_role: ""  # uses vars.AWS_ROLE default
+    s3_artifacts_bucket: cogent-polis-ci-artifacts
     components: all
     cogents: []
+
+  agora:
+    account_id: "901289084804"
+    region: us-east-1
+    ecr_repo: cogtainer-agora
+    aws_role: ""  # same account, same role
+    s3_artifacts_bucket: cogent-polis-ci-artifacts
+    components: all
+    cogents: [alpha]

@@ -337,6 +337,29 @@ def apply_schema(
     return current
 
 
+def apply_schema_with_client(
+    client,
+    resource_arn: str,
+    secret_arn: str,
+    database: str,
+) -> int:
+    """Apply schema using an already-configured RDS Data API client."""
+    current = get_current_version(client, resource_arn, secret_arn, database)
+    if current is None:
+        schema_sql = SCHEMA_FILE.read_text()
+        _execute_script(client, resource_arn, secret_arn, database, schema_sql)
+        current = get_current_version(client, resource_arn, secret_arn, database)
+        return current or 0
+
+    for version in sorted(MIGRATIONS.keys()):
+        if version > current:
+            for stmt in MIGRATIONS[version]:
+                _execute(client, resource_arn, secret_arn, database, stmt)
+            current = version
+
+    return current
+
+
 def reset_schema(
     resource_arn: str | None = None,
     secret_arn: str | None = None,

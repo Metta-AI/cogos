@@ -154,7 +154,7 @@ def cogos(ctx: click.Context):
 
             cogtainer_name = resolve_cogtainer_name(cfg)
             entry = cfg.cogtainers[cogtainer_name]
-            runtime = create_runtime(entry)
+            runtime = create_runtime(entry, cogtainer_name=cogtainer_name)
             ctx.obj["runtime"] = runtime
             ctx.obj["cogtainer_name"] = cogtainer_name
 
