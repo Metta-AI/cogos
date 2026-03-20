@@ -88,6 +88,10 @@ def _ensure_db_env(cogent_name: str) -> None:
 
 
 def _repo():
+    ctx = click.get_current_context()
+    runtime = ctx.obj.get("runtime")
+    if runtime:
+        return runtime.get_repository(ctx.obj["cogent_name"])
     from cogos.db.factory import create_repository
 
     return create_repository()
@@ -132,9 +136,50 @@ def cogos(ctx: click.Context):
     """CogOS — management CLI for processes, files, capabilities, and channels.
 
     \b
-    Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml to target a cogent.
+    Set COGTAINER/COGENT env vars (with cogtainers.yml) or
+    COGENT_ID / default_cogent in ~/.cogos/config.yml to target a cogent.
     """
     ctx.ensure_object(dict)
+
+    # --- Try new cogtainer config first ---
+    try:
+        from cogtainer.cogtainer_cli import _config_path
+        from cogtainer.config import load_config
+
+        cfg = load_config(_config_path())
+
+        if cfg.cogtainers:
+            from cogtainer.config import resolve_cogent_name, resolve_cogtainer_name
+            from cogtainer.runtime.factory import create_runtime
+
+            cogtainer_name = resolve_cogtainer_name(cfg)
+            entry = cfg.cogtainers[cogtainer_name]
+            runtime = create_runtime(entry)
+            ctx.obj["runtime"] = runtime
+            ctx.obj["cogtainer_name"] = cogtainer_name
+
+            cogents = runtime.list_cogents()
+            if cogents:
+                cogent_name = resolve_cogent_name(cogents)
+                ctx.obj["cogent_name"] = cogent_name
+
+            if entry.type in ("local", "docker"):
+                os.environ["USE_LOCAL_DB"] = "1"
+            else:
+                if ctx.obj.get("cogent_name"):
+                    _ensure_db_env(ctx.obj["cogent_name"])
+            return
+    except ValueError:
+        # resolve functions raise ValueError when they can't determine a name;
+        # allow --help to still work
+        if "--help" in sys.argv or "-h" in sys.argv:
+            return
+        raise
+    except Exception:
+        # cogtainer modules not available or config load failed — fall through
+        pass
+
+    # --- Legacy path: COGENT_ID / default_cogent ---
     cogent = os.environ.get("COGENT_ID") or _default_cogent()
     if not cogent:
         # Allow --help on subcommands without requiring a cogent
@@ -1094,8 +1139,28 @@ def reboot_cmd(ctx: click.Context, yes: bool):
 
 
 # ═══════════════════════════════════════════════════════════
-# LOCAL EXECUTOR
+# LOCAL EXECUTOR / DISPATCHER
 # ═══════════════════════════════════════════════════════════
+
+
+@cogos.command("start")
+@click.option("--daemon", is_flag=True, help="Run in background")
+@click.pass_context
+def start_cmd(ctx, daemon):
+    """Start the local dispatcher."""
+    runtime = ctx.obj.get("runtime")
+    if runtime is None:
+        raise click.ClickException("No cogtainer runtime — configure cogtainers.yml first")
+    from cogtainer.local_dispatcher import run_loop
+    cogent_name = ctx.obj["cogent_name"]
+    repo = runtime.get_repository(cogent_name)
+    if daemon:
+        import subprocess
+        subprocess.Popen([sys.executable, "-m", "cogtainer.local_dispatcher",
+                         ctx.obj["cogtainer_name"], cogent_name])
+        click.echo("Dispatcher started in background")
+    else:
+        run_loop(repo, runtime, cogent_name)
 
 
 # ═══════════════════════════════════════════════════════════
