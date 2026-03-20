@@ -28,22 +28,23 @@ Three CLI tools:
 uv sync
 
 # 2. Create a local cogtainer
-cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
+uv run cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
 
 # 3. Create a cogent
-cogent create alpha
+uv run cogent create alpha
 
 # 4. Boot the cogos image
-COGENT=alpha cogos image boot cogos
+COGENT=alpha uv run cogos image boot cogos
 
 # 5. Run the init process
-COGENT=alpha cogos process run init --executor local
+COGENT=alpha uv run cogos process run init --executor local
 
 # 6. Check status
-COGENT=alpha cogos status
+COGENT=alpha uv run cogos status
 
 # 7. Start the dashboard
-COGENT=alpha cogos dashboard start
+cd dashboard/frontend && npm ci && cd ../..
+COGENT=alpha uv run cogos dashboard start
 ```
 
 ### LLM Providers
@@ -52,13 +53,13 @@ Local cogtainers support pluggable LLM providers:
 
 ```bash
 # AWS Bedrock (requires AWS credentials)
-cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
+uv run cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
 
 # OpenRouter
-cogtainer create dev --type local --llm-provider openrouter --llm-model anthropic/claude-sonnet-4 --llm-api-key-env OPENROUTER_API_KEY
+uv run cogtainer create dev --type local --llm-provider openrouter --llm-model anthropic/claude-sonnet-4 --llm-api-key-env OPENROUTER_API_KEY
 
 # Direct Anthropic API
-cogtainer create dev --type local --llm-provider anthropic --llm-model claude-sonnet-4-20250514 --llm-api-key-env ANTHROPIC_API_KEY
+uv run cogtainer create dev --type local --llm-provider anthropic --llm-model claude-sonnet-4-20250514 --llm-api-key-env ANTHROPIC_API_KEY
 ```
 
 ### Environment Variables
@@ -74,7 +75,7 @@ When only one cogtainer or cogent exists, it's selected automatically. Otherwise
 
 ```bash
 # 1. Create an AWS cogtainer
-cogtainer create prod --type aws \
+uv run cogtainer create prod --type aws \
   --llm-provider bedrock \
   --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0 \
   --region us-east-1 \
@@ -84,7 +85,7 @@ cogtainer create prod --type aws \
 PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" -c cogtainer_name=prod
 
 # 3. Create a cogent (creates database, applies schema)
-COGTAINER=prod cogent create alpha
+COGTAINER=prod uv run cogent create alpha
 
 # 4. Deploy cogent stack (Lambdas, SQS, EventBridge rules)
 PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" \
@@ -92,7 +93,7 @@ PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" \
   -c lambda_s3_bucket=<bucket> -c lambda_s3_key=lambda/<sha>/lambda.zip
 
 # 5. Boot cogos
-COGTAINER=prod COGENT=alpha cogos image boot cogos
+COGTAINER=prod COGENT=alpha uv run cogos image boot cogos
 ```
 
 ### CI / CD
@@ -115,13 +116,13 @@ After CI builds, update a cogtainer:
 
 ```bash
 # Update everything (Lambdas + ECS services)
-cogtainer update prod
+uv run cogtainer update prod
 
 # Update just Lambdas
-cogtainer update prod --lambdas --lambda-s3-bucket <bucket> --lambda-s3-key lambda/<sha>/lambda.zip
+uv run cogtainer update prod --lambdas --lambda-s3-bucket <bucket> --lambda-s3-key lambda/<sha>/lambda.zip
 
 # Update just ECS services
-cogtainer update prod --services --image-tag executor-<sha>
+uv run cogtainer update prod --services --image-tag executor-<sha>
 ```
 
 ## Configuration
@@ -157,40 +158,40 @@ defaults:
 ### `cogtainer` — Cogtainer Lifecycle
 
 ```bash
-cogtainer create <name> --type aws|local|docker [options]
-cogtainer destroy <name>
-cogtainer list
-cogtainer status [<name>]
-cogtainer update <name> [--lambdas] [--services] [--all]
-cogtainer discover-aws [--region us-east-1]
-cogtainer compose <name> [--cogent <name>]  # docker-compose.yml
+uv run cogtainer create <name> --type aws|local|docker [options]
+uv run cogtainer destroy <name>
+uv run cogtainer list
+uv run cogtainer status [<name>]
+uv run cogtainer update <name> [--lambdas] [--services] [--all]
+uv run cogtainer discover-aws [--region us-east-1]
+uv run cogtainer compose <name> [--cogent <name>]  # docker-compose.yml
 ```
 
 ### `cogent` — Cogent Lifecycle
 
 ```bash
-cogent create <name>
-cogent destroy <name>
-cogent list
-cogent status [<name>]
+uv run cogent create <name>
+uv run cogent destroy <name>
+uv run cogent list
+uv run cogent status [<name>]
 ```
 
 ### `cogos` — Cogent Operations
 
 ```bash
-cogos image boot <name>          # load an image (default: cogos)
-cogos image list                 # list available images
-cogos status                     # show processes, files, capabilities
-cogos process list               # list processes
-cogos process run <name> --executor local  # run a process locally
-cogos process create <name> --mode daemon --content "..."
-cogos file list                  # list files
-cogos file get <key>             # show file content
-cogos channel send <name> --payload '{...}'
-cogos dashboard start            # start local dashboard
-cogos dashboard stop
-cogos start                      # start local dispatcher (local/docker only)
-cogos shell                      # interactive shell
+uv run cogos image boot <name>          # load an image (default: cogos)
+uv run cogos image list                 # list available images
+uv run cogos status                     # show processes, files, capabilities
+uv run cogos process list               # list processes
+uv run cogos process run <name> --executor local  # run a process locally
+uv run cogos process create <name> --mode daemon --content "..."
+uv run cogos file list                  # list files
+uv run cogos file get <key>             # show file content
+uv run cogos channel send <name> --payload '{...}'
+uv run cogos dashboard start            # start local dashboard
+uv run cogos dashboard stop
+uv run cogos start                      # start local dispatcher (local/docker only)
+uv run cogos shell                      # interactive shell
 ```
 
 ## Dashboard
@@ -198,12 +199,11 @@ cogos shell                      # interactive shell
 Each cogtainer gets unique dashboard ports (auto-assigned on creation):
 
 ```bash
-COGENT=alpha cogos dashboard start    # starts on cogtainer's configured ports
-COGENT=alpha cogos dashboard stop
-COGENT=alpha cogos dashboard reload
+cd dashboard/frontend && npm ci && cd ../..
+COGENT=alpha uv run cogos dashboard start    # starts on cogtainer's configured ports
+COGENT=alpha uv run cogos dashboard stop
+COGENT=alpha uv run cogos dashboard reload
 ```
-
-Install frontend dependencies first: `cd dashboard/frontend && npm ci`
 
 ## Troubleshooting
 
@@ -211,7 +211,7 @@ Install frontend dependencies first: `cd dashboard/frontend && npm ci`
 
 **Multiple cogtainers/cogents:** Set `COGTAINER` and `COGENT` env vars to disambiguate.
 
-**Dashboard port conflict:** Each cogtainer gets unique ports. Check with `cogtainer status <name>`.
+**Dashboard port conflict:** Each cogtainer gets unique ports. Check with `uv run cogtainer status <name>`.
 
 ## References
 

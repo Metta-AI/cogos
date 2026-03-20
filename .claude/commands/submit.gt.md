@@ -5,12 +5,12 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
 ## Steps
 
 1. Run `git status` to check for uncommitted changes
-   - If there are uncommitted changes, run `/vet` first, then stage and commit with a descriptive message
+   - If there are uncommitted changes, run `uv run ruff check src/` first, then stage and commit with a descriptive message
 2. Run `gt sync -f` to sync with remote and clean up merged branches
 3. If not already on a feature branch (i.e. on `main`), create one:
    - Run `gt create -a -m "<short description of changes>"` to create a new Graphite branch with all changes
    - If already on a non-main branch, just ensure changes are committed
-4. Run `pytest tests/ -q` to execute unit tests
+4. Run `uv run pytest tests/ -q` to execute unit tests
    - If tests fail, stop and show the failures. Do NOT submit broken code. Ask the user how to proceed.
 5. **Write a PR title and description** following the format in AGENTS.md:
    - **Problem**: Explain the prior behavior or source of churn — what was ambiguous, brittle, inconsistent, or wrong. Phrase in operational terms.
@@ -27,14 +27,14 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
 8. Run `gt sync -f` to pull the merged changes back to local main
 9. Build a short summary of what was merged:
    - Write a 1-3 sentence human-readable summary of the changes
-10. Post the summary to Discord #cogents using the webhook:
+10. Post the summary to Discord #cogents using `cogos.io.discord.announce`:
    ```bash
-   WEBHOOK_URL=$(aws secretsmanager get-secret-value --secret-id "discord/channel-webhook/cogents" --query SecretString --output text --profile !`.venv/bin/python scripts/deploy-config org_profile softmax-org`)
-   curl -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" \
-     -d "{\"username\": \"cogents.2\", \"content\": \"$SUMMARY\"}"
+   PYTHONPATH=src uv run python -m cogos.io.discord.announce \
+     --channel-id 1454583125786230906 \
+     --username "$(basename $(pwd))" \
+     --message "$SUMMARY"
    ```
    - Keep the message under 2000 characters
    - Include the PR as a markdown hyperlink: `[PR #123](<https://github.com/...>)` — angle brackets suppress Discord's embed preview
    - If the work is tied to an Asana task, include it as a hyperlink too: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
-   - If the webhook secret doesn't exist, try `discord/agent-webhook-url` as fallback
 11. Print the summary locally so the user can see what was announced

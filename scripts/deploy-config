@@ -2,7 +2,7 @@
 """Print a deploy_config value. Usage: scripts/deploy-config <key> [default]"""
 import sys
 
-from polis.config import deploy_config
+from cogtainer.deploy_config import deploy_config
 
 if len(sys.argv) < 2:
     print("Usage: deploy-config <key> [default]", file=sys.stderr)
