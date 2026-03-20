@@ -301,6 +301,29 @@ class PolisStack(cdk.Stack):
             )
         )
         self.status_table.grant_read_write_data(self.admin_role)
+        # Lambda — manage cogent Lambda functions (update env vars, code)
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "lambda:GetFunctionConfiguration",
+                    "lambda:UpdateFunctionConfiguration",
+                    "lambda:UpdateFunctionCode",
+                    "lambda:ListFunctions",
+                ],
+                resources=["arn:aws:lambda:*:*:function:cogent-*"],
+            )
+        )
+        # IAM — manage cogent task role policies (update DB ARNs)
+        self.admin_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "iam:ListRolePolicies",
+                    "iam:GetRolePolicy",
+                    "iam:PutRolePolicy",
+                ],
+                resources=["arn:aws:iam::*:role/cogent-*"],
+            )
+        )
         self.admin_role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
