@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import boto3
 
-from cogtainer.config import CogtainerEntry
+from cogtainer.config import CogtainerEntry, LLMConfig
 from cogtainer.llm.provider import create_provider
 from cogtainer.runtime.base import CogtainerRuntime
 
@@ -64,12 +64,12 @@ def create_executor_runtime() -> CogtainerRuntime:
         "DEFAULT_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     )
 
-    llm_config: dict = {"provider": llm_provider, "model": default_model, "api_key_env": ""}
+    llm_config = LLMConfig(provider=llm_provider, model=default_model, api_key_env="")
     # Pass through API key env vars for non-bedrock providers
     if llm_provider == "openrouter":
-        llm_config["api_key_env"] = "OPENROUTER_API_KEY"
+        llm_config.api_key_env = "OPENROUTER_API_KEY"
     elif llm_provider == "anthropic":
-        llm_config["api_key_env"] = "ANTHROPIC_API_KEY"
+        llm_config.api_key_env = "ANTHROPIC_API_KEY"
 
     if cogtainer_type in ("local", "docker"):
         from cogtainer.runtime.local import LocalRuntime
