@@ -1249,7 +1249,8 @@ def dashboard_group():
 
 
 @dashboard_group.command("start")
-def dashboard_start():
+@click.pass_context
+def dashboard_start(ctx: click.Context):
     """Start the dashboard backend + frontend in the background."""
     import subprocess as _sp
 
@@ -1273,6 +1274,24 @@ def dashboard_start():
         "DASHBOARD_FE_PORT": str(fe_port),
     }
     apply_local_checkout_env(env, repo_root=_REPO_ROOT)
+
+    # Use cogtainer's data dir if available (so dashboard sees same DB as cogos start)
+    obj = ctx.obj or {}
+    ct_name = obj.get("cogtainer_name")
+    cogent_name = obj.get("cogent_name")
+    if ct_name and cogent_name:
+        try:
+            from cogtainer.cogtainer_cli import _config_path as _cfg_path
+            from cogtainer.config import load_config as _load_cfg
+            cfg = _load_cfg(_cfg_path())
+            entry = cfg.cogtainers.get(ct_name) if cfg.cogtainers else None
+            if entry and entry.data_dir:
+                from pathlib import Path
+                cogent_dir = Path(entry.data_dir) / cogent_name
+                if cogent_dir.is_dir():
+                    env["COGOS_LOCAL_DATA"] = str(cogent_dir)
+        except Exception:
+            pass
 
     # Start backend
     be_proc = _sp.Popen(

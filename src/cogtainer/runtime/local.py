@@ -166,6 +166,9 @@ class LocalRuntime(CogtainerRuntime):
         return True
 
     def get_bedrock_client(self) -> Any:
+        if self._entry.llm and self._entry.llm.provider == "bedrock":
+            import boto3
+            return boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
         return None
 
     def get_session(self) -> Any:

@@ -1,16 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getChatMessages, sendChatMessage } from "@/lib/api";
-
-interface ChatMessage {
-  id: string;
-  source: "user" | "cogent";
-  content: string;
-  author: string | null;
-  timestamp: number;
-  type: string;
-}
+import { getChatMessages, sendChatMessage, type ChatMessage } from "@/lib/api";
 
 interface ChatPanelProps {
   cogentName: string;
@@ -22,7 +13,7 @@ export function ChatPanel({ cogentName }: ChatPanelProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -176,9 +167,13 @@ export function ChatPanel({ cogentName }: ChatPanelProps) {
                   marginTop: "4px",
                   opacity: 0.6,
                   textAlign: msg.source === "user" ? "right" : "left",
+                  display: "flex",
+                  gap: "6px",
+                  justifyContent: msg.source === "user" ? "flex-end" : "flex-start",
+                  alignItems: "center",
                 }}
               >
-                {new Date(msg.timestamp * 1000).toLocaleTimeString()}
+                <span>{new Date(msg.timestamp * 1000).toLocaleTimeString()}</span>
               </div>
             </div>
           </div>
