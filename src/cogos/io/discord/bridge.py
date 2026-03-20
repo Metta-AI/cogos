@@ -15,7 +15,6 @@ import os
 import time
 
 import aiohttp
-import boto3
 import discord
 
 from cogos.io.discord.chunking import chunk_message
@@ -109,16 +108,11 @@ def _reply_queue_latency_ms(body: dict) -> int | None:
     return max(0, int(time.time() * 1000) - queued_at_ms)
 
 
-def _fetch_bot_token_from_secrets() -> str:
-    """Fetch the Discord bot token from agora/discord in Secrets Manager."""
-    sm = boto3.client(
-        "secretsmanager",
-        region_name=os.environ.get("AWS_REGION", "us-east-1"),
-    )
+def _fetch_bot_token_from_secrets(secrets_provider) -> str:
+    """Fetch the Discord bot token from agora/discord via secrets provider."""
     try:
-        secret = json.loads(
-            sm.get_secret_value(SecretId="agora/discord")["SecretString"]
-        )
+        raw = secrets_provider.get_secret("agora/discord")
+        secret = json.loads(raw)
         token = secret.get("bot_token") or secret.get("access_token", "")
         if token:
             logger.info("Loaded Discord bot token from agora/discord")
@@ -140,10 +134,14 @@ class DiscordBridge:
     cogent_name: str
     _repo: object | None
 
-    def __init__(self):
+    def __init__(self, *, runtime=None):
+        from cogtainer.runtime.factory import create_executor_runtime
+        self._runtime = runtime or create_executor_runtime()
+
+        self._secrets_provider = self._runtime.get_secrets_provider()
         self.bot_token = os.environ.get("DISCORD_BOT_TOKEN", "")
         if not self.bot_token:
-            self.bot_token = _fetch_bot_token_from_secrets()
+            self.bot_token = _fetch_bot_token_from_secrets(self._secrets_provider)
         if not self.bot_token:
             raise RuntimeError(
                 "No Discord token found. Set DISCORD_BOT_TOKEN env var "
@@ -156,12 +154,10 @@ class DiscordBridge:
         )
         self.region = os.environ.get("AWS_REGION", "us-east-1")
 
-        self._sqs_client = boto3.client("sqs", region_name=self.region)
-        from cogtainer.secrets import AwsSecretsProvider
-        self._secrets_provider = AwsSecretsProvider(region=self.region)
+        self._sqs_client = self._runtime.get_sqs_client(self.region)
         from cogos import get_sessions_bucket
         self._blob_bucket = get_sessions_bucket()
-        self._s3_client = boto3.client("s3", region_name=self.region) if self._blob_bucket else None
+        self._s3_client = self._runtime.get_s3_client(self.region) if self._blob_bucket else None
 
         # Per-cogent state
         self._configs: dict[str, CogentDiscordConfig] = {}  # cogent_name -> config

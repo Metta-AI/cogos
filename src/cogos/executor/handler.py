@@ -428,9 +428,8 @@ def handler(event: dict, context: Any = None) -> dict:
         }
 
         # Detect context-overflow specifically so operators can act on it.
-        from botocore.exceptions import ClientError as _BotoClientError
-        if isinstance(e, _BotoClientError):
-            error_code = e.response.get("Error", {}).get("Code", "")
+        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
+        if error_code:
             error_msg = str(e).lower()
             if error_code == "ValidationException" and (
                 "token" in error_msg or "too long" in error_msg or "context" in error_msg or "input" in error_msg
@@ -637,13 +636,7 @@ def execute_process(
     from cogos.executor.llm_client import LLMClient
     if bedrock_client is None and config.llm_provider not in ("anthropic", "openrouter"):
         runtime = _get_runtime()
-        import boto3
-        from botocore.config import Config as BotoConfig
-        bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=config.region,
-            config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
-        )
+        bedrock_client = runtime.get_bedrock_client()
     llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider, secrets_provider=_get_runtime().get_secrets_provider())
 
     # Build system prompt using the shared ContextEngine

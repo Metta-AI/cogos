@@ -292,3 +292,30 @@ class AwsRuntime(CogtainerRuntime):
         resp = ses.get_identity_verification_attributes(Identities=[domain])
         attrs = resp.get("VerificationAttributes", {}).get(domain, {})
         return attrs.get("VerificationStatus") == "Success"
+
+    def get_bedrock_client(self) -> Any:
+        import boto3
+        from botocore.config import Config as BotoConfig
+        return boto3.client(
+            "bedrock-runtime",
+            region_name=self._region,
+            config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
+        )
+
+    def get_session(self) -> Any:
+        return self._session
+
+    def get_dynamodb_resource(self, region: str | None = None) -> Any:
+        return self._session.resource("dynamodb", region_name=region or self._region)
+
+    def get_sqs_client(self, region: str | None = None) -> Any:
+        return self._session.client("sqs", region_name=region or self._region)
+
+    def get_s3_client(self, region: str | None = None) -> Any:
+        return self._session.client("s3", region_name=region or self._region)
+
+    def get_ecs_client(self, region: str | None = None) -> Any:
+        return self._session.client("ecs", region_name=region or self._region)
+
+    def get_rds_data_client(self, region: str | None = None) -> Any:
+        return self._session.client("rds-data", region_name=region or self._region)

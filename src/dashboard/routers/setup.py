@@ -14,7 +14,12 @@ from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
-_secrets_provider = AwsSecretsProvider(region=os.environ.get("AWS_REGION", "us-east-1"))
+_region = os.environ.get("AWS_REGION", "us-east-1")
+_secrets_provider = AwsSecretsProvider(region=_region)
+
+def _get_ecs_client():
+    import boto3
+    return boto3.client("ecs", region_name=_region)
 
 router = APIRouter(tags=["setup"])
 
@@ -89,7 +94,7 @@ def _build_discord_setup(name: str) -> ChannelSetup:
     # Shared bot token (polis-level)
     secret_configured, secret_check_error = discord_secret_status(region, secrets_provider=_secrets_provider)
     # Shared bridge service (polis-level)
-    service_status, service_check_error = discord_service_status(region)
+    service_status, service_check_error = discord_service_status(region, ecs_client=_get_ecs_client())
     bridge_running = (
         service_status["bridge_running_count"] is not None
         and int(service_status["bridge_running_count"]) > 0

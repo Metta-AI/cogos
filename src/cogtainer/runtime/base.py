@@ -75,3 +75,31 @@ class CogtainerRuntime(ABC):
     @abstractmethod
     def verify_email_domain(self, domain: str) -> bool:
         """Check if a domain is verified for sending."""
+
+    @abstractmethod
+    def get_bedrock_client(self) -> Any:
+        """Return a Bedrock runtime client, or None if not applicable."""
+
+    @abstractmethod
+    def get_session(self) -> Any:
+        """Return the underlying cloud session (e.g. boto3.Session), or None."""
+
+    @abstractmethod
+    def get_dynamodb_resource(self, region: str | None = None) -> Any:
+        """Return a DynamoDB resource, or None if not applicable."""
+
+    @abstractmethod
+    def get_sqs_client(self, region: str | None = None) -> Any:
+        """Return an SQS client, or None if not applicable."""
+
+    @abstractmethod
+    def get_s3_client(self, region: str | None = None) -> Any:
+        """Return an S3 client, or None if not applicable."""
+
+    @abstractmethod
+    def get_ecs_client(self, region: str | None = None) -> Any:
+        """Return an ECS client, or None if not applicable."""
+
+    @abstractmethod
+    def get_rds_data_client(self, region: str | None = None) -> Any:
+        """Return an RDS Data API client, or None if not applicable."""

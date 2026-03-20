@@ -164,3 +164,24 @@ class LocalRuntime(CogtainerRuntime):
 
     def verify_email_domain(self, domain: str) -> bool:
         return True
+
+    def get_bedrock_client(self) -> Any:
+        return None
+
+    def get_session(self) -> Any:
+        return None
+
+    def get_dynamodb_resource(self, region: str | None = None) -> Any:
+        return None
+
+    def get_sqs_client(self, region: str | None = None) -> Any:
+        return None
+
+    def get_s3_client(self, region: str | None = None) -> Any:
+        return None
+
+    def get_ecs_client(self, region: str | None = None) -> Any:
+        return None
+
+    def get_rds_data_client(self, region: str | None = None) -> Any:
+        return None

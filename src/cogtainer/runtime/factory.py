@@ -67,6 +67,7 @@ def create_executor_runtime() -> CogtainerRuntime:
 
         entry = CogtainerEntry(type="aws", region=region, llm=llm_config)
         llm = create_provider(entry.llm, region=region)
-        return AwsRuntime(entry=entry, llm=llm, session=None)
+        import boto3 as _boto3
+        return AwsRuntime(entry=entry, llm=llm, session=_boto3.Session(region_name=region))
 
     raise ValueError(f"Unknown cogtainer type from env: {cogtainer_type}")

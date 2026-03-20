@@ -7,8 +7,6 @@ import logging
 import os
 from dataclasses import dataclass, field
 
-import boto3
-
 from cogos.capabilities._secrets_helper import fetch_secret
 
 logger = logging.getLogger(__name__)
@@ -33,15 +31,20 @@ class CogentDiscordConfig:
             self.display_name = self.cogent_name
 
 
-def load_cogent_configs(table_name: str = DYNAMO_TABLE, *, secrets_provider: object) -> list[CogentDiscordConfig]:
+def load_cogent_configs(
+    table_name: str = DYNAMO_TABLE,
+    *,
+    secrets_provider: object,
+    dynamodb_resource: object,
+) -> list[CogentDiscordConfig]:
     """Load all cogent configs from DynamoDB + secrets provider.
 
     Reads cogent-status table for DB connection info, and
     cogent/{name}/discord secrets for persona config.
+
+    *dynamodb_resource* must be a DynamoDB resource (caller provides it).
     """
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    dynamodb = boto3.resource("dynamodb", region_name=region)
-    table = dynamodb.Table(table_name)
+    table = dynamodb_resource.Table(table_name)
 
     items = table.scan().get("Items", [])
     configs = []

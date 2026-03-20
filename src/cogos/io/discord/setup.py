@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-
-import boto3
-from botocore.exceptions import ClientError
+from typing import Any
 
 from cogos.capabilities._secrets_helper import fetch_secret
 
@@ -19,7 +17,7 @@ def discord_secret_status(
     region: str,
     *,
     secrets_provider: object,
-    session: boto3.Session | None = None,
+    session: Any = None,
 ) -> tuple[bool | None, str | None]:
     """Return whether the shared polis Discord token exists."""
     try:
@@ -38,7 +36,7 @@ def discord_persona_status(
     region: str,
     *,
     secrets_provider: object,
-    session: boto3.Session | None = None,
+    session: Any = None,
 ) -> tuple[dict | None, str | None]:
     """Return persona config for a cogent from the secrets provider."""
     try:
@@ -55,24 +53,21 @@ def discord_persona_status(
 def discord_service_status(
     region: str,
     *,
-    session: boto3.Session | None = None,
+    ecs_client: Any,
 ) -> tuple[dict[str, int | str | bool | None], str | None]:
     """Return ECS status for the shared polis Discord bridge service."""
-    ecs = session.client("ecs", region_name=region) if session else boto3.client(
-        "ecs",
-        region_name=region,
-    )
+    _empty = {
+        "bridge_service_exists": None,
+        "bridge_status": None,
+        "bridge_desired_count": None,
+        "bridge_running_count": None,
+        "bridge_pending_count": None,
+    }
     try:
-        resp = ecs.describe_services(cluster="cogent-polis", services=[POLIS_BRIDGE_SERVICE])
+        resp = ecs_client.describe_services(cluster="cogent-polis", services=[POLIS_BRIDGE_SERVICE])
         services = resp.get("services", [])
         if not services:
-            return {
-                "bridge_service_exists": False,
-                "bridge_status": None,
-                "bridge_desired_count": None,
-                "bridge_running_count": None,
-                "bridge_pending_count": None,
-            }, None
+            return {**_empty, "bridge_service_exists": False}, None
         svc = services[0]
         return {
             "bridge_service_exists": True,
@@ -81,22 +76,10 @@ def discord_service_status(
             "bridge_running_count": svc.get("runningCount"),
             "bridge_pending_count": svc.get("pendingCount"),
         }, None
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        logger.warning("Discord service check failed: %s", code or exc)
-        return {
-            "bridge_service_exists": None,
-            "bridge_status": None,
-            "bridge_desired_count": None,
-            "bridge_running_count": None,
-            "bridge_pending_count": None,
-        }, code or type(exc).__name__
     except Exception as exc:
-        logger.warning("Discord service check failed: %s", exc)
-        return {
-            "bridge_service_exists": None,
-            "bridge_status": None,
-            "bridge_desired_count": None,
-            "bridge_running_count": None,
-            "bridge_pending_count": None,
-        }, type(exc).__name__
+        error_code = getattr(getattr(exc, "response", {}), "get", lambda *a: "")(
+            "Error", {}
+        ).get("Code", "") if hasattr(exc, "response") else ""
+        label = error_code or type(exc).__name__
+        logger.warning("Discord service check failed: %s", label)
+        return _empty, label

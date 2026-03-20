@@ -111,8 +111,10 @@ class Repository:
             )
 
         if client is None:
-            import boto3
-            client = boto3.client("rds-data", region_name=region)
+            raise ValueError(
+                "client parameter is required. The caller must create and pass "
+                "an rds-data client (e.g. via runtime.get_rds_data_client())."
+            )
         return cls(client, resource_arn, secret_arn, database, region, nudge_callback=nudge_callback)
 
     # ═══════════════════════════════════════════════════════════

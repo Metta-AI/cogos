@@ -7,8 +7,6 @@ import logging
 import os
 from typing import Any
 
-from botocore.exceptions import ClientError
-
 logger = logging.getLogger(__name__)
 
 # Bedrock cross-region model ID prefix → Anthropic model name
@@ -229,8 +227,8 @@ class LLMClient:
         """Bedrock primary, Anthropic fallback on throttling or validation errors."""
         try:
             return self._bedrock.converse(**kwargs)
-        except ClientError as exc:
-            error_code = exc.response.get("Error", {}).get("Code", "")
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code not in self._FALLBACK_ERROR_CODES or self._anthropic is None:
                 raise
             logger.warning(

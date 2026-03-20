@@ -26,8 +26,9 @@ def _ensure_io_channels(repo) -> tuple[Channel, Channel, Channel]:
 class CogentShell:
     """Main shell class — instantiated by the CLI entry point."""
 
-    def __init__(self, cogent_name: str) -> None:
+    def __init__(self, cogent_name: str, *, bedrock_client=None) -> None:
         self.cogent_name = cogent_name
+        self._bedrock_client = bedrock_client
 
     def run(self) -> None:
         """Start the interactive shell loop."""
@@ -51,16 +52,7 @@ class CogentShell:
         stderr_msgs = repo.list_channel_messages(stderr_ch.id, limit=1)
         state.stderr_cursor = stderr_msgs[-1].created_at if stderr_msgs else None
 
-        try:
-            import boto3
-            from botocore.config import Config as BotoConfig
-            state.bedrock_client = boto3.client(
-                "bedrock-runtime",
-                region_name="us-east-1",
-                config=BotoConfig(retries={"max_attempts": 12, "mode": "adaptive"}),
-            )
-        except Exception:
-            pass
+        state.bedrock_client = self._bedrock_client
 
         registry = build_registry()
         completer = ShellCompleter(state, registry)

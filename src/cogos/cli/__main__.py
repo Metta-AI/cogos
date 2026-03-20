@@ -33,25 +33,10 @@ def _resolve_image_dir(name: str) -> Path | None:
 
 from cli.local_dev import apply_local_checkout_env, repo_root, resolve_dashboard_ports
 
-_bedrock_session = None
-
-
 def _ensure_db_env(cogent_name: str) -> None:
     """Set DB env vars from the shared Aurora cluster (legacy path)."""
     if os.environ.get("USE_LOCAL_DB") == "1":
         return
-
-    global _bedrock_session
-    import boto3
-    orig = boto3.Session()
-    creds = orig.get_credentials()
-    if creds:
-        frozen = creds.get_frozen_credentials()
-        _bedrock_session = boto3.Session(
-            aws_access_key_id=frozen.access_key,
-            aws_secret_access_key=frozen.secret_key,
-            aws_session_token=frozen.token,
-        )
 
     try:
         from cogtainer.aws import get_polis_session, set_org_profile
@@ -102,11 +87,12 @@ def _repo():
 
 
 def _bedrock_client():
-    """Get a Bedrock client using original (non-polis) AWS credentials."""
-    if _bedrock_session:
-        return _bedrock_session.client("bedrock-runtime", region_name="us-east-1")
-    import boto3
-    return boto3.client("bedrock-runtime", region_name="us-east-1")
+    """Get a Bedrock client from the runtime."""
+    ctx = click.get_current_context()
+    runtime = ctx.obj.get("runtime")
+    if runtime:
+        return runtime.get_bedrock_client()
+    return None
 
 
 def _output(data, *, use_json: bool = False) -> None:
@@ -282,15 +268,18 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
     if not is_local:
         click.echo("Verifying artifacts...")
         try:
-            import boto3
-            session = boto3.Session()
-            verify_artifacts(
-                components,
-                ecr_client=session.client("ecr", region_name="us-east-1"),
-                s3_client=session.client("s3"),
-                artifacts_bucket="cogent-polis-ci-artifacts",
-            )
-            click.echo("All artifacts verified.")
+            runtime = ctx.obj.get("runtime")
+            session = runtime.get_session() if runtime else None
+            if session is None:
+                click.echo("WARNING: No AWS session available, skipping artifact verification.")
+            else:
+                verify_artifacts(
+                    components,
+                    ecr_client=session.client("ecr", region_name="us-east-1"),
+                    s3_client=session.client("s3"),
+                    artifacts_bucket="cogent-polis-ci-artifacts",
+                )
+                click.echo("All artifacts verified.")
         except ArtifactMissing as e:
             click.echo(f"ERROR: {e}")
             return
@@ -1354,9 +1343,13 @@ def discord():
 
 
 def _get_ecs_client():
-    import boto3
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    return boto3.client("ecs", region_name=region)
+    ctx = click.get_current_context()
+    runtime = ctx.obj.get("runtime")
+    if runtime:
+        client = runtime.get_ecs_client()
+        if client:
+            return client
+    raise click.ClickException("No AWS runtime available for ECS operations")
 
 
 def _discord_service_name(cogent_name: str) -> str:
@@ -1503,7 +1496,8 @@ def shell_cmd(ctx: click.Context):
     cogent_name = ctx.obj.get("cogent_name")
     if not cogent_name:
         raise click.UsageError("No cogent specified. Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml")
-    CogentShell(cogent_name).run()
+    bedrock = _bedrock_client()
+    CogentShell(cogent_name, bedrock_client=bedrock).run()
 
 
 def entry():
