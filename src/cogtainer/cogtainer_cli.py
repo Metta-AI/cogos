@@ -515,5 +515,145 @@ def update_cmd(
     click.echo("Done.")
 
 
+@cli.group()
+def dns() -> None:
+    """Manage Cloudflare DNS for cogtainer domains."""
+
+
+@dns.command("init")
+@click.option("--api-token", required=True, help="Cloudflare API token")
+@click.option("--account-id", required=True, help="Cloudflare account ID")
+@click.option("--zone-id", required=True, help="Cloudflare zone ID")
+@click.option("--profile", default=None, help="AWS profile name")
+def dns_init(api_token: str, account_id: str, zone_id: str, profile: str | None) -> None:
+    """Store Cloudflare API credentials in Secrets Manager."""
+    from cogtainer.cloudflare import SECRET_PATH
+    from cogtainer.secret_store import SecretStore
+
+    session, _acct = _get_aws_session(profile=profile)
+    store = SecretStore(session=session)
+    store.put(SECRET_PATH, {
+        "api_token": api_token,
+        "account_id": account_id,
+        "zone_id": zone_id,
+    })
+    click.echo(f"Stored Cloudflare credentials at {SECRET_PATH}")
+
+
+@dns.command("validate-cert")
+@click.option("--cert-arn", default=None, help="ACM certificate ARN (auto-detects if omitted)")
+@click.option("--profile", default=None, help="AWS profile name")
+@click.option("--region", default="us-east-1")
+def dns_validate_cert(cert_arn: str | None, profile: str | None, region: str) -> None:
+    """Add ACM certificate validation CNAME records to Cloudflare."""
+    from cogtainer.cloudflare import ensure_dns_record_unproxied
+    from cogtainer.deploy_config import deploy_config
+    from cogtainer.secret_store import SecretStore
+
+    session, _acct = _get_aws_session(profile=profile)
+    store = SecretStore(session=session)
+    acm = session.client("acm", region_name=region)
+
+    domain = deploy_config("domain", "softmax-cogents.com")
+
+    if not cert_arn:
+        resp = acm.list_certificates(CertificateStatuses=["PENDING_VALIDATION"])
+        certs = [
+            c for c in resp["CertificateSummaryList"]
+            if domain in c.get("DomainName", "")
+        ]
+        if not certs:
+            click.echo("No pending certificates found for domain.")
+            return
+        cert_arn = certs[0]["CertificateArn"]
+        click.echo(f"Found pending cert: {cert_arn}")
+
+    cert = acm.describe_certificate(CertificateArn=cert_arn)["Certificate"]
+
+    for dvo in cert.get("DomainValidationOptions", []):
+        rr = dvo.get("ResourceRecord")
+        if not rr:
+            continue
+        if dvo.get("ValidationStatus") == "SUCCESS":
+            click.echo(f"  {dvo['DomainName']}: already validated")
+            continue
+
+        cname_name = rr["Name"].rstrip(".")
+        cname_value = rr["Value"].rstrip(".")
+        click.echo(f"  Adding validation CNAME: {cname_name} -> {cname_value}")
+        ensure_dns_record_unproxied(store, cname_name, cname_value, domain)
+        click.echo("  Done. Validation may take a few minutes.")
+
+
+@dns.command("status")
+@click.option("--profile", default=None, help="AWS profile name")
+@click.option("--region", default="us-east-1")
+def dns_status(profile: str | None, region: str) -> None:
+    """Check DNS and certificate status for the cogtainer domain."""
+    import subprocess as _sp
+
+    from cogtainer.deploy_config import deploy_config
+
+    domain = deploy_config("domain", "softmax-cogents.com")
+
+    click.echo(f"Domain: {domain}")
+
+    # Check NS records
+    try:
+        ns_result = _sp.run(
+            ["dig", "+short", "NS", domain],
+            capture_output=True, text=True, timeout=10,
+        )
+        ns_servers = ns_result.stdout.strip().split("\n") if ns_result.stdout.strip() else []
+        click.echo(f"NS records: {', '.join(ns_servers) or '(none)'}")
+
+        is_cloudflare = any("cloudflare" in ns for ns in ns_servers)
+        is_route53 = any("awsdns" in ns for ns in ns_servers)
+        if is_cloudflare:
+            click.echo("  -> DNS served by Cloudflare")
+        elif is_route53:
+            click.echo("  -> DNS served by Route53")
+    except Exception:
+        click.echo("  (could not check NS records)")
+
+    # Check ACM cert
+    try:
+        session, _acct = _get_aws_session(profile=profile)
+        acm = session.client("acm", region_name=region)
+        resp = acm.list_certificates(
+            CertificateStatuses=["PENDING_VALIDATION", "ISSUED", "FAILED"],
+        )
+        for cert_summary in resp["CertificateSummaryList"]:
+            if domain not in cert_summary.get("DomainName", ""):
+                continue
+            cert = acm.describe_certificate(CertificateArn=cert_summary["CertificateArn"])["Certificate"]
+            click.echo(f"ACM cert ({cert['DomainName']}): {cert['Status']}")
+            for dvo in cert.get("DomainValidationOptions", []):
+                status = dvo.get("ValidationStatus", "UNKNOWN")
+                rr = dvo.get("ResourceRecord", {})
+                click.echo(f"  {dvo['DomainName']}: {status}")
+                if rr and status != "SUCCESS":
+                    click.echo(f"    Needs CNAME: {rr.get('Name')} -> {rr.get('Value')}")
+    except Exception as e:
+        click.echo(f"  ACM check failed: {e}")
+
+    # Check Cloudflare creds
+    try:
+        from cogtainer.cloudflare import SECRET_PATH, list_dns_records
+        from cogtainer.secret_store import SecretStore
+
+        store = SecretStore(session=session)
+        store.get(SECRET_PATH)
+        click.echo("Cloudflare credentials: found")
+        records = list_dns_records(store)
+        click.echo(f"Cloudflare DNS records: {len(records)}")
+        for r in records:
+            proxy = " (proxied)" if r.get("proxied") else ""
+            click.echo(f"  {r['type']:6s} {r['name']} -> {r.get('content', '')}{proxy}")
+    except Exception:
+        click.echo("Cloudflare credentials: NOT FOUND")
+        click.echo("  Run: cogtainer dns init --api-token TOKEN --account-id ID --zone-id ZID")
+
+
 if __name__ == "__main__":
     cli()
