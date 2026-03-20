@@ -12,17 +12,22 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
    - If already on a non-main branch, just ensure changes are committed
 4. Run `pytest tests/ -q` to execute unit tests
    - If tests fail, stop and show the failures. Do NOT submit broken code. Ask the user how to proceed.
-5. Run `gt submit -m` to push the branch and create a PR with auto-merge enabled
+5. **Write a PR title and description** following the format in AGENTS.md:
+   - **Problem**: Explain the prior behavior or source of churn — what was ambiguous, brittle, inconsistent, or wrong. Phrase in operational terms.
+   - **Summary**: Concrete behavioral changes the diff makes. Be specific about user-visible or operator-visible semantics, not file-by-file edits.
+   - **Testing**: List the exact verification commands that were run.
+6. Run `gt submit -m` to push the branch and create a PR with auto-merge enabled
+   - After submit, update the PR body with the description: `gh pr edit <number> --body "..."`
    - If submit fails, check `gt status` and resolve issues
-6. **Wait for the PR to merge.** Poll with `gh pr view <number> --json state,mergeStateStatus,mergeable,statusCheckRollup` every 30 seconds.
+7. **Wait for the PR to merge.** Poll with `gh pr view <number> --json state,mergeStateStatus,mergeable,statusCheckRollup` every 30 seconds.
    - If CI checks fail: read the failing check logs with `gh run view`, diagnose the issue, fix it, commit, and `gt submit -m` again
    - If there are merge conflicts: rebase onto main (`gt sync -f`, resolve conflicts, `gt submit -m`)
    - If the PR is stuck (not progressing after 5 minutes), investigate and report to the user
    - Once `state` is `MERGED`, continue to the next step
-7. Run `gt sync -f` to pull the merged changes back to local main
-8. Build a short summary of what was merged:
+8. Run `gt sync -f` to pull the merged changes back to local main
+9. Build a short summary of what was merged:
    - Write a 1-3 sentence human-readable summary of the changes
-9. Post the summary to Discord #cogents using the webhook:
+10. Post the summary to Discord #cogents using the webhook:
    ```bash
    WEBHOOK_URL=$(aws secretsmanager get-secret-value --secret-id "discord/channel-webhook/cogents" --query SecretString --output text --profile !`.venv/bin/python scripts/deploy-config org_profile softmax-org`)
    curl -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" \
@@ -32,4 +37,4 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
    - Include the PR as a markdown hyperlink: `[PR #123](<https://github.com/...>)` — angle brackets suppress Discord's embed preview
    - If the work is tied to an Asana task, include it as a hyperlink too: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
    - If the webhook secret doesn't exist, try `discord/agent-webhook-url` as fallback
-10. Print the summary locally so the user can see what was announced
+11. Print the summary locally so the user can see what was announced
