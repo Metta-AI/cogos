@@ -221,6 +221,7 @@ def create_app() -> FastAPI:
 
         import boto3
 
+        from cogos.db.models import ProcessStatus, Run, RunStatus
         from cogos.db.models.channel_message import ChannelMessage
         from dashboard.db import get_repo
 
@@ -254,11 +255,22 @@ def create_app() -> FastAPI:
                 "body": body,
             },
         )
-        repo.append_channel_message(msg)
+        msg_id = repo.append_channel_message(msg)
 
         executor_fn = os.environ.get("EXECUTOR_FUNCTION_NAME", "")
         if not executor_fn:
             return JSONResponse(status_code=503, content={"detail": "executor function not configured"})
+
+        queued_delivery = None
+        deliveries = repo.list_deliveries(message_id=msg_id, handler_id=target_handler.id, limit=1)
+        if deliveries:
+            queued_delivery = deliveries[0]
+
+        repo.update_process_status(process.id, ProcessStatus.RUNNING)
+        run = Run(process=process.id, message=msg_id, status=RunStatus.RUNNING)
+        run_id = repo.create_run(run)
+        if queued_delivery is not None:
+            repo.mark_queued(queued_delivery.id, run_id)
 
         def _invoke_executor() -> dict:
             lambda_client = boto3.client("lambda")
@@ -268,6 +280,8 @@ def create_app() -> FastAPI:
                 Payload=json.dumps(
                     {
                         "process_id": str(process.id),
+                        "run_id": str(run_id),
+                        "message_id": str(msg_id),
                         "web_request_id": request_id,
                         "web_request": {
                             "method": request.method,
@@ -292,6 +306,12 @@ def create_app() -> FastAPI:
                 media_type=web_response.get("headers", {}).get("content-type", "application/json"),
             )
         except Exception:
+            repo.rollback_dispatch(
+                process.id,
+                run_id,
+                queued_delivery.id if queued_delivery is not None else None,
+                error="executor invoke failed",
+            )
             logger.exception("Executor invocation failed")
             return JSONResponse(status_code=502, content={"detail": "executor error"})
 
