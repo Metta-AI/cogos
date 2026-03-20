@@ -25,6 +25,9 @@ from aws_cdk import (
     aws_ecs as ecs,
 )
 from aws_cdk import (
+    aws_elasticloadbalancingv2 as elbv2,
+)
+from aws_cdk import (
     aws_events as events,
 )
 from aws_cdk import (
@@ -146,6 +149,43 @@ class PolisStack(cdk.Stack):
             "SharedEventBus",
             event_bus_name=naming.shared_event_bus_name(),
         )
+
+        # --- Shared ALB for cogent dashboards ---
+        vpc = ec2.Vpc.from_lookup(self, "SharedVpc", is_default=True)
+        public_subnets = ec2.SubnetSelection(
+            subnet_type=ec2.SubnetType.PUBLIC,
+            one_per_az=True,
+        )
+
+        self.shared_alb = elbv2.ApplicationLoadBalancer(
+            self,
+            "SharedALB",
+            vpc=vpc,
+            internet_facing=True,
+            vpc_subnets=public_subnets,
+        )
+
+        # Wildcard cert for *.softmax-cogents.com
+        wildcard_cert_arn = self.node.try_get_context("wildcard_cert_arn") or ""
+        if wildcard_cert_arn:
+            self.https_listener = self.shared_alb.add_listener(
+                "HttpsListener",
+                port=443,
+                certificates=[elbv2.ListenerCertificate.from_arn(wildcard_cert_arn)],
+                default_action=elbv2.ListenerAction.fixed_response(
+                    status_code=404,
+                    content_type="text/plain",
+                    message_body="Not found",
+                ),
+            )
+
+            self.shared_alb.add_redirect(
+                source_port=80,
+                target_port=443,
+                target_protocol=elbv2.ApplicationProtocol.HTTPS,
+            )
+        else:
+            self.https_listener = None
 
         # --- Agent Watcher Lambda ---
         self.watcher_fn = lambda_.Function(
@@ -532,6 +572,11 @@ class PolisStack(cdk.Stack):
         cdk.CfnOutput(self, "DiscordReplyQueueUrl", value=self.discord_reply_queue.queue_url)
         cdk.CfnOutput(self, "SharedEventBusArn", value=self.event_bus.event_bus_arn)
         cdk.CfnOutput(self, "SharedEventBusName", value=self.event_bus.event_bus_name)
+        cdk.CfnOutput(self, "SharedAlbArn", value=self.shared_alb.load_balancer_arn)
+        cdk.CfnOutput(self, "SharedAlbDns", value=self.shared_alb.load_balancer_dns_name)
+        if self.https_listener:
+            cdk.CfnOutput(self, "SharedHttpsListenerArn", value=self.https_listener.listener_arn)
+        cdk.CfnOutput(self, "SharedAlbSecurityGroupId", value=self.shared_alb.connections.security_groups[0].security_group_id)
 
     def _create_discord_bridge(self, config: PolisConfig) -> None:
         """Create the shared Discord bridge: SQS queue + Fargate service."""
