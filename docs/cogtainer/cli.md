@@ -5,7 +5,7 @@ The `cogtainer` CLI manages cogtainer infrastructure — the self-contained envi
 ## Installation
 
 ```bash
-uv pip install -e ".[dev]"
+uv sync
 ```
 
 The CLI is registered as `cogtainer` via pyproject.toml.

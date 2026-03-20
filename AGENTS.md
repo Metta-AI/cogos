@@ -91,7 +91,7 @@ cogtainer/shared/{key}     # Org-wide shared keys (e.g., cogtainer/shared/jwt-si
 
 ## Running a Cogent Locally vs on AWS
 
-Set `COGENT=local` to run on this machine using LocalRepository. By default, each checkout gets its own local JSON store at `.local/cogos/cogos_data.json` under that repo. Set `COGENT_LOCAL_DATA` to override it. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
+Set `COGENT=local` to run on this machine using LocalRepository. The default data path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/cogos_data.json` under the checkout instead. Set `COGOS_LOCAL_DATA` to override the path. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
 
 The `cogos` CLI reads the cogent name from the `COGENT` env var (with `COGTAINER` if multiple cogtainers are configured) or from `~/.cogos/cogtainers.yml`.
 
@@ -224,24 +224,19 @@ See [docs/deploy.md](docs/deploy.md) for the full reference. Match what changed 
 | What changed | Command |
 |---|---|
 | `images/**` only | `COGENT=<name> cogos image boot cogos` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `COGENT=<name> cogos cogtainer update lambda` |
-| `src/cogos/db/migrations/**` | `COGENT=<name> cogos cogtainer update rds` |
-| `dashboard/frontend/**` only | `COGENT=<name> cogos dashboard deploy` |
-| `src/dashboard/**` (backend) | `COGENT=<name> cogos dashboard deploy --docker` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `cogtainer update <name> --lambdas` |
+| `dashboard/frontend/**` only | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
+| `src/dashboard/**` (backend) | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
 | `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; executor runs as Lambda, no ECS deploy needed |
-| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `COGENT=<name> cogos cogtainer update ecs --tag dashboard-latest` |
+| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
 | `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent create <name>` |
 
 Common sequences:
 
 ```bash
 # Executor code change
-COGENT=<name> cogos cogtainer update lambda
+cogtainer update <name> --lambdas
 COGENT=<name> cogos image boot cogos    # if image also changed
-
-# Schema migration + executor change
-COGENT=<name> cogos cogtainer update rds
-COGENT=<name> cogos cogtainer update lambda
 
 # Full infrastructure change (CDK constructs, IAM, ALB)
 cogent create <name>
@@ -259,20 +254,11 @@ COGENT=<name> cogos io discord status    # Check running/desired counts
 
 ### Testing a deployed dashboard
 
-1. Create a PAT (Personal Access Token) for API access:
-
-```bash
-COGENT=<name> cogos dashboard create-pat
-cogent create <name>                       # Apply ALB bypass rule
-```
-
-2. Test with curl:
+Use the `dashboard.test` skill which automates PAT-authenticated UI and API testing against the deployed dashboard. Or test manually with curl:
 
 ```bash
 curl -H 'X-Api-Key: <pat>' https://<safe-name>.<your-domain>/api/cogents/<name>/status
 ```
-
-3. Or use the `dashboard.test` skill which automates PAT-authenticated UI and API testing against the deployed dashboard.
 
 ## AWS Debugging — NEVER just wait and retry
 
@@ -483,7 +469,7 @@ The backend serves REST API under `/api/cogents/{name}/`:
 
 ### Database Connection
 
-Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). Set `USE_LOCAL_DB=1` to use LocalRepository for local dev without AWS. The CLI defaults local state to `.local/cogos/cogos_data.json` in the current checkout unless `COGENT_LOCAL_DATA` is set.
+Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). Set `USE_LOCAL_DB=1` to use LocalRepository for local dev without AWS. The default local data path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/` under the checkout instead, or set `COGOS_LOCAL_DATA` to override.
 
 ## Development
 

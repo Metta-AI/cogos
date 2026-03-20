@@ -104,7 +104,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Frontend Tarball:** \`s3://${{ matrix.s3_bucket }}/dashboard/${{ github.sha }}/frontend.tar.gz\` (${{ env.SIZE }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Deploy:** \`cogos <name> cogtainer update dashboard --sha ${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Deploy:** \`cogtainer update <name> --services --image-tag dashboard-${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-versions:
     needs: build

@@ -110,7 +110,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Lambda Zip:** \`s3://${{ matrix.s3_bucket }}/lambda/${{ github.sha }}/lambda.zip\` (${{ env.SIZE }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Deploy:** \`cogos <name> cogtainer update ecs --tag executor-${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Deploy:** \`cogtainer update <name> --services --image-tag executor-${{ steps.build.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-versions:
     needs: build
