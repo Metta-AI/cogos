@@ -60,7 +60,7 @@ def test_init_can_spawn_supervisor_with_delegatable_caps(tmp_path):
     caps: dict[str, Capability | None] = {
         "me": None,
         "procs": None,
-        "root_dir": None,
+        "fs_dir": None,
         "discord": None,
         "channels": None,
         "secrets": None,

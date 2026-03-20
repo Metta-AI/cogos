@@ -155,10 +155,10 @@ class TestRunCog:
         assert procs.spawn.call_args.kwargs["subscribe"] == ["discord.*", "email.*"]
 
     def test_adds_scoped_dir(self, tmp_path):
-        dir_cap = _mock_cap("root_dir")
+        dir_cap = _mock_cap("fs_dir")
         cog = _make_cog(tmp_path)
         procs = _mock_procs()
-        rt = _make_runtime(cog, {"root_dir": dir_cap})
+        rt = _make_runtime(cog, {"fs_dir": dir_cap})
         rt.run_cog(procs)
 
         dir_cap.scope.assert_any_call(prefix="mnt/boot/", read_only=True)
@@ -168,10 +168,10 @@ class TestRunCog:
         assert "src" in caps
 
     def test_adds_scoped_data(self, tmp_path):
-        dir_cap = _mock_cap("root_dir")
+        dir_cap = _mock_cap("fs_dir")
         cog = _make_cog(tmp_path)
         procs = _mock_procs()
-        rt = _make_runtime(cog, {"root_dir": dir_cap})
+        rt = _make_runtime(cog, {"fs_dir": dir_cap})
         rt.run_cog(procs)
 
         calls = dir_cap.scope.call_args_list
@@ -211,12 +211,12 @@ class TestRunCog:
         assert "nonexistent" not in caps
 
     def test_dict_capability_with_alias_and_scope(self, tmp_path):
-        dir_cap = _mock_cap("root_dir")
+        dir_cap = _mock_cap("fs_dir")
         cog = _make_cog(tmp_path, config={
-            "capabilities": [{"name": "mydata", "type": "root_dir", "config": {"prefix": "custom/"}}],
+            "capabilities": [{"name": "mydata", "type": "fs_dir", "config": {"prefix": "custom/"}}],
         })
         procs = _mock_procs()
-        rt = _make_runtime(cog, {"root_dir": dir_cap})
+        rt = _make_runtime(cog, {"fs_dir": dir_cap})
         rt.run_cog(procs)
 
         dir_cap.scope.assert_any_call(prefix="custom/")
@@ -240,10 +240,10 @@ class TestRunCoglet:
         assert kw["content"] == "I handle things."
 
     def test_coglet_gets_scoped_dir_and_data(self, tmp_path):
-        dir_cap = _mock_cap("root_dir")
+        dir_cap = _mock_cap("fs_dir")
         cog = _make_cog(tmp_path, coglets={"worker": {}})
         procs = _mock_procs()
-        rt = _make_runtime(cog, {"root_dir": dir_cap})
+        rt = _make_runtime(cog, {"fs_dir": dir_cap})
         rt.run_coglet("worker", procs)
 
         calls = dir_cap.scope.call_args_list

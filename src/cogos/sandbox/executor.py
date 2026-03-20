@@ -30,7 +30,7 @@ _ALLOWED_MODULES = frozenset({
     "math", "random", "re", "datetime", "time", "collections", "itertools",
     "functools", "operator", "string", "textwrap", "decimal", "fractions",
     "statistics", "hashlib", "hmac", "base64", "copy", "pprint",
-    "dataclasses", "enum", "typing", "uuid", "urllib.parse",
+    "dataclasses", "enum", "typing", "uuid", "urllib.parse", "yaml",
 })
 
 

@@ -144,7 +144,7 @@ class ContextEngine:
                 scoped_key = cfg.get("key")
                 if scoped_key is None or str(scoped_key) == key:
                     return True
-            elif capability.name in {"root_dir", "dir", "files"}:
+            elif capability.name in {"fs_dir", "root_dir", "dir", "files"}:
                 prefix = cfg.get("prefix")
                 if prefix is None or key.startswith(str(prefix)):
                     return True

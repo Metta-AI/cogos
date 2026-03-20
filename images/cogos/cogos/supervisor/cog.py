@@ -8,7 +8,7 @@ config = CogConfig(
         "me", "procs", "discord", "channels",
         "secrets", "stdlib", "alerts", "asana", "email", "github",
         "web_search", "web_fetch", "web", "blob", "image",
-        "cog_registry", "coglet_runtime", "root_dir",
+        "cog_registry", "coglet_runtime", "fs_dir",
     ],
     handlers=["supervisor:help", "io:discord:reaction"],
 )

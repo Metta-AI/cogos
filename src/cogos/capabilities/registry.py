@@ -94,7 +94,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         },
     },
     {
-        "name": "root_dir",
+        "name": "fs_dir",
         "description": "Directory access — list files and get file handles for read/write/append.",
         "handler": "cogos.capabilities.file_cap.DirCapability",
         "instructions": (

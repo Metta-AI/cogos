@@ -4,7 +4,7 @@
 
 # ── Capability lookup for dynamic spawning ────────────────────
 _cap_objects = {
-    "me": me, "procs": procs, "root_dir": root_dir, "file": file,
+    "me": me, "procs": procs, "fs_dir": fs_dir, "file": file,
     "channels": channels, "secrets": secrets,
     "stdlib": stdlib, "blob": blob, "image": image,
     "web_search": web_search, "web_fetch": web_fetch, "web": web,
@@ -73,7 +73,7 @@ def _build_caps(cap_list, cog_name):
             elif cap_obj is not None:
                 caps[name] = cap_obj
     # Mount-based filesystem capabilities
-    dir_cap = _cap_objects.get("root_dir")
+    dir_cap = _cap_objects.get("fs_dir")
     if dir_cap is not None and hasattr(dir_cap, "scope"):
         caps["boot"] = dir_cap.scope(prefix="mnt/boot/", read_only=True)
         caps["src"] = dir_cap.scope(prefix="mnt/boot/" + cog_name + "/", read_only=True)
