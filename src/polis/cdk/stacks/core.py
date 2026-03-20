@@ -484,7 +484,7 @@ class PolisStack(cdk.Stack):
             max_session_duration=Duration.hours(1),
         )
 
-        self.ecr_repo.grant_push(self.github_actions_role)
+        self.ecr_repo.grant_pull_push(self.github_actions_role)
         self.github_actions_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["ecr:GetAuthorizationToken"],
