@@ -172,21 +172,51 @@ class CogtainerStack(cdk.Stack):
                 zone_name=domain,
             )
 
-        # --- Grant existing roles access to cogtainer resources ---
-        for role_id, role_name in [
-            ("AdminRole", self.node.try_get_context("admin_role_name") or "cogent-polis-admin"),
-            ("CIRole", self.node.try_get_context("ci_role_name") or "github-actions-cogents"),
-        ]:
-            try:
-                role = iam.Role.from_role_name(self, role_id, role_name, mutable=True)
-                self.status_table.grant_read_write_data(role)
-                self.db_cluster.grant_data_api_access(role)
-                self.ecr_repo.grant_pull_push(role)
-            except Exception:
-                pass  # role may not exist yet on first deploy
+        # --- GitHub Actions OIDC provider (for CI deploys) ---
+        self.oidc_provider = iam.OpenIdConnectProvider(
+            self,
+            "GitHubOidc",
+            url="https://token.actions.githubusercontent.com",
+            client_ids=["sts.amazonaws.com"],
+        )
+
+        # --- CI Role for GitHub Actions ---
+        ci_role_name = self.node.try_get_context("ci_role_name") or f"cogtainer-{cogtainer_name}-ci"
+        self.ci_role = iam.Role(
+            self,
+            "CIRole",
+            role_name=ci_role_name,
+            assumed_by=iam.FederatedPrincipal(
+                self.oidc_provider.open_id_connect_provider_arn,
+                conditions={
+                    "StringLike": {
+                        "token.actions.githubusercontent.com:sub": "repo:Metta-AI/cogos:*",
+                    },
+                },
+                assume_role_action="sts:AssumeRoleWithWebIdentity",
+            ),
+        )
+        self.status_table.grant_read_write_data(self.ci_role)
+        self.db_cluster.grant_data_api_access(self.ci_role)
+        self.ecr_repo.grant_pull_push(self.ci_role)
+        # S3 for Lambda zips and frontend assets
+        self.ci_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+                resources=["*"],
+            )
+        )
+        # Lambda update
+        self.ci_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["lambda:UpdateFunctionCode", "lambda:GetFunction"],
+                resources=[f"arn:aws:lambda:{self.region}:{self.account}:function:cogtainer-{cogtainer_name}-*"],
+            )
+        )
 
         # --- Outputs ---
         CfnOutput(self, "CogtainerName", value=cogtainer_name)
+        CfnOutput(self, "CIRoleArn", value=self.ci_role.role_arn)
         CfnOutput(self, "DbClusterArn", value=self.db_cluster.cluster_arn)
         if self.db_cluster.secret:
             CfnOutput(
