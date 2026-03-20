@@ -49,6 +49,10 @@ def event_bus_name(safe_name: str) -> str:
     return f"{RESOURCE_PREFIX}-{safe_name}"
 
 
+def shared_event_bus_name() -> str:
+    return f"{RESOURCE_PREFIX}-polis-events"
+
+
 def rule_name(safe_name: str, suffix: str) -> str:
     return _join(RESOURCE_PREFIX, safe_name, suffix)
 

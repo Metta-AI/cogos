@@ -140,6 +140,13 @@ class PolisStack(cdk.Stack):
         # --- Shared Aurora Database ---
         self.database = SharedDatabaseConstruct(self, "SharedDb")
 
+        # --- Shared EventBridge Bus (all cogents share one bus) ---
+        self.event_bus = events.EventBus(
+            self,
+            "SharedEventBus",
+            event_bus_name=naming.shared_event_bus_name(),
+        )
+
         # --- Agent Watcher Lambda ---
         self.watcher_fn = lambda_.Function(
             self,
@@ -523,6 +530,8 @@ class PolisStack(cdk.Stack):
         cdk.CfnOutput(self, "EmailIngestUrl", value=self.email_ingest_url.url)
         cdk.CfnOutput(self, "CIArtifactsBucketName", value=self.ci_artifacts_bucket.bucket_name)
         cdk.CfnOutput(self, "DiscordReplyQueueUrl", value=self.discord_reply_queue.queue_url)
+        cdk.CfnOutput(self, "SharedEventBusArn", value=self.event_bus.event_bus_arn)
+        cdk.CfnOutput(self, "SharedEventBusName", value=self.event_bus.event_bus_name)
 
     def _create_discord_bridge(self, config: PolisConfig) -> None:
         """Create the shared Discord bridge: SQS queue + Fargate service."""
