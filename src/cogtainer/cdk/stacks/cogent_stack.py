@@ -390,7 +390,7 @@ class CogentStack(Stack):
             one_per_az=True,
         )
 
-        # Target group on port 5174
+        # Target group on port 5174 (Next.js frontend, proxies /healthz to backend)
         target_group = elbv2.ApplicationTargetGroup(
             self,
             "DashTG",
@@ -402,6 +402,8 @@ class CogentStack(Stack):
                 path="/healthz",
                 healthy_http_codes="200",
                 interval=Duration.seconds(30),
+                healthy_threshold_count=2,
+                unhealthy_threshold_count=5,
             ),
         )
 
@@ -526,12 +528,18 @@ class CogentStack(Stack):
         # S3
         self.sessions_bucket.grant_read_write(task_role)
 
-        # Security group — allow traffic from ALB
+        # Security group — allow traffic from ALB (app + health check ports)
         sg = ec2.SecurityGroup(self, "DashSg", vpc=vpc)
         if alb_security_group_id:
             sg.add_ingress_rule(
                 ec2.Peer.security_group_id(alb_security_group_id),
                 ec2.Port.tcp(5174),
+                "ALB to Next.js frontend",
+            )
+            sg.add_ingress_rule(
+                ec2.Peer.security_group_id(alb_security_group_id),
+                ec2.Port.tcp(8100),
+                "ALB health check to backend",
             )
 
         # Fargate service
@@ -577,9 +585,24 @@ class CogentStack(Stack):
             security_groups=[],
         )
 
-        # Task definition
+        # Task definition — execution role needs ECR pull access for private images
         bridge_task_def = ecs.FargateTaskDefinition(
             self, "BridgeTaskDef", cpu=256, memory_limit_mib=512,
+        )
+
+        # Grant ECR pull to execution role
+        bridge_exec_role = bridge_task_def.execution_role
+        assert isinstance(bridge_exec_role, iam.Role)
+        bridge_exec_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                ],
+                resources=["*"],
+            )
         )
 
         # Use the executor image from ECR (same codebase)
