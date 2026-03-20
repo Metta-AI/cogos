@@ -1,125 +1,221 @@
-# cogos
+# CogOS
 
-CogOS — an autonomous software engineering agent built on the Viable System Model.
+Autonomous software engineering agents built on the Viable System Model.
+
+## Concepts
+
+- **Cogtainer** — a self-contained runtime environment that hosts cogents. Can run on AWS, locally, or in Docker.
+- **Cogent** — an identity with its own database, processes, and capabilities, running inside a cogtainer.
+- **CogOS** — the execution engine that runs processes for a cogent (executor, event-router, dispatcher).
+
+Three CLI tools:
+
+| CLI | Purpose | Example |
+|-----|---------|---------|
+| `cogtainer` | Manage cogtainer lifecycle | `cogtainer create dev --type local` |
+| `cogent` | Manage cogents within a cogtainer | `cogent create alpha` |
+| `cogos` | Operate a specific cogent | `cogos image boot cogos` |
 
 ## Prerequisites
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
-- AWS credentials with [Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/setting-up.html) access (for LLM calls)
 
-CogOS uses Claude on AWS Bedrock. You need an AWS account with Bedrock model access enabled for `us.anthropic.claude-sonnet-4-5-*` in your region (default: `us-east-1`). Configure credentials via `aws configure` or AWS SSO.
-
-## Getting Started
+## Quick Start — Local
 
 ```bash
 # 1. Install
-uv init my-cogent && cd my-cogent
-uv add cogos
+uv sync
 
-# 2. Boot the default image
-uv run cogos local cogos image boot cogos --clean
+# 2. Create a local cogtainer
+cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
 
-# 3. Start the interactive shell
-uv run cogos local shell
+# 3. Create a cogent
+cogent create alpha
+
+# 4. Boot the cogos image
+COGENT=alpha cogos image boot cogos
+
+# 5. Run the init process
+COGENT=alpha cogos process run init --executor local
+
+# 6. Check status
+COGENT=alpha cogos status
+
+# 7. Start the dashboard
+COGENT=alpha cogos dashboard start
 ```
 
-Inside the shell, start a conversation:
+### LLM Providers
 
-```
-cogos:/$ llm -i
-llm> hello, what can you do?
-```
-
-That's it. The shell calls Bedrock directly — no executor loop, no extra services.
-
-### How it works
-
-- `cogos local` uses a JSON-backed local store (`.local/cogos/cogos_data.json`) instead of AWS RDS/Lambda. No cloud infrastructure needed beyond Bedrock.
-- `image boot cogos --clean` loads the default cogent image from `images/cogos/` — capabilities, processes, handlers, and files.
-- `shell` opens an interactive session. `llm -i` starts a multi-turn conversation with your cogent via Bedrock.
-
-Other shell commands: `help`, `llm -v <prompt>` (verbose with tool traces), `files ls`, `caps ls`, `procs ls`.
-
-## Running the Executor Loop
-
-The shell is good for interactive use. For event-driven execution (channel messages triggering processes), run the local executor:
+Local cogtainers support pluggable LLM providers:
 
 ```bash
-# Terminal 1: start the executor (polls every 2s, replaces Lambda dispatch)
-uv run cogos local cogos run-local
+# AWS Bedrock (requires AWS credentials)
+cogtainer create dev --type local --llm-provider bedrock --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0
 
-# Terminal 2: send a message to trigger a process
-uv run cogos local cogos channel send io:discord:dm \
-  --payload '{"content":"hello","author":"tester","author_id":"1","channel_id":"2","message_type":"discord:dm","is_dm":true,"is_mention":false,"attachments":[],"embeds":[]}'
+# OpenRouter
+cogtainer create dev --type local --llm-provider openrouter --llm-model anthropic/claude-sonnet-4 --llm-api-key-env OPENROUTER_API_KEY
 
-# Or run a single tick
-uv run cogos local cogos run-local --once
+# Direct Anthropic API
+cogtainer create dev --type local --llm-provider anthropic --llm-model claude-sonnet-4-20250514 --llm-api-key-env ANTHROPIC_API_KEY
+```
 
-# Inspect runs
-uv run cogos local cogos run list --limit 5
+### Environment Variables
+
+| Variable | Purpose | Auto-resolved? |
+|----------|---------|----------------|
+| `COGTAINER` | Active cogtainer name | Yes, if only one exists |
+| `COGENT` | Active cogent name | Yes, if only one exists |
+
+When only one cogtainer or cogent exists, it's selected automatically. Otherwise set the env var.
+
+## Deploying to AWS
+
+```bash
+# 1. Create an AWS cogtainer
+cogtainer create prod --type aws \
+  --llm-provider bedrock \
+  --llm-model us.anthropic.claude-sonnet-4-20250514-v1:0 \
+  --region us-east-1 \
+  --domain example.com
+
+# 2. Deploy infrastructure (Aurora, ECS, ALB, ECR, EventBridge)
+PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" -c cogtainer_name=prod
+
+# 3. Create a cogent (creates database, applies schema)
+COGTAINER=prod cogent create alpha
+
+# 4. Deploy cogent stack (Lambdas, SQS, EventBridge rules)
+PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" \
+  -c cogtainer_name=prod -c cogent_name=alpha \
+  -c lambda_s3_bucket=<bucket> -c lambda_s3_key=lambda/<sha>/lambda.zip
+
+# 5. Boot cogos
+COGTAINER=prod COGENT=alpha cogos image boot cogos
+```
+
+### CI / CD
+
+CI builds images and Lambda zips for all cogtainers defined in `cogtainers.ci.yml`:
+
+```yaml
+# cogtainers.ci.yml
+ci_artifacts_bucket: my-ci-artifacts
+cogtainers:
+  prod:
+    account_id: "123456789012"
+    region: us-east-1
+    ecr_repo: cogtainer-prod
+    components: all
+    cogents: [alpha, beta]
+```
+
+After CI builds, update a cogtainer:
+
+```bash
+# Update everything (Lambdas + ECS services)
+cogtainer update prod
+
+# Update just Lambdas
+cogtainer update prod --lambdas --lambda-s3-bucket <bucket> --lambda-s3-key lambda/<sha>/lambda.zip
+
+# Update just ECS services
+cogtainer update prod --services --image-tag executor-<sha>
+```
+
+## Configuration
+
+All cogtainer config lives in `~/.cogos/cogtainers.yml`:
+
+```yaml
+cogtainers:
+  dev:
+    type: local
+    data_dir: ~/.cogos/cogtainers/dev
+    dashboard_be_port: 8100
+    dashboard_fe_port: 5200
+    llm:
+      provider: bedrock
+      model: us.anthropic.claude-sonnet-4-20250514-v1:0
+
+  prod:
+    type: aws
+    account_id: "123456789012"
+    region: us-east-1
+    domain: example.com
+    llm:
+      provider: bedrock
+      model: us.anthropic.claude-sonnet-4-20250514-v1:0
+
+defaults:
+  cogtainer: dev
+```
+
+## CLI Reference
+
+### `cogtainer` — Cogtainer Lifecycle
+
+```bash
+cogtainer create <name> --type aws|local|docker [options]
+cogtainer destroy <name>
+cogtainer list
+cogtainer status [<name>]
+cogtainer update <name> [--lambdas] [--services] [--all]
+cogtainer discover-aws [--region us-east-1]
+cogtainer compose <name> [--cogent <name>]  # docker-compose.yml
+```
+
+### `cogent` — Cogent Lifecycle
+
+```bash
+cogent create <name>
+cogent destroy <name>
+cogent list
+cogent status [<name>]
+```
+
+### `cogos` — Cogent Operations
+
+```bash
+cogos image boot <name>          # load an image (default: cogos)
+cogos image list                 # list available images
+cogos status                     # show processes, files, capabilities
+cogos process list               # list processes
+cogos process run <name> --executor local  # run a process locally
+cogos process create <name> --mode daemon --content "..."
+cogos file list                  # list files
+cogos file get <key>             # show file content
+cogos channel send <name> --payload '{...}'
+cogos dashboard start            # start local dashboard
+cogos dashboard stop
+cogos start                      # start local dispatcher (local/docker only)
+cogos shell                      # interactive shell
 ```
 
 ## Dashboard
 
-The dashboard gives you a web UI for processes, files, capabilities, handlers, runs, and events.
+Each cogtainer gets unique dashboard ports (auto-assigned on creation):
 
 ```bash
-# Install frontend dependencies (one-time)
-cd dashboard/frontend && npm ci && cd ../..
-
-# Start both backend and frontend
-uv run cogos local cogos dashboard start
+COGENT=alpha cogos dashboard start    # starts on cogtainer's configured ports
+COGENT=alpha cogos dashboard stop
+COGENT=alpha cogos dashboard reload
 ```
 
-The URL will be printed (usually `http://localhost:29489`).
-
-```bash
-uv run cogos local cogos dashboard reload   # stop + start
-uv run cogos local cogos dashboard stop     # stop both
-```
-
-Logs: `/tmp/cogos-backend.log`, `/tmp/cogos-frontend.log`
-
-To run backend and frontend separately:
-
-```bash
-# Terminal 1
-USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port 8100
-
-# Terminal 2
-cd dashboard/frontend && npm run dev
-```
-
-## Deploying to AWS
-
-Local mode is good for development. To deploy a cogent with persistent infrastructure (RDS, Lambda, ECS, Discord bridge), see the [deployment guide](docs/deploy.md).
-
-The short version:
-
-```bash
-cogtainer create <name> --type aws        # cogtainer infrastructure (one-time)
-cogent create <name>                      # per-cogent infrastructure
-COGENT=<name> cogos image boot cogos      # load application image
-COGENT=<name> cogos io discord start      # start Discord bridge
-```
-
-This requires AWS Organizations, a domain for DNS, and secrets configured in AWS Secrets Manager. See [AGENTS.md](AGENTS.md) for the full operational reference.
+Install frontend dependencies first: `cd dashboard/frontend && npm ci`
 
 ## Troubleshooting
 
-**LLM calls fail:** Ensure AWS credentials are configured and Bedrock model access is enabled for Claude Sonnet 4.5 in `us-east-1`. Check with `aws bedrock list-foundation-models --region us-east-1 | grep claude`.
+**LLM calls fail:** Ensure AWS credentials are configured and Bedrock model access is enabled. For OpenRouter, verify `OPENROUTER_API_KEY` is set.
 
-**`image boot` shows no capabilities:** Make sure you used `--clean` to wipe stale state.
+**Multiple cogtainers/cogents:** Set `COGTAINER` and `COGENT` env vars to disambiguate.
 
-**Executor runs but nothing happens:** Check that handlers exist with `uv run cogos local cogos handler list`. If empty, re-run `image boot cogos --clean`.
-
-**Dashboard frontend fails to start:** Run `cd dashboard/frontend && npm ci` first.
+**Dashboard port conflict:** Each cogtainer gets unique ports. Check with `cogtainer status <name>`.
 
 ## References
 
-- [AGENTS.md](AGENTS.md) — repo operating notes, deployment reference, infrastructure details
+- [AGENTS.md](AGENTS.md) — repo operating notes and deployment reference
 - [docs/deploy.md](docs/deploy.md) — deployment guide
-- [docs/cogos/guide.md](docs/cogos/guide.md) — CogOS concepts and architecture
+- [docs/cogos/guide.md](docs/cogos/guide.md) — CogOS architecture
 - [docs/cogtainer/](docs/cogtainer/) — cogtainer design and CLI reference
-- [tests/cogos/local_validation.md](tests/cogos/local_validation.md) — step-by-step local validation checklist

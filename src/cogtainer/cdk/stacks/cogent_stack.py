@@ -186,12 +186,16 @@ class CogentStack(Stack):
         # 2. S3 Sessions Bucket
         # -----------------------------------------------------------------
         bucket_name = f"cogtainer-{cogtainer_name}-{safe_name}-sessions"
-        self.sessions_bucket = s3.Bucket.from_bucket_name(
-            self, "SessionsBucket", bucket_name,
+        # Use explicit IAM policy for S3 (from_bucket_name doesn't support grant)
+        self.cogent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+                resources=[
+                    f"arn:aws:s3:::{bucket_name}",
+                    f"arn:aws:s3:::{bucket_name}/*",
+                ],
+            )
         )
-
-        # Grant the cogent role read/write on the sessions bucket
-        self.sessions_bucket.grant_read_write(self.cogent_role)
 
         # -----------------------------------------------------------------
         # 3. SQS FIFO Ingress Queue
@@ -210,22 +214,79 @@ class CogentStack(Stack):
         self.ingress_queue.grant_send_messages(self.cogent_role)
 
         # -----------------------------------------------------------------
-        # 4. EventBridge Rules on cogtainer bus
+        # 4. Lambda Functions + EventBridge Rules
         # -----------------------------------------------------------------
         bus = events.EventBus.from_event_bus_name(
             self, "CogtainerBus", event_bus_name,
         )
 
-        # Reference existing Lambdas (deployed by CI)
-        event_router_fn = lambda_.Function.from_function_name(
-            self,
-            "EventRouterFn",
-            _lambda_name(cogtainer_name, safe_name, "event-router"),
+        # Lambda code — from S3 (CI uploads) or inline placeholder
+        lambda_s3_bucket = self.node.try_get_context("lambda_s3_bucket") or ""
+        lambda_s3_key = self.node.try_get_context("lambda_s3_key") or ""
+
+        if lambda_s3_bucket and lambda_s3_key:
+            code = lambda_.Code.from_bucket(
+                s3.Bucket.from_bucket_name(self, "LambdaBucket", lambda_s3_bucket),
+                lambda_s3_key,
+            )
+        else:
+            # Placeholder code — CI will update via cogtainer update --lambdas
+            code = lambda_.Code.from_inline(
+                "def handler(event, context): return {'statusCode': 200, 'body': 'not deployed yet'}"
+            )
+
+        lambda_env = {
+            "COGENT_NAME": cogent_name,
+            "COGTAINER_NAME": cogtainer_name,
+            "DB_RESOURCE_ARN": db_cluster_arn,
+            "DB_CLUSTER_ARN": db_cluster_arn,
+            "DB_SECRET_ARN": db_secret_arn,
+            "DB_NAME": db_name,
+            "EVENT_BUS_NAME": event_bus_name,
+            "SESSIONS_BUCKET": bucket_name,
+        }
+
+        # Create Lambda functions
+        event_router_fn = lambda_.Function(
+            self, "EventRouterFn",
+            function_name=_lambda_name(cogtainer_name, safe_name, "event-router"),
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="cogtainer.lambdas.orchestrator.handler.handler",
+            code=code,
+            role=self.cogent_role,
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            environment=lambda_env,
         )
-        dispatcher_fn = lambda_.Function.from_function_name(
-            self,
-            "DispatcherFn",
-            _lambda_name(cogtainer_name, safe_name, "dispatcher"),
+
+        executor_fn = lambda_.Function(
+            self, "ExecutorFn",
+            function_name=_lambda_name(cogtainer_name, safe_name, "executor"),
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="cogos.executor.handler.handler",
+            code=code,
+            role=self.cogent_role,
+            timeout=Duration.seconds(900),
+            memory_size=512,
+            environment={
+                **lambda_env,
+                "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
+            },
+        )
+
+        dispatcher_fn = lambda_.Function(
+            self, "DispatcherFn",
+            function_name=_lambda_name(cogtainer_name, safe_name, "dispatcher"),
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="cogtainer.lambdas.dispatcher.handler.handler",
+            code=code,
+            role=self.cogent_role,
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            environment={
+                **lambda_env,
+                "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
+            },
         )
 
         # CatchAll rule: source prefix "cogent." AND detail.cogent_name matches
@@ -274,7 +335,7 @@ class CogentStack(Stack):
         CfnOutput(self, "CogentName", value=cogent_name)
         CfnOutput(self, "CogentRoleArn", value=self.cogent_role.role_arn)
         CfnOutput(
-            self, "SessionsBucketName", value=self.sessions_bucket.bucket_name
+            self, "SessionsBucketName", value=bucket_name
         )
         CfnOutput(self, "IngressQueueUrl", value=self.ingress_queue.queue_url)
         if self.dashboard_url:
@@ -373,8 +434,8 @@ class CogentStack(Stack):
             "DB_SECRET_ARN": db_secret_arn,
             "DB_NAME": db_name,
             "EVENT_BUS_NAME": event_bus_name,
-            "SESSIONS_BUCKET": self.sessions_bucket.bucket_name,
-            "DASHBOARD_ASSETS_S3": f"s3://{self.sessions_bucket.bucket_name}/dashboard/frontend.tar.gz",
+            "SESSIONS_BUCKET": bucket_name,
+            "DASHBOARD_ASSETS_S3": f"s3://{bucket_name}/dashboard/frontend.tar.gz",
             "DASHBOARD_DOCKER_VERSION": docker_version,
             "EXECUTOR_FUNCTION_NAME": _lambda_name(
                 cogtainer_name, safe_name, "executor"
@@ -446,7 +507,15 @@ class CogentStack(Stack):
         )
 
         # S3
-        self.sessions_bucket.grant_read_write(task_role)
+        task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+                resources=[
+                    f"arn:aws:s3:::{bucket_name}",
+                    f"arn:aws:s3:::{bucket_name}/*",
+                ],
+            )
+        )
 
         # Security group — allow traffic from ALB
         sg = ec2.SecurityGroup(self, "DashSg", vpc=vpc)

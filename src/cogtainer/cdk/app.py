@@ -61,6 +61,24 @@ def build_app() -> cdk.App:
     cogent_name = _ctx(app, "cogent_name")
 
     if cogent_name:
+        # Auto-resolve cogtainer stack outputs if not provided via context
+        db_cluster_arn = _ctx(app, "db_cluster_arn")
+        db_secret_arn = _ctx(app, "db_secret_arn")
+        event_bus_name = _ctx(app, "event_bus_name", f"cogtainer-{cogtainer_name}")
+
+        if not db_cluster_arn or not db_secret_arn:
+            import boto3
+            try:
+                session = boto3.Session()
+                cf = session.client("cloudformation", region_name=entry.region or "us-east-1")
+                resp = cf.describe_stacks(StackName=f"cogtainer-{cogtainer_name}")
+                outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
+                db_cluster_arn = db_cluster_arn or outputs.get("DbClusterArn", "")
+                db_secret_arn = db_secret_arn or outputs.get("DbSecretArn", "")
+                event_bus_name = event_bus_name or outputs.get("EventBusName", f"cogtainer-{cogtainer_name}")
+            except Exception as e:
+                print(f"WARNING: Could not resolve cogtainer stack outputs: {e}", file=sys.stderr)
+
         # Deploy per-cogent resources within this cogtainer
         CogentStack(
             app,
@@ -68,11 +86,9 @@ def build_app() -> cdk.App:
             cogtainer_name=cogtainer_name,
             cogent_name=cogent_name,
             domain=entry.domain or "",
-            db_cluster_arn=_ctx(app, "db_cluster_arn"),
-            db_secret_arn=_ctx(app, "db_secret_arn"),
-            event_bus_name=_ctx(
-                app, "event_bus_name", f"cogtainer-{cogtainer_name}"
-            ),
+            db_cluster_arn=db_cluster_arn,
+            db_secret_arn=db_secret_arn,
+            event_bus_name=event_bus_name,
             alb_listener_arn=_ctx(app, "alb_listener_arn"),
             alb_security_group_id=_ctx(app, "alb_security_group_id"),
             certificate_arn=_ctx(app, "certificate_arn"),
