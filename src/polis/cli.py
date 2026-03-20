@@ -528,6 +528,55 @@ def _cogent_subdomain(name: str, domain: str) -> str:
     return f"{name.replace('.', '-')}.{domain}"
 
 
+def _deploy_cogent_stack(
+    name: str,
+    certificate_arn: str,
+    db_cluster_arn: str,
+    db_secret_arn: str,
+    shared_event_bus_name: str = "",
+    shared_alb_listener_arn: str = "",
+    shared_alb_security_group_id: str = "",
+    ecr_repo_uri: str = "",
+    profile: str | None = None,
+) -> None:
+    """Deploy the per-cogent CDK stack via polis CDK app."""
+    cmd = [
+        "npx", "cdk", "deploy", naming.stack_name(name),
+        "-c", f"cogent_name={name}",
+        "-c", f"certificate_arn={certificate_arn}",
+        "-c", f"shared_db_cluster_arn={db_cluster_arn}",
+        "-c", f"shared_db_secret_arn={db_secret_arn}",
+        "--app", "python -m polis.cdk.app",
+        "--require-approval", "never",
+    ]
+    if shared_event_bus_name:
+        cmd.extend(["-c", f"shared_event_bus_name={shared_event_bus_name}"])
+    if shared_alb_listener_arn:
+        cmd.extend(["-c", f"shared_alb_listener_arn={shared_alb_listener_arn}"])
+    if shared_alb_security_group_id:
+        cmd.extend(["-c", f"shared_alb_security_group_id={shared_alb_security_group_id}"])
+    if ecr_repo_uri:
+        cmd.extend(["-c", f"ecr_repo_uri={ecr_repo_uri}"])
+    env = {**os.environ, "AWS_PROFILE": resolve_org_profile(profile)}
+    result = subprocess.run(cmd, capture_output=False, env=env)
+    if result.returncode != 0:
+        raise click.ClickException("Cogent CDK deploy failed")
+
+
+def _destroy_cogent_stack(name: str, profile: str | None = None) -> None:
+    """Destroy the per-cogent CDK stack."""
+    cmd = [
+        "npx", "cdk", "destroy", naming.stack_name(name),
+        "-c", f"cogent_name={name}",
+        "--app", "python -m polis.cdk.app",
+        "--force",
+    ]
+    env = {**os.environ, "AWS_PROFILE": resolve_org_profile(profile)}
+    result = subprocess.run(cmd, capture_output=False, env=env)
+    if result.returncode != 0:
+        console.print("[yellow]CDK destroy returned non-zero exit code[/yellow]")
+
+
 @cogents.command("create")
 @click.argument("name")
 @click.pass_context
@@ -630,6 +679,10 @@ def cogents_create(ctx: click.Context, name: str):
     outputs = {o["OutputKey"]: o["OutputValue"] for o in resp["Stacks"][0].get("Outputs", [])}
     cluster_arn = outputs["SharedDbClusterArn"]
     secret_arn = outputs["SharedDbSecretArn"]
+    shared_event_bus_name = outputs.get("SharedEventBusName", "")
+    shared_alb_listener_arn = outputs.get("SharedHttpsListenerArn", "")
+    shared_alb_sg_id = outputs.get("SharedAlbSecurityGroupId", "")
+    ecr_repo_uri = outputs.get("ECRRepositoryUri", "")
 
     rds_client = session.client("rds-data")
     try:
@@ -704,6 +757,21 @@ def cogents_create(ctx: click.Context, name: str):
         )
         console.print(f"  [green]Secret created: {identity_path}[/green]")
 
+    # 8. Deploy per-cogent CDK stack
+    console.print("  Deploying cogent infrastructure stack...")
+    _deploy_cogent_stack(
+        name=name,
+        certificate_arn=cert_arn,
+        db_cluster_arn=cluster_arn,
+        db_secret_arn=secret_arn,
+        shared_event_bus_name=shared_event_bus_name,
+        shared_alb_listener_arn=shared_alb_listener_arn,
+        shared_alb_security_group_id=shared_alb_sg_id,
+        ecr_repo_uri=ecr_repo_uri,
+        profile=ctx.obj.get("profile"),
+    )
+    console.print("  [green]Cogent stack deployed[/green]")
+
     # Summary
     console.print()
     table = Table(title=f"Cogent Identity: {name}")
@@ -732,6 +800,14 @@ def cogents_destroy(ctx: click.Context, name: str):
     subdomain = _cogent_subdomain(name, config.domain)
     safe_name = name.replace(".", "-")
     console.print(f"Destroying cogent identity: [bold]{name}[/bold]")
+
+    # 0. Destroy per-cogent CDK stack
+    console.print("  Destroying cogent infrastructure stack...")
+    try:
+        _destroy_cogent_stack(name, ctx.obj.get("profile"))
+        console.print("  [green]Stack destroyed[/green]")
+    except Exception as e:
+        console.print(f"  [yellow]Stack destroy: {e}[/yellow]")
 
     # 1. Delete Cloudflare DNS records
     try:
