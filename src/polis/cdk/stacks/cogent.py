@@ -175,20 +175,10 @@ class CogentStack(Stack):
         )
 
         # -----------------------------------------------------------------
-        # 2. S3 Sessions Bucket
+        # 2. S3 Sessions Bucket (import existing bucket if it already exists)
         # -----------------------------------------------------------------
-        self.sessions_bucket = s3.Bucket(
-            self,
-            "SessionsBucket",
-            bucket_name=naming.bucket_name(cogent_name),
-            removal_policy=RemovalPolicy.RETAIN,
-            lifecycle_rules=[
-                s3.LifecycleRule(
-                    id="expire-sessions",
-                    prefix="sessions/",
-                    expiration=Duration.days(30),
-                ),
-            ],
+        self.sessions_bucket = s3.Bucket.from_bucket_name(
+            self, "SessionsBucket", naming.bucket_name(cogent_name),
         )
 
         # Grant the cogent role read/write on the sessions bucket
