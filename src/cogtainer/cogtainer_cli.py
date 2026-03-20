@@ -162,3 +162,7 @@ def status(name: str | None) -> None:
     if entry.llm:
         click.echo(f"  llm.provider: {entry.llm.provider}")
         click.echo(f"  llm.model: {entry.llm.model}")
+
+
+if __name__ == "__main__":
+    cli()

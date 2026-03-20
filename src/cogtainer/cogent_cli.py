@@ -81,3 +81,7 @@ def status(name: str | None) -> None:
 
     click.echo(f"Cogent: {name}")
     click.echo(f"  cogtainer: {cogtainer_name}")
+
+
+if __name__ == "__main__":
+    cli()

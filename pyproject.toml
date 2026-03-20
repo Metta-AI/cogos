@@ -59,6 +59,8 @@ dev = [
 cogos = "cogos.cli.__main__:entry"
 polis = "polis.cli:polis"
 discord-bridge = "cogos.io.discord.bridge:main"
+cogtainer = "cogtainer.cogtainer_cli:cli"
+cogent = "cogtainer.cogent_cli:cli"
 
 [build-system]
 requires = ["hatchling"]
