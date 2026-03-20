@@ -11,6 +11,8 @@ import boto3
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
+from polis.config import deploy_config
+
 logger = logging.getLogger(__name__)
 
 # Bedrock cross-region model ID prefix → Anthropic model name
@@ -134,7 +136,7 @@ def _anthropic_response_to_bedrock(response: Any) -> dict:
     }
 
 
-ANTHROPIC_SECRET_PATH = "cogent/polis/anthropic"
+ANTHROPIC_SECRET_PATH = deploy_config("anthropic_secret_path", "cogent/polis/anthropic")
 
 
 def _resolve_anthropic_api_key(explicit_key: str | None = None) -> str | None:
