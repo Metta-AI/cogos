@@ -209,11 +209,12 @@ class DiscordBridge:
                 resource_arn=cfg.db_resource_arn,
                 secret_arn=cfg.db_secret_arn,
                 database=cfg.db_name,
+                client=self._runtime.get_rds_data_client(),
             )
             # Verify the schema exists with a quick probe
             repo.get_channel_by_name("__probe__")
         except Exception:
-            logger.warning("DB unavailable for cogent %s, skipping", cogent_name)
+            logger.warning("DB unavailable for cogent %s, skipping", cogent_name, exc_info=True)
             self._repos[cogent_name] = self._REPO_FAILED
             return None
         self._repos[cogent_name] = repo
