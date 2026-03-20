@@ -417,6 +417,122 @@ def destroy_cmd(ctx: click.Context, profile: str | None, yes: bool):
     click.echo(f"Cogtainer infrastructure for cogent-{name} destroyed.")
 
 
+@cogtainer.command("cleanup")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--keep", default=5, type=int, help="Number of old ECS task definition revisions to keep")
+@click.option("--dry-run", is_flag=True, help="Show what would be cleaned up without doing it")
+@click.pass_context
+def cleanup_cmd(ctx: click.Context, profile: str | None, keep: int, dry_run: bool):
+    """Clean up old ECS task definitions and stale Lambda functions."""
+    from polis.aws import get_polis_session, resolve_org_profile, set_org_profile
+
+    name = get_cogent_name(ctx)
+    safe_name = name.replace(".", "-")
+    profile = resolve_org_profile(profile)
+    set_org_profile(profile)
+    session, _ = get_polis_session()
+
+    click.echo(f"Cleaning up old resources for cogent-{name}...")
+
+    _cleanup_task_definitions(session, safe_name, keep, dry_run)
+    _cleanup_stale_lambdas(session, safe_name, dry_run)
+
+    click.echo("\nCleanup complete.")
+
+
+def _cleanup_task_definitions(
+    session: object, safe_name: str, keep: int, dry_run: bool
+) -> None:
+    from polis.aws import DEFAULT_REGION
+
+    ecs_client = session.client("ecs", region_name=DEFAULT_REGION)  # type: ignore[union-attr]
+    prefix = f"{naming.RESOURCE_PREFIX}-{safe_name}-"
+
+    click.echo(f"\nECS task definitions (prefix={prefix}, keep={keep}):")
+
+    families: list[str] = []
+    paginator = ecs_client.get_paginator("list_task_definition_families")
+    for page in paginator.paginate(familyPrefix=prefix, status="ACTIVE"):
+        families.extend(page["families"])
+
+    if not families:
+        click.echo("  No task definition families found.")
+        return
+
+    total_deregistered = 0
+    for family in families:
+        arns: list[str] = []
+        td_paginator = ecs_client.get_paginator("list_task_definitions")
+        for page in td_paginator.paginate(familyPrefix=family, sort="DESC", status="ACTIVE"):
+            arns.extend(page["taskDefinitionArns"])
+
+        if len(arns) <= keep:
+            click.echo(f"  {family}: {len(arns)} revision(s), nothing to clean")
+            continue
+
+        to_deregister = arns[keep:]
+        if dry_run:
+            click.echo(f"  {family}: would deregister {len(to_deregister)} old revision(s)")
+            continue
+
+        deregistered = 0
+        for arn in to_deregister:
+            try:
+                ecs_client.deregister_task_definition(taskDefinition=arn)
+                deregistered += 1
+            except Exception:
+                pass
+        total_deregistered += deregistered
+        click.echo(
+            f"  {family}: deregistered {deregistered}/{len(to_deregister)} old revision(s) "
+            f"(kept {keep})"
+        )
+
+    if dry_run:
+        click.echo("  (dry run, no changes made)")
+    elif total_deregistered:
+        click.echo(f"  Total deregistered: {total_deregistered}")
+
+
+def _cleanup_stale_lambdas(session: object, safe_name: str, dry_run: bool) -> None:
+    from polis.aws import DEFAULT_REGION
+
+    lambda_client = session.client("lambda", region_name=DEFAULT_REGION)  # type: ignore[union-attr]
+    prefix = f"{naming.RESOURCE_PREFIX}-{safe_name}-"
+
+    active_fns = {
+        naming.lambda_name(safe_name, suffix)
+        for suffix in ("orchestrator", "executor", "dispatcher", "ingress", "sandbox")
+    }
+
+    click.echo(f"\nLambda functions (prefix={prefix}):")
+
+    stale: list[str] = []
+    paginator = lambda_client.get_paginator("list_functions")
+    for page in paginator.paginate():
+        for fn in page["Functions"]:
+            fn_name = fn["FunctionName"]
+            if fn_name.startswith(prefix) and fn_name not in active_fns:
+                stale.append(fn_name)
+
+    if not stale:
+        click.echo("  No stale Lambda functions found.")
+        return
+
+    for fn_name in stale:
+        if dry_run:
+            click.echo(f"  Would delete: {fn_name}")
+        else:
+            try:
+                lambda_client.delete_function(FunctionName=fn_name)
+                click.echo(f"  Deleted: {fn_name}")
+            except Exception as e:
+                click.echo(f"  Failed to delete {fn_name}: {e}")
+
+    if dry_run:
+        click.echo("  (dry run, no changes made)")
+
+
 @cogtainer.command("build")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.pass_context

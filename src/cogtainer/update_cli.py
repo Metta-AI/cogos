@@ -311,8 +311,11 @@ def _find_ecs_service(ecs_client, safe_name: str, service_type: str = "dashboard
     return None
 
 
-def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> str:
-    """Verify ECR tag exists, update task definition with new image, return new task def ARN."""
+def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[str, str]:
+    """Verify ECR tag exists, update task definition with new image.
+
+    Returns (new_task_def_arn, old_task_def_arn).
+    """
     from polis.aws import POLIS_ACCOUNT_ID
 
     repo_uri = f"{POLIS_ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
@@ -358,7 +361,7 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> str:
     new_td = ecs_client.register_task_definition(**register_kwargs)
     new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
     click.echo(f"  Task definition: {new_td_arn.split('/')[-1]}")
-    return new_td_arn
+    return new_td_arn, task_def_arn
 
 
 @update.command("ecs")
@@ -410,11 +413,19 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
         "forceNewDeployment": True,
     }
 
+    old_td_arn = None
     if tag:
-        new_td_arn = _update_ecs_image(ecs_client, session, service_arn, tag)
+        new_td_arn, old_td_arn = _update_ecs_image(ecs_client, session, service_arn, tag)
         update_kwargs["taskDefinition"] = new_td_arn
 
     ecs_client.update_service(**update_kwargs)
+
+    if old_td_arn:
+        try:
+            ecs_client.deregister_task_definition(taskDefinition=old_td_arn)
+            click.echo(f"  Deregistered old task definition: {old_td_arn.split('/')[-1]}")
+        except Exception:
+            pass
 
     if not skip_health:
         click.echo("  Waiting for service to stabilize...")
