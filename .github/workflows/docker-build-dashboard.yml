@@ -19,6 +19,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate CI app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
 
       - name: Build and push dashboard image
@@ -73,9 +80,11 @@ jobs:
         with:
           component: dashboard
           version: ${{ steps.build.outputs.short_sha }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update versions defaults (dashboard_frontend)
         uses: ./.github/actions/update-versions
         with:
           component: dashboard_frontend
           version: ${{ github.sha }}
+          token: ${{ steps.app-token.outputs.token }}

@@ -8,6 +8,9 @@ inputs:
   version:
     description: "Version SHA to set"
     required: true
+  token:
+    description: "GitHub token for pushing (must have bypass permissions)"
+    required: true
   defaults_file:
     description: "Path to versions.defaults.json"
     required: false
@@ -36,9 +39,12 @@ runs:
 
     - name: Commit and push
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
         git add "${{ inputs.defaults_file }}"
         git diff --cached --quiet && echo "No changes" && exit 0
         git commit -m "ci: update ${{ inputs.component }} version to ${{ inputs.version }}"

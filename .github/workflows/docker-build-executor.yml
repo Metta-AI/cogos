@@ -20,6 +20,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate CI app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
 
       - name: Build and push executor image
@@ -79,15 +86,18 @@ jobs:
         with:
           component: executor
           version: ${{ steps.build.outputs.short_sha }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update versions defaults (lambda)
         uses: ./.github/actions/update-versions
         with:
           component: lambda
           version: ${{ github.sha }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update versions defaults (cogos)
         uses: ./.github/actions/update-versions
         with:
           component: cogos
           version: ${{ github.sha }}
+          token: ${{ steps.app-token.outputs.token }}
