@@ -93,28 +93,28 @@ def get_repo(config: ExecutorConfig | None = None) -> Repository:
     )
 
 
-_SECRETS_PROVIDER = None
+_RUNTIME = None
 
 
-def get_secrets_provider():
-    """Reconstruct SecretsProvider from env vars set by the runtime."""
-    from cogtainer.secrets import create_secrets_provider
-
-    provider_type = os.environ.get("SECRETS_PROVIDER", "aws")
-    data_dir = os.environ.get("SECRETS_DATA_DIR", os.environ.get("COGOS_LOCAL_DATA", ""))
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    return create_secrets_provider(
-        provider_type=provider_type,
-        data_dir=data_dir,
-        region=region,
-    )
+def _get_runtime():
+    """Lazily reconstruct a CogtainerRuntime from env vars."""
+    global _RUNTIME
+    if _RUNTIME is None:
+        from cogtainer.runtime.factory import create_executor_runtime
+        _RUNTIME = create_executor_runtime()
+    return _RUNTIME
 
 
-def _get_secrets_provider():
-    global _SECRETS_PROVIDER
-    if _SECRETS_PROVIDER is None:
-        _SECRETS_PROVIDER = get_secrets_provider()
-    return _SECRETS_PROVIDER
+def _get_repo(config: ExecutorConfig | None = None) -> Repository:
+    """Get repo from runtime (preferred) or config (legacy Lambda)."""
+    config = config or get_config()
+    cogent_name = os.environ.get("COGENT", os.environ.get("COGENT_NAME", ""))
+    if cogent_name:
+        try:
+            return _get_runtime().get_repository(cogent_name)
+        except Exception:
+            pass
+    return get_repo(config)
 
 
 # ── Meta-capability definitions ──────────────────────────────
@@ -635,7 +635,7 @@ def execute_process(
         return _execute_python_process(process, event_data, run, config, repo, trace_id=trace_id)
 
     from cogos.executor.llm_client import LLMClient
-    llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider, secrets_provider=_get_secrets_provider())
+    llm = LLMClient(bedrock_client=bedrock_client, region=config.region, provider=config.llm_provider, secrets_provider=_get_runtime().get_secrets_provider())
 
     # Build system prompt using the shared ContextEngine
     from cogos.files.context_engine import ContextEngine
@@ -1253,8 +1253,10 @@ def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Reposit
                 kwargs["run_id"] = run_id
             if "trace_id" in init_params or has_var_keyword:
                 kwargs["trace_id"] = trace_id
+            if "runtime" in init_params or has_var_keyword:
+                kwargs["runtime"] = _get_runtime()
             if "secrets_provider" in init_params or has_var_keyword:
-                kwargs["secrets_provider"] = _get_secrets_provider()
+                kwargs["secrets_provider"] = _get_runtime().get_secrets_provider()
             instance = handler_cls(repo, process.id, **kwargs)
             # Apply scope from config if present
             if pc.config:

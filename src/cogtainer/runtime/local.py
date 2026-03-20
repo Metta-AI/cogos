@@ -79,14 +79,19 @@ class LocalRuntime(CogtainerRuntime):
 
     def spawn_executor(self, cogent_name: str, process_id: str) -> None:
         cogent_dir = self._data_dir / cogent_name
+        llm_cfg = self._entry.llm
+        llm_provider = llm_cfg.provider if hasattr(llm_cfg, "provider") else (llm_cfg.get("provider", "openrouter") if isinstance(llm_cfg, dict) else "openrouter")
         env = {
             **os.environ,
             "COGTAINER": self._entry.type,
             "COGENT": cogent_name,
+            "COGENT_NAME": cogent_name,
             "USE_LOCAL_DB": "1",
             "COGOS_LOCAL_DATA": str(cogent_dir),
             "SECRETS_PROVIDER": "local",
             "SECRETS_DATA_DIR": str(self._data_dir),
+            "LLM_PROVIDER": llm_provider,
+            "AWS_REGION": self._entry.region or "us-east-1",
         }
         proc = subprocess.Popen(
             [sys.executable, "-m", "cogos.executor", process_id],
