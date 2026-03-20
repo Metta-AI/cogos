@@ -1,6 +1,6 @@
 """End-to-end test: run a simple capability set through the Agent SDK executor.
 
-Requires ANTHROPIC_API_KEY set in the environment.
+Requires AWS credentials for Bedrock (set CLAUDE_CODE_USE_BEDROCK=1).
 Skip with: pytest -m "not e2e"
 """
 
@@ -38,7 +38,10 @@ class MemoryStub(Capability):
 
 
 @pytest.mark.e2e
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
+@pytest.mark.skipif(
+    not os.environ.get("CLAUDE_CODE_USE_BEDROCK") and not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="Set CLAUDE_CODE_USE_BEDROCK=1 (with AWS creds) or ANTHROPIC_API_KEY",
+)
 def test_agent_sdk_e2e():
     from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
