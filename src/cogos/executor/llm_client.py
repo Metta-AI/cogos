@@ -11,8 +11,6 @@ import boto3
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
-from polis.config import deploy_config
-
 logger = logging.getLogger(__name__)
 
 # Bedrock cross-region model ID prefix → Anthropic model name
@@ -136,11 +134,11 @@ def _anthropic_response_to_bedrock(response: Any) -> dict:
     }
 
 
-ANTHROPIC_SECRET_PATH = deploy_config("anthropic_secret_path", "cogent/polis/anthropic")
+ANTHROPIC_SECRET_PATH = os.environ.get("ANTHROPIC_SECRET_PATH", "cogent/polis/anthropic")
 
 
 def _resolve_anthropic_api_key(explicit_key: str | None = None) -> str | None:
-    """Resolve Anthropic API key: explicit arg > env var > polis secret."""
+    """Resolve Anthropic API key: explicit arg > env var > secrets manager."""
     if explicit_key:
         return explicit_key
     env_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -162,7 +160,7 @@ class LLMClient:
     fallback on throttling.
 
     Key resolution order: explicit arg > ANTHROPIC_API_KEY env var >
-    cogent/polis/anthropic secret.
+    secrets manager (ANTHROPIC_SECRET_PATH).
     """
 
     def __init__(

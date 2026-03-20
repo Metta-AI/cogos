@@ -37,7 +37,7 @@ _bedrock_session = None
 
 
 def _ensure_db_env(cogent_name: str) -> None:
-    """Set DB env vars from the shared polis Aurora cluster."""
+    """Set DB env vars from the shared Aurora cluster (legacy path)."""
     if os.environ.get("USE_LOCAL_DB") == "1":
         return
 
@@ -53,7 +53,11 @@ def _ensure_db_env(cogent_name: str) -> None:
             aws_session_token=frozen.token,
         )
 
-    from polis.aws import get_polis_session, set_org_profile
+    try:
+        from polis.aws import get_polis_session, set_org_profile
+    except ImportError:
+        # polis not available — skip legacy DB env setup
+        return
 
     safe_name = cogent_name.replace(".", "-")
     db_name = f"cogent_{safe_name.replace('-', '_')}"
@@ -126,8 +130,7 @@ def _output_single(data: dict) -> None:
 
 
 def _default_cogent() -> str:
-    from polis.config import deploy_config
-    return deploy_config("default_cogent", "")
+    return os.environ.get("COGENT", "")
 
 
 @click.group()

@@ -7,11 +7,9 @@ import os
 
 import requests
 
-from polis.config import deploy_config
-
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DOMAIN = deploy_config("domain", "softmax-cogents.com")
+_DEFAULT_DOMAIN = os.environ.get("EMAIL_DOMAIN", "softmax-cogents.com")
 
 
 def _cf_headers() -> dict[str, str]:

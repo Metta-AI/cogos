@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from cogos.capabilities.base import Capability
 from cogos.db.models.discord_metadata import DiscordChannel as DiscordChannelInfo
 from cogos.db.models.discord_metadata import DiscordGuild as DiscordGuildInfo
-from polis.config import deploy_config
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +50,8 @@ class DiscordError(BaseModel):
 # ── SQS helpers ──────────────────────────────────────────────
 
 
-_DEFAULT_REGION = deploy_config("region", "us-east-1")
-_DISCORD_REPLIES_QUEUE = deploy_config("discord_replies_queue", "cogent-polis-discord-replies")
+_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+_DISCORD_REPLIES_QUEUE = os.environ.get("DISCORD_REPLIES_QUEUE", "cogent-polis-discord-replies")
 
 
 def _get_queue_url() -> str:

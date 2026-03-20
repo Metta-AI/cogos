@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import click
-from polis.aws import DEFAULT_ORG_PROFILE, ORG_PROFILE_ENV
 
 IO_TYPES = {
     "discord": "static",
@@ -17,7 +16,8 @@ IO_TYPES = {
     "email": "cloudflare_ses",
 }
 
-_PROFILE_HELP = f"AWS profile (default: ${ORG_PROFILE_ENV} or {DEFAULT_ORG_PROFILE})"
+_DEFAULT_ORG_PROFILE = os.environ.get("AWS_ORG_PROFILE", "softmax-org")
+_PROFILE_HELP = f"AWS profile (default: $AWS_ORG_PROFILE or {_DEFAULT_ORG_PROFILE})"
 
 
 def _load_guide(io_name: str) -> str | None:
