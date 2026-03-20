@@ -382,12 +382,12 @@ def _update_lambdas(
 ) -> None:
     """Update Lambda function code for all cogents."""
     lambda_client = session.client("lambda", region_name=region)
-    suffixes = ["orchestrator", "executor", "dispatcher", "ingress"]
+    suffixes = ["event-router", "executor", "dispatcher"]
 
     for cogent_name in cogent_names:
         safe_name = cogent_name.replace(".", "-")
         for suffix in suffixes:
-            fn_name = f"cogent-{safe_name}-{suffix}"
+            fn_name = f"cogtainer-{cogtainer_name}-{safe_name}-{suffix}"
             try:
                 kwargs: dict = {"FunctionName": fn_name}
                 if s3_bucket and s3_key:

@@ -241,6 +241,7 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
     session = _get_session(profile)
     safe_name = name.replace(".", "-")
 
+    cogtainer_name = (ctx.find_root().obj or {}).get("cogtainer_name", "")
     click.echo(f"Updating cogent-{name} Lambda functions...")
     _check_ecr_image_for_commit(session, "executor")
 
@@ -275,12 +276,18 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
 
     lambda_client = session.client("lambda", region_name=DEFAULT_REGION)
 
-    lambda_functions = [
-        f"cogent-{safe_name}-orchestrator",
-        f"cogent-{safe_name}-executor",
-        f"cogent-{safe_name}-dispatcher",
-        f"cogent-{safe_name}-ingress",
-    ]
+    if cogtainer_name:
+        lambda_functions = [
+            f"cogtainer-{cogtainer_name}-{safe_name}-event-router",
+            f"cogtainer-{cogtainer_name}-{safe_name}-executor",
+            f"cogtainer-{cogtainer_name}-{safe_name}-dispatcher",
+        ]
+    else:
+        lambda_functions = [
+            f"cogent-{safe_name}-event-router",
+            f"cogent-{safe_name}-executor",
+            f"cogent-{safe_name}-dispatcher",
+        ]
 
     for fn_name in lambda_functions:
         t1 = time.monotonic()

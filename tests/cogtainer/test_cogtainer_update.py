@@ -75,11 +75,10 @@ def test_update_lambdas_only(mock_get_session, tmp_path, monkeypatch):
     calls = lambda_client.update_function_code.call_args_list
     called_functions = {call.kwargs["FunctionName"] for call in calls}
 
-    assert "cogent-alpha-orchestrator" in called_functions
-    assert "cogent-alpha-executor" in called_functions
-    assert "cogent-alpha-dispatcher" in called_functions
-    assert "cogent-alpha-ingress" in called_functions
-    assert "cogent-beta-test-orchestrator" in called_functions
+    assert "cogtainer-prod-alpha-event-router" in called_functions
+    assert "cogtainer-prod-alpha-executor" in called_functions
+    assert "cogtainer-prod-alpha-dispatcher" in called_functions
+    assert "cogtainer-prod-beta-test-event-router" in called_functions
 
     # Verify S3 params
     for call in calls:
