@@ -18,6 +18,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
 
+def _cogent_name(url_name: str) -> str:
+    return os.environ.get("COGENT_NAME") or os.environ.get("COGENT") or url_name
+
+
+def _resolve_channel(repo, scoped: str, unscoped: str) -> Channel | None:
+    ch = repo.get_channel_by_name(scoped)
+    if ch is None:
+        ch = repo.get_channel_by_name(unscoped)
+    return ch
+
+
+def _ensure_dm_channel(repo, cogent_name: str) -> Channel | None:
+    for name in [f"io:discord:{cogent_name}:dm", "io:discord:dm"]:
+        ch = repo.get_channel_by_name(name)
+        if ch is not None:
+            return ch
+    ch = Channel(name="io:discord:dm", channel_type=ChannelType.NAMED)
+    repo.upsert_channel(ch)
+    return repo.get_channel_by_name("io:discord:dm")
+
+
 class ChatMessageIn(BaseModel):
     content: str
 
@@ -29,6 +50,8 @@ class ChatMessageOut(BaseModel):
     author: str | None = None
     timestamp: float
     type: str = "message"
+    trace_id: str | None = None
+    run_id: str | None = None
 
 
 class ChatSendResult(BaseModel):
@@ -36,21 +59,11 @@ class ChatSendResult(BaseModel):
     message_id: str
 
 
-def _ensure_channel(repo, name: str) -> Channel | None:
-    ch = repo.get_channel_by_name(name)
-    if ch is None:
-        ch = Channel(name=name, channel_type=ChannelType.NAMED)
-        repo.upsert_channel(ch)
-        ch = repo.get_channel_by_name(name)
-    return ch
-
-
 @router.post("/chat", response_model=ChatSendResult, status_code=201)
 def send_chat_message(name: str, body: ChatMessageIn) -> ChatSendResult:
     repo = get_repo()
-    cogent_name = os.environ.get("COGENT_NAME", name)
-    dm_channel_name = f"io:discord:{cogent_name}:dm"
-    ch = _ensure_channel(repo, dm_channel_name)
+    cogent_name = _cogent_name(name)
+    ch = _ensure_dm_channel(repo, cogent_name)
     if ch is None:
         return ChatSendResult(ok=False, message_id="")
 
@@ -77,18 +90,22 @@ def get_chat_messages(
     after: float = Query(0),
 ) -> list[ChatMessageOut]:
     repo = get_repo()
-    cogent_name = os.environ.get("COGENT_NAME", name)
+    cogent_name = _cogent_name(name)
 
     messages: list[ChatMessageOut] = []
 
-    dm_ch = repo.get_channel_by_name(f"io:discord:{cogent_name}:dm")
+    dm_ch = _resolve_channel(
+        repo, f"io:discord:{cogent_name}:dm", "io:discord:dm",
+    )
     if dm_ch:
         for msg in repo.list_channel_messages(dm_ch.id, limit=limit):
             p = msg.payload
             if p.get("source") != "dashboard":
                 continue
             ts_raw = p.get("timestamp")
-            ts = float(ts_raw) / 1000 if ts_raw else (msg.created_at.timestamp() if msg.created_at else 0)
+            ts = float(ts_raw) / 1000 if ts_raw else (
+                msg.created_at.timestamp() if msg.created_at else 0
+            )
             if ts <= after:
                 continue
             messages.append(ChatMessageOut(
@@ -99,18 +116,25 @@ def get_chat_messages(
                 timestamp=ts,
             ))
 
-    replies_ch = repo.get_channel_by_name(f"io:discord:{cogent_name}:replies")
+    replies_ch = _resolve_channel(
+        repo, f"io:discord:{cogent_name}:replies", "io:discord:replies",
+    )
     if replies_ch:
         for msg in repo.list_channel_messages(replies_ch.id, limit=limit):
             p = msg.payload
             content = p.get("content", "")
             if not content:
                 continue
-            ts_raw = p.get("_meta", {}).get("queued_at_ms") or p.get("timestamp")
-            ts = float(ts_raw) / 1000 if ts_raw else (msg.created_at.timestamp() if msg.created_at else 0)
+            ts_raw = (
+                p.get("_meta", {}).get("queued_at_ms") or p.get("timestamp")
+            )
+            ts = float(ts_raw) / 1000 if ts_raw else (
+                msg.created_at.timestamp() if msg.created_at else 0
+            )
             if ts <= after:
                 continue
             msg_type = p.get("type", "message")
+            meta = p.get("_meta", {})
             messages.append(ChatMessageOut(
                 id=str(msg.id),
                 source="cogent",
@@ -118,6 +142,8 @@ def get_chat_messages(
                 author=cogent_name,
                 timestamp=ts,
                 type=msg_type,
+                trace_id=meta.get("trace_id"),
+                run_id=meta.get("run_id"),
             ))
 
     messages.sort(key=lambda m: m.timestamp)

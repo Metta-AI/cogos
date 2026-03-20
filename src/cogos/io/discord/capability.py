@@ -63,19 +63,29 @@ def _send_sqs(body: dict, *, runtime=None) -> None:
 
 
 def _write_replies_channel(repo, cogent_name: str, body: dict) -> None:
-    if not cogent_name or repo is None:
+    if repo is None:
         return
     try:
         from cogos.db.models import Channel as ChannelModel
         from cogos.db.models import ChannelMessage
         from cogos.db.models.channel import ChannelType
 
-        channel_name = f"io:discord:{cogent_name}:replies"
-        ch = repo.get_channel_by_name(channel_name)
+        candidates = []
+        if cogent_name:
+            candidates.append(f"io:discord:{cogent_name}:replies")
+        candidates.append("io:discord:replies")
+
+        ch = None
+        for name in candidates:
+            ch = repo.get_channel_by_name(name)
+            if ch is not None:
+                break
+
         if ch is None:
-            ch = ChannelModel(name=channel_name, channel_type=ChannelType.NAMED)
+            create_name = candidates[0]
+            ch = ChannelModel(name=create_name, channel_type=ChannelType.NAMED)
             repo.upsert_channel(ch)
-            ch = repo.get_channel_by_name(channel_name)
+            ch = repo.get_channel_by_name(create_name)
             if ch is None:
                 return
         repo.append_channel_message(ChannelMessage(channel=ch.id, payload=body))

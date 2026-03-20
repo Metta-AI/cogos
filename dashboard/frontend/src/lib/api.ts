@@ -612,6 +612,8 @@ export interface ChatMessage {
   author: string | null;
   timestamp: number;
   type: string;
+  trace_id: string | null;
+  run_id: string | null;
 }
 
 export interface ChatSendResult {
