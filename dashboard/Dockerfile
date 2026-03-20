@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 # Install the cogent package (provides dashboard backend + all deps)
 COPY pyproject.toml README.md /app/
 COPY src/ /app/src/
+COPY images/ /app/images/
 RUN pip install --no-cache-dir .
 
 # Copy entrypoint
