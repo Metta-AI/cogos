@@ -1,5 +1,5 @@
 line-length = 120
-target-version = "py312"
+target-version = "py311"
 src = ["src"]
 
 exclude = [
@@ -30,13 +30,13 @@ ignore = [
   "D107",
   "E203",
 ]
+fixable = ["E", "F", "B", "I"]
+unfixable = []
+extend-safe-fixes = ["E501"]
 
 [lint.per-file-ignores]
 ".agents/**" = ["E501"]
 ".agent/**" = ["E501"]
-fixable = ["E", "F", "B", "I"]
-unfixable = []
-extend-safe-fixes = ["E501"]
 
 [lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

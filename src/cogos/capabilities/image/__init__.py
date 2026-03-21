@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
-from cogos.capabilities.blob import BlobCapability, BlobRef, BlobError
+from cogos.capabilities.blob import BlobCapability, BlobError, BlobRef
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +125,16 @@ class ImageCapability(Capability):
 
     # -- Compositing --
 
-    def overlay_text(self, key: str, text: str, position: str = "center", font_size: int = 24, color: str = "white") -> BlobRef | ImageError:
+    def overlay_text(
+        self, key: str, text: str, position: str = "center", font_size: int = 24, color: str = "white",
+    ) -> BlobRef | ImageError:
         """Overlay text on an image."""
         from cogos.capabilities.image.compose import overlay_text
         return overlay_text(self, key, text, position, font_size, color)
 
-    def watermark(self, key: str, watermark_key: str, position: str = "bottom-right", opacity: float = 0.5) -> BlobRef | ImageError:
+    def watermark(
+        self, key: str, watermark_key: str, position: str = "bottom-right", opacity: float = 0.5,
+    ) -> BlobRef | ImageError:
         """Overlay a watermark image."""
         from cogos.capabilities.image.compose import watermark
         return watermark(self, key, watermark_key, position, opacity)
@@ -175,4 +179,7 @@ class ImageCapability(Capability):
         return variations(self, key, count)
 
     def __repr__(self) -> str:
-        return "<ImageCapability resize() crop() rotate() convert() thumbnail() overlay_text() watermark() combine() describe() analyze() extract_text() generate() edit() variations()>"
+        return (
+            "<ImageCapability resize() crop() rotate() convert() thumbnail() overlay_text()"
+            " watermark() combine() describe() analyze() extract_text() generate() edit() variations()>"
+        )

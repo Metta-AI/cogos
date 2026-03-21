@@ -144,7 +144,11 @@ class WebSearchCapability(Capability):
         """Search GitHub. search_type: 'repositories'|'issues'|'code'."""
         self._check("search_github")
         try:
-            token = fetch_secret("cogent/{cogent}/github", field="access_token", secrets_provider=self._secrets_provider)
+            token = fetch_secret(
+                "cogent/{cogent}/github",
+                field="access_token",
+                secrets_provider=self._secrets_provider,
+            )
             full_query = query
             if after_date:
                 full_query += f" pushed:>{after_date}"
@@ -188,7 +192,11 @@ class WebSearchCapability(Capability):
         """Search Twitter/X via X API v2."""
         self._check("search_twitter")
         try:
-            bearer = fetch_secret("cogent/{cogent}/twitter", field="bearer_token", secrets_provider=self._secrets_provider)
+            bearer = fetch_secret(
+                "cogent/{cogent}/twitter",
+                field="bearer_token",
+                secrets_provider=self._secrets_provider,
+            )
             params: dict[str, Any] = {
                 "query": query + " -is:retweet",
                 "max_results": 100,

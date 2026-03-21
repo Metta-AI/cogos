@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import aws_cdk as cdk
-from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
@@ -270,7 +270,7 @@ class CogentStack(Stack):
             environment=lambda_env,
         )
 
-        executor_fn = lambda_.Function(
+        _executor_fn = lambda_.Function(
             self, "ExecutorFn",
             function_name=_lambda_name(cogtainer_name, safe_name, "executor"),
             runtime=lambda_.Runtime.PYTHON_3_12,

@@ -71,7 +71,8 @@ class TraceListResponse(BaseModel):
 def list_traces(name: str, limit: int = 20) -> TraceListResponse:
     repo = get_repo()
     rows = repo.query(
-        "SELECT id, cogent_id, source, source_ref, created_at FROM cogos_request_trace ORDER BY created_at DESC LIMIT :limit",
+        "SELECT id, cogent_id, source, source_ref, created_at"
+        " FROM cogos_request_trace ORDER BY created_at DESC LIMIT :limit",
         {"limit": min(limit, 100)},
     )
     items = []

@@ -114,7 +114,8 @@ def create(io_name: str | None, cogent_name: str | None):
             sys.exit(1)
         return
 
-    click.echo(f"TODO: Implement {io_type} provisioning for {cogent_name}")
+    click.echo(f"Provisioning for {io_type} is not yet implemented.", err=True)
+    sys.exit(1)
 
 
 @io.command()
@@ -199,7 +200,8 @@ def send(io_name: str, cogent_name: str, message: str):
             sys.exit(1)
         return
 
-    click.echo("TODO: Implement send for each IO type")
+    click.echo(f"Send is not yet implemented for {io_name}.", err=True)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

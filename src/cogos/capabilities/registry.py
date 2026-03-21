@@ -134,7 +134,10 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "properties": {"key": {"type": "string", "description": "File key (relative to prefix)"}},
                     "required": ["key"],
                 },
-                "output": {"type": "string", "description": "FileCapability with read(), write(content), append(content)"},
+                "output": {
+                    "type": "string",
+                    "description": "FileCapability with read(), write(content), append(content)",
+                },
             },
             "grep": {
                 "input": {
@@ -170,7 +173,10 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 "input": {
                     "type": "object",
                     "properties": {
-                        "pattern": {"type": "string", "description": "Glob pattern (* = segment, ** = any depth, ? = char)"},
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern (* = segment, ** = any depth, ? = char)",
+                        },
                         "limit": {"type": "integer", "default": 50},
                     },
                     "required": ["pattern"],
@@ -216,7 +222,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 "input": {
                     "type": "object",
                     "properties": {
-                        "status": {"type": "string", "enum": ["waiting", "runnable", "running", "blocked", "suspended", "completed", "disabled"]},
+                        "status": {
+                            "type": "string",
+                            "enum": [
+                                "waiting", "runnable", "running", "blocked",
+                                "suspended", "completed", "disabled",
+                            ],
+                        },
                         "limit": {"type": "integer", "default": 200},
                     },
                 },
@@ -261,8 +273,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                         "model": {"type": "string", "description": "Model override"},
                         "capabilities": {
                             "type": "object",
-                            "description": "Dict mapping grant name to capability instance (scoped or unscoped). Not inherited.",
-                            "additionalProperties": {"description": "Capability instance or null for unscoped lookup by name"},
+                            "description": (
+                                "Dict mapping grant name to capability instance"
+                                " (scoped or unscoped). Not inherited."
+                            ),
+                            "additionalProperties": {
+                                "description": "Capability instance or null for unscoped lookup by name",
+                            },
                         },
                     },
                     "required": ["name"],
@@ -402,7 +419,11 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "schema": {
             "scope": {
                 "properties": {
-                    "keys": {"type": "array", "items": {"type": "string"}, "description": "Key patterns allowed (fnmatch)"},
+                    "keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Key patterns allowed (fnmatch)",
+                    },
                 },
             },
             "get": {
@@ -495,7 +516,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "scope": {
                 "properties": {
                     "channels": {"type": "array", "items": {"type": "string"}, "description": "Allowed channel IDs"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["send", "react", "create_thread", "dm", "receive", "list_channels", "list_guilds"]}},
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "send", "react", "create_thread", "dm",
+                                "receive", "list_channels", "list_guilds",
+                            ],
+                        },
+                    },
                 },
             },
             "send": {
@@ -623,7 +653,8 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "- .scratch_dir() — a DirHandle for scratch files (list/read/write by name)\n"
             "\n"
             "FileHandle: .read() -> str, .write(content) -> result, .key -> str\n"
-            "DirHandle: .list() -> [keys], .read(name) -> str, .write(name, content) -> result, .file(name) -> FileHandle\n"
+            "DirHandle: .list() -> [keys], .read(name) -> str, .write(name, content) -> result,"
+            " .file(name) -> FileHandle\n"
             "\n"
             "Run-scoped storage is ephemeral per run. Process-scoped storage persists across runs.\n"
             "Paths: /proc/{process_id}/[tmp|scratch|log] and /proc/{process_id}/runs/{run_id}/[tmp|scratch|log]"
@@ -685,7 +716,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "select_processes": {
                 "input": {
                     "type": "object",
-                    "properties": {"slots": {"type": "integer", "default": 1, "description": "Number of processes to select"}},
+                    "properties": {
+                        "slots": {
+                            "type": "integer",
+                            "default": 1,
+                            "description": "Number of processes to select",
+                        },
+                    },
                 },
                 "output": {
                     "type": "object",
@@ -796,13 +833,19 @@ BUILTIN_CAPABILITIES: list[dict] = [
     # web_search, web_fetch
     {
         "name": "web_search",
-        "description": "Multi-backend web search: Tavily (general web), GitHub (repos/issues/code), Twitter/X (tweets).",
+        "description": (
+            "Multi-backend web search: Tavily (general web),"
+            " GitHub (repos/issues/code), Twitter/X (tweets)."
+        ),
         "handler": "cogos.capabilities.web_search.WebSearchCapability",
         "instructions": (
             "Use web_search to research topics across multiple sources.\n"
-            "- web_search.search(query, recency?, after_date?, before_date?) — general web search via Tavily; recency: 'day'|'week'|'month'\n"
-            "- web_search.search_github(query, search_type?, after_date?, before_date?) — GitHub search; search_type: 'repositories'|'issues'|'discussions'|'code'\n"
-            "- web_search.search_twitter(query, recency?, after_date?, before_date?) — Twitter/X tweet search via X API v2\n"
+            "- web_search.search(query, recency?, after_date?, before_date?)"
+            " — general web search via Tavily; recency: 'day'|'week'|'month'\n"
+            "- web_search.search_github(query, search_type?, after_date?, before_date?)"
+            " — GitHub search; search_type: 'repositories'|'issues'|'discussions'|'code'\n"
+            "- web_search.search_twitter(query, recency?, after_date?, before_date?)"
+            " — Twitter/X tweet search via X API v2\n"
             "Use recency='day' for latest news. Use after_date/before_date (ISO date strings) for backfill."
         ),
         "schema": {
@@ -886,7 +929,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
             "scope": {
                 "properties": {
                     "projects": {"type": "array", "items": {"type": "string"}, "description": "Allowed project GIDs"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["create_task", "update_task", "list_tasks", "my_tasks", "add_comment"]}},
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "create_task", "update_task", "list_tasks",
+                                "my_tasks", "add_comment",
+                            ],
+                        },
+                    },
                 },
             },
             "create_task": {
@@ -901,7 +953,12 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 },
                 "output": {
                     "type": "object",
-                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "project": {"type": "string"}, "url": {"type": "string"}},
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                        "project": {"type": "string"},
+                        "url": {"type": "string"},
+                    },
                 },
             },
             "update_task": {
@@ -927,7 +984,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "assignee": {"type": "string"}, "due_on": {"type": "string"}, "completed": {"type": "boolean"}},
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "assignee": {"type": "string"},
+                            "due_on": {"type": "string"},
+                            "completed": {"type": "boolean"},
+                        },
                     },
                 },
             },
@@ -943,7 +1006,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "assignee": {"type": "string"}, "due_on": {"type": "string"}, "completed": {"type": "boolean"}},
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "assignee": {"type": "string"},
+                            "due_on": {"type": "string"},
+                            "completed": {"type": "boolean"},
+                        },
                     },
                 },
             },
@@ -977,7 +1046,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 "properties": {
                     "orgs": {"type": "array", "items": {"type": "string"}, "description": "Allowed organizations"},
                     "query_budget": {"type": "integer", "description": "Max API queries allowed"},
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["search_repos", "get_user", "list_contributions", "get_repo"]}},
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "search_repos", "get_user",
+                                "list_contributions", "get_repo",
+                            ],
+                        },
+                    },
                 },
             },
             "search_repos": {
@@ -992,7 +1070,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"full_name": {"type": "string"}, "description": {"type": "string"}, "stars": {"type": "integer"}, "language": {"type": "string"}, "url": {"type": "string"}},
+                        "properties": {
+                            "full_name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "stars": {"type": "integer"},
+                            "language": {"type": "string"},
+                            "url": {"type": "string"},
+                        },
                     },
                 },
             },
@@ -1004,7 +1088,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 },
                 "output": {
                     "type": "object",
-                    "properties": {"login": {"type": "string"}, "name": {"type": "string"}, "bio": {"type": "string"}, "company": {"type": "string"}, "location": {"type": "string"}, "public_repos": {"type": "integer"}, "followers": {"type": "integer"}, "url": {"type": "string"}},
+                    "properties": {
+                        "login": {"type": "string"},
+                        "name": {"type": "string"},
+                        "bio": {"type": "string"},
+                        "company": {"type": "string"},
+                        "location": {"type": "string"},
+                        "public_repos": {"type": "integer"},
+                        "followers": {"type": "integer"},
+                        "url": {"type": "string"},
+                    },
                 },
             },
             "list_contributions": {
@@ -1019,7 +1112,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"repo": {"type": "string"}, "type": {"type": "string"}, "title": {"type": "string"}, "date": {"type": "string"}, "url": {"type": "string"}},
+                        "properties": {
+                            "repo": {"type": "string"},
+                            "type": {"type": "string"},
+                            "title": {"type": "string"},
+                            "date": {"type": "string"},
+                            "url": {"type": "string"},
+                        },
                     },
                 },
             },
@@ -1031,7 +1130,16 @@ BUILTIN_CAPABILITIES: list[dict] = [
                 },
                 "output": {
                     "type": "object",
-                    "properties": {"full_name": {"type": "string"}, "description": {"type": "string"}, "stars": {"type": "integer"}, "forks": {"type": "integer"}, "language": {"type": "string"}, "topics": {"type": "array"}, "readme_excerpt": {"type": "string"}, "url": {"type": "string"}},
+                    "properties": {
+                        "full_name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "stars": {"type": "integer"},
+                        "forks": {"type": "integer"},
+                        "language": {"type": "string"},
+                        "topics": {"type": "array"},
+                        "readme_excerpt": {"type": "string"},
+                        "url": {"type": "string"},
+                    },
                 },
             },
         },
@@ -1218,7 +1326,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "schema": {
             "scope": {
                 "properties": {
-                    "ops": {"type": "array", "items": {"type": "string", "enum": ["publish", "unpublish", "respond", "list", "url"]}},
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["publish", "unpublish", "respond", "list", "url"],
+                        },
+                    },
                     "path_prefix": {"type": "string", "description": "Restrict to files under this prefix"},
                 },
             },

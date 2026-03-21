@@ -99,7 +99,7 @@ def main() -> None:
     task_data = payload.get("task", {})
     task_id = task_data.get("id")
     task_content = task_data.get("content", "")
-    task_memory_keys = task_data.get("memory_keys", [])
+    _task_memory_keys = task_data.get("memory_keys", [])
     task_tools = task_data.get("tools", [])
     clear_context = task_data.get("clear_context", False)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -1883,7 +1882,9 @@ class Repository:
             "updated_at": str(self._ts(row, "updated_at")) if self._ts(row, "updated_at") else "",
         }
 
-    def create_alert(self, severity: str, alert_type: str, source: str, message: str, metadata: dict | None = None) -> None:
+    def create_alert(
+        self, severity: str, alert_type: str, source: str, message: str, metadata: dict | None = None,
+    ) -> None:
         """Insert into the shared alerts table (algedonic channel)."""
         from uuid import uuid4
         self._execute(
@@ -2063,9 +2064,12 @@ class Repository:
         msg.trace_meta = self._jsonb_safe(msg.trace_meta)
         if msg.idempotency_key:
             response = self._execute(
-                """INSERT INTO cogos_channel_message (id, channel, sender_process, payload, idempotency_key, trace_id, trace_meta)
-                   VALUES (:id, :channel, :sender_process, :payload::jsonb, :idempotency_key, :trace_id, :trace_meta::jsonb)
-                   ON CONFLICT (channel, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+                """INSERT INTO cogos_channel_message
+                   (id, channel, sender_process, payload, idempotency_key, trace_id, trace_meta)
+                   VALUES (:id, :channel, :sender_process, :payload::jsonb,
+                           :idempotency_key, :trace_id, :trace_meta::jsonb)
+                   ON CONFLICT (channel, idempotency_key)
+                   WHERE idempotency_key IS NOT NULL DO NOTHING
                    RETURNING id, created_at""",
                 [
                     self._param("id", msg.id),

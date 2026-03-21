@@ -259,7 +259,11 @@ def handler(event: dict, context: Any = None) -> dict:
                 logger.exception("Failed to recreate dispatch run %s; falling back to a new run", run_id_str)
                 run = repo.get_run(dispatch_run_id)
                 if run is None:
-                    run = Run(process=process.id, message=UUID(message_id) if message_id else None, status=RunStatus.RUNNING)
+                    run = Run(
+                        process=process.id,
+                        message=UUID(message_id) if message_id else None,
+                        status=RunStatus.RUNNING,
+                    )
                     repo.create_run(run)
         run_id = run.id
     else:
@@ -630,7 +634,13 @@ def execute_process(
         except Exception:
             logger.debug("Could not create bedrock fallback alert")
 
-    llm = LLMClient(runtime=runtime, region=config.region, provider=config.llm_provider, secrets_provider=runtime.get_secrets_provider(), on_fallback=_on_bedrock_fallback)
+    llm = LLMClient(
+        runtime=runtime,
+        region=config.region,
+        provider=config.llm_provider,
+        secrets_provider=runtime.get_secrets_provider(),
+        on_fallback=_on_bedrock_fallback,
+    )
 
     # Build system prompt using the shared ContextEngine
     from cogos.files.context_engine import ContextEngine
@@ -640,7 +650,10 @@ def execute_process(
     system_prompt = ctx.generate_full_prompt(process)
 
     if not system_prompt:
-        system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
+        system_prompt = (
+            "You are a CogOS process. Follow your instructions"
+            " and use capabilities to accomplish your task."
+        )
 
     system = [{"text": system_prompt}]
     model_id = process.model or config.default_model
@@ -1008,7 +1021,11 @@ def _sanitize_tool_use_message(
             continue
 
         raw_tool_use_id = tool_use.get("toolUseId")
-        tool_use_id = raw_tool_use_id if isinstance(raw_tool_use_id, str) and raw_tool_use_id else f"invalid-tool-{turn_number}-{idx}"
+        tool_use_id = (
+            raw_tool_use_id
+            if isinstance(raw_tool_use_id, str) and raw_tool_use_id
+            else f"invalid-tool-{turn_number}-{idx}"
+        )
         invalid_tool_name = str(tool_name) if tool_name is not None else "<missing>"
         invalid_tool_names[tool_use_id] = invalid_tool_name
         logger.warning(
@@ -1201,7 +1218,10 @@ def _wrap_capability_with_tracing(instance, namespace: str):
     return TracingProxy(instance, namespace)
 
 
-def _setup_capability_proxies(vt: VariableTable, process: Process, repo: Repository, *, run_id: UUID | None = None, trace_id: UUID | None = None) -> None:
+def _setup_capability_proxies(
+    vt: VariableTable, process: Process, repo: Repository,
+    *, run_id: UUID | None = None, trace_id: UUID | None = None,
+) -> None:
     """Inject capability instances into the variable table.
 
     Only capabilities explicitly bound to the process via ProcessCapability

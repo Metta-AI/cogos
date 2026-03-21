@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 
 def _load_message_payload(repo, message_id: str | None) -> dict[str, Any]:
@@ -25,6 +28,7 @@ def _load_message_payload(repo, message_id: str | None) -> dict[str, Any]:
             {"id": msg_uuid},
         )
     except Exception:
+        logger.debug("Failed to load message payload for %s", message_id, exc_info=True)
         return {}
 
     if not rows:
@@ -62,6 +66,7 @@ def _resolve_channel_name(repo, message_id: str | None) -> str | None:
         )
         return rows[0]["name"] if rows else None
     except Exception:
+        logger.debug("Failed to resolve channel name for %s", message_id, exc_info=True)
         return None
 
 
@@ -92,7 +97,7 @@ def _extract_parent_span_id(repo, message_id: str | None) -> str | None:
                 if trace_meta:
                     return trace_meta.get("span_id")
     except Exception:
-        pass
+        logger.debug("Failed to extract parent_span_id for %s", message_id, exc_info=True)
     return None
 
 

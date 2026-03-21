@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional, Protocol, runtime_checkable
-
-
+from typing import Any, Protocol, runtime_checkable
 
 # ── Helper ───────────────────────────────────────────────────
 
 
-def _extract_field(value: str, field: Optional[str], key: str) -> Optional[str]:
+def _extract_field(value: str, field: str | None, key: str) -> str | None:
     """Extract *field* from a JSON-encoded *value*.
 
     If *field* is ``None``, returns *value* unchanged.
@@ -37,7 +35,7 @@ def _extract_field(value: str, field: Optional[str], key: str) -> Optional[str]:
 class SecretsProvider(Protocol):
     """Minimal interface for reading/writing secrets."""
 
-    def get_secret(self, key: str, field: Optional[str] = None) -> str:
+    def get_secret(self, key: str, field: str | None = None) -> str:
         """Return the secret value for *key*.
 
         If *field* is set and the value is JSON, extract that field.
@@ -67,7 +65,7 @@ class LocalSecretsProvider:
     def __init__(self, data_dir: str) -> None:
         self._path = Path(data_dir) / ".secrets.json"
 
-    def get_secret(self, key: str, field: Optional[str] = None) -> str:
+    def get_secret(self, key: str, field: str | None = None) -> str:
         data = self._load()
         if key not in data:
             raise KeyError(key)
@@ -118,7 +116,7 @@ class AwsSecretsProvider:
         self._session = session
         self._region = region
 
-    def get_secret(self, key: str, field: Optional[str] = None) -> str:
+    def get_secret(self, key: str, field: str | None = None) -> str:
         """Try SSM Parameter Store first, then Secrets Manager."""
         value = self._try_ssm(key)
         if value is None:
@@ -155,7 +153,7 @@ class AwsSecretsProvider:
 
     # -- private --
 
-    def _try_ssm(self, key: str) -> Optional[str]:
+    def _try_ssm(self, key: str) -> str | None:
         try:
             client = self._session.client("ssm", region_name=self._region)
             resp = client.get_parameter(Name=key, WithDecryption=True)
@@ -163,7 +161,7 @@ class AwsSecretsProvider:
         except Exception:
             return None
 
-    def _try_secrets_manager(self, key: str) -> Optional[str]:
+    def _try_secrets_manager(self, key: str) -> str | None:
         try:
             client = self._session.client("secretsmanager", region_name=self._region)
             resp = client.get_secret_value(SecretId=key)
@@ -177,8 +175,8 @@ class AwsSecretsProvider:
 
 def create_secrets_provider(
     provider_type: str,
-    data_dir: Optional[str] = None,
-    region: Optional[str] = None,
+    data_dir: str | None = None,
+    region: str | None = None,
     session: Any = None,
 ) -> SecretsProvider:
     """Instantiate a SecretsProvider by type name."""

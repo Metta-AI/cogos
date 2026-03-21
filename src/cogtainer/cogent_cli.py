@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import click
 
+from cogtainer.cogtainer_cli import _config_path
 from cogtainer.config import (
     load_config,
     resolve_cogent_name,
     resolve_cogtainer_name,
 )
-from cogtainer.cogtainer_cli import _config_path
 from cogtainer.runtime.base import CogtainerRuntime
 from cogtainer.runtime.factory import create_runtime
 

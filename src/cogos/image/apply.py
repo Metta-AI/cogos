@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 
 from cogos.db.models import (
     Capability,
@@ -153,7 +153,11 @@ def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[st
             priority=float(proc_dict.get("priority", 0.0)),
             # Daemons start WAITING (activated by messages), except init which must boot immediately.
             # One-shot processes start RUNNABLE.
-            status=ProcessStatus.WAITING if mode == ProcessMode.DAEMON and proc_dict["name"] != "init" else ProcessStatus.RUNNABLE,
+            status=(
+                ProcessStatus.WAITING
+                if mode == ProcessMode.DAEMON and proc_dict["name"] != "init"
+                else ProcessStatus.RUNNABLE
+            ),
             metadata=proc_dict.get("metadata") or {},
             idle_timeout_ms=proc_dict.get("idle_timeout_ms"),
         )

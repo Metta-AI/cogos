@@ -38,7 +38,7 @@ def register(reg: CommandRegistry) -> None:
         content = fs.get_content("home/root/.shell_history")
         if not content:
             return "(no history)"
-        entries = [l for l in content.splitlines() if l]
+        entries = [line for line in content.splitlines() if line]
         limit = 50
         if args:
             try:

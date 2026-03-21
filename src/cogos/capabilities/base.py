@@ -108,7 +108,7 @@ def _method_help(method: Callable) -> str:  # type: ignore[type-arg]
 
     for model in ret_models:
         lines.append(f"  {model.__name__}:")
-        lines.extend(f"  {l}" for l in _describe_pydantic(model))
+        lines.extend(f"  {line}" for line in _describe_pydantic(model))
 
     return "\n".join(lines)
 

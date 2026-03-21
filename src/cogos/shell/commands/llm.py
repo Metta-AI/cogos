@@ -68,7 +68,7 @@ def _print_assistant_turn(turn_num: int, output_message: dict, verbose: bool) ->
 
 def _print_tool_results(tool_results: list[dict], tool_names: list[str], verbose: bool) -> None:
     """Print tool result output. Always shows run_code stdout."""
-    for tr_block, tool_name in zip(tool_results, tool_names):
+    for tr_block, tool_name in zip(tool_results, tool_names, strict=False):
         tr = tr_block.get("toolResult", {})
         result_text = ""
         for c in tr.get("content", []):
@@ -138,9 +138,7 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
             _handle_search,
             _sanitize_tool_use_message,
             _setup_capability_proxies,
-            build_prompt_fingerprint,
         )
-        from cogos.executor.session_store import SessionStore
         from cogos.files.context_engine import ContextEngine
 
         runtime = state.runtime
@@ -201,7 +199,10 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
             stop_reason = response.get("stopReason", "end_turn")
 
             if verbose:
-                print(f"{_DIM}  [{bedrock_ms}ms, {usage.get('inputTokens', 0)}→{usage.get('outputTokens', 0)} tokens]{_RESET}")
+                print(
+                    f"{_DIM}  [{bedrock_ms}ms,"
+                    f" {usage.get('inputTokens', 0)}→{usage.get('outputTokens', 0)} tokens]{_RESET}"
+                )
 
             text = _print_assistant_turn(turns, output_message, verbose)
             if text:
@@ -400,7 +401,7 @@ def register(reg: CommandRegistry) -> None:
         file_path = None
         name = None
         tty = True  # default tty for shell-launched processes
-        do_attach = True  # default attach to see output
+        _do_attach = True  # default attach to see output
         prompt_args = []
 
         i = 0
@@ -412,7 +413,7 @@ def register(reg: CommandRegistry) -> None:
                 tty = False
                 i += 1
             elif args[i] == "--no-attach":
-                do_attach = False
+                _do_attach = False
                 i += 1
             elif file_path is None:
                 file_path = args[i]

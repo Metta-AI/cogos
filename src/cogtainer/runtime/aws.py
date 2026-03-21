@@ -330,7 +330,6 @@ class AwsRuntime(CogtainerRuntime):
         """Deploy the per-cogent CDK stack (Lambdas, ECS, EventBridge, etc.)."""
         import os
         import subprocess
-        import sys
 
         from cogtainer.cogtainer_cli import resolve_org_profile
 

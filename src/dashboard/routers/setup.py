@@ -8,8 +8,8 @@ from enum import Enum
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cogtainer.secrets import AwsSecretsProvider
 from cogos.io.discord.setup import discord_persona_status, discord_secret_status, discord_service_status
+from cogtainer.secrets import AwsSecretsProvider
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)

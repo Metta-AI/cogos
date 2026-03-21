@@ -16,11 +16,11 @@ from uuid import UUID
 
 import boto3
 
+from cogos.runtime.ingress import dispatch_ready_processes
+from cogos.runtime.schedule import apply_scheduled_messages
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.logging import setup_logging
 from cogtainer.runtime.factory import create_executor_runtime
-from cogos.runtime.ingress import dispatch_ready_processes
-from cogos.runtime.schedule import apply_scheduled_messages
 
 logger = setup_logging()
 
@@ -145,7 +145,10 @@ def _recover_stuck_daemons(repo) -> None:
                     severity="warning",
                     alert_type=alert_type,
                     source="dispatcher",
-                    message=f"Recovered stuck {proc.mode.value} '{proc.name}': was running with no active run, set to {next_status.value}",
+                    message=(
+                        f"Recovered stuck {proc.mode.value} '{proc.name}':"
+                        f" was running with no active run, set to {next_status.value}"
+                    ),
                     metadata={"process_id": str(proc.id), "process_name": proc.name},
                 )
             except Exception:
@@ -169,7 +172,7 @@ def _wake_waiting_with_pending(repo) -> None:
 
 def _flush_dead_letters(repo) -> int:
     """Write recently failed/timed-out runs to the dead-letter channel for visibility."""
-    from cogos.db.models import Channel, ChannelMessage, ChannelType, RunStatus
+    from cogos.db.models import Channel, ChannelMessage, ChannelType
 
     # Ensure the dead-letter channel exists
     dl_ch = repo.get_channel_by_name("system:dead-letter")

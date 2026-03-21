@@ -7,7 +7,7 @@ import logging
 
 from aiohttp import web
 
-from cogos.io.base import IOAdapter, IOMode, InboundEvent
+from cogos.io.base import InboundEvent, IOAdapter, IOMode
 
 logger = logging.getLogger(__name__)
 

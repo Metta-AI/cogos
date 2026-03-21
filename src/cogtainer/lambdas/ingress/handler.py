@@ -13,10 +13,10 @@ from uuid import UUID
 
 import boto3
 
+from cogos.runtime.ingress import dispatch_ready_processes
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.logging import setup_logging
 from cogtainer.runtime.factory import create_executor_runtime
-from cogos.runtime.ingress import dispatch_ready_processes
 
 logger = setup_logging()
 

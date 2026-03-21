@@ -81,14 +81,14 @@ def verify_artifacts(
             tag = _ECR_COMPONENTS[name].format(sha=sha)
             try:
                 ecr_client.describe_images(repositoryName=ecr_repo, imageIds=[{"imageTag": tag}])
-            except Exception:
-                raise ArtifactMissing(f"{name}: ECR image '{ecr_repo}:{tag}' not found")
+            except Exception as e:
+                raise ArtifactMissing(f"{name}: ECR image '{ecr_repo}:{tag}' not found") from e
         if name in _S3_COMPONENTS:
             key = _S3_COMPONENTS[name].format(sha=sha)
             try:
                 s3_client.head_object(Bucket=artifacts_bucket, Key=key)
-            except Exception:
-                raise ArtifactMissing(f"{name}: S3 artifact 's3://{artifacts_bucket}/{key}' not found")
+            except Exception as e:
+                raise ArtifactMissing(f"{name}: S3 artifact 's3://{artifacts_bucket}/{key}' not found") from e
 
 
 def load_defaults(image_dir: Path) -> dict[str, str]:

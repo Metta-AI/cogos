@@ -10,7 +10,6 @@ from cogtainer.db.models import (
     Cron,
     Event,
     Program,
-
     Resource,
     ResourceType,
     ResourceUsage,
@@ -18,8 +17,8 @@ from cogtainer.db.models import (
     RunStatus,
     Task,
     TaskStatus,
-    Trace,
     ThrottleResult,
+    Trace,
     Trigger,
     TriggerConfig,
 )

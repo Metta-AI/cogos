@@ -91,7 +91,10 @@ def create_alert_endpoint(name: str, body: AlertCreate) -> AlertItem:
     )
     # Return the latest alert (just created)
     rows = repo.list_alerts(resolved=False, limit=1)
-    return _fmt(rows[0]) if rows else AlertItem(id="", severity=body.severity, alert_type=body.alert_type, source=body.source, message=body.message)
+    return _fmt(rows[0]) if rows else AlertItem(
+        id="", severity=body.severity, alert_type=body.alert_type,
+        source=body.source, message=body.message,
+    )
 
 
 @router.delete("/alerts/{alert_id}")

@@ -53,7 +53,6 @@ async def lifespan(app: FastAPI):
     # Apply CogOS SQL migrations on startup to ensure cogos_* tables exist
     try:
         from cogos.db.migrations import apply_cogos_sql_migrations
-
         from dashboard.db import get_repo
 
         repo = get_repo()
@@ -195,7 +194,7 @@ def create_app() -> FastAPI:
         """Serve blob content from S3 — used for AI-generated images in websites."""
         import boto3
 
-        repo = __import__("dashboard.db", fromlist=["get_repo"]).get_repo()
+        _repo = __import__("dashboard.db", fromlist=["get_repo"]).get_repo()
         from cogos import get_sessions_bucket, get_sessions_prefix
         bucket = get_sessions_bucket()
         if not bucket:

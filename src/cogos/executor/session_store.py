@@ -165,7 +165,10 @@ class SessionStore:
                 messages=[],
                 resumed=False,
                 resumed_from_run_id=_string_or_none(checkpoint.get("source_run_id")),
-                resume_skipped_reason=_string_or_none(checkpoint.get("resume_disabled_reason")) or "checkpoint_not_resumable",
+                resume_skipped_reason=(
+                    _string_or_none(checkpoint.get("resume_disabled_reason"))
+                    or "checkpoint_not_resumable"
+                ),
                 last_completed_step=_int_or_zero(checkpoint.get("last_completed_step")),
             )
 

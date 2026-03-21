@@ -140,7 +140,7 @@ def _package_lambda_code() -> bytes:
     import tempfile
 
     src_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)))
-    project_root = os.path.dirname(src_dir)
+    _project_root = os.path.dirname(src_dir)
 
     # Install runtime deps into a temp directory
     deps_dir = tempfile.mkdtemp(prefix="lambda-deps-")
@@ -262,11 +262,11 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
             _download_ci_artifact(session, s3_key, tmp_path)
             with open(tmp_path, "rb") as f:
                 zip_bytes = f.read()
-        except Exception:
+        except Exception as e:
             raise click.ClickException(
                 f"CI artifact not found: s3://{_ci_artifacts_bucket()}/{s3_key}\n"
                 f"Check CI: gh run list --repo Metta-AI/cogos --workflow docker-build-executor.yml"
-            )
+            ) from e
         finally:
             os.unlink(tmp_path)
     else:
@@ -354,13 +354,13 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
             imageIds=[{"imageTag": tag}],
         )
         click.echo(f"  ECR tag '{tag}': {click.style('found', fg='green')}")
-    except Exception:
+    except Exception as e:
         # Determine the right workflow name from the tag prefix
         prefix = tag.split("-")[0] if "-" in tag else tag
         raise click.ClickException(
             f"ECR tag '{tag}' not found in cogent repo. "
             f"Check CI build status: gh run list --repo Metta-AI/cogos --workflow docker-build-{prefix}.yml"
-        )
+        ) from e
 
     svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
     task_def_arn = svc_desc["taskDefinition"]
@@ -774,10 +774,10 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
         req.add_header("X-Api-Key", api_key)
         req.add_header("User-Agent", "cogent-cli/1.0")
         with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read().decode()
+            _body = resp.read().decode()
         click.echo(f"  Reload: {click.style('ok', fg='green')} ({time.monotonic() - t1:.1f}s)")
     except Exception as e:
-        raise click.ClickException(f"Frontend reload failed: {e}")
+        raise click.ClickException(f"Frontend reload failed: {e}") from e
 
     # 5. Purge Cloudflare cache so browsers get the new build
     click.echo("  Purging CDN cache...")
@@ -807,11 +807,11 @@ def _build_and_upload_frontend(session, safe_name, project_root, sha: str | None
             tarball_path = tmp.name
         try:
             _download_ci_artifact(session, s3_key, tarball_path)
-        except Exception:
+        except Exception as e:
             raise click.ClickException(
                 f"CI artifact not found: s3://{_ci_artifacts_bucket()}/{s3_key}\n"
                 f"Check CI: gh run list --repo Metta-AI/cogos --workflow docker-build-dashboard.yml"
-            )
+            ) from e
     else:
         tarball_path, _size_mb = _build_dashboard_tarball(project_root)
 

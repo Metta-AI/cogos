@@ -11,7 +11,7 @@ import json
 import logging
 import time as _time_module
 import traceback
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from typing import Any, Callable
 

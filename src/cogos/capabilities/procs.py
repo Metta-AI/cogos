@@ -303,7 +303,7 @@ class ProcsCapability(Capability):
         if schema is not None:
             if isinstance(schema, dict):
                 stdout_schema = {"fields": schema} if "fields" not in schema else schema
-        for alias, legacy in (
+        for alias, _legacy in (
             (f"io:stdin:{name}", f"process:{name}:stdin"),
             (f"io:stdout:{name}", f"process:{name}:stdout"),
             (f"io:stderr:{name}", f"process:{name}:stderr"),

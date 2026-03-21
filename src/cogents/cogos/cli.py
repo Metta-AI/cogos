@@ -480,8 +480,9 @@ def secret_get(key: str, manager: str):
     Note: --manager is accepted but currently ignored; SecretsCapability
     always uses SSM Parameter Store.
     """
-    from cogos.capabilities.secrets import SecretsCapability, SecretError
     from uuid import uuid4
+
+    from cogos.capabilities.secrets import SecretError, SecretsCapability
     cap = SecretsCapability(repo=None, process_id=uuid4())
     result = cap.get(key=key)
     if isinstance(result, SecretError):
@@ -556,6 +557,6 @@ def status():
     click.echo(f"Handlers: {len(handlers)}")
 
     events = repo.get_events(limit=5)
-    click.echo(f"Recent events:")
+    click.echo("Recent events:")
     for e in events:
         click.echo(f"  {e.event_type} ({e.created_at})")

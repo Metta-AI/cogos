@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import logging
 
-from cogos.capabilities.blob import BlobRef, BlobError
-from cogos.capabilities.image import ImageError
 from google.genai import types
 
+from cogos.capabilities.blob import BlobError, BlobRef
+from cogos.capabilities.image import ImageError
 from cogos.capabilities.image._gemini_helper import get_gemini_client
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,10 @@ def variations(cap, key: str, count: int = 2) -> list[BlobRef] | ImageError:
 
     refs: list[BlobRef] = []
     for i in range(count):
-        prompt = f"Generate a creative variation (#{i + 1}) of this image, keeping the same subject but with a different artistic interpretation."
+        prompt = (
+            f"Generate a creative variation (#{i + 1}) of this image, keeping the same subject"
+            " but with a different artistic interpretation."
+        )
         response = client.models.generate_content(
             model=MODEL,
             contents=[prompt, image_part],

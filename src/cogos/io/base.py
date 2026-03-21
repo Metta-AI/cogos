@@ -4,7 +4,7 @@ import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 
 class IOMode(str, enum.Enum):
@@ -33,10 +33,12 @@ class IOAdapter(ABC):
         self.name = name
 
     async def start(self) -> None:
-        pass
+        """Start the IO adapter. Override in subclasses if needed."""
+        return
 
     async def stop(self) -> None:
-        pass
+        """Stop the IO adapter. Override in subclasses if needed."""
+        return
 
     @abstractmethod
     async def poll(self) -> list[InboundEvent]:

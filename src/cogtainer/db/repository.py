@@ -648,7 +648,7 @@ class Repository:
             grouped: dict[str, list[dict]] = {}
             for row in rows:
                 grouped.setdefault(row["name"], []).append(row)
-            for name, group in grouped.items():
+            for _name, group in grouped.items():
                 mem = self._memory_from_rows(group)
                 if mem:
                     self._merge_memory_by_name(records_by_name, mem)
@@ -676,7 +676,7 @@ class Repository:
             grouped = {}
             for row in rows:
                 grouped.setdefault(row["name"], []).append(row)
-            for name, group in grouped.items():
+            for _name, group in grouped.items():
                 mem = self._memory_from_rows(group)
                 if mem:
                     self._merge_memory_by_name(records_by_name, mem)

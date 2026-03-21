@@ -24,10 +24,10 @@ class AnthropicProvider(LLMProvider):
         model: str | None = None,
     ) -> dict:
         from cogos.executor.llm_client import (
+            _anthropic_response_to_bedrock,
             _bedrock_messages_to_anthropic,
             _bedrock_model_to_anthropic,
             _bedrock_tools_to_anthropic,
-            _anthropic_response_to_bedrock,
         )
 
         model_name = model or self._default_model

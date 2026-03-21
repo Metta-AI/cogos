@@ -104,7 +104,10 @@ def status_cmd(ctx: click.Context):
                 db_status = c.get("Status", "?")
                 style = "green" if db_status == "available" else "yellow"
                 capacity = c.get("ServerlessV2ScalingConfiguration", {})
-                cap_str = f"min={capacity.get('MinCapacity', '?')} max={capacity.get('MaxCapacity', '?')}" if capacity else ""
+                cap_str = (
+                    f"min={capacity.get('MinCapacity', '?')} max={capacity.get('MaxCapacity', '?')}"
+                    if capacity else ""
+                )
                 db_name = f"cogent_{safe_name.replace('-', '_')}"
                 table.add_row("Aurora", f"[{style}]{db_status}[/{style}]", f"db={db_name} {cap_str}")
         except Exception as e:
@@ -172,8 +175,15 @@ def status_cmd(ctx: click.Context):
                 svc_status = svc.get("status", "?")
                 desired = svc.get("desiredCount", 0)
                 running_svc = svc.get("runningCount", 0)
-                style = "green" if running_svc >= desired and running_svc > 0 else "yellow" if running_svc > 0 else "red"
-                table.add_row("Dashboard ECS", f"[{style}]{svc_status}[/{style}]", f"{svc_name} ({running_svc}/{desired})")
+                style = (
+                    "green" if running_svc >= desired and running_svc > 0
+                    else "yellow" if running_svc > 0 else "red"
+                )
+                table.add_row(
+                    "Dashboard ECS",
+                    f"[{style}]{svc_status}[/{style}]",
+                    f"{svc_name} ({running_svc}/{desired})",
+                )
         else:
             table.add_row("Dashboard ECS", "[dim]no service[/dim]", "")
     except Exception:

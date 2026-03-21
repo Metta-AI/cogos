@@ -117,7 +117,11 @@ class AsanaCapability(Capability):
         """The Asana username for this cogent."""
         if self._username is None:
             try:
-                self._username = fetch_secret("cogent/{cogent}/asana", field="username", secrets_provider=self._secrets_provider) or ""
+                self._username = fetch_secret(
+                    "cogent/{cogent}/asana",
+                    field="username",
+                    secrets_provider=self._secrets_provider,
+                ) or ""
             except Exception:
                 self._username = ""
         return self._username

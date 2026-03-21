@@ -6,7 +6,6 @@ from uuid import UUID
 
 from cogos.db.models import Channel, ChannelType
 
-
 SYSTEM_CHANNELS: list[dict] = [
     # Alerts pipeline
     {"name": "system:alerts", "schema": {

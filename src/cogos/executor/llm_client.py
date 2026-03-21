@@ -220,7 +220,11 @@ class LLMClient:
         )
 
     # Bedrock error codes that should trigger Anthropic fallback.
-    _FALLBACK_ERROR_CODES = {"ThrottlingException", "ValidationException", "ServiceUnavailableException", "ResourceNotFoundException", "InternalFailure"}
+    _FALLBACK_ERROR_CODES = {
+        "ThrottlingException", "ValidationException",
+        "ServiceUnavailableException", "ResourceNotFoundException",
+        "InternalFailure",
+    }
 
     def _runtime_converse(self, **kwargs: Any) -> dict:
         """Call the runtime's converse method, translating Bedrock-format kwargs."""

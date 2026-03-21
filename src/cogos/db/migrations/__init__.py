@@ -168,7 +168,10 @@ MIGRATIONS: dict[int, list[str]] = {
     # Each value is a list of individual statements (Data API doesn't support multi-statement).
     5: [
         # Add status column to events table for proposed/sent tracking
-        "ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('proposed', 'sent'))",
+        (
+            "ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL"
+            " DEFAULT 'sent' CHECK (status IN ('proposed', 'sent'))"
+        ),
         "CREATE INDEX IF NOT EXISTS idx_events_proposed ON events (id) WHERE status = 'proposed'",
         # Trigger to auto-emit task:run event when a task is scheduled
         """CREATE OR REPLACE FUNCTION task_scheduled_trigger() RETURNS TRIGGER AS $$
@@ -191,14 +194,6 @@ $$ LANGUAGE plpgsql""",
     FOR EACH ROW
     EXECUTE FUNCTION task_scheduled_trigger()""",
         "INSERT INTO schema_version (version) VALUES (5) ON CONFLICT DO NOTHING",
-    ],
-    7: [
-        "ALTER TABLE programs ADD COLUMN IF NOT EXISTS memory_id UUID REFERENCES memory(id)",
-        "ALTER TABLE programs ADD COLUMN IF NOT EXISTS memory_version INT",
-        "ALTER TABLE programs DROP COLUMN IF EXISTS content",
-        "ALTER TABLE programs DROP COLUMN IF EXISTS program_type",
-        "ALTER TABLE programs DROP COLUMN IF EXISTS includes",
-        "INSERT INTO schema_version (version) VALUES (7) ON CONFLICT DO NOTHING",
     ],
     6: [
         # --- Create versioned memory tables ---

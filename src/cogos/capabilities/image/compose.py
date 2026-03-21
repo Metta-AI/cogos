@@ -1,7 +1,6 @@
 """Image compositing functions — overlay_text, watermark, combine."""
 from __future__ import annotations
 
-import io
 import math
 from typing import TYPE_CHECKING
 

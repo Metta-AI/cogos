@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Iterable
 
-from prompt_toolkit.completion import CompleteEvent, Completion, Completer
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 
 from cogos.shell.commands import CommandRegistry, ShellState
@@ -74,7 +74,9 @@ class ShellCompleter(Completer):
         # Channel subcommand completion
         if cmd == "ch" and len(parts) >= 2:
             subcmd = parts[1]
-            if subcmd in _CHANNEL_SUBCMDS and (len(parts) == 2 and text.endswith(" ") or len(parts) == 3 and not text.endswith(" ")):
+            if subcmd in _CHANNEL_SUBCMDS and (
+                len(parts) == 2 and text.endswith(" ") or len(parts) == 3 and not text.endswith(" ")
+            ):
                 yield from self._complete_channels(current, start_pos)
                 return
 

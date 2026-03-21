@@ -11,6 +11,8 @@ from uuid import UUID
 
 import click
 
+from cli.local_dev import apply_local_checkout_env, repo_root, resolve_dashboard_ports
+
 
 def _resolve_image_dir(name: str) -> Path | None:
     """Find an image directory by name, checking multiple locations."""
@@ -31,7 +33,6 @@ def _resolve_image_dir(name: str) -> Path | None:
 
     return None
 
-from cli.local_dev import apply_local_checkout_env, repo_root, resolve_dashboard_ports
 
 def _ensure_db_env(cogent_name: str, runtime=None) -> None:
     """Set DB env vars by looking up the cogent-status DynamoDB table.
@@ -213,6 +214,7 @@ def _run_migrations(repo) -> None:
 def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_frontend,
          v_discord_bridge, v_lambda, v_cogos):
     """Boot CogOS from an image (default: cogos)."""
+    from cogos.files.store import FileStore
     from cogos.image.apply import apply_image
     from cogos.image.spec import load_image
     from cogos.image.versions import (
@@ -223,7 +225,6 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
         verify_artifacts,
         write_versions_to_filestore,
     )
-    from cogos.files.store import FileStore
 
     image_dir = _resolve_image_dir(name)
     if image_dir is None:

@@ -223,5 +223,5 @@ def delete_file(name: str, key: str) -> dict:
     try:
         store.delete(key)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return {"deleted": True, "key": key}

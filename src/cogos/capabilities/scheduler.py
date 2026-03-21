@@ -302,4 +302,7 @@ class SchedulerCapability(Capability):
             )
 
     def __repr__(self) -> str:
-        return "<SchedulerCapability match_messages() select_processes() dispatch_process() unblock_processes() kill_process()>"
+        return (
+            "<SchedulerCapability match_messages() select_processes()"
+            " dispatch_process() unblock_processes() kill_process()>"
+        )

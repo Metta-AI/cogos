@@ -93,7 +93,10 @@ def _write_replies_channel(repo, cogent_name: str, body: dict) -> None:
         logger.debug("Failed to write to replies channel", exc_info=True)
 
 
-def _with_reply_meta(body: dict, *, process_id: UUID, run_id: UUID | None, trace_id: UUID | None = None, cogent_name: str = "") -> dict:
+def _with_reply_meta(
+    body: dict, *, process_id: UUID, run_id: UUID | None,
+    trace_id: UUID | None = None, cogent_name: str = "",
+) -> dict:
     meta = {
         "queued_at_ms": int(time.time() * 1000),
         "trace_id": str(trace_id) if trace_id else str(uuid4()),
@@ -281,7 +284,10 @@ class DiscordCapability(Capability):
             logger.debug("SQS send failed (channel write still succeeded): %s", e)
         return SendResult(channel=channel, content_length=len(content), type="thread_create")
 
-    def dm(self, user_id: str, content: str, *, files: list[str | dict] | None = None, react: str | None = None) -> SendResult | DiscordError:
+    def dm(
+        self, user_id: str, content: str, *,
+        files: list[str | dict] | None = None, react: str | None = None,
+    ) -> SendResult | DiscordError:
         """Send a direct message to a user.
 
         files can be blob keys (str) or dicts with url/filename.
@@ -328,7 +334,11 @@ class DiscordCapability(Capability):
         if message_type:
             channel_names = [f"io:discord:{self._cogent_name}:{message_type.split(':')[1]}"]
         else:
-            channel_names = [f"io:discord:{self._cogent_name}:dm", f"io:discord:{self._cogent_name}:mention", f"io:discord:{self._cogent_name}:message"]
+            channel_names = [
+                f"io:discord:{self._cogent_name}:dm",
+                f"io:discord:{self._cogent_name}:mention",
+                f"io:discord:{self._cogent_name}:message",
+            ]
 
         messages: list[DiscordMessage] = []
         for name in channel_names:
@@ -424,7 +434,10 @@ class DiscordCapability(Capability):
         return DiscordError(error="Timeout waiting for history response")
 
     def __repr__(self) -> str:
-        return "<DiscordCapability send() react() create_thread() dm() receive() list_channels() list_guilds() history()>"
+        return (
+            "<DiscordCapability send() react() create_thread() dm()"
+            " receive() list_channels() list_guilds() history()>"
+        )
 
 
 def _message_from_event(e) -> DiscordMessage:

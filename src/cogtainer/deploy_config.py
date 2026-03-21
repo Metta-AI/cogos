@@ -72,7 +72,10 @@ def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
         ),
         ServiceQuotaTarget(
             quota_code="L-410BCACA",
-            quota_name="Cross-region model inference requests per minute for Anthropic Claude Opus 4.6 V1 1M Context Length",
+            quota_name=(
+                "Cross-region model inference requests per minute"
+                " for Anthropic Claude Opus 4.6 V1 1M Context Length"
+            ),
             desired_value=1_001,
         ),
         ServiceQuotaTarget(
@@ -82,7 +85,10 @@ def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
         ),
         ServiceQuotaTarget(
             quota_code="L-A052927A",
-            quota_name="Cross-region model inference requests per minute for Anthropic Claude Sonnet 4.5 V1 1M Context Length",
+            quota_name=(
+                "Cross-region model inference requests per minute"
+                " for Anthropic Claude Sonnet 4.5 V1 1M Context Length"
+            ),
             desired_value=1_001,
         ),
         ServiceQuotaTarget(
@@ -92,7 +98,10 @@ def _default_bedrock_quotas() -> list[ServiceQuotaTarget]:
         ),
         ServiceQuotaTarget(
             quota_code="L-47DE5258",
-            quota_name="Cross-region model inference requests per minute for Anthropic Claude Sonnet 4.6 1M Context Length",
+            quota_name=(
+                "Cross-region model inference requests per minute"
+                " for Anthropic Claude Sonnet 4.6 1M Context Length"
+            ),
             desired_value=1_001,
         ),
     ]

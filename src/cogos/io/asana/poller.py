@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 
-from cogos.io.base import IOAdapter, IOMode, InboundEvent
+from cogos.io.base import InboundEvent, IOAdapter, IOMode
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,12 @@ class AsanaClient:
     async def create_task(self, workspace_gid: str, name: str, *, notes: str = "",
                           assignee_gid: str | None = None, project_gid: str | None = None) -> dict[str, Any]:
         task_data: dict[str, Any] = {"workspace": workspace_gid, "name": name}
-        if notes: task_data["notes"] = notes
-        if assignee_gid: task_data["assignee"] = assignee_gid
-        if project_gid: task_data["projects"] = [project_gid]
+        if notes:
+            task_data["notes"] = notes
+        if assignee_gid:
+            task_data["assignee"] = assignee_gid
+        if project_gid:
+            task_data["projects"] = [project_gid]
         data = await self._post("/tasks", {"data": task_data})
         return data.get("data", {})
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
-
-import warnings
 
 from pydantic import BaseModel, Field
 

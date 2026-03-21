@@ -23,7 +23,7 @@ class CogOSHistory(History):
         if not content:
             return
         # Yield in reverse so most recent is first (prompt_toolkit convention)
-        lines = [l for l in content.splitlines() if l]
+        lines = [line for line in content.splitlines() if line]
         yield from reversed(lines)
 
     def store_string(self, string: str) -> None:

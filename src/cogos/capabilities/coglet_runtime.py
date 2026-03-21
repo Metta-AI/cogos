@@ -6,7 +6,6 @@ import logging
 import random
 import string
 from typing import Any
-from uuid import UUID
 
 from cogos.capabilities.base import Capability
 from cogos.cog.runtime import CogletManifest

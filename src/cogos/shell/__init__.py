@@ -32,10 +32,11 @@ class CogentShell:
 
     def run(self) -> None:
         """Start the interactive shell loop."""
-        from cogos.shell.commands import ShellState, build_registry
-        from cogos.shell.completer import ShellCompleter
         from prompt_toolkit import PromptSession
         from prompt_toolkit.formatted_text import HTML
+
+        from cogos.shell.commands import ShellState, build_registry
+        from cogos.shell.completer import ShellCompleter
 
         if self._runtime:
             repo = self._runtime.get_repository(self.cogent_name)
@@ -89,7 +90,7 @@ class CogentShell:
 
         def _drain_io():
             """Print any new messages on io:stdout and io:stderr since last check."""
-            for ch, cursor_attr, prefix, color in [
+            for ch, cursor_attr, _prefix, color in [
                 (stdout_ch, "stdout_cursor", "", ""),
                 (stderr_ch, "stderr_cursor", "", "\033[31m"),
             ]:

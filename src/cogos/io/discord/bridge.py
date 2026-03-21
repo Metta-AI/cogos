@@ -251,7 +251,9 @@ class DiscordBridge:
         loop = asyncio.get_event_loop()
         sp = self._secrets_provider
         ddb = self._runtime.get_dynamodb_resource()
-        configs = await loop.run_in_executor(None, lambda: load_cogent_configs(secrets_provider=sp, dynamodb_resource=ddb))
+        configs = await loop.run_in_executor(
+            None, lambda: load_cogent_configs(secrets_provider=sp, dynamodb_resource=ddb),
+        )
 
         # Update local config cache (and invalidate repos for changed configs)
         new_config_map: dict[str, CogentDiscordConfig] = {}
@@ -462,7 +464,10 @@ class DiscordBridge:
         if trace_meta is not None:
             trace_meta["db_written_at_ms"] = int(time.time() * 1000)
 
-        logger.info("Wrote %s from %s to %s (cogent=%s)", message_type, payload.get("author"), channel_name, cogent_name)
+        logger.info(
+            "Wrote %s from %s to %s (cogent=%s)",
+            message_type, payload.get("author"), channel_name, cogent_name,
+        )
 
         # Write to fine-grained per-source channel
         fine_channel_name = None
@@ -496,7 +501,7 @@ class DiscordBridge:
 
         # Upload attachments to S3
         if self._s3_client and payload.get("attachments"):
-            for att_payload, att_obj in zip(payload["attachments"], message.attachments):
+            for att_payload, att_obj in zip(payload["attachments"], message.attachments, strict=False):
                 s3_result = await self._upload_attachment_to_s3(att_obj)
                 if s3_result:
                     att_payload["s3_key"] = s3_result["s3_key"]
@@ -712,9 +717,15 @@ class DiscordBridge:
                     "warning",
                     "discord:dm_timeout",
                     f"DM from user {author_id} has had no response for {int(elapsed)}s",
-                    {"author_id": author_id, "message_id": message_id, "dm_channel_id": dm_channel_id, "elapsed_s": int(elapsed)},
+                    {
+                        "author_id": author_id, "message_id": message_id,
+                        "dm_channel_id": dm_channel_id, "elapsed_s": int(elapsed),
+                    },
                 )
-                logger.warning("DM timeout: no response to user %s (message %s) after %ds (cogent=%s)", author_id, message_id, int(elapsed), cogent_name)
+                logger.warning(
+                    "DM timeout: no response to user %s (message %s) after %ds (cogent=%s)",
+                    author_id, message_id, int(elapsed), cogent_name,
+                )
 
     async def _check_pending_dms(self):
         """Periodically check for DMs that haven't received a response."""
@@ -804,7 +815,8 @@ class DiscordBridge:
                                 cogent_name if cogent_name in self._configs else next(iter(self._configs), "unknown"),
                                 "warning",
                                 "discord:send_permanent_failure",
-                                f"Cannot send {body.get('type', 'message')} — {type(exc).__name__}: {exc} (message discarded)",
+                                f"Cannot send {body.get('type', 'message')}"
+                                f" — {type(exc).__name__}: {exc} (message discarded)",
                                 {
                                     "sqs_message_id": msg.get("MessageId"),
                                     "msg_type": body.get("type", "message"),
@@ -872,7 +884,7 @@ class DiscordBridge:
             channel_id = int(raw_channel)
         except (ValueError, TypeError):
             logger.error("Invalid (non-numeric) channel in reply: %r — discarding", raw_channel)
-            raise ValueError(f"Invalid channel ID: {raw_channel!r}")
+            raise ValueError(f"Invalid channel ID: {raw_channel!r}") from None
         self._stop_typing(channel_id)
 
         channel = self.client.get_channel(channel_id)
@@ -923,7 +935,7 @@ class DiscordBridge:
             content = convert_markdown(content)
         file_specs = body.get("files") or []
         thread_id = body.get("thread_id")
-        reply_to = body.get("reply_to")
+        _reply_to = body.get("reply_to")
 
         # Determine the thread to send in (if any)
         thread = discord.MISSING

@@ -12,7 +12,8 @@ from uuid import UUID
 
 import boto3
 
-from cogtainer.db.models import Event as BrainEvent, TaskStatus, Trigger
+from cogtainer.db.models import Event as BrainEvent
+from cogtainer.db.models import TaskStatus, Trigger
 from cogtainer.lambdas.shared.config import get_config
 from cogtainer.lambdas.shared.db import get_repo
 from cogtainer.lambdas.shared.events import from_eventbridge, put_event
