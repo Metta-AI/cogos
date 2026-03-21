@@ -27,14 +27,8 @@ Create a Graphite PR with auto-merge, wait for it to land, and announce to Disco
 8. Run `gt sync -f` to pull the merged changes back to local main
 9. Build a short summary of what was merged:
    - Write a 1-3 sentence human-readable summary of the changes
-10. Post the summary to Discord #cogents using `cogos.io.discord.announce`:
-   ```bash
-   PYTHONPATH=src uv run python -m cogos.io.discord.announce \
-     --channel-id 1454583125786230906 \
-     --username "$(basename $(pwd))" \
-     --message "$SUMMARY"
-   ```
+10. Post the summary to Discord #cogents using `/announce`:
    - Keep the message under 2000 characters
    - Include the PR as a markdown hyperlink: `[PR #123](<https://github.com/...>)` — angle brackets suppress Discord's embed preview
    - If the work is tied to an Asana task, include it as a hyperlink too: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
-11. Print the summary locally so the user can see what was announced
+   - Run: `/announce <summary>`

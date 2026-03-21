@@ -15,13 +15,7 @@ Pull, merge, test, push, and announce to Discord #cogents.
 5. Build a short summary of what was pushed:
    - Use `git log origin/main@{1}..origin/main --oneline` (or similar) to list the commits just pushed
    - Write a 1-3 sentence human-readable summary of the changes
-6. Post the summary to Discord #cogents using the announce script:
-   ```bash
-   PYTHONPATH=src python -m cogos.io.discord.announce \
-     --channel-id 1454583125786230906 \
-     --username "cogents.0" \
-     --message "$SUMMARY"
-   ```
+6. Post the summary to Discord #cogents using `/announce`:
    - Keep the message under 2000 characters
    - If the work is tied to an Asana task, include it as a hyperlink: `[Task name](<https://app.asana.com/0/1213428766379931/TASK_GID>)`
-7. Print the summary locally so the user can see what was announced
+   - Run: `/announce <summary>`

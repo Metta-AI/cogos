@@ -23,19 +23,19 @@ Post announcements using `cogos.io.discord.announce`, which creates per-cogent w
 ```bash
 # Post as the current checkout's identity
 PYTHONPATH=src python -m cogos.io.discord.announce \
-  --channel-id 1454583125786230906 \
+  --channel-id 1475918657153663018 \
   --username "cogents.0" \
   --message "Pushed to main: ..."
 
 # Or from Python
 from cogos.io.discord.announce import post
-post(channel_id="1454583125786230906", username="cogents.0", message="...")
+post(channel_id="1475918657153663018", username="cogents.0", message="...")
 ```
 
-The bot token is fetched from `agora/discord` in AWS Secrets Manager.
+The bot token is read from `COGOS_DISCORD_TOKEN` env var, falling back to `agora/discord` in AWS Secrets Manager.
 
 Key channel IDs:
-- `#cogents` — `1454583125786230906` (announcements, deploy summaries, status updates)
+- `#cogents` — `1475918657153663018` (announcements, deploy summaries, status updates)
 
 Discord messages have a 2000-character limit — split longer posts into multiple messages.
 

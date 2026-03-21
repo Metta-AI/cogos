@@ -1,7 +1,7 @@
 """Post to Discord via per-cogent webhooks using the bot token.
 
 Usage (CLI):
-    python -m cogos.io.discord.announce --channel-id 1454583125786230906 \
+    python -m cogos.io.discord.announce --channel-id 1475918657153663018 \
         --username cogents.0 --message "Pushed to main: ..."
 
 Usage (Python):
@@ -29,7 +29,17 @@ DISCORD_API = "https://discord.com/api/v10"
 
 
 def _get_bot_token(secrets_provider=None) -> str:
-    """Get the Discord bot token from agora/discord via secrets provider."""
+    """Get the Discord bot token.
+
+    Checks COGENTS_DISCORD_TOKEN env var first, then falls back to
+    agora/discord via secrets provider.
+    """
+    import os
+
+    token = os.environ.get("COGOS_DISCORD_TOKEN", "")
+    if token:
+        return token
+
     if secrets_provider is None:
         from cogtainer.runtime.factory import create_executor_runtime
         secrets_provider = create_executor_runtime().get_secrets_provider()
@@ -43,7 +53,9 @@ def _get_bot_token(secrets_provider=None) -> str:
             token = ""
     if token:
         return token
-    raise RuntimeError("No bot token found in agora/discord secret.")
+    raise RuntimeError(
+        "No bot token found. Set COGOS_DISCORD_TOKEN or store in agora/discord secret."
+    )
 
 
 def _api(method: str, path: str, token: str, body: dict | None = None) -> dict | list:
@@ -57,6 +69,7 @@ def _api(method: str, path: str, token: str, body: dict | None = None) -> dict |
         headers={
             "Authorization": f"Bot {token}",
             "Content-Type": "application/json",
+            "User-Agent": "CogentsBot (https://github.com/softmax, 1.0)",
         },
     )
     with urllib.request.urlopen(req) as resp:
@@ -76,19 +89,32 @@ def _get_or_create_webhook(channel_id: str, username: str, token: str) -> str:
     return f"{DISCORD_API}/webhooks/{wh['id']}/{wh['token']}"
 
 
-def post(*, channel_id: str, username: str, message: str) -> None:
-    """Post a message to Discord via a per-cogent webhook."""
-    token = _get_bot_token()
-    webhook_url = _get_or_create_webhook(channel_id, username, token)
+def _post_direct(channel_id: str, message: str, token: str) -> None:
+    """Post a message directly to a channel via the bot."""
+    _api("POST", f"/channels/{channel_id}/messages", token, {"content": message})
 
-    data = json.dumps({"username": username, "content": message}).encode()
-    req = urllib.request.Request(
-        webhook_url,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    urllib.request.urlopen(req)
+
+def post(*, channel_id: str, username: str, message: str) -> None:
+    """Post a message to Discord.
+
+    Uses webhooks for guild channels (allows custom username display).
+    Falls back to direct bot messages for DM/group channels where
+    webhooks aren't supported.
+    """
+    token = _get_bot_token()
+    try:
+        webhook_url = _get_or_create_webhook(channel_id, username, token)
+        data = json.dumps({"username": username, "content": message}).encode()
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        logger.warning("Webhook posting failed (%s), falling back to direct message", e)
+        _post_direct(channel_id, message, token)
 
 
 def main():
