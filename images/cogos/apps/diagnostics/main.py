@@ -1,6 +1,8 @@
 # CogOS Diagnostics Runner — inline smoke tests for all capabilities.
 # Runs in the Python sandbox. All capabilities injected as globals.
 
+import time
+
 def _now():
     t = time.gmtime()
     return (str(t.tm_year) + "-" + str(t.tm_mon).zfill(2) + "-"
