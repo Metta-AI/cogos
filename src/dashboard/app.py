@@ -90,6 +90,7 @@ def create_app() -> FastAPI:
         diagnostics,
         files,
         handlers,
+        integrations,
         operations,
         processes,
         resources,
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(operations.router, prefix="/api/cogents/{name}")
     app.include_router(setup.router, prefix="/api/cogents/{name}")
     app.include_router(diagnostics.router, prefix="/api/cogents/{name}")
+    app.include_router(integrations.router, prefix="/api/cogents/{name}")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

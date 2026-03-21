@@ -18,6 +18,7 @@ import { SetupPanel } from "@/components/setup/SetupPanel";
 import { DiagnosticsPanel } from "@/components/diagnostics/DiagnosticsPanel";
 import { TraceViewerPanel } from "@/components/trace-viewer/TraceViewerPanel";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { IntegrationsPanel } from "@/components/integrations/IntegrationsPanel";
 
 function getTabFromHash(): TabId {
   if (typeof window === "undefined") return "overview";
@@ -170,6 +171,9 @@ function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId }: { cog
         )}
         {activeTab === "diagnostics" && (
           <DiagnosticsPanel cogentName={cogentName} />
+        )}
+        {activeTab === "integrations" && (
+          <IntegrationsPanel cogentName={cogentName} />
         )}
         {activeTab === "setup" && (
           <SetupPanel cogentName={cogentName} />

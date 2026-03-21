@@ -643,6 +643,70 @@ export async function sendChatMessage(
   return resp.json();
 }
 
+// ── Integrations ────────────────────────────────────────────────────────────
+
+export interface IntegrationField {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  help_text: string;
+  placeholder: string;
+}
+
+export interface IntegrationStatus {
+  configured: boolean;
+  missing_fields: string[];
+}
+
+export interface IntegrationInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  fields: IntegrationField[];
+  status: IntegrationStatus;
+  config: Record<string, string>;
+}
+
+export async function getIntegrations(name: string): Promise<IntegrationInfo[]> {
+  const r = await fetchJSON<{ integrations: IntegrationInfo[] }>(
+    `/api/cogents/${name}/integrations`,
+  );
+  return r.integrations;
+}
+
+export async function getIntegration(name: string, integrationName: string): Promise<IntegrationInfo> {
+  return fetchJSON(`/api/cogents/${name}/integrations/${integrationName}`);
+}
+
+export async function updateIntegration(
+  name: string,
+  integrationName: string,
+  config: Record<string, string>,
+): Promise<IntegrationInfo> {
+  const resp = await fetch(
+    `/api/cogents/${name}/integrations/${integrationName}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...headers() },
+      body: JSON.stringify({ config }),
+    },
+  );
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function deleteIntegration(
+  name: string,
+  integrationName: string,
+): Promise<void> {
+  const resp = await fetch(
+    `/api/cogents/${name}/integrations/${integrationName}`,
+    { method: "DELETE", headers: headers() },
+  );
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+}
+
 // ── System ──────────────────────────────────────────────────────────────────
 
 export async function reboot(name: string): Promise<{ cleared: number }> {
