@@ -20,12 +20,15 @@ def build_process_capabilities(
     run_id: UUID | None = None,
     trace_id: UUID | None = None,
     runtime: Any | None = None,
+    get_runtime: Any | None = None,
 ) -> dict[str, Any]:
     """Load capability instances bound to a process, with scope applied.
 
     Returns dict mapping namespace name to scoped Capability instance.
     Only capabilities explicitly bound via ProcessCapability are included.
+    Pass get_runtime as a callable to lazily resolve runtime only when needed.
     """
+    _runtime_resolved = runtime is not None
     result: dict[str, Any] = {}
     pcs = repo.list_process_capabilities(process_id)
 
@@ -60,6 +63,10 @@ def build_process_capabilities(
                 init_params = {}
 
             has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in init_params.values())
+            needs_runtime = has_var_keyword or "runtime" in init_params or "secrets_provider" in init_params
+            if needs_runtime and not _runtime_resolved and get_runtime is not None:
+                runtime = get_runtime()
+                _runtime_resolved = True
             kwargs: dict[str, Any] = {}
             if "run_id" in init_params or has_var_keyword:
                 kwargs["run_id"] = run_id

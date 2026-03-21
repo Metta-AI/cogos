@@ -1241,7 +1241,7 @@ def _setup_capability_proxies(
     """
     from cogos.executor.capabilities import build_process_capabilities
 
-    caps = build_process_capabilities(process.id, repo, run_id=run_id, trace_id=trace_id, runtime=_get_runtime())
+    caps = build_process_capabilities(process.id, repo, run_id=run_id, trace_id=trace_id, get_runtime=_get_runtime)
 
     vt.set("print", print)
     for ns, instance in caps.items():
