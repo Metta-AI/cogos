@@ -14,6 +14,7 @@ IO_TYPES = {
     "github": "github_app",
     "asana": "static",
     "email": "cloudflare_ses",
+    "claude-code": "mcp_channel",
 }
 
 _DEFAULT_ORG_PROFILE = os.environ.get("AWS_ORG_PROFILE", "softmax-org")

@@ -1,3 +1,13 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "cogos-channels": {
+      "command": "bun",
+      "args": ["./channels/claude-code/server.ts"],
+      "env": {
+        "COGOS_API_URL": "http://localhost:8100",
+        "COGOS_COGENT_NAME": "",
+        "COGOS_CHANNELS": "io:claude-code:*,system:alerts"
+      }
+    }
+  }
 }

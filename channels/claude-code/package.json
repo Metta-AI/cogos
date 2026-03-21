@@ -1,0 +1,13 @@
+{
+  "name": "@cogos/claude-code-channel",
+  "version": "0.1.0",
+  "description": "Claude Code channel bridge for CogOS channels",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}
