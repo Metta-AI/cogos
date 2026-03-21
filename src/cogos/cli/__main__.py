@@ -1590,6 +1590,52 @@ def executor_remove(executor_id: str):
     click.echo(f"Executor {executor_id} removed")
 
 
+@executor.command("daemon")
+@click.option("--id", "executor_id", default=None, help="Executor ID (auto-generated if omitted)")
+@click.option("--capabilities", "-c", default="claude-code", help="Comma-separated capabilities")
+@click.option("--poll", "poll_s", default=2.0, type=float, help="Poll interval seconds")
+@click.option("--heartbeat", "heartbeat_s", default=15.0, type=float, help="Heartbeat interval seconds")
+@click.pass_context
+def executor_daemon(ctx, executor_id: str | None, capabilities: str, poll_s: float, heartbeat_s: float):
+    """Run a local executor daemon that registers, heartbeats, and executes work."""
+    import platform
+    import secrets
+
+    from cogos.executor.daemon import ExecutorDaemon
+    from cogos.executor.handler import get_config
+
+    if not executor_id:
+        short = secrets.token_hex(4)
+        executor_id = f"local-{platform.node()}-{short}"
+
+    caps = [c.strip() for c in capabilities.split(",") if c.strip()]
+
+    # Try cogtainer runtime first, fall back to LocalRepository
+    runtime = (ctx.obj or {}).get("runtime")
+    cogent_name = (ctx.obj or {}).get("cogent_name", "")
+    if runtime:
+        repo = runtime.get_repository(cogent_name)
+    else:
+        from cogos.db.local_repository import LocalRepository
+        repo = LocalRepository()
+
+    config = get_config()
+
+    click.echo(f"Starting executor daemon: {executor_id}")
+    click.echo(f"  capabilities: {caps}")
+    click.echo(f"  poll: {poll_s}s, heartbeat: {heartbeat_s}s")
+
+    daemon = ExecutorDaemon(
+        repo,
+        executor_id,
+        capabilities=caps,
+        config=config,
+        heartbeat_s=heartbeat_s,
+        poll_s=poll_s,
+    )
+    daemon.run()
+
+
 @executor.group("token")
 def executor_token():
     """Manage executor tokens."""
