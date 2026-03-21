@@ -33,6 +33,8 @@ def test_cogent_create_local(tmp_path, monkeypatch):
     _write_local_config(config_path, data_dir)
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("COGTAINER", raising=False)
+    monkeypatch.delenv("COGENT", raising=False)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["create", "my-agent"])
@@ -46,6 +48,8 @@ def test_cogent_list_local(tmp_path, monkeypatch):
     _write_local_config(config_path, data_dir)
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("COGTAINER", raising=False)
+    monkeypatch.delenv("COGENT", raising=False)
 
     # Create cogent dirs manually
     (data_dir / "alpha").mkdir(parents=True)
@@ -64,6 +68,8 @@ def test_cogent_destroy_local(tmp_path, monkeypatch):
     _write_local_config(config_path, data_dir)
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("COGTAINER", raising=False)
+    monkeypatch.delenv("COGENT", raising=False)
 
     # Create cogent dir
     (data_dir / "doomed").mkdir(parents=True)

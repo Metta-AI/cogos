@@ -18,6 +18,8 @@ def test_full_local_flow(tmp_path: Path, monkeypatch):
     config_path = tmp_path / "cogtainers.yml"
     data_dir = tmp_path / "data"
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("COGTAINER", raising=False)
+    monkeypatch.delenv("COGENT", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-fake")
 
     runner = CliRunner()

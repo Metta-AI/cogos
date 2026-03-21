@@ -62,7 +62,13 @@ def load_config(path: Path | None = None) -> CogtainersConfig:
 
 
 def _read_dotenv_var(key: str) -> str | None:
-    """Read a variable from the repo-local .env file."""
+    """Read a variable from the repo-local .env file.
+
+    Skipped when COGOS_CONFIG_PATH is set (e.g. in tests) to avoid
+    the repo .env leaking values into a non-default config context.
+    """
+    if os.environ.get("COGOS_CONFIG_PATH"):
+        return None
     try:
         from cli.local_dev import _read_repo_env, repo_root
 
