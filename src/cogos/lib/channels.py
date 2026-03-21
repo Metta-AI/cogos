@@ -43,6 +43,18 @@ SYSTEM_CHANNELS: list[dict] = [
     {"name": "github:discover"},
     # Diagnostics
     {"name": "system:diagnostics"},
+    # Claude Code IO
+    {"name": "io:claude-code:inbound", "schema": {
+        "content": "string",
+        "author": "string",
+        "source": "string",
+        "metadata": "dict",
+    }},
+    {"name": "io:claude-code:outbound", "schema": {
+        "content": "string",
+        "channel": "string",
+        "metadata": "dict",
+    }},
 ]
 
 
