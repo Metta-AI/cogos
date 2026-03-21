@@ -40,6 +40,24 @@ def _save_config(cfg: CogtainersConfig) -> None:
         yaml.dump(cfg.model_dump(exclude_none=True), f, default_flow_style=False)
 
 
+def _pick(label: str, names: list[str]) -> str:
+    """Present a numbered list and return the chosen name."""
+    click.echo(f"Available {label}s:")
+    for i, n in enumerate(names, 1):
+        click.echo(f"  {i}) {n}")
+    while True:
+        raw = click.prompt(f"Select {label} (number or name)")
+        if raw in names:
+            return raw
+        try:
+            idx = int(raw)
+            if 1 <= idx <= len(names):
+                return names[idx - 1]
+        except ValueError:
+            pass
+        click.echo(f"Invalid selection '{raw}'. Try again.")
+
+
 DEFAULT_ORG_PROFILE = "softmax-org"
 ORG_PROFILE_ENV = "COGENT_ORG_PROFILE"
 
@@ -214,10 +232,18 @@ def list_cmd() -> None:
 
 
 @cli.command()
-@click.argument("name")
-def select(name: str) -> None:
+@click.argument("name", required=False)
+def select(name: str | None) -> None:
     """Select a cogtainer by writing COGTAINER to .env."""
     cfg = _load()
+
+    if not cfg.cogtainers:
+        click.echo("No cogtainers configured.", err=True)
+        raise SystemExit(1)
+
+    if name is None:
+        names = sorted(cfg.cogtainers)
+        name = _pick("cogtainer", names)
 
     if name not in cfg.cogtainers:
         click.echo(f"Cogtainer '{name}' not found.", err=True)

@@ -55,11 +55,20 @@ def destroy(name: str) -> None:
 
 
 @cli.command()
-@click.argument("name")
-def select(name: str) -> None:
+@click.argument("name", required=False)
+def select(name: str | None) -> None:
     """Select a cogent by writing COGTAINER and COGENT to .env."""
     runtime, cogtainer_name = _get_runtime()
     cogents = runtime.list_cogents()
+
+    if not cogents:
+        click.echo(f"No cogents in cogtainer '{cogtainer_name}'.", err=True)
+        raise SystemExit(1)
+
+    if name is None:
+        from cogtainer.cogtainer_cli import _pick
+
+        name = _pick("cogent", sorted(cogents))
 
     if name not in cogents:
         click.echo(f"Cogent '{name}' not found in cogtainer '{cogtainer_name}'.", err=True)
