@@ -3,7 +3,7 @@ name = "cogos"
 version = "0.1.1"
 description = "Autonomous software engineering agent built on the Viable System Model"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -72,7 +72,7 @@ packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboa
 "images" = "cogos/_bundled_images"
 
 [tool.pyright]
-pythonVersion = "3.12"
+pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
 include = ["src/cogtainer", "src/cli", "src/memory", "src/dashboard", "tests"]
