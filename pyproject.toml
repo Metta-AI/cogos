@@ -91,3 +91,8 @@ testpaths = ["tests"]
 timeout = 60
 pythonpath = ["src"]
 addopts = "--import-mode=importlib"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
