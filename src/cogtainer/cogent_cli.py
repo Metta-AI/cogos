@@ -54,6 +54,23 @@ def destroy(name: str) -> None:
     click.echo(f"Destroyed cogent '{name}'.")
 
 
+@cli.command()
+@click.argument("name")
+def select(name: str) -> None:
+    """Select a cogent by writing COGTAINER and COGENT to .env."""
+    runtime, cogtainer_name = _get_runtime()
+    cogents = runtime.list_cogents()
+
+    if name not in cogents:
+        click.echo(f"Cogent '{name}' not found in cogtainer '{cogtainer_name}'.", err=True)
+        raise SystemExit(1)
+
+    from cli.local_dev import write_repo_env
+
+    env_path = write_repo_env({"COGTAINER": cogtainer_name, "COGENT": name})
+    click.echo(f"Selected cogent '{name}' in cogtainer '{cogtainer_name}' (wrote {env_path})")
+
+
 @cli.command("list")
 def list_cmd() -> None:
     """List all cogents in the current cogtainer."""

@@ -61,6 +61,17 @@ def load_config(path: Path | None = None) -> CogtainersConfig:
     return CogtainersConfig.model_validate(data)
 
 
+def _read_dotenv_var(key: str) -> str | None:
+    """Read a variable from the repo-local .env file."""
+    try:
+        from cli.local_dev import _read_repo_env, repo_root
+
+        values = _read_repo_env(repo_root() / ".env")
+        return values.get(key)
+    except Exception:
+        return None
+
+
 def resolve_cogtainer_name(
     cfg: CogtainersConfig,
     env_var: str = "COGTAINER",
@@ -69,11 +80,12 @@ def resolve_cogtainer_name(
 
     Resolution order:
     1. Environment variable (env_var)
-    2. Auto-select if only one cogtainer is defined
-    3. defaults.cogtainer from config
-    4. Raise ValueError
+    2. .env file in repo root
+    3. Auto-select if only one cogtainer is defined
+    4. defaults.cogtainer from config
+    5. Raise ValueError
     """
-    from_env = os.environ.get(env_var)
+    from_env = os.environ.get(env_var) or _read_dotenv_var(env_var)
     if from_env:
         return from_env
 
@@ -98,10 +110,11 @@ def resolve_cogent_name(
 
     Resolution order:
     1. Environment variable (env_var)
-    2. Auto-select if only one cogent is available
-    3. Raise ValueError
+    2. .env file in repo root
+    3. Auto-select if only one cogent is available
+    4. Raise ValueError
     """
-    from_env = os.environ.get(env_var)
+    from_env = os.environ.get(env_var) or _read_dotenv_var(env_var)
     if from_env:
         return from_env
 

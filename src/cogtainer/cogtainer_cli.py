@@ -214,6 +214,22 @@ def list_cmd() -> None:
 
 
 @cli.command()
+@click.argument("name")
+def select(name: str) -> None:
+    """Select a cogtainer by writing COGTAINER to .env."""
+    cfg = _load()
+
+    if name not in cfg.cogtainers:
+        click.echo(f"Cogtainer '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    from cli.local_dev import write_repo_env
+
+    env_path = write_repo_env({"COGTAINER": name})
+    click.echo(f"Selected cogtainer '{name}' (wrote {env_path})")
+
+
+@cli.command()
 @click.argument("name", required=False)
 def status(name: str | None) -> None:
     """Show details for a cogtainer."""

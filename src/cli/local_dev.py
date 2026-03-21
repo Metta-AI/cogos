@@ -77,3 +77,34 @@ def _read_repo_env(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key] = value.split("#", 1)[0].strip()
     return values
+
+
+def write_repo_env(updates: dict[str, str], *, repo_root: Path | None = None) -> Path:
+    """Upsert key=value pairs into the repo-local .env file.
+
+    Preserves comments and unrelated keys. Returns the .env path.
+    """
+    root = (repo_root or _REPO_ROOT).resolve()
+    env_path = root / ".env"
+
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text().splitlines()
+
+    remaining = dict(updates)
+
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in remaining:
+                new_lines.append(f"{key}={remaining.pop(key)}")
+                continue
+        new_lines.append(line)
+
+    for key, value in remaining.items():
+        new_lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(new_lines) + "\n")
+    return env_path
