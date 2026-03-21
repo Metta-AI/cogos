@@ -59,6 +59,7 @@ cogos = "cogos.cli.__main__:entry"
 discord-bridge = "cogos.io.discord.bridge:main"
 cogtainer = "cogtainer.cogtainer_cli:cli"
 cogent = "cogtainer.cogent_cli:cli"
+cogos-api = "cogos_api.app:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -66,7 +67,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
-packages = ["src/cli", "src/cogents", "src/cogos", "src/cogtainer", "src/dashboard", "src/memory"]
+packages = ["src/cli", "src/cogents", "src/cogos", "src/cogos_api", "src/cogtainer", "src/dashboard", "src/memory"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "images" = "cogos/_bundled_images"

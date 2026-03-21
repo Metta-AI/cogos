@@ -23,64 +23,11 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from cogos.capabilities.loader import build_capability_proxies
 from cogos.db.repository import Repository
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _build_capability_proxies(repo: Repository, process_id: UUID, *, run_id: UUID | None = None) -> dict[str, object]:
-    """Load capabilities bound to a process and build proxy objects.
-
-    Each capability class is instantiated with (repo, process_id) — or
-    (repo, process_id, run_id=run_id) for MeCapability subclasses — and
-    injected into the sandbox namespace under its grant name (e.g. 'email_me').
-    If scope config exists on the grant, the instance is scoped accordingly.
-    """
-    import importlib
-    import inspect
-
-    pcs = repo.list_process_capabilities(process_id)
-    proxies: dict[str, object] = {}
-    for pc in pcs:
-        cap = repo.get_capability(pc.capability)
-        if cap is None or not cap.enabled:
-            continue
-        # Resolve handler dotted path -> callable or class
-        if ":" in cap.handler:
-            mod_path, attr_name = cap.handler.rsplit(":", 1)
-        elif "." in cap.handler:
-            mod_path, attr_name = cap.handler.rsplit(".", 1)
-        else:
-            continue
-        try:
-            mod = importlib.import_module(mod_path)
-            handler = getattr(mod, attr_name)
-        except (ImportError, AttributeError) as exc:
-            logger.warning("Could not load handler %s: %s", cap.handler, exc)
-            continue
-
-        # Use the grant name as the namespace key; fall back to capability name
-        ns = pc.name or cap.name.split("/")[0]
-
-        # Class capabilities get instantiated with repo and process_id
-        if inspect.isclass(handler):
-            from cogos.capabilities.me import MeCapability
-            if issubclass(handler, MeCapability):
-                instance = handler(repo, process_id, run_id=run_id)
-            else:
-                instance = handler(repo, process_id)
-            # Apply scope config if present
-            if pc.config and hasattr(instance, "scope"):
-                instance = instance.scope(**pc.config)
-            proxies[ns] = instance
-        else:
-            proxies[ns] = handler
-    return proxies
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +44,7 @@ def create_server(process_id: UUID, repo: Repository) -> Server:
 
     # Build sandbox once -- shared across all run_code calls in this session.
     vt = VariableTable()
-    proxies = _build_capability_proxies(repo, process_id)
+    proxies = build_capability_proxies(repo, process_id)
     for name, proxy in proxies.items():
         vt.set(name, proxy)
 
