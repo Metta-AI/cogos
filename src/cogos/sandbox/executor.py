@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import time as _time_module
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass, field
@@ -217,6 +218,7 @@ class SandboxExecutor:
         """
         namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
         namespace["json"] = json
+        namespace["time"] = _time_module
 
         # Carry forward user-defined state from previous executions
         namespace.update(self._user_state)
@@ -242,7 +244,7 @@ class SandboxExecutor:
 
         # Persist user-defined variables for the next call.
         # Exclude builtins, capability proxies, and internal keys.
-        proxy_keys = set(self.vt.as_dict().keys()) | {"__builtins__", "json"}
+        proxy_keys = set(self.vt.as_dict().keys()) | {"__builtins__", "json", "time"}
         for key, value in namespace.items():
             if key.startswith("_") or key in proxy_keys:
                 continue
