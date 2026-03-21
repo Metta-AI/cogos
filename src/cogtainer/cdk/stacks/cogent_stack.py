@@ -324,6 +324,7 @@ class CogentStack(Stack):
                 event_bus_name=event_bus_name,
                 alb_listener_arn=alb_listener_arn,
                 alb_security_group_id=alb_security_group_id,
+                ecr_repo_uri=ecr_repo_uri,
             )
 
         # -----------------------------------------------------------------
@@ -373,6 +374,7 @@ class CogentStack(Stack):
         event_bus_name: str,
         alb_listener_arn: str,
         alb_security_group_id: str,
+        ecr_repo_uri: str = "",
     ) -> None:
         vpc = ec2.Vpc.from_lookup(self, "DashVpc", is_default=True)
 
