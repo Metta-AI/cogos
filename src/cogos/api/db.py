@@ -27,10 +27,6 @@ def get_repo() -> Repository:
             logger.info("USE_LOCAL_DB=1, using local repository")
             _repo = LocalRepository()
         else:
-            from cogtainer.runtime.factory import create_executor_runtime
-
-            runtime = create_executor_runtime()
-            client = runtime.get_rds_data_client()
-            _repo = Repository.create(client=client)
+            _repo = Repository.create()
     assert _repo is not None
     return _repo

@@ -180,56 +180,26 @@ export function Header({
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Left: cogent name (with hover panel) + tick */}
+      {/* Left: cogent name + inline status */}
       <div className="flex items-center gap-3">
-        <div className="relative group">
-          <span
-            style={{
-              color: "var(--accent)",
-              fontSize: "15px",
-              fontWeight: 700,
-              cursor: "default",
-            }}
-          >
-            {cogentName}
-          </span>
-          {/* Status hover panel */}
-          <div
-            className="absolute left-0 top-full mt-1 hidden group-hover:block z-50"
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              padding: "10px 14px",
-              minWidth: "180px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            }}
-          >
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <tbody>
-                <tr>
-                  <td style={rowLabel}>status</td>
-                  <td style={{ ...rowValue, color: error ? "var(--error)" : "var(--text-muted)" }}>
-                    {statusText}
-                  </td>
-                </tr>
-                {tick != null && (
-                  <tr>
-                    <td style={rowLabel}>tick</td>
-                    <td style={{ ...rowValue, color: tickColor(tick.ms) }}>{tick.text}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td style={rowLabel}>ws</td>
-                  <td style={{ ...rowValue, color: wsColor }}>
-                    {stableConnected ? "connected" : "disconnected"}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {/* Scheduler heartbeat — always visible */}
+        <span
+          style={{
+            color: "var(--accent)",
+            fontSize: "15px",
+            fontWeight: 700,
+          }}
+        >
+          {cogentName}
+        </span>
+        <span
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-mono)",
+            color: error ? "var(--error)" : "var(--text-muted)",
+          }}
+        >
+          {statusText}
+        </span>
         {tick != null && (
           <span
             title={`Last scheduler tick: ${schedulerLastTick}`}
@@ -243,6 +213,16 @@ export function Header({
             tick {tick.text}
           </span>
         )}
+        <span
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-mono)",
+            color: wsColor,
+            opacity: 0.7,
+          }}
+        >
+          ws {stableConnected ? "connected" : "disconnected"}
+        </span>
       </div>
 
       {/* Right: time range picker + refresh */}
