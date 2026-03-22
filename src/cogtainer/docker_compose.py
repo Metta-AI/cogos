@@ -63,7 +63,7 @@ def generate_compose(
         dashboard_svc: dict = {
             "image": entry.image or "cogent:latest",
             "command": [
-                "uvicorn", "dashboard.app:app",
+                "uvicorn", "cogos.api.app:app",
                 "--host", "0.0.0.0", "--port", "8080",
             ],
             "environment": dashboard_env,

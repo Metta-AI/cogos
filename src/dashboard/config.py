@@ -1,15 +1,5 @@
-from __future__ import annotations
+"""Dashboard config — delegates to cogos.api.config for unified settings."""
 
-from pydantic_settings import BaseSettings
+from cogos.api.config import DashboardSettings, dashboard_settings as settings  # noqa: F401
 
-
-class DashboardSettings(BaseSettings):
-    host: str = "0.0.0.0"
-    port: int = 8100
-    cors_origins: str = "*"
-    cogent_name: str = ""
-
-    model_config = {"env_prefix": "DASHBOARD_"}
-
-
-settings = DashboardSettings()
+__all__ = ["DashboardSettings", "settings"]

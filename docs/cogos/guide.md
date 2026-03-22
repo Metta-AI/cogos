@@ -520,7 +520,7 @@ cogos dashboard reload
 
 # Manual alternative (two terminals):
 source dashboard/ports.sh
-USE_LOCAL_DB=1 uv run uvicorn dashboard.app:app --host 0.0.0.0 --port "$DASHBOARD_BE_PORT" --reload
+USE_LOCAL_DB=1 uv run uvicorn cogos.api.app:app --host 0.0.0.0 --port "$DASHBOARD_BE_PORT" --reload
 cd dashboard/frontend && npm run dev
 ```
 

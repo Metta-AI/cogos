@@ -1291,7 +1291,7 @@ def dashboard_start(ctx: click.Context):
 
     # Start backend
     be_proc = _sp.Popen(
-        [sys.executable, "-m", "uvicorn", "dashboard.app:app", "--host", "0.0.0.0", "--port", str(be_port)],
+        [sys.executable, "-m", "uvicorn", "cogos.api.app:app", "--host", "0.0.0.0", "--port", str(be_port)],
         env={**env, "PYTHONPATH": str(_REPO_ROOT / "src")},
         stdout=open("/tmp/cogent-backend.log", "w"),
         stderr=_sp.STDOUT,

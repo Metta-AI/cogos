@@ -1,10 +1,10 @@
-"""Tests for the dashboard db module."""
+"""Tests for the dashboard/cogos.api db module."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-import dashboard.db as db_mod
+import cogos.api.db as db_mod
 
 
 @pytest.fixture(autouse=True)
@@ -18,8 +18,8 @@ def test_get_repo_returns_repository():
     """get_repo creates a Repository via create()."""
     mock_repo = MagicMock()
     mock_runtime = MagicMock()
-    with patch("dashboard.db.create_executor_runtime", return_value=mock_runtime), \
-         patch("dashboard.db.Repository") as MockRepo:
+    with patch("cogtainer.runtime.factory.create_executor_runtime", return_value=mock_runtime), \
+         patch("cogos.api.db.Repository") as MockRepo:
         MockRepo.create.return_value = mock_repo
         result = db_mod.get_repo()
         assert result is mock_repo
@@ -29,8 +29,8 @@ def test_get_repo_returns_repository():
 def test_get_repo_raises_on_missing_credentials():
     """get_repo raises when credentials are missing."""
     mock_runtime = MagicMock()
-    with patch("dashboard.db.create_executor_runtime", return_value=mock_runtime), \
-         patch("dashboard.db.Repository") as MockRepo:
+    with patch("cogtainer.runtime.factory.create_executor_runtime", return_value=mock_runtime), \
+         patch("cogos.api.db.Repository") as MockRepo:
         MockRepo.create.side_effect = ValueError("Missing credentials")
         with pytest.raises(ValueError, match="Missing credentials"):
             db_mod.get_repo()

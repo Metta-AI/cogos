@@ -21,4 +21,16 @@ class ApiSettings(BaseSettings):
     model_config = {"env_prefix": "COGOS_API_"}
 
 
+class DashboardSettings(BaseSettings):
+    """Dashboard-specific settings (DASHBOARD_ prefix)."""
+
+    host: str = "0.0.0.0"
+    port: int = 8100
+    cors_origins: str = "*"
+    cogent_name: str = ""
+
+    model_config = {"env_prefix": "DASHBOARD_"}
+
+
 settings = ApiSettings()
+dashboard_settings = DashboardSettings()

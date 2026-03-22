@@ -23,7 +23,7 @@ def test_lifespan_runs_cogos_migrations():
 
     fake_repo = MagicMock()
     with patch("cogos.db.migrations.apply_cogos_sql_migrations", fake_migrations), patch(
-        "dashboard.db.get_repo", return_value=fake_repo
+        "cogos.api.db.get_repo", return_value=fake_repo
     ):
         app = create_app()
         with TestClient(app):
@@ -37,7 +37,7 @@ def test_web_static_extensionless_html_renders_in_browser():
     client = TestClient(app)
 
     with patch("cogos.files.store.FileStore.get_content", return_value="<html>hello</html>"), patch(
-        "dashboard.db.get_repo", return_value=MagicMock()
+        "cogos.api.db.get_repo", return_value=MagicMock()
     ):
         resp = client.get("/web/static/nature-fact")
 
@@ -53,7 +53,7 @@ def test_web_static_falls_back_to_directory_index():
     with patch(
         "cogos.files.store.FileStore.get_content",
         side_effect=[None, "<html>nested</html>"],
-    ) as mock_get_content, patch("dashboard.db.get_repo", return_value=MagicMock()):
+    ) as mock_get_content, patch("cogos.api.db.get_repo", return_value=MagicMock()):
         resp = client.get("/web/static/nature-fact")
 
     assert resp.status_code == 200
@@ -69,7 +69,7 @@ def test_web_static_decodes_base64_assets():
     client = TestClient(app)
 
     with patch("cogos.files.store.FileStore.get_content", return_value="base64:iVBORw0KGgo="), patch(
-        "dashboard.db.get_repo", return_value=MagicMock()
+        "cogos.api.db.get_repo", return_value=MagicMock()
     ):
         resp = client.get("/web/static/image.png")
 
