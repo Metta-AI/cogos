@@ -134,6 +134,7 @@ def cogos(ctx: click.Context):
             runtime = create_runtime(entry, cogtainer_name=cogtainer_name)
             ctx.obj["runtime"] = runtime
             ctx.obj["cogtainer_name"] = cogtainer_name
+            ctx.obj["cogtainer_entry"] = entry
 
             cogents = runtime.list_cogents()
             if cogents:
@@ -1143,7 +1144,9 @@ def start_cmd(ctx, image_name, clean, daemon, skip_boot,
                          ctx.obj["cogtainer_name"], cogent_name])
         click.echo("Dispatcher started in background")
     else:
-        run_loop(repo, runtime, cogent_name)
+        entry = ctx.obj.get("cogtainer_entry")
+        tick_interval = entry.tick_interval if entry else 60
+        run_loop(repo, runtime, cogent_name, tick_interval=tick_interval)
 
 
 @cogos.command("stop")

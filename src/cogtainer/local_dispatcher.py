@@ -16,7 +16,7 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 _THROTTLE_COOLDOWN_MS = 300_000  # 5 minutes
-_TICK_INTERVAL = 60  # seconds
+_DEFAULT_TICK_INTERVAL = 60  # seconds
 _NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
@@ -111,8 +111,8 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
     return {"dispatched": dispatched}
 
 
-def run_loop(repo: Any, runtime: Any, cogent_name: str) -> None:
-    """Tick every 60s until SIGINT/SIGTERM."""
+def run_loop(repo: Any, runtime: Any, cogent_name: str, *, tick_interval: int = _DEFAULT_TICK_INTERVAL) -> None:
+    """Tick every *tick_interval* seconds until SIGINT/SIGTERM."""
     shutdown = False
 
     def _handle_signal(signum: int, frame: Any) -> None:
@@ -123,7 +123,7 @@ def run_loop(repo: Any, runtime: Any, cogent_name: str) -> None:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    logger.info("Local dispatcher started for cogent %s (tick every %ds)", cogent_name, _TICK_INTERVAL)
+    logger.info("Local dispatcher started for cogent %s (tick every %ds)", cogent_name, tick_interval)
 
     while not shutdown:
         try:
@@ -133,7 +133,7 @@ def run_loop(repo: Any, runtime: Any, cogent_name: str) -> None:
             logger.exception("Tick failed")
 
         # Sleep in small increments to respond to signals promptly
-        for _ in range(_TICK_INTERVAL):
+        for _ in range(tick_interval):
             if shutdown:
                 break
             time.sleep(1)
