@@ -41,8 +41,8 @@ chmod +x /tmp/run-ecs-entry.sh
 
 echo "[entrypoint] Launching tmux session..."
 
-# Start tmux session running the entry point
-tmux new-session -d -s claude /tmp/run-ecs-entry.sh
+# Start tmux session running the entry point, forwarding docker CMD args
+tmux new-session -d -s claude "/tmp/run-ecs-entry.sh $*"
 
 echo "[entrypoint] Waiting for session to complete..."
 

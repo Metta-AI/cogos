@@ -162,34 +162,29 @@ class CogtainerStack(cdk.Stack):
             self, "HostedZone", domain_name=domain,
         )
 
-        skip_cert = self.node.try_get_context("skip_cert") == "true"
+        self.wildcard_cert = acm.Certificate(
+            self,
+            "WildcardCert",
+            domain_name=f"*.{domain}",
+            validation=acm.CertificateValidation.from_dns(self.hosted_zone),
+        )
 
-        self.wildcard_cert = None
-        self.https_listener = None
-        if not skip_cert:
-            self.wildcard_cert = acm.Certificate(
-                self,
-                "WildcardCert",
-                domain_name=f"*.{domain}",
-                validation=acm.CertificateValidation.from_dns(self.hosted_zone),
-            )
+        self.https_listener = self.alb.add_listener(
+            "HttpsListener",
+            port=443,
+            certificates=[self.wildcard_cert],
+            default_action=elbv2.ListenerAction.fixed_response(
+                status_code=404,
+                content_type="text/plain",
+                message_body="Not found",
+            ),
+        )
 
-            self.https_listener = self.alb.add_listener(
-                "HttpsListener",
-                port=443,
-                certificates=[self.wildcard_cert],
-                default_action=elbv2.ListenerAction.fixed_response(
-                    status_code=404,
-                    content_type="text/plain",
-                    message_body="Not found",
-                ),
-            )
-
-            self.alb.add_redirect(
-                source_port=80,
-                target_port=443,
-                target_protocol=elbv2.ApplicationProtocol.HTTPS,
-            )
+        self.alb.add_redirect(
+            source_port=80,
+            target_port=443,
+            target_protocol=elbv2.ApplicationProtocol.HTTPS,
+        )
 
         # --- GitHub Actions OIDC provider (for CI deploys) ---
         self.oidc_provider = iam.OpenIdConnectProvider(
@@ -258,10 +253,8 @@ class CogtainerStack(cdk.Stack):
         )
         CfnOutput(self, "AlbArn", value=self.alb.load_balancer_arn)
         CfnOutput(self, "AlbDns", value=self.alb.load_balancer_dns_name)
-        if self.wildcard_cert:
-            CfnOutput(self, "WildcardCertArn", value=self.wildcard_cert.certificate_arn)
-        if self.https_listener:
-            CfnOutput(self, "HttpsListenerArn", value=self.https_listener.listener_arn)
+        CfnOutput(self, "WildcardCertArn", value=self.wildcard_cert.certificate_arn)
+        CfnOutput(self, "HttpsListenerArn", value=self.https_listener.listener_arn)
         CfnOutput(
             self,
             "AlbSecurityGroupId",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +171,13 @@ class LLMClient:
         anthropic_api_key: str | None = None,
         provider: str = "bedrock",
         secrets_provider: Any = None,
+        on_fallback: Callable[[str, str], None] | None = None,
     ) -> None:
         self._provider = provider
         self._runtime = runtime
         self._openrouter = None
+        self._on_fallback = on_fallback
+        self._fallback_alerted: set[str] = set()
 
         if provider == "openrouter":
             from cogtainer.llm.openrouter import OpenRouterProvider
@@ -236,11 +239,16 @@ class LLMClient:
             error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code not in self._FALLBACK_ERROR_CODES or self._anthropic is None:
                 raise
+            model_id = kwargs.get("modelId", "")
             logger.warning(
                 "Runtime converse %s (model=%s), falling back to Anthropic API",
                 error_code,
-                kwargs.get("modelId"),
+                model_id,
             )
+            alert_key = f"{error_code}:{model_id}"
+            if self._on_fallback and alert_key not in self._fallback_alerted:
+                self._fallback_alerted.add(alert_key)
+                self._on_fallback(error_code, model_id)
             try:
                 return self._call_anthropic(**kwargs)
             except Exception as fallback_exc:

@@ -617,7 +617,20 @@ def execute_process(
 
     from cogos.executor.llm_client import LLMClient
     runtime = _get_runtime()
-    llm = LLMClient(runtime=runtime, region=config.region, provider=config.llm_provider, secrets_provider=runtime.get_secrets_provider())
+
+    def _on_bedrock_fallback(error_code: str, model_id: str) -> None:
+        try:
+            repo.create_alert(
+                severity="warning",
+                alert_type="llm:bedrock_fallback",
+                source="executor",
+                message=f"Bedrock {error_code} for {model_id}, using Anthropic API fallback",
+                metadata={"error_code": error_code, "model_id": model_id, "process": process.name},
+            )
+        except Exception:
+            logger.debug("Could not create bedrock fallback alert")
+
+    llm = LLMClient(runtime=runtime, region=config.region, provider=config.llm_provider, secrets_provider=runtime.get_secrets_provider(), on_fallback=_on_bedrock_fallback)
 
     # Build system prompt using the shared ContextEngine
     from cogos.files.context_engine import ContextEngine

@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 import os
 
+from cogos.db.local_repository import LocalRepository
 from cogos.db.repository import Repository
+from cogtainer.runtime.factory import create_executor_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +24,11 @@ def get_repo() -> Repository:
     global _repo
     if _repo is None:
         if os.environ.get("USE_LOCAL_DB") == "1":
-            from cogos.db.local_repository import LocalRepository
-
             logger.info("USE_LOCAL_DB=1, using local repository")
             _repo = LocalRepository()
         else:
-            _repo = Repository.create()
+            runtime = create_executor_runtime()
+            client = runtime.get_rds_data_client()
+            _repo = Repository.create(client=client)
     assert _repo is not None
     return _repo
