@@ -180,26 +180,89 @@ export function Header({
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Left: cogent name + inline status */}
+      {/* Left: cogent name + status badges + tick */}
       <div className="flex items-center gap-3">
         <span
           style={{
             color: "var(--accent)",
             fontSize: "15px",
             fontWeight: 700,
+            cursor: "default",
           }}
         >
           {cogentName}
         </span>
-        <span
-          style={{
-            fontSize: "10px",
-            fontFamily: "var(--font-mono)",
-            color: error ? "var(--error)" : "var(--text-muted)",
-          }}
-        >
-          {statusText}
-        </span>
+
+        {/* API badge with tooltip */}
+        <div className="relative group/api">
+          <span
+            style={{
+              fontSize: "10px",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              color: error ? "var(--error)" : "var(--success)",
+              background: error ? "rgba(239,68,68,0.15)" : "rgba(52,211,153,0.15)",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              cursor: "default",
+            }}
+          >
+            API
+          </span>
+          <div
+            className="absolute left-0 top-full mt-1 hidden group-hover/api:block z-50"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              minWidth: "200px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              fontSize: "10px",
+              fontFamily: "var(--font-mono)",
+              color: error ? "var(--error)" : "var(--text-muted)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {statusText}
+          </div>
+        </div>
+
+        {/* WS badge with tooltip */}
+        <div className="relative group/ws">
+          <span
+            style={{
+              fontSize: "10px",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              color: wsColor,
+              background: stableConnected ? "rgba(52,211,153,0.15)" : "rgba(234,179,8,0.15)",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              cursor: "default",
+            }}
+          >
+            WS
+          </span>
+          <div
+            className="absolute left-0 top-full mt-1 hidden group-hover/ws:block z-50"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              fontSize: "10px",
+              fontFamily: "var(--font-mono)",
+              color: wsColor,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {stableConnected ? "connected" : "disconnected"}
+          </div>
+        </div>
+
+        {/* Scheduler heartbeat — always visible */}
         {tick != null && (
           <span
             title={`Last scheduler tick: ${schedulerLastTick}`}
@@ -213,16 +276,6 @@ export function Header({
             tick {tick.text}
           </span>
         )}
-        <span
-          style={{
-            fontSize: "10px",
-            fontFamily: "var(--font-mono)",
-            color: wsColor,
-            opacity: 0.7,
-          }}
-        >
-          ws {stableConnected ? "connected" : "disconnected"}
-        </span>
       </div>
 
       {/* Right: time range picker + refresh */}
