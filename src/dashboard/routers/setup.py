@@ -245,24 +245,27 @@ def _build_discord_setup(name: str) -> ChannelSetup:
 def _gemini_secret_status(
     name: str,
     region: str,
-) -> tuple[bool | None, str | None]:
-    secret_id = f"cogent/{name}/gemini"
-    try:
-        raw = _secrets_provider.get_secret(secret_id)
-        data = json.loads(raw)
-        return bool(data.get("api_key")), None
-    except KeyError:
-        return False, None
-    except Exception as exc:
-        logger.warning("Gemini secret check failed for %s: %s", name, exc)
-        return None, type(exc).__name__
+) -> tuple[bool | None, str | None, str | None]:
+    """Return (configured, error, source_path) for the Gemini secret."""
+    for secret_id in (f"cogent/{name}/gemini", "cogent/all/gemini"):
+        try:
+            raw = _secrets_provider.get_secret(secret_id)
+            data = json.loads(raw)
+            if data.get("api_key"):
+                return True, None, secret_id
+        except KeyError:
+            continue
+        except Exception as exc:
+            logger.warning("Gemini secret check failed for %s: %s", name, exc)
+            return None, type(exc).__name__, None
+    return False, None, None
 
 
 def _build_gemini_setup(name: str) -> ChannelSetup:
     region = os.environ.get("AWS_REGION", "us-east-1")
     secret_path = f"cogent/{name}/gemini"
 
-    secret_configured, secret_check_error = _gemini_secret_status(name, region)
+    secret_configured, secret_check_error, secret_source = _gemini_secret_status(name, region)
 
     diagnostics: list[str] = []
     if secret_check_error:
@@ -274,7 +277,7 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
             title="Get a Gemini API key",
             description="Create an API key in Google AI Studio for image generation.",
             status=SetupStatus.READY,
-            detail="A Gemini API key is already stored.",
+            detail=f"A Gemini API key is already stored (source: {secret_source}).",
             action=SetupAction(
                 label="Open Google AI Studio",
                 href="https://aistudio.google.com/apikey",
@@ -285,7 +288,7 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
             title="Store the API key",
             description="The image generation capability reads the Gemini key from Secrets Manager.",
             status=SetupStatus.READY,
-            detail=f"Key is present at {secret_path}.",
+            detail=f"Key is present at {secret_source}.",
         )
     elif secret_configured is False:
         get_key_step = SetupStep(
@@ -357,8 +360,9 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
         if any(s.status == SetupStatus.UNKNOWN for s in (get_key_step, store_key_step))
         else SetupStatus.NEEDS_ACTION
     )
+    is_shared = secret_source == "cogent/all/gemini" if secret_source else False
     summary = (
-        "Gemini API key is configured and ready for image generation."
+        f"Gemini API key is configured via {'shared' if is_shared else 'cogent-specific'} secret and ready for image generation."
         if ready
         else "Some live checks were unavailable."
         if status == SetupStatus.UNKNOWN

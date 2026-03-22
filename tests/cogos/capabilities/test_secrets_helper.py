@@ -64,3 +64,44 @@ class TestCogentPlaceholder:
         with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(RuntimeError, match="COGENT env var is not set"):
                 fetch_secret("cogent/{cogent}/github", secrets_provider=provider)
+
+
+class TestAllFallback:
+    @patch.dict("os.environ", {"COGENT": "agora"})
+    def test_falls_back_to_all(self):
+        """When cogent-specific secret missing, falls back to cogent/all/..."""
+        provider = _mock_provider(
+            secrets={"cogent/all/gemini": "shared-key"},
+            raise_on={"cogent/agora/gemini"},
+        )
+        result = fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)
+        assert result == "shared-key"
+
+    @patch.dict("os.environ", {"COGENT": "agora"})
+    def test_cogent_specific_takes_precedence(self):
+        """Cogent-specific secret is preferred over cogent/all."""
+        provider = _mock_provider(
+            secrets={
+                "cogent/agora/gemini": "agora-key",
+                "cogent/all/gemini": "shared-key",
+            },
+        )
+        result = fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)
+        assert result == "agora-key"
+
+    @patch.dict("os.environ", {"COGENT": "agora"})
+    def test_raises_when_both_missing(self):
+        """Raises RuntimeError when neither cogent-specific nor all exists."""
+        provider = _mock_provider(
+            raise_on={"cogent/agora/gemini", "cogent/all/gemini"},
+        )
+        with pytest.raises(RuntimeError, match="Could not fetch secret"):
+            fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)
+
+    def test_no_fallback_for_non_cogent_keys(self):
+        """Keys without {cogent} placeholder don't get an all fallback."""
+        provider = MagicMock()
+        provider.get_secret.side_effect = KeyError("nope")
+        with pytest.raises(RuntimeError, match="Could not fetch secret"):
+            fetch_secret("some/other/key", secrets_provider=provider)
+        provider.get_secret.assert_called_once_with("some/other/key", field=None)
