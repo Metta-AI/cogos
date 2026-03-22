@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -147,6 +150,10 @@ def load_image(image_dir: Path) -> ImageSpec:
         for py in sorted(init_dir.glob("*.py")):
             if py.name.startswith("_"):
                 continue
+            # Ensure script is within the expected init directory
+            if not py.resolve().is_relative_to(init_dir.resolve()):
+                logger.warning("Skipping init script outside image dir: %s", py)
+                continue
             exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
 
     # Upload all files under the image directory to mnt/boot/.
@@ -177,6 +184,10 @@ def load_image(image_dir: Path) -> ImageSpec:
             if app_init.is_dir():
                 for py in sorted(app_init.glob("*.py")):
                     if py.name.startswith("_"):
+                        continue
+                    # Ensure script is within the expected app init directory
+                    if not py.resolve().is_relative_to(app_init.resolve()):
+                        logger.warning("Skipping app init script outside app dir: %s", py)
                         continue
                     exec(compile(py.read_text(), str(py), "exec"), builtins.copy())
 

@@ -5,6 +5,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY . .
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . \
+    && useradd --create-home --shell /bin/bash appuser && chown -R appuser:appuser /app
+USER appuser
 
 CMD ["python", "-m", "cogos.io.discord.bridge"]

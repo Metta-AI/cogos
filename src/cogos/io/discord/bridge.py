@@ -748,7 +748,7 @@ class DiscordBridge:
             return None
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
                 async with session.get(attachment.url) as resp:
                     if resp.status != 200:
                         logger.warning("Failed to download attachment %s: HTTP %s", attachment.filename, resp.status)
@@ -1157,7 +1157,7 @@ class DiscordBridge:
                 url_specs.append(spec)
 
         if url_specs:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
                 for spec in url_specs:
                     url = spec["url"]
                     filename = spec.get("filename", "file")

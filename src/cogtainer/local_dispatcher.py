@@ -44,7 +44,7 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
         repo.set_meta("scheduler:last_tick")
         repo.set_meta("state:modified_at")
     except Exception:
-        logger.debug("Heartbeat failed", exc_info=True)
+        logger.warning("Heartbeat failed", exc_info=True)
 
     # 2a. Reap dead executor subprocesses
     try:
@@ -53,7 +53,7 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
             if dead:
                 logger.warning("Failed %s runs from dead executor subprocesses", dead)
     except Exception:
-        logger.debug("Reap dead executors failed", exc_info=True)
+        logger.warning("Reap dead executors failed", exc_info=True)
 
     # 2b. Reap stale runs (15-minute timeout)
     try:
@@ -61,7 +61,7 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
         if reaped:
             logger.warning("Reaped %s stale runs", reaped)
     except Exception:
-        logger.debug("Reap stale runs failed", exc_info=True)
+        logger.warning("Reap stale runs failed", exc_info=True)
 
     # 3. Throttle check
     try:
@@ -69,13 +69,13 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
             logger.info("Throttle cooldown active — skipping dispatch")
             return {"dispatched": 0, "throttle_cooldown": True}
     except Exception:
-        logger.debug("Throttle check failed", exc_info=True)
+        logger.warning("Throttle check failed", exc_info=True)
 
     # 4. System ticks
     try:
         apply_scheduled_messages(repo, now=datetime.now(timezone.utc))
     except Exception:
-        logger.debug("System ticks failed", exc_info=True)
+        logger.warning("System ticks failed", exc_info=True)
 
     # 5. Match messages
     try:
@@ -83,13 +83,13 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
         if match_result.deliveries_created > 0:
             logger.info("Matched %s message deliveries", match_result.deliveries_created)
     except Exception:
-        logger.debug("Match messages failed", exc_info=True)
+        logger.warning("Match messages failed", exc_info=True)
 
     # 6. Select processes
     try:
         select_result = scheduler.select_processes(slots=50)
     except Exception:
-        logger.debug("Select processes failed", exc_info=True)
+        logger.warning("Select processes failed", exc_info=True)
         return {"dispatched": dispatched}
 
     # 7. Dispatch via runtime.spawn_executor

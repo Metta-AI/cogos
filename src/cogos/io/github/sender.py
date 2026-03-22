@@ -16,7 +16,8 @@ class GitHubSender:
                     "Authorization": f"token {self._token}",
                     "Accept": "application/vnd.github+json",
                     "User-Agent": "cogent",
-                }
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
             )
         return self._session
 

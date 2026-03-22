@@ -72,6 +72,7 @@ def create_email_route(
             "matchers": [{"type": "literal", "field": "to", "value": address}],
             "actions": [{"type": "worker", "value": ["cogent-email-worker"]}],
         },
+        timeout=30,
     )
     resp.raise_for_status()
     result = resp.json()
@@ -91,6 +92,7 @@ def set_kv_route(
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}/storage/kv/namespaces/{ns_id}/values/{cogent_name}",
         headers=_cf_headers(),
         data=ingest_url,
+        timeout=30,
     )
     resp.raise_for_status()
     logger.info("Set KV route: %s -> %s", cogent_name, ingest_url)

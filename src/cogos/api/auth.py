@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +20,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 _cached_signing_key: str | None = None
+_signing_key_lock = threading.Lock()
 
 
 def _get_signing_key() -> str:
@@ -27,34 +29,40 @@ def _get_signing_key() -> str:
     if _cached_signing_key is not None:
         return _cached_signing_key
 
-    from cogos.api.config import settings
-
-    # Prefer explicit env var
-    if settings.jwt_secret:
-        _cached_signing_key = settings.jwt_secret
-        return _cached_signing_key
-
-    # Fall back to Secrets Manager
-    if settings.jwt_secret_id:
-        try:
-            import json
-
-            import boto3
-
-            sm = boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION", "us-east-1"))
-            resp = sm.get_secret_value(SecretId=settings.jwt_secret_id)
-            raw = resp["SecretString"]
-            # Accept both plain string and JSON {"key": "..."}
-            try:
-                data = json.loads(raw)
-                _cached_signing_key = data.get("key", raw)
-            except (json.JSONDecodeError, TypeError):
-                _cached_signing_key = raw
+    with _signing_key_lock:
+        # Double-check after acquiring lock
+        if _cached_signing_key is not None:
             return _cached_signing_key
-        except Exception:
-            logger.warning("Could not load JWT signing key from Secrets Manager")
 
-    raise RuntimeError("No JWT signing key configured — set COGOS_API_JWT_SECRET or configure jwt_secret_id")
+        from cogos.api.config import settings
+
+        # Prefer explicit env var
+        if settings.jwt_secret:
+            _cached_signing_key = settings.jwt_secret
+            return _cached_signing_key
+
+        # Fall back to Secrets Manager
+        if settings.jwt_secret_id:
+            try:
+                import json
+
+                import boto3
+
+                sm = boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+                resp = sm.get_secret_value(SecretId=settings.jwt_secret_id)
+                raw = resp["SecretString"]
+                # Accept both plain string and JSON {"key": "..."}
+                try:
+                    data = json.loads(raw)
+                    _cached_signing_key = data.get("key", raw)
+                except (json.JSONDecodeError, TypeError):
+                    _cached_signing_key = raw
+                assert _cached_signing_key is not None
+                return _cached_signing_key
+            except Exception:
+                logger.warning("Could not load JWT signing key from Secrets Manager", exc_info=True)
+
+        raise RuntimeError("No JWT signing key configured — set COGOS_API_JWT_SECRET or configure jwt_secret_id")
 
 
 def _get_executor_key() -> str:
@@ -79,7 +87,7 @@ def _get_executor_key() -> str:
             except (json.JSONDecodeError, TypeError):
                 return raw
         except Exception:
-            logger.warning("Could not load executor key from Secrets Manager")
+            logger.warning("Could not load executor key from Secrets Manager", exc_info=True)
 
     cogent = os.environ.get("COGENT", "")
     if cogent:
@@ -98,7 +106,7 @@ def _get_executor_key() -> str:
             except (json.JSONDecodeError, TypeError):
                 return raw
         except Exception:
-            pass
+            logger.warning("Could not load executor key for cogent %s", cogent, exc_info=True)
 
     raise RuntimeError("No executor key configured — set COGOS_API_EXECUTOR_KEY")
 

@@ -366,7 +366,10 @@ def _update_ecs_image(ecs_client, session, service_arn: str, tag: str) -> tuple[
             f"Check CI build status: gh run list --repo Metta-AI/cogos --workflow docker-build-{prefix}.yml"
         ) from e
 
-    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
+    services = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"]
+    if not services:
+        raise click.ClickException(f"ECS service not found: {service_arn}")
+    svc_desc = services[0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
 
@@ -776,7 +779,10 @@ def _read_docker_version(project_root: str) -> str:
 
 def _get_deployed_docker_version(ecs_client, service_arn: str) -> str:
     """Read the DOCKER_VERSION label from the currently deployed container."""
-    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
+    services = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"]
+    if not services:
+        return ""
+    svc_desc = services[0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
     for c in task_def.get("containerDefinitions", []):
@@ -938,9 +944,15 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     repo_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent"
     click.echo("  Logging into ECR...")
     token_resp = ecr.get_authorization_token()
-    auth = token_resp["authorizationData"][0]
+    auth_data = token_resp.get("authorizationData", [])
+    if not auth_data:
+        raise click.ClickException("ECR authorization failed — no authorizationData returned")
+    auth = auth_data[0]
     user_pass = base64.b64decode(auth["authorizationToken"]).decode()
-    password = user_pass.split(":", 1)[1]
+    parts = user_pass.split(":", 1)
+    if len(parts) != 2:
+        raise click.ClickException("Unexpected ECR auth token format")
+    password = parts[1]
     login_result = subprocess.run(
         ["docker", "login", "--username", "AWS", "--password-stdin", auth["proxyEndpoint"]],
         input=password,
@@ -965,7 +977,10 @@ def _docker_build_push_deploy(ctx, session, name, safe_name, project_root, skip_
     service_arn = _find_dashboard_service(ecs_client, safe_name)
 
     click.echo("  Updating task definition...")
-    svc_desc = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"][0]
+    services = ecs_client.describe_services(cluster=naming.cluster_name(), services=[service_arn])["services"]
+    if not services:
+        raise click.ClickException(f"Dashboard ECS service not found: {service_arn}")
+    svc_desc = services[0]
     task_def_arn = svc_desc["taskDefinition"]
     task_def = ecs_client.describe_task_definition(taskDefinition=task_def_arn)["taskDefinition"]
 

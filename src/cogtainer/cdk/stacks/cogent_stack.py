@@ -109,15 +109,17 @@ class CogentStack(Stack):
             )
         )
 
-        # EventBridge
+        # EventBridge — scoped to this cogtainer's event bus
         self.cogent_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["events:PutEvents"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:events:*:*:event-bus/{event_bus_name}",
+                ],
             )
         )
 
-        # Bedrock
+        # Bedrock — scoped to foundation models and inference profiles
         self.cogent_role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
@@ -125,7 +127,10 @@ class CogentStack(Stack):
                     "bedrock:Converse",
                     "bedrock:InvokeModelWithResponseStream",
                 ],
-                resources=["*"],
+                resources=[
+                    "arn:aws:bedrock:*::foundation-model/*",
+                    "arn:aws:bedrock:*:*:inference-profile/*",
+                ],
             )
         )
         # Marketplace (required for Bedrock model subscriptions)
@@ -146,7 +151,6 @@ class CogentStack(Stack):
                     actions=["ses:SendEmail", "ses:SendRawEmail"],
                     resources=[
                         f"arn:aws:ses:*:*:identity/{domain}",
-                        "arn:aws:ses:*:*:identity/*",
                     ],
                 )
             )
@@ -161,11 +165,21 @@ class CogentStack(Stack):
             )
         )
 
-        # ECS RunTask + iam:PassRole
+        # ECS RunTask — scoped to this cogtainer's task definitions
         self.cogent_role.add_to_policy(
             iam.PolicyStatement(
-                actions=["ecs:RunTask", "iam:PassRole"],
-                resources=["*"],
+                actions=["ecs:RunTask"],
+                resources=[
+                    f"arn:aws:ecs:*:*:task-definition/cogtainer-{cogtainer_name}-*",
+                ],
+            )
+        )
+
+        # iam:PassRole — scoped to this cogent's own role only
+        self.cogent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                resources=[self.cogent_role.role_arn],
             )
         )
 
@@ -546,11 +560,13 @@ class CogentStack(Stack):
             )
         )
 
-        # Events
+        # Events — scoped to this cogtainer's event bus
         task_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["events:PutEvents"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:events:*:*:event-bus/{event_bus_name}",
+                ],
             )
         )
 
@@ -741,11 +757,13 @@ class CogentStack(Stack):
             )
         )
 
-        # EventBridge
+        # EventBridge — scoped to this cogtainer's event bus
         bridge_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["events:PutEvents"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:events:*:*:event-bus/{event_bus_name}",
+                ],
             )
         )
 

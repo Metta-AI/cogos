@@ -6,6 +6,21 @@ import logging
 
 import requests
 
+# Default timeout for all Cloudflare API calls (connect, read) in seconds.
+# Applied via a shared session to avoid repeating timeout= on every call.
+_TIMEOUT = (10, 30)
+
+
+class _TimeoutSession(requests.Session):
+    """requests.Session that applies a default timeout to all requests."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", _TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
+requests = _TimeoutSession()  # type: ignore[assignment]
+
 from cogtainer.aws import ORG_EMAIL_DOMAIN
 from cogtainer.deploy_config import deploy_config
 from cogtainer.secret_store import SecretStore

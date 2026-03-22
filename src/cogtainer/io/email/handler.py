@@ -112,7 +112,7 @@ def _try_asana_auto_accept(cogent_name: str, payload: dict) -> None:
         return
 
     logger.info("Auto-accepting Asana invite cogent=%s", cogent_name)
-    resp = requests.get(link, allow_redirects=True)
+    resp = requests.get(link, allow_redirects=True, timeout=30)
     if resp.status_code < 400:
         logger.info("Asana invite accepted cogent=%s", cogent_name)
         _get_dynamo_table().update_item(

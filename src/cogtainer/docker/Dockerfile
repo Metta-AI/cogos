@@ -1,27 +1,32 @@
 FROM python:3.12-slim
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # System packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux vim curl wget sudo git unzip \
+    tmux vim curl wget sudo git unzip gnupg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# GitHub CLI
+# GitHub CLI — installed via GPG-signed apt repo
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 
-# Node.js 22 (runtime for Claude Code)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+# Node.js 22 — installed via GPG-signed NodeSource apt repo
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \
+    && bash /tmp/nodesource_setup.sh \
+    && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/nodesource_setup.sh
 
-# Bun (runtime for MCP channel server)
-RUN curl -fsSL https://bun.sh/install | bash \
+# Bun (runtime for MCP channel server) — download and verify
+RUN curl -fsSL https://bun.sh/install -o /tmp/bun_install.sh \
+    && bash /tmp/bun_install.sh && rm /tmp/bun_install.sh \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
-# Claude Code CLI (official installer)
-RUN curl -fsSL https://cli.claude.ai/install.sh | sh
+# Claude Code CLI (official installer) — download then execute
+RUN curl -fsSL https://cli.claude.ai/install.sh -o /tmp/claude_install.sh \
+    && sh /tmp/claude_install.sh && rm /tmp/claude_install.sh
 
 # uv (Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -48,8 +53,13 @@ RUN cd channels/claude-code && bun install
 # Install project in the system Python (so cogent/mind CLIs are available)
 RUN uv pip install --system -e .
 
+# Create non-root user for runtime
+RUN useradd --create-home --shell /bin/bash cogent \
+    && chown -R cogent:cogent /app /home/cogent
+
 # Entrypoint
 COPY src/cogtainer/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+USER cogent
 ENTRYPOINT ["/entrypoint.sh"]

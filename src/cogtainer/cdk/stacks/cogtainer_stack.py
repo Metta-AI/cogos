@@ -59,7 +59,7 @@ class CogtainerStack(cdk.Stack):
             serverless_v2_min_capacity=0.5,
             serverless_v2_max_capacity=16.0,
             vpc=self.vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             removal_policy=RemovalPolicy.RETAIN,
             writer=rds.ClusterInstance.serverless_v2("Writer"),
         )

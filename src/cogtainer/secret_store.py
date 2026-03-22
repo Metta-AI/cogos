@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Any
 
@@ -22,6 +23,7 @@ class SecretStore:
         self._region = region
         self._client: Any | None = None
         self._cache: dict[str, tuple[dict, float]] = {}
+        self._lock = threading.Lock()
 
     @property
     def client(self) -> Any:
@@ -32,14 +34,16 @@ class SecretStore:
     def get(self, path: str, *, use_cache: bool = True) -> dict[str, Any]:
         """Fetch and parse a secret value. Returns the parsed JSON dict."""
         now = time.time()
-        if use_cache and path in self._cache:
-            value, expires_at = self._cache[path]
-            if expires_at > now:
-                return value
+        with self._lock:
+            if use_cache and path in self._cache:
+                value, expires_at = self._cache[path]
+                if expires_at > now:
+                    return value
 
         resp = self.client.get_secret_value(SecretId=path)
         value = json.loads(resp["SecretString"])
-        self._cache[path] = (value, now + CACHE_TTL)
+        with self._lock:
+            self._cache[path] = (value, now + CACHE_TTL)
         return value
 
     def get_token(self, path: str) -> str:
@@ -53,13 +57,15 @@ class SecretStore:
             self.client.put_secret_value(SecretId=path, SecretString=secret_string)
         except self.client.exceptions.ResourceNotFoundException:
             self.client.create_secret(Name=path, SecretString=secret_string)
-        self._cache.pop(path, None)
+        with self._lock:
+            self._cache.pop(path, None)
         logger.info("Stored secret: %s", path)
 
     def delete(self, path: str) -> None:
         """Delete a secret."""
         self.client.delete_secret(SecretId=path, ForceDeleteWithoutRecovery=True)
-        self._cache.pop(path, None)
+        with self._lock:
+            self._cache.pop(path, None)
         logger.info("Deleted secret: %s", path)
 
     def list(self, prefix: str) -> list[str]:
@@ -75,7 +81,8 @@ class SecretStore:
 
     def invalidate(self, path: str | None = None) -> None:
         """Clear cache for a specific path, or all if path is None."""
-        if path:
-            self._cache.pop(path, None)
-        else:
-            self._cache.clear()
+        with self._lock:
+            if path:
+                self._cache.pop(path, None)
+            else:
+                self._cache.clear()

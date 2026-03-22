@@ -31,6 +31,9 @@ RUN chmod +x /app/entrypoint.sh
 # Bake the version into the image for auto-rebuild detection
 COPY dashboard/DOCKER_VERSION /app/DOCKER_VERSION
 
+RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV PORT=5174
 ENV HOSTNAME=0.0.0.0
 

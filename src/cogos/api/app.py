@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -26,35 +27,37 @@ from cogos.api.config import settings
 
 logger = logging.getLogger(__name__)
 
-_cached_admin_key: str | None = None
+
+@functools.lru_cache(maxsize=1)
+def _get_admin_key() -> str:
+    """Load the dashboard admin API key (cached after first call)."""
+    env_key = os.environ.get("DASHBOARD_API_KEY")
+    if env_key:
+        return env_key
+
+    cogent_name = os.environ.get("COGENT", "")
+    if cogent_name:
+        try:
+            import json
+
+            import boto3
+
+            region = os.environ.get("AWS_REGION", "us-east-1")
+            sm = boto3.client("secretsmanager", region_name=region)
+            secret_id = f"cogent/{cogent_name}/dashboard-api-key"
+            resp = sm.get_secret_value(SecretId=secret_id)
+            data = json.loads(resp["SecretString"])
+            return data.get("api_key", "")
+        except Exception:
+            logger.warning("Could not load dashboard API key from Secrets Manager", exc_info=True)
+
+    return ""
 
 
 def _verify_admin_key(key: str) -> bool:
     """Check key against the dashboard API key stored in Secrets Manager."""
-    global _cached_admin_key
-    if _cached_admin_key is None:
-        env_key = os.environ.get("DASHBOARD_API_KEY")
-        if env_key:
-            _cached_admin_key = env_key
-        else:
-            cogent_name = os.environ.get("COGENT", "")
-            if cogent_name:
-                try:
-                    import json
-
-                    import boto3
-
-                    sm = boto3.client("secretsmanager", region_name="us-east-1")
-                    secret_id = f"cogent/{cogent_name}/dashboard-api-key"
-                    resp = sm.get_secret_value(SecretId=secret_id)
-                    data = json.loads(resp["SecretString"])
-                    _cached_admin_key = data.get("api_key", "")
-                except Exception:
-                    logger.warning("Could not load dashboard API key from Secrets Manager")
-                    _cached_admin_key = ""
-            else:
-                _cached_admin_key = ""
-    return bool(_cached_admin_key) and key == _cached_admin_key
+    expected = _get_admin_key()
+    return bool(expected) and key == expected
 
 
 @asynccontextmanager
@@ -101,7 +104,10 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router, prefix="/api/v1")
     app.include_router(api_capabilities.router, prefix="/api/v1")
 
-    # ── Dashboard routers ──────────────────────────────────────
+    # ── Dashboard routers (API-key protected) ────────────────────
+    from fastapi import Depends
+
+    from dashboard.auth import verify_dashboard_api_key
     from dashboard.routers import (
         alerts,
         capabilities,
@@ -124,25 +130,27 @@ def create_app() -> FastAPI:
         traces,
     )
 
-    app.include_router(alerts.router, prefix="/api/cogents/{name}")
-    app.include_router(chat.router, prefix="/api/cogents/{name}")
-    app.include_router(processes.router, prefix="/api/cogents/{name}")
-    app.include_router(handlers.router, prefix="/api/cogents/{name}")
-    app.include_router(files.router, prefix="/api/cogents/{name}")
-    app.include_router(capabilities.router, prefix="/api/cogents/{name}")
-    app.include_router(channels.router, prefix="/api/cogents/{name}")
-    app.include_router(schemas.router, prefix="/api/cogents/{name}")
-    app.include_router(runs.router, prefix="/api/cogents/{name}")
-    app.include_router(traces.router, prefix="/api/cogents/{name}")
-    app.include_router(trace_viewer.router, prefix="/api/cogents/{name}")
-    app.include_router(cogos_status.router, prefix="/api/cogents/{name}")
-    app.include_router(cron.router, prefix="/api/cogents/{name}")
-    app.include_router(resources.router, prefix="/api/cogents/{name}")
-    app.include_router(operations.router, prefix="/api/cogents/{name}")
-    app.include_router(setup.router, prefix="/api/cogents/{name}")
-    app.include_router(diagnostics.router, prefix="/api/cogents/{name}")
-    app.include_router(integrations.router, prefix="/api/cogents/{name}")
-    app.include_router(executors.router, prefix="/api/cogents/{name}")
+    dash_deps = [Depends(verify_dashboard_api_key)]
+
+    app.include_router(alerts.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(chat.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(processes.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(handlers.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(files.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(capabilities.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(channels.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(schemas.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(runs.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(traces.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(trace_viewer.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(cogos_status.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(cron.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(resources.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(operations.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(setup.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(diagnostics.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(integrations.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(executors.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
 
     # ── Common endpoints ───────────────────────────────────────
 

@@ -24,7 +24,10 @@ class AsanaClient:
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(headers=self._headers())
+            self._session = aiohttp.ClientSession(
+                headers=self._headers(),
+                timeout=aiohttp.ClientTimeout(total=30),
+            )
         return self._session
 
     async def close(self) -> None:
