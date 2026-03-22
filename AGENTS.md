@@ -102,8 +102,8 @@ Requires AWS credentials for Bedrock (LLM calls). No Lambda, no RDS, no EventBri
 ```bash
 export COGENT=local
 
-# 1. Boot an image into local DB
-cogos image boot cogos --clean
+# 1. Boot an image into local DB and start dispatcher
+cogos start --clean
 
 # 2. (Optional) Start Discord bridge locally
 cogos io discord run-local
@@ -122,7 +122,7 @@ All of the following work with `COGENT=local`:
 
 | Operation | Command |
 |-----------|---------|
-| Boot image | `cogos image boot cogos --clean` |
+| Boot image | `cogos start --clean` |
 | Check status | `cogos status` |
 | List capabilities | `cogos capability list` |
 | Inspect capability | `cogos capability get <name>` |
@@ -223,24 +223,24 @@ See [docs/deploy.md](docs/deploy.md) for the full reference. Match what changed 
 
 | What changed | Command |
 |---|---|
-| `images/**` only | `COGENT=<name> cogos image boot cogos` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `cogtainer update <name> --lambdas` |
-| `dashboard/frontend/**` only | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
-| `src/dashboard/**` (backend) | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
+| `images/**` only | `cogos restart` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `cogtainer update lambda` |
+| `dashboard/frontend/**` only | CI builds automatically; then `cogtainer update dashboard` |
+| `src/dashboard/**` (backend) | CI builds automatically; then `cogtainer update dashboard` |
 | `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; executor runs as Lambda, no ECS deploy needed |
-| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogent create <name>` |
+| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `cogtainer update dashboard` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update stack` |
 
 Common sequences:
 
 ```bash
 # Executor code change
-cogtainer update <name> --lambdas
-COGENT=<name> cogos image boot cogos    # if image also changed
+cogtainer update lambda
+cogos restart    # if image also changed
 
 # Full infrastructure change (CDK constructs, IAM, ALB)
-cogent create <name>
-COGENT=<name> cogos image boot cogos
+cogtainer update stack
+cogos restart
 ```
 
 ### Managing the Discord bridge (remote)

@@ -80,7 +80,7 @@ def update():
     """Update components of a running cogent.
 
     \b
-    Default (no subcommand): update Lambda code + RDS migrations.
+    Default (no subcommand): update all components (Lambda, RDS, dashboard, discord bridge).
     """
     pass
 
@@ -203,13 +203,16 @@ def _package_lambda_code() -> bytes:
 
 @update.command("all")
 @click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--skip-health", is_flag=True, help="Skip waiting for ECS service stability")
 @click.pass_context
-def update_all(ctx: click.Context, profile: str | None):
-    """Update Lambda + DB migrations (default)."""
+def update_all(ctx: click.Context, profile: str | None, skip_health: bool):
+    """Update all components: Lambda, DB migrations, dashboard, and discord bridge."""
     profile = resolve_org_profile(profile)
     t0 = time.monotonic()
     ctx.invoke(update_lambda, profile=profile)
     ctx.invoke(update_rds, profile=profile, force=False)
+    ctx.invoke(update_dashboard, skip_health=skip_health)
+    ctx.invoke(update_discord, profile=profile, skip_health=skip_health)
     click.echo(f"\nTotal: {time.monotonic() - t0:.1f}s")
 
 
@@ -463,6 +466,73 @@ def update_ecs(ctx: click.Context, profile: str | None, skip_health: bool, tag: 
             sys.exit(1)
     else:
         click.echo(f"  ECS deployment for cogent-{name} initiated.")
+
+
+@update.command("discord")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--skip-health", is_flag=True, help="Skip waiting for service stability")
+@click.option("--tag", default=None, help="ECR image tag to deploy (e.g. discord-bridge-abc1234)")
+@click.pass_context
+def update_discord(ctx: click.Context, profile: str | None, skip_health: bool, tag: str | None):
+    """Update the discord bridge ECS service.
+
+    \b
+    Deploys a new image to the discord bridge Fargate service.
+    Uses the version from boot manifest by default, or specify --tag.
+    """
+    name = get_cogent_name(ctx)
+    safe_name = name.replace(".", "-")
+    session = _get_session(profile)
+    cluster = naming.cluster_name()
+
+    ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
+    service_arn = _find_ecs_service(ecs_client, safe_name, "discord")
+    if not service_arn:
+        click.echo(f"  No discord bridge ECS service found for cogent-{name} in {cluster}. Skipping.")
+        return
+
+    if not tag:
+        versions = _read_boot_versions(name)
+        if versions and versions.get("discord_bridge") and versions["discord_bridge"] != "local":
+            tag = f"discord-bridge-{versions['discord_bridge']}"
+            click.echo(f"  Using discord_bridge version from boot manifest: {tag}")
+
+    click.echo(f"Updating discord bridge for cogent-{name}...")
+    click.echo(f"  Cluster: {cluster}")
+    click.echo(f"  Service: {service_arn}")
+
+    t0 = time.monotonic()
+    update_kwargs: dict = {
+        "cluster": cluster,
+        "service": service_arn,
+        "forceNewDeployment": True,
+    }
+
+    old_td_arn = None
+    if tag:
+        new_td_arn, old_td_arn = _update_ecs_image(ecs_client, session, service_arn, tag)
+        update_kwargs["taskDefinition"] = new_td_arn
+
+    ecs_client.update_service(**update_kwargs)
+
+    if old_td_arn:
+        try:
+            ecs_client.deregister_task_definition(taskDefinition=old_td_arn)
+            click.echo(f"  Deregistered old task definition: {old_td_arn.split('/')[-1]}")
+        except Exception:
+            pass
+
+    if not skip_health:
+        click.echo("  Waiting for service to stabilize...")
+        try:
+            waiter = ecs_client.get_waiter("services_stable")
+            waiter.wait(cluster=cluster, services=[service_arn])
+            click.echo(f"  Discord bridge: {click.style('deployed', fg='green')} ({time.monotonic() - t0:.1f}s)")
+        except Exception as e:
+            click.echo(f"  Service did not stabilize: {e}", err=True)
+            click.echo("  The deployment is still in progress. Check ECS console.")
+    else:
+        click.echo(f"  Discord bridge deployment initiated. ({time.monotonic() - t0:.1f}s)")
 
 
 @update.command("rds")

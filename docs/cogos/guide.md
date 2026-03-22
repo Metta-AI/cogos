@@ -14,11 +14,14 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 ### Boot a Cogent
 
 ```bash
-# Boot from an image (upserts into DB, non-destructive)
-COGENT=<name> cogos image boot cogos
+# Boot from an image and start dispatcher
+cogos start
 
 # Clean boot (wipes tables first)
-COGENT=<name> cogos image boot cogos --clean
+cogos start --clean
+
+# Restart (stop + boot + start)
+cogos restart
 ```
 
 ### Check Status
@@ -157,10 +160,7 @@ Those references are expanded directly where they appear when building the promp
 
 ```bash
 # Snapshot running state
-COGENT=<name> cogos image snapshot my-snapshot
-
-# List available images
-COGENT=<name> cogos image list
+cogos snapshot my-snapshot
 ```
 
 ## Processes
@@ -489,12 +489,13 @@ cogos cron disable <id>
 cogos cron delete <id>
 ```
 
-### Image Commands
+### Start / Stop / Restart
 
 ```bash
-cogos image boot <name> [--clean]
-cogos image snapshot <name>
-cogos image list
+cogos start [<image>] [--clean] [--skip-boot] [--daemon]
+cogos stop
+cogos restart [<image>] [--clean]
+cogos snapshot <name>
 ```
 
 ### Run Commands
@@ -529,7 +530,7 @@ If the repo root `.env` does not pin `DASHBOARD_BE_PORT` / `DASHBOARD_FE_PORT`, 
 The dashboard reads from the same local data as `cogos`, so boot local state first:
 
 ```bash
-COGENT=local cogos image boot cogos --clean
+cogos start --clean
 ```
 
 ### Panels
@@ -566,7 +567,7 @@ All under `/api/cogents/{name}/`:
 
 1. Write the prompt as a markdown file in `images/<image>/files/agents/<name>.md`
 2. Define the process in `images/<image>/init/processes.py` with capability bindings and channel handlers
-3. Boot the image: `COGENT=<name> cogos image boot <image>`
+3. Boot the image: `cogos restart`
 4. Verify: `COGENT=<name> cogos process list`
 
 ### Debugging a Failed Process
@@ -579,7 +580,7 @@ All under `/api/cogents/{name}/`:
 ### Updating a Prompt
 
 1. Edit the file in `images/<image>/files/<key>.md`
-2. Re-boot the image: `COGENT=<name> cogos image boot <image>`
+2. Re-boot the image: `cogos restart`
 3. The file store creates a new version only if content changed
 
 Or update at runtime via capability:
@@ -600,10 +601,10 @@ files.write("agents/my-agent.md", "updated prompt content")
 
 ```bash
 # Capture current state
-COGENT=<name> cogos image snapshot backup-2026-03-11
+cogos snapshot backup-2026-03-11
 
 # Boot on a different instance
-COGENT=<name> cogos image boot backup-2026-03-11 --clean
+cogos start backup-2026-03-11 --clean
 ```
 
 This copies the entire configuration (capabilities, processes, files, handlers, cron) but not runtime state (channel messages, runs, conversations).

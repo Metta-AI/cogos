@@ -25,11 +25,20 @@ Run `git diff HEAD~1 --name-only` (or broader if needed) and categorize:
 ## Commands reference
 
 ```bash
-# Reboot image (upsert capabilities, files, processes into DB)
-cogent <name> cogos image boot cogent-v1
+# Boot image and start dispatcher (upsert capabilities, files, processes into DB)
+cogent <name> cogos start
 
-# Reboot image with clean slate (wipe all tables first)
-cogent <name> cogos image boot cogent-v1 --clean
+# Boot with clean slate (wipe all tables first)
+cogent <name> cogos start --clean
+
+# Start without re-booting image
+cogent <name> cogos start --skip-boot
+
+# Stop the dispatcher
+cogent <name> cogos stop
+
+# Restart (stop + boot + start)
+cogent <name> cogos restart
 
 # Run DB migrations only
 cogent <name> cogtainer update rds
@@ -37,32 +46,28 @@ cogent <name> cogtainer update rds
 # Update Lambda function code only
 cogent <name> cogtainer update lambda
 
-# Update Lambda + run DB migrations
-cogent <name> cogtainer update lambda
-cogent <name> cogtainer update rds
-
-# Full update: Lambda + DB migrations
-cogent <name> cogtainer update all
+# Update all components (Lambda + RDS + dashboard + discord bridge)
+cogent <name> cogtainer update
 ```
 
 ## Typical sequences
 
 **Image-only change** (edited files in `images/`, e.g. prompt text, new capability definition):
 ```bash
-cogent <name> cogos image boot cogent-v1
+cogent <name> cogos restart
 ```
 
 **Executor code change** (edited `src/cogos/executor/`, `src/cogos/sandbox/`, etc.):
 ```bash
 cogent <name> cogtainer update lambda
-cogent <name> cogos image boot cogent-v1  # if image also changed
+cogent <name> cogos restart  # if image also changed
 ```
 
 **Schema migration + executor change**:
 ```bash
 cogent <name> cogtainer update rds
 cogent <name> cogtainer update lambda
-cogent <name> cogos image boot cogent-v1
+cogent <name> cogos restart
 ```
 
 ## Post-deploy

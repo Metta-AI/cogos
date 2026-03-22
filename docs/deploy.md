@@ -8,9 +8,10 @@ Four deployable components:
 
 | Component | Infrastructure | Deploy tool |
 |-----------|---------------|-------------|
-| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogtainer update <name> --lambdas` |
-| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogtainer update <name> --services` |
-| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer create <name> --type aws` |
+| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogtainer update lambda` |
+| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogtainer update dashboard` |
+| **Discord bridge** | ECS Fargate on cogtainer cluster | `cogtainer update discord` |
+| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer update stack` |
 
 ## Decision Tree
 
@@ -18,32 +19,35 @@ What changed? Run `git diff HEAD~1 --name-only` and match:
 
 | Changed paths | Command |
 |---|---|
-| `images/**` | `COGENT=<name> cogos image boot cogos` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogtainer update <name> --lambdas` |
-| `src/cogos/capabilities/**` | `cogtainer update <name> --lambdas` + `COGENT=<name> cogos image boot cogos` |
-| `dashboard/frontend/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
-| `src/dashboard/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-latest` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer create <name> --type aws` |
+| `images/**` | `cogos restart` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogtainer update lambda` |
+| `src/cogos/capabilities/**` | `cogtainer update lambda` + `cogos restart` |
+| `dashboard/frontend/**` | CI builds automatically; then `cogtainer update dashboard` |
+| `src/dashboard/**` | CI builds automatically; then `cogtainer update dashboard` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update stack` |
 
 ## Command Reference
 
-### Lambda
+### Update all components
 
 ```bash
-cogtainer update <name> --lambdas          # Update Lambda code only
-cogtainer update <name> --services         # Restart ECS services with new image
-cogtainer update <name> --all              # Update both (default if no flags given)
+cogtainer update                             # Update all: Lambda + RDS + dashboard + discord bridge
+cogtainer update lambda                      # Update Lambda code only
+cogtainer update dashboard                   # Update dashboard (frontend + ECS)
+cogtainer update discord                     # Update discord bridge ECS service
+cogtainer update rds                         # Run DB migrations
+cogtainer update ecs --tag dashboard-<sha>   # Deploy specific ECS image
 ```
 
-Options: `--lambda-s3-bucket`, `--lambda-s3-key`, `--image-tag`, `--region`, `--profile`.
-
-### Image
+### Start / Stop / Restart
 
 ```bash
-COGENT=<name> cogos image boot cogos          # Upsert capabilities, files, processes into DB
-COGENT=<name> cogos image boot cogos --clean  # Wipe all tables first, then boot
-COGENT=<name> cogos reload -i cogos -y        # Reload config from image, preserving runtime data
-COGENT=<name> cogos reload -i cogos -y --full # Wipe ALL data (including runtime) and reload
+cogos start                     # Boot image + start dispatcher
+cogos start --clean             # Wipe all tables first, then boot + start
+cogos start --skip-boot         # Start dispatcher without re-booting image
+cogos stop                      # Stop dispatcher
+cogos restart                   # Stop + boot + start
+cogos snapshot my-snapshot      # Snapshot running state into an image
 ```
 
 ### Dashboard (local)
@@ -57,37 +61,37 @@ cogos dashboard reload            # Restart (stop + start)
 ### Discord Bridge
 
 ```bash
-COGENT=<name> cogos io discord start        # Scale ECS service to 1 task
-COGENT=<name> cogos io discord stop         # Scale to 0
-COGENT=<name> cogos io discord restart      # Force new deployment
-COGENT=<name> cogos io discord status       # Check running/desired counts
+cogos io discord start        # Scale ECS service to 1 task
+cogos io discord stop         # Scale to 0
+cogos io discord restart      # Force new deployment
+cogos io discord status       # Check running/desired counts
 ```
 
 ## Typical Sequences
 
 **Image-only change** (edited files in `images/`):
 ```bash
-COGENT=<name> cogos image boot cogos
+cogos restart
 ```
 
 **Executor code change** (`src/cogos/executor/`, `src/cogos/sandbox/`):
 ```bash
-cogtainer update <name> --lambdas
-COGENT=<name> cogos image boot cogos    # if image also changed
+cogtainer update lambda
+cogos restart    # if image also changed
 ```
 
 **Full infrastructure change** (CDK constructs, IAM, ALB):
 ```bash
-cogtainer create <name> --type aws
-COGENT=<name> cogos image boot cogos
+cogtainer update stack
+cogos restart
 ```
 
 ## Post-Deploy Verification
 
 ```bash
-cogtainer status <name>                   # Infrastructure health
-COGENT=<name> cogos status                # CogOS status
-COGENT=<name> cogos process list          # Processes running
+cogtainer status                              # Infrastructure health
+cogos status                                  # CogOS status
+cogos process list                            # Processes running
 ```
 
 For dashboard, open `https://<safe-name>.<your-domain>` and confirm the change is visible.

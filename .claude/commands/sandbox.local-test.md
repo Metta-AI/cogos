@@ -27,7 +27,7 @@ uv run cogent create alpha
 ### 3. Boot the image and run init
 
 ```bash
-COGTAINER=dev COGENT=alpha uv run cogos image boot cogos
+COGTAINER=dev COGENT=alpha uv run cogos start cogos --daemon
 COGTAINER=dev COGENT=alpha uv run cogos process run init --executor local
 ```
 
@@ -68,7 +68,7 @@ Print: `Dashboard running at http://localhost:5200 — diagnostics visible`
 
 If you changed image files (`images/**`), diagnostics code, or sandbox code:
 ```bash
-COGTAINER=dev COGENT=alpha uv run cogos image boot cogos
+COGTAINER=dev COGENT=alpha uv run cogos restart
 COGTAINER=dev COGENT=alpha uv run cogos process run init --executor local
 COGTAINER=dev COGENT=alpha uv run cogos process run diagnostics --executor local --event '{"channel_name":"system:diagnostics"}'
 ```
@@ -84,7 +84,7 @@ COGTAINER=dev COGENT=alpha uv run cogos dashboard reload
 |---------|-----|
 | `NameError: name 'time' is not defined` | Sandbox code needs `import time` — allowed modules are in `src/cogos/sandbox/executor.py` |
 | `'COGTAINER'` KeyError | Set `COGTAINER=dev` in the environment |
-| `Process not found: diagnostics` | Run `cogos image boot cogos` then `cogos process run init --executor local` first |
+| `Process not found: diagnostics` | Run `cogos start` then `cogos process run init --executor local` first |
 | Diagnostics says "Ignoring wakeup" | Pass `--event '{"channel_name":"system:diagnostics"}'` |
 | Dashboard port conflict | Check `uv run cogtainer status dev` for assigned ports |
 | Frontend 404 | Run `cd dashboard/frontend && npm ci` then restart dashboard |

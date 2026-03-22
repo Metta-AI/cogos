@@ -171,12 +171,8 @@ def cogos(ctx: click.Context):
 
 
 # ═══════════════════════════════════════════════════════════
-# IMAGE commands
+# BOOT helpers (used by start)
 # ═══════════════════════════════════════════════════════════
-
-@cogos.group()
-def image():
-    """Manage CogOS images (boot, snapshot, list)."""
 
 
 def _run_migrations(repo) -> None:
@@ -200,20 +196,10 @@ def _run_migrations(repo) -> None:
     click.echo("CogOS migrations applied.")
 
 
-@image.command()
-@click.argument("name", default="cogos")
-@click.option("--clean", is_flag=True, help="Wipe all tables before loading")
-@click.option("--dry-run", is_flag=True, help="Resolve and verify versions, then exit")
-@click.option("--executor", "v_executor", default=None, help="Override executor version SHA")
-@click.option("--dashboard", "v_dashboard", default=None, help="Override dashboard version SHA")
-@click.option("--dashboard-frontend", "v_dashboard_frontend", default=None, help="Override dashboard frontend SHA")
-@click.option("--discord-bridge", "v_discord_bridge", default=None, help="Override discord bridge SHA")
-@click.option("--lambda", "v_lambda", default=None, help="Override lambda version SHA")
-@click.option("--cogos-version", "v_cogos", default=None, help="Override cogos version SHA")
-@click.pass_context
-def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_frontend,
-         v_discord_bridge, v_lambda, v_cogos):
-    """Boot CogOS from an image (default: cogos)."""
+def _boot_image(ctx: click.Context, image_name: str, clean: bool,
+                v_executor=None, v_dashboard=None, v_dashboard_frontend=None,
+                v_discord_bridge=None, v_lambda=None, v_cogos=None) -> None:
+    """Boot CogOS from an image — runs migrations, resolves versions, applies image spec."""
     from cogos.files.store import FileStore
     from cogos.image.apply import apply_image
     from cogos.image.spec import load_image
@@ -226,11 +212,12 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
         write_versions_to_filestore,
     )
 
-    image_dir = _resolve_image_dir(name)
+    image_dir = _resolve_image_dir(image_name)
     if image_dir is None:
-        click.echo(f"Image not found: {name}")
-        click.echo("Searched: ./images/, repo root, and bundled package images.")
-        return
+        raise click.ClickException(
+            f"Image not found: {image_name}\n"
+            "Searched: ./images/, repo root, and bundled package images."
+        )
 
     # 1. Resolve versions
     if os.environ.get("USE_LOCAL_DB") == "1":
@@ -278,12 +265,7 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
                 )
                 click.echo("All artifacts verified.")
         except ArtifactMissing as e:
-            click.echo(f"ERROR: {e}")
-            return
-
-    if dry_run:
-        click.echo("Dry run complete.")
-        return
+            raise click.ClickException(str(e))
 
     repo = _repo()
     _run_migrations(repo)
@@ -297,13 +279,13 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
     epoch = repo.reboot_epoch
 
     # 4. Write versions manifest
-    cogent_name = os.environ.get("COGENT", name)
+    cogent_name = os.environ.get("COGENT", image_name)
     manifest = VersionManifest(epoch=epoch, cogent_name=cogent_name, components=components)
     fs = FileStore(repo)
     write_versions_to_filestore(manifest, fs)
     click.echo(f"Wrote versions.json (epoch={epoch})")
 
-    # 5. Continue normal boot
+    # 5. Apply image spec
     spec = load_image(image_dir)
     counts = apply_image(spec, repo)
 
@@ -314,7 +296,7 @@ def boot(ctx, name, clean, dry_run, v_executor, v_dashboard, v_dashboard_fronten
     )
 
 
-@image.command()
+@cogos.command("snapshot")
 @click.argument("name")
 @click.pass_context
 def snapshot(ctx: click.Context, name: str):
@@ -331,39 +313,6 @@ def snapshot(ctx: click.Context, name: str):
     cogent_name = ctx.obj.get("cogent_name")
     snapshot_image(repo, output_dir, cogent_name=cogent_name)
     click.echo(f"Snapshot saved to images/{name}/")
-
-
-@image.command("list")
-def image_list():
-    """List available images."""
-    from cogos.image.spec import load_image
-
-    search_dirs = [
-        Path.cwd() / "images",
-        Path(__file__).resolve().parents[3] / "images",
-        Path(__file__).resolve().parents[1] / "_bundled_images",
-    ]
-    seen: set[str] = set()
-    found_any = False
-    for images_dir in search_dirs:
-        if not images_dir.is_dir():
-            continue
-        for d in sorted(images_dir.iterdir()):
-            if not d.is_dir() or d.name.startswith(".") or d.name in seen:
-                continue
-            seen.add(d.name)
-            found_any = True
-            try:
-                spec = load_image(d)
-                click.echo(
-                    f"  {d.name:20s}  {len(spec.capabilities)} caps, "
-                    f"{len(spec.resources)} resources, {len(spec.processes)} procs, "
-                    f"{len(spec.cron_rules)} cron, {len(spec.files)} files"
-                )
-            except Exception as e:
-                click.echo(f"  {d.name:20s}  (error: {e})")
-    if not found_any:
-        click.echo("No images found.")
 
 
 def _publish_process_event(repo, process, payload: dict) -> None:
@@ -1140,20 +1089,53 @@ def reboot_cmd(ctx: click.Context, yes: bool):
 
 
 # ═══════════════════════════════════════════════════════════
-# LOCAL EXECUTOR / DISPATCHER
+# START / STOP / RESTART
 # ═══════════════════════════════════════════════════════════
 
 
 @cogos.command("start")
-@click.option("--daemon", is_flag=True, help="Run in background")
+@click.argument("image_name", default="cogos")
+@click.option("--clean", is_flag=True, help="Wipe all tables before loading image")
+@click.option("--daemon", is_flag=True, help="Run dispatcher in background")
+@click.option("--skip-boot", is_flag=True, help="Skip image boot, just start the dispatcher")
+@click.option("--executor", "v_executor", default=None, help="Override executor version SHA")
+@click.option("--dashboard", "v_dashboard", default=None, help="Override dashboard version SHA")
+@click.option("--dashboard-frontend", "v_dashboard_frontend", default=None, help="Override dashboard frontend SHA")
+@click.option("--discord-bridge", "v_discord_bridge", default=None, help="Override discord bridge SHA")
+@click.option("--lambda", "v_lambda", default=None, help="Override lambda version SHA")
+@click.option("--cogos-version", "v_cogos", default=None, help="Override cogos version SHA")
 @click.pass_context
-def start_cmd(ctx, daemon):
-    """Start the local dispatcher."""
+def start_cmd(ctx, image_name, clean, daemon, skip_boot,
+              v_executor, v_dashboard, v_dashboard_frontend,
+              v_discord_bridge, v_lambda, v_cogos):
+    """Boot CogOS image and start the dispatcher.
+
+    \b
+    Boots the image (migrations + version resolution + image spec), then
+    starts the local dispatcher loop. Use --skip-boot to restart the
+    dispatcher without re-applying the image.
+
+    \b
+    Examples:
+      cogos start                      # boot default image + run dispatcher
+      cogos start cogos --clean        # clean boot
+      cogos start --skip-boot          # just start dispatcher
+      cogos start --daemon             # boot + run dispatcher in background
+    """
     runtime = ctx.obj.get("runtime")
     if runtime is None:
         raise click.ClickException("No cogtainer runtime — configure cogtainers.yml first")
-    from cogtainer.local_dispatcher import run_loop
+
     cogent_name = ctx.obj["cogent_name"]
+
+    if not skip_boot:
+        _boot_image(ctx, image_name, clean,
+                    v_executor=v_executor, v_dashboard=v_dashboard,
+                    v_dashboard_frontend=v_dashboard_frontend,
+                    v_discord_bridge=v_discord_bridge,
+                    v_lambda=v_lambda, v_cogos=v_cogos)
+
+    from cogtainer.local_dispatcher import run_loop
     repo = runtime.get_repository(cogent_name)
     if daemon:
         import subprocess
@@ -1162,6 +1144,52 @@ def start_cmd(ctx, daemon):
         click.echo("Dispatcher started in background")
     else:
         run_loop(repo, runtime, cogent_name)
+
+
+@cogos.command("stop")
+@click.pass_context
+def stop_cmd(ctx):
+    """Stop the local dispatcher."""
+    cogent_name = ctx.obj.get("cogent_name", "")
+    safe_name = cogent_name.replace(".", "-")
+
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", f"cogtainer.local_dispatcher.*{cogent_name}"],
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        out = ""
+
+    if not out:
+        click.echo(f"No running dispatcher found for {cogent_name}")
+        return
+
+    for pid_str in out.splitlines():
+        pid = int(pid_str)
+        try:
+            os.kill(pid, signal.SIGTERM)
+            click.echo(f"Stopped dispatcher (pid={pid}) for {cogent_name}")
+        except OSError as e:
+            click.echo(f"Failed to stop pid {pid}: {e}")
+
+
+@cogos.command("restart")
+@click.argument("image_name", default="cogos")
+@click.option("--clean", is_flag=True, help="Wipe all tables before loading image")
+@click.option("--daemon", is_flag=True, help="Run dispatcher in background")
+@click.option("--skip-boot", is_flag=True, help="Skip image boot, just restart the dispatcher")
+@click.pass_context
+def restart_cmd(ctx, image_name, clean, daemon, skip_boot):
+    """Stop, re-boot image, and start the dispatcher.
+
+    \b
+    Equivalent to: cogos stop && cogos start [options]
+    """
+    ctx.invoke(stop_cmd)
+    ctx.invoke(start_cmd, image_name=image_name, clean=clean, daemon=daemon,
+               skip_boot=skip_boot)
 
 
 # ═══════════════════════════════════════════════════════════
