@@ -48,7 +48,7 @@ class _ExecutorRepoStub:
 
     def register_executor(self, executor: Executor) -> str:
         self._executors[executor.executor_id] = executor
-        return executor.id
+        return str(executor.id)
 
     def get_executor(self, executor_id: str) -> Executor | None:
         return self._executors.get(executor_id)

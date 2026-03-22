@@ -43,8 +43,8 @@ def test_claude_code_inbound_schema_validates(tmp_path):
     ch = repo.get_channel_by_name("io:claude-code:inbound")
     assert ch is not None
 
+    assert ch.inline_schema is not None
     validator = SchemaValidator(ch.inline_schema)
-    # Valid payload
     validator.validate({
         "content": "Hello from Claude Code",
         "author": "user@example.com",
@@ -79,6 +79,7 @@ def test_claude_code_outbound_schema_validates(tmp_path):
     ch = repo.get_channel_by_name("io:claude-code:outbound")
     assert ch is not None
 
+    assert ch.inline_schema is not None
     validator = SchemaValidator(ch.inline_schema)
     validator.validate({
         "content": "Response from CogOS",

@@ -98,4 +98,4 @@ class TestBuildCapabilityProxies:
         repo.get_capability.return_value = cap_record
 
         proxies = build_capability_proxies(repo, pid)
-        assert proxies["stub"]._scope == {"table": "users"}
+        assert proxies["stub"]._scope == {"table": "users"}  # type: ignore[attr-defined]
