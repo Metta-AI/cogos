@@ -10,6 +10,38 @@ uv sync
 
 The CLI is registered as `cogtainer` via pyproject.toml.
 
+## Configuration (`~/.cogos/cogtainers.yml`)
+
+Each cogtainer entry supports the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | — | Runtime type: `aws`, `local`, or `docker` |
+| `region` | string | — | AWS region (AWS only) |
+| `account_id` | string | — | AWS account ID (AWS only) |
+| `domain` | string | — | Domain for dashboard routing (AWS only) |
+| `data_dir` | string | — | Local data directory (local only) |
+| `llm.provider` | string | — | LLM provider (`bedrock`) |
+| `llm.model` | string | — | Default model ID |
+| `llm.api_key_env` | string | — | Env var name for API key |
+| `dashboard_be_port` | int | — | Dashboard backend port (local only) |
+| `dashboard_fe_port` | int | — | Dashboard frontend port (local only) |
+| `tick_interval` | int | `60` | Dispatcher tick interval in seconds (local only). Lower values = faster response to incoming messages. |
+
+Example local config with fast ticks:
+
+```yaml
+cogtainers:
+  dev:
+    type: local
+    data_dir: ~/.cogos/cogtainers/dev
+    tick_interval: 5
+    llm:
+      provider: bedrock
+      model: us.anthropic.claude-sonnet-4-20250514-v1:0
+      api_key_env: ""
+```
+
 ## Authentication
 
 The cogtainer CLI uses AWS SSO profiles to authenticate. The `--profile` option must resolve to a session with admin access on your AWS management account.

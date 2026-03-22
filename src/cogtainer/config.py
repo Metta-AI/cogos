@@ -31,6 +31,7 @@ class CogtainerEntry(BaseModel):
     llm: LLMConfig
     dashboard_be_port: int | None = None
     dashboard_fe_port: int | None = None
+    tick_interval: int = 60
 
 
 class DefaultsConfig(BaseModel):
