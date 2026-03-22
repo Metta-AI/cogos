@@ -16,6 +16,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
+# Bun (runtime for MCP channel server)
+RUN curl -fsSL https://bun.sh/install | bash \
+    && ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
 # Claude Code CLI (official installer)
 RUN curl -fsSL https://cli.claude.ai/install.sh | sh
 
@@ -34,8 +38,12 @@ RUN curl -fsSL "https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/d
 # Project source
 COPY src/ /app/src/
 COPY images/ /app/images/
-COPY pyproject.toml README.md /app/
+COPY channels/ /app/channels/
+COPY .mcp.json pyproject.toml README.md /app/
 WORKDIR /app
+
+# Install channel server dependencies
+RUN cd channels/claude-code && bun install
 
 # Install project in the system Python (so cogent/mind CLIs are available)
 RUN uv pip install --system -e .
