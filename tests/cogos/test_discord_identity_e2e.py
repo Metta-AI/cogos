@@ -116,7 +116,7 @@ def test_boot_image_init_uses_capability_profiles(tmp_path):
 
 
 def test_handler_prompt_has_identity_filtering_instructions(tmp_path):
-    """The discord handler prompt tells the LLM to read profile and filter by name."""
+    """The discord handler prompt includes whoami for identity context."""
     repo_root = Path(__file__).resolve().parents[2]
     image_dir = repo_root / "images" / "cogos"
 
@@ -128,10 +128,11 @@ def test_handler_prompt_has_identity_filtering_instructions(tmp_path):
     handler_content = fs.get_content("mnt/boot/discord/handler/main.md")
     assert handler_content is not None
 
-    # Verify the handler reads identity from profile
+    # Verify the handler includes whoami for identity
     assert "mnt/boot/whoami/index.md" in handler_content or "mnt/boot/whoami/profile.md" in handler_content
-    assert "my_name" in handler_content
-    assert "my_discord_id" in handler_content
+    # Handler should NOT reference cogent capability (not bound)
+    assert "cogent.name" not in handler_content
+    assert "cogent.profile" not in handler_content
 
 
 # ── Test 4: Full prompt expansion with identity ───────────
@@ -174,5 +175,6 @@ def test_handler_prompt_expansion_includes_full_identity(tmp_path):
 
     assert "dr.beta" in prompt
     assert "555666777" in prompt
-    assert "my_name" in prompt
-    assert "my_discord_id" in prompt
+    # Handler should not reference cogent capability (not bound)
+    assert "cogent.name" not in prompt
+    assert "cogent.profile" not in prompt
