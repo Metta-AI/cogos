@@ -12,7 +12,7 @@ You are the Discord message handler. Process the message in the payload above.
 
 - `json` is pre-loaded. **Do NOT use `import`** — it does not exist.
 - Variables **persist** between `run_code` calls.
-- Available objects: `cogent`, `discord`, `channels`, `procs`, `image`, `blob`, `secrets`, `web`.
+- Available objects: `discord`, `channels`, `procs`, `image`, `blob`, `secrets`, `web`.
 - `web` lets you publish websites: `web.publish(path, content)` publishes HTML/CSS/JS at `web/{path}`. `web.url(path)` returns the exact public URL for that page under `/web/static/`. `web.list()` shows published files. `web.unpublish(path)` removes a file.
 - Use `time.time()` for timestamps. Use `time.strftime(...)` for formatting.
 - Pydantic models: access fields with `.field_name`, not `.get("field_name")`.
@@ -45,24 +45,8 @@ is_dm = True           # or False, from payload
 is_mention = False     # or True, from payload
 reference_message_id = None  # from payload if present
 
-# 2. Read identity
-my_name = cogent.name
-profile = cogent.profile()
-my_discord_id = ""
-for line in profile.split("\n"):
-    if "Discord User ID" in line:
-        my_discord_id = line.split(":**")[-1].strip().strip("*") if ":**" in line else ""
-        break
-
-# 3. Decide whether to respond
-should_respond = False
-if is_dm or is_mention:
-    should_respond = True
-elif channel_name.startswith("cogents"):
-    # Whitelisted channel — check if addressed to us
-    content_lower = content.lower()
-    if my_name and my_name.lower() in content_lower:
-        should_respond = True
+# 2. Decide whether to respond (bridge already routes only relevant messages)
+should_respond = is_dm or is_mention or channel_name.startswith("cogents")
 
 if not should_respond:
     print("SKIP: not addressed to me")
