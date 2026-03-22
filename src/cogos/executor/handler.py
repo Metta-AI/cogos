@@ -316,8 +316,11 @@ def handler(event: dict, context: Any = None) -> dict:
         run.status = RunStatus.COMPLETED
         duration_ms = int((time.time() - start_time) * 1000)
 
-        cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
-        run.cost_usd = cost
+        if run.cost_usd is None or run.cost_usd == 0:
+            cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
+            run.cost_usd = cost
+        else:
+            cost = run.cost_usd
 
         repo.complete_run(
             run.id,
@@ -379,8 +382,11 @@ def handler(event: dict, context: Any = None) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
 
-        cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
-        run.cost_usd = cost
+        if run.cost_usd is None or run.cost_usd == 0:
+            cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
+            run.cost_usd = cost
+        else:
+            cost = run.cost_usd
 
         # Preserve THROTTLED status set by execute_process
         final_status = run.status if run.status == RunStatus.THROTTLED else RunStatus.FAILED
@@ -618,6 +624,10 @@ def execute_process(
     """Execute a process run — via runtime converse loop (LLM) or direct Python sandbox."""
     if process.executor == "python":
         return _execute_python_process(process, event_data, run, config, repo, trace_id=trace_id)
+
+    if process.executor == "agent_sdk":
+        from cogos.executor.agent_sdk import execute_agent_sdk_process
+        return execute_agent_sdk_process(process, event_data, run, config, repo, trace_id=trace_id)
 
     from cogos.executor.llm_client import LLMClient
     runtime = _get_runtime()
@@ -1229,57 +1239,14 @@ def _setup_capability_proxies(
     No ambient/unconditional capabilities — if a process needs files, procs,
     or events, it must have a binding.
     """
-    import importlib
-    import inspect
+    from cogos.executor.capabilities import build_process_capabilities
+
+    caps = build_process_capabilities(process.id, repo, run_id=run_id, trace_id=trace_id, get_runtime=_get_runtime)
 
     vt.set("print", print)
-
-    pcs = repo.list_process_capabilities(process.id)
-    for pc in pcs:
-        cap_model = repo.get_capability(pc.capability)
-        if cap_model is None or not cap_model.enabled:
-            continue
-
-        # Determine namespace — use grant name from ProcessCapability
-        ns = pc.name or (cap_model.name.split("/")[0] if "/" in cap_model.name else cap_model.name)
-        logger.info("Injecting capability %s as '%s' (handler=%s)", cap_model.name, ns, cap_model.handler)
-
-        # Load the handler class
-        handler_path = cap_model.handler
-        if not handler_path:
-            continue
-        if ":" in handler_path:
-            mod_path, attr_name = handler_path.rsplit(":", 1)
-        elif "." in handler_path:
-            mod_path, attr_name = handler_path.rsplit(".", 1)
-        else:
-            continue
-
-        try:
-            mod = importlib.import_module(mod_path)
-            handler_cls = getattr(mod, attr_name)
-            if not inspect.isclass(handler_cls):
-                vt.set(ns, handler_cls)
-                continue
-            init_params = inspect.signature(handler_cls.__init__).parameters
-            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in init_params.values())
-            kwargs = {}
-            if "run_id" in init_params or has_var_keyword:
-                kwargs["run_id"] = run_id
-            if "trace_id" in init_params or has_var_keyword:
-                kwargs["trace_id"] = trace_id
-            if "runtime" in init_params or has_var_keyword:
-                kwargs["runtime"] = _get_runtime()
-            if "secrets_provider" in init_params or has_var_keyword:
-                kwargs["secrets_provider"] = _get_runtime().get_secrets_provider()
-            instance = handler_cls(repo, process.id, **kwargs)
-            # Apply scope from config if present
-            if pc.config:
-                instance = instance.scope(**pc.config)
-            instance = _wrap_capability_with_tracing(instance, ns)
-            vt.set(ns, instance)
-        except (ImportError, AttributeError) as exc:
-            logger.warning("Could not load capability %s (%s): %s", cap_model.name, handler_path, exc)
+    for ns, instance in caps.items():
+        instance = _wrap_capability_with_tracing(instance, ns)
+        vt.set(ns, instance)
 
     # Expose a summary of what's available with method signatures so the model
     # doesn't waste turns probing with dir()/help()/search.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 from uuid import UUID
 
@@ -13,12 +14,72 @@ from cogos.runtime.dispatch import build_dispatch_event
 logger = logging.getLogger(__name__)
 
 
+def dispatch_single_process(
+    repo,
+    process,
+    dispatch_result,
+    lambda_client: Any,
+    ecs_client: Any,
+    executor_function_name: str,
+    ecs_cluster: str,
+    ecs_task_definition: str,
+) -> bool:
+    payload = build_dispatch_event(repo, dispatch_result)
+
+    try:
+        if process.runner == "ecs":
+            ecs_client.run_task(
+                cluster=ecs_cluster,
+                taskDefinition=ecs_task_definition,
+                launchType="FARGATE",
+                overrides={
+                    "containerOverrides": [{
+                        "name": "agent-executor",
+                        "environment": [
+                            {"name": "DISPATCH_EVENT", "value": json.dumps(payload)},
+                        ],
+                    }],
+                },
+                networkConfiguration={
+                    "awsvpcConfiguration": {
+                        "subnets": os.environ.get("ECS_SUBNETS", "").split(","),
+                        "securityGroups": os.environ.get("ECS_SECURITY_GROUPS", "").split(","),
+                        "assignPublicIp": "DISABLED",
+                    }
+                },
+                capacityProviderStrategy=[
+                    {"capacityProvider": "FARGATE_SPOT", "weight": 1},
+                ],
+            )
+        else:
+            response = lambda_client.invoke(
+                FunctionName=executor_function_name,
+                InvocationType="Event",
+                Payload=json.dumps(payload),
+            )
+            if response.get("StatusCode") != 202:
+                raise RuntimeError(f"unexpected lambda invoke status {response.get('StatusCode')}")
+        return True
+    except Exception as exc:
+        repo.rollback_dispatch(
+            process.id,
+            UUID(dispatch_result.run_id),
+            UUID(dispatch_result.delivery_id) if dispatch_result.delivery_id else None,
+            error=str(exc),
+        )
+        logger.exception("Failed to invoke executor for process %s", process.id)
+        return False
+
+
 def dispatch_ready_processes(
     repo,
     scheduler,
     lambda_client: Any,
     executor_function_name: str,
     process_ids: set[UUID],
+    ecs_client: Any = None,
+    ecs_cluster: str = "",
+    ecs_task_definition: str = "",
 ) -> int:
     dispatched = 0
 
@@ -45,24 +106,16 @@ def dispatch_ready_processes(
             logger.warning("Dispatch failed for %s: %s", process_id, dispatch_result.error)
             continue
 
-        payload = build_dispatch_event(repo, dispatch_result)
-
-        try:
-            response = lambda_client.invoke(
-                FunctionName=executor_function_name,
-                InvocationType="Event",
-                Payload=json.dumps(payload),
-            )
-            if response.get("StatusCode") != 202:
-                raise RuntimeError(f"unexpected lambda invoke status {response.get('StatusCode')}")
+        if dispatch_single_process(
+            repo=repo,
+            process=proc,
+            dispatch_result=dispatch_result,
+            lambda_client=lambda_client,
+            ecs_client=ecs_client,
+            executor_function_name=executor_function_name,
+            ecs_cluster=ecs_cluster,
+            ecs_task_definition=ecs_task_definition,
+        ):
             dispatched += 1
-        except Exception as exc:
-            repo.rollback_dispatch(
-                process_id,
-                UUID(dispatch_result.run_id),
-                UUID(dispatch_result.delivery_id) if dispatch_result.delivery_id else None,
-                error=str(exc),
-            )
-            logger.exception("Failed to invoke executor for process %s", process_id)
 
     return dispatched

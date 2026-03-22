@@ -43,9 +43,9 @@ def model(name: str) -> str:
 class CogConfig(BaseModel):
     mode: str = "one_shot"
     priority: float = 0.0
-    executor: str = "llm"
+    executor: str = "llm"  # "llm" | "python" | "agent_sdk"
     model: str | None = None
-    runner: str = "lambda"
+    runner: str = "lambda"  # "lambda" | "ecs"
     capabilities: list = Field(default_factory=list)
     handlers: list[str] = Field(default_factory=list)
     idle_timeout_ms: int | None = None
