@@ -70,9 +70,10 @@ class AwsRuntime(CogtainerRuntime):
     def get_repository(self, cogent_name: str) -> Any:
         from cogos.db.repository import Repository
 
-        cluster_arn = os.environ["DB_CLUSTER_ARN"]
-        secret_arn = os.environ["DB_SECRET_ARN"]
-        db_name = os.environ["DB_NAME"]
+        db_info = self._get_db_info()
+        cluster_arn = db_info.get("cluster_arn") or os.environ["DB_CLUSTER_ARN"]
+        secret_arn = db_info.get("secret_arn") or os.environ["DB_SECRET_ARN"]
+        db_name = os.environ.get("DB_NAME") or f"cogent_{self._safe(cogent_name).replace('-', '_')}"
 
         client = self._session.client("rds-data", region_name=self._region)
 
