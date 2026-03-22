@@ -27,6 +27,9 @@ def get_repo() -> Repository:
             logger.info("USE_LOCAL_DB=1, using local repository")
             _repo = LocalRepository()
         else:
-            _repo = Repository.create()
+            import boto3
+            region = os.environ.get("AWS_REGION", "us-east-1")
+            client = boto3.client("rds-data", region_name=region)
+            _repo = Repository.create(client=client)
     assert _repo is not None
     return _repo
