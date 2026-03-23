@@ -32,15 +32,13 @@ class TestUnscopedAllowsAnyChannel:
         assert result.channel == "chan-123"
         mock_sqs.assert_called_once()
 
-    @patch("cogos.io.discord.capability.uuid4")
     @patch("cogos.io.discord.capability.time.time", return_value=1234.567)
     @patch("cogos.io.discord.capability._send_sqs")
-    def test_send_includes_reply_timing_metadata(self, mock_sqs, _mock_time, mock_uuid4, repo, pid):
+    def test_send_includes_reply_timing_metadata(self, mock_sqs, _mock_time, repo, pid):
         run_id = uuid4()
         trace_id = uuid4()
-        mock_uuid4.return_value = trace_id
 
-        cap = DiscordCapability(repo, pid, run_id=run_id)
+        cap = DiscordCapability(repo, pid, run_id=run_id, trace_id=trace_id)
         result = cap.send("chan-123", "hello")
 
         assert not isinstance(result, DiscordError)
@@ -54,6 +52,14 @@ class TestUnscopedAllowsAnyChannel:
         assert meta["process_id"] == str(pid)
         assert meta["run_id"] == str(run_id)
         assert "cogent_name" in meta
+
+    @patch("cogos.io.discord.capability.time.time", return_value=1234.567)
+    @patch("cogos.io.discord.capability._send_sqs")
+    def test_send_without_trace_id_sets_none(self, mock_sqs, _mock_time, repo, pid):
+        cap = DiscordCapability(repo, pid, run_id=uuid4())
+        cap.send("chan-123", "hello")
+        meta = mock_sqs.call_args.args[0]["_meta"]
+        assert meta["trace_id"] is None
 
 
 class TestScopedChannelsAllowsMatching:
