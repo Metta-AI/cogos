@@ -45,7 +45,7 @@ cogos dashboard stop        # Stop both servers
 cogos dashboard reload      # Restart (stop + start)
 ```
 
-**IMPORTANT: Always use `cogos dashboard start/stop/reload`.** Never start `uvicorn` or `next dev` manually — the dashboard requires env vars (`DASHBOARD_BE_PORT`, `COGOS_LOCAL_DATA`, `USE_LOCAL_DB`) derived from `~/.cogos/cogtainers.yml` that differ per cogtainer. Manual starts will connect to the wrong port or database.
+**IMPORTANT: Always use `cogos dashboard start/stop/reload`.** Never start `uvicorn` or `next dev` manually — the dashboard requires env vars (`DASHBOARD_BE_PORT`, `COGTAINER`, `COGENT`, `USE_LOCAL_DB`) derived from `~/.cogos/cogtainers.yml` that differ per cogtainer. Manual starts will connect to the wrong port or database.
 
 In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`, using `DASHBOARD_BE_PORT` to determine the backend port.
 
@@ -74,10 +74,10 @@ src/cli/cogtainer.py                    # cogtainer dashboard deploy/destroy
 | `DB_CLUSTER_ARN` | Aurora cluster ARN (Data API) |
 | `DB_SECRET_ARN` | Secrets Manager ARN for DB auth |
 | `DB_NAME` | Database name (`cogent`) |
-| `USE_LOCAL_DB` | Set to `1` to use LocalRepository instead of RDS Data API. Default path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/` under the checkout, or set `COGOS_LOCAL_DATA` to override. For local dev only. |
+| `USE_LOCAL_DB` | Set to `1` to use LocalRepository instead of RDS Data API. The data directory is resolved from the cogtainer config. For local dev only. |
 
 ## Database Connection
 
 The dashboard **requires** RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). If these are missing, the app will fail to start rather than silently returning empty data.
 
-For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository. Source `dashboard/ports.sh` to use `.local/cogos/` under the checkout, or set `COGOS_LOCAL_DATA` to override the path. Populate it with `COGENT=local cogos image boot cogos --clean`.
+For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository. The data directory is resolved from the cogtainer config in `~/.cogos/cogtainers.yml`. Populate it with `cogos image boot cogos --clean`.

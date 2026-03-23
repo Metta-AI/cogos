@@ -91,7 +91,7 @@ cogtainer/shared/{key}     # Org-wide shared keys (e.g., cogtainer/shared/jwt-si
 
 ## Running a Cogent Locally vs on AWS
 
-Set `COGENT=local` to run on this machine using LocalRepository. The default data path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/cogos_data.json` under the checkout instead. Set `COGOS_LOCAL_DATA` to override the path. Any other cogent name targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
+The data directory is resolved from the cogtainer config in `~/.cogos/cogtainers.yml`. For local cogtainers, data is stored under the cogtainer's `data_dir` setting. For AWS cogtainers, the cogent targets that cogent's AWS infrastructure (RDS, Lambda, ECS).
 
 The `cogos` CLI reads the cogent name from the `COGENT` env var (with `COGTAINER` if multiple cogtainers are configured) or from `~/.cogos/cogtainers.yml`.
 
@@ -162,7 +162,7 @@ cogos dashboard stop              # stop both servers
 cogos dashboard reload            # restart (stop + start)
 ```
 
-`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. It sets critical env vars (`DASHBOARD_BE_PORT`, `COGOS_LOCAL_DATA`, `USE_LOCAL_DB`, `NEXT_PUBLIC_COGENT`) from the cogtainer config. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.
+`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. It sets critical env vars (`DASHBOARD_BE_PORT`, `COGTAINER`, `COGENT`, `USE_LOCAL_DB`, `NEXT_PUBLIC_COGENT`) from the cogtainer config. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.
 
 **IMPORTANT: Always use `cogos dashboard start/stop/reload` to manage the dashboard.** Never start the backend (`uvicorn`) or frontend (`next dev`) manually — the dashboard requires env vars derived from `~/.cogos/cogtainers.yml` (ports, data directory) that differ per cogtainer. Starting components manually without these env vars will connect the frontend to the wrong backend port or the backend to the wrong database, causing silent data mismatches.
 
@@ -464,7 +464,7 @@ The backend serves REST API under `/api/cogents/{name}/`:
 
 ### Database Connection
 
-Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). Set `USE_LOCAL_DB=1` to use LocalRepository for local dev without AWS. The default local data path is `~/.cogos/local/cogos_data.json`; source `dashboard/ports.sh` to use `.local/cogos/` under the checkout instead, or set `COGOS_LOCAL_DATA` to override.
+Both the dashboard and `cogos` CLI require RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). For local cogtainers, `USE_LOCAL_DB=1` is set automatically and the data directory is resolved from the cogtainer config in `~/.cogos/cogtainers.yml`.
 
 ## Development
 

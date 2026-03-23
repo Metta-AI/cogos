@@ -1148,7 +1148,7 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
         env["COGTAINER"] = ctx.obj["cogtainer_name"]
         env["COGENT"] = cogent_name
         log_file = os.path.join(
-            os.environ.get("COGOS_LOCAL_DATA", os.path.expanduser("~/.cogos")),
+            os.path.expanduser("~/.cogos"),
             "dispatcher.log",
         )
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -1324,23 +1324,14 @@ def dashboard_start(ctx: click.Context):
     }
     apply_local_checkout_env(env, repo_root=_REPO_ROOT)
 
-    # Use cogtainer's data dir if available (so dashboard sees same DB as cogos start)
+    # Pass cogtainer/cogent so the dashboard backend can resolve the runtime
     obj = ctx.obj or {}
     ct_name = obj.get("cogtainer_name")
     cogent_name = obj.get("cogent_name")
-    if ct_name and cogent_name:
-        try:
-            from cogtainer.cogtainer_cli import _config_path as _cfg_path
-            from cogtainer.config import load_config as _load_cfg
-            cfg = _load_cfg(_cfg_path())
-            entry = cfg.cogtainers.get(ct_name) if cfg.cogtainers else None
-            if entry and entry.data_dir:
-                from pathlib import Path
-                cogent_dir = Path(entry.data_dir) / cogent_name
-                if cogent_dir.is_dir():
-                    env["COGOS_LOCAL_DATA"] = str(cogent_dir)
-        except Exception:
-            pass
+    if ct_name:
+        env["COGTAINER"] = ct_name
+    if cogent_name:
+        env["COGENT"] = cogent_name
 
     # Start backend
     be_proc = _sp.Popen(

@@ -98,7 +98,6 @@ class LocalRuntime(CogtainerRuntime):
             "COGTAINER": self._entry.type,
             "COGENT": cogent_name,
             "USE_LOCAL_DB": "1",
-            "COGOS_LOCAL_DATA": str(cogent_dir),
             "SECRETS_PROVIDER": "local",
             "SECRETS_DATA_DIR": str(self._data_dir),
             "LLM_PROVIDER": llm_provider,

@@ -43,13 +43,11 @@ _PORTS_SLOT=$(( 16#$(printf '%s' "$_PORTS_HASH" | cut -c1-8) % 5000 ))
 _DEFAULT_BE_PORT=$(( 23000 + _PORTS_SLOT ))
 _DEFAULT_FE_PORT=$(( 28000 + _PORTS_SLOT ))
 
-export COGOS_LOCAL_DATA="${COGOS_LOCAL_DATA:-$REPO_ROOT/.local/cogos}"
 export DASHBOARD_BE_PORT="${DASHBOARD_BE_PORT:-$_DEFAULT_BE_PORT}"
 export DASHBOARD_FE_PORT="${DASHBOARD_FE_PORT:-$_DEFAULT_FE_PORT}"
 
 # If executed (not sourced), print for eval.
 if [ "$_PORTS_SOURCED" -eq 0 ]; then
-  echo "export COGOS_LOCAL_DATA=$COGOS_LOCAL_DATA"
   echo "export DASHBOARD_BE_PORT=$DASHBOARD_BE_PORT"
   echo "export DASHBOARD_FE_PORT=$DASHBOARD_FE_PORT"
 fi

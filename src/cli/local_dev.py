@@ -41,7 +41,6 @@ def apply_local_checkout_env(
     """Populate local-only env defaults without overwriting explicit overrides."""
     target = env if env is not None else os.environ
     target["USE_LOCAL_DB"] = "1"
-    target.setdefault("COGOS_LOCAL_DATA", str(default_local_data_dir(repo_root=repo_root)))
     return target
 
 

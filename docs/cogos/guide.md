@@ -9,7 +9,7 @@ Practical guide to operating CogOS -- creating images, booting cogents, managing
 - AWS credentials configured (your SSO profile from `~/.cogos/cogtainers.yml`)
 - Python with `uv` for dependency management
 - Environment variables for DB: `DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`, `AWS_REGION`
-- For local dev: set `COGENT=local` and source `dashboard/ports.sh` to use `.local/cogos/cogos_data.json` under the checkout; set `COGOS_LOCAL_DATA` to override the path
+- For local dev: configure a local cogtainer in `~/.cogos/cogtainers.yml`; the data directory is resolved from the cogtainer config
 
 ### Boot a Cogent
 

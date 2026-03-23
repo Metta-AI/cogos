@@ -54,7 +54,7 @@ class LocalRepository(Repository):
 
     def __init__(self, data_dir: str | None = None) -> None:
         if data_dir is None:
-            data_dir = os.environ.get("COGOS_LOCAL_DATA", str(Path.home() / ".cogos" / "local"))
+            data_dir = str(Path.home() / ".cogos" / "local")
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._file = self._data_dir / "data.json"
