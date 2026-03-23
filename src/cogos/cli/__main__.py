@@ -1145,11 +1145,12 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
         env = os.environ.copy()
         env["COGTAINER"] = ctx.obj["cogtainer_name"]
         env["COGENT"] = cogent_name
-        log_file = os.path.join(
-            os.path.expanduser("~/.cogos"),
-            "dispatcher.log",
-        )
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        entry = ctx.obj.get("cogtainer_entry")
+        fallback = os.path.join(os.path.expanduser("~"), ".cogos", "local")
+        data_dir = entry.data_dir if entry and entry.data_dir else fallback
+        log_dir = os.path.join(data_dir, cogent_name, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "dispatcher.log")
         log_fh = open(log_file, "a")
         subprocess.Popen(
             [sys.executable, "-m", "cogos.cli", "start", "--skip-boot", "--foreground"],
@@ -1331,11 +1332,18 @@ def dashboard_start(ctx: click.Context):
     if cogent_name:
         env["COGENT"] = cogent_name
 
+    entry = obj.get("cogtainer_entry")
+    data_dir = entry.data_dir if entry and entry.data_dir else str(Path.home() / ".cogos" / "local")
+    log_dir = Path(data_dir) / (cogent_name or "default") / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    be_log = log_dir / "dashboard-backend.log"
+    fe_log = log_dir / "dashboard-frontend.log"
+
     # Start backend
     be_proc = _sp.Popen(
         [sys.executable, "-m", "uvicorn", "cogos.api.app:app", "--host", "0.0.0.0", "--port", str(be_port)],
         env={**env, "PYTHONPATH": str(_REPO_ROOT / "src")},
-        stdout=open("/tmp/cogent-backend.log", "w"),
+        stdout=open(be_log, "w"),
         stderr=_sp.STDOUT,
         start_new_session=True,
     )
@@ -1349,7 +1357,7 @@ def dashboard_start(ctx: click.Context):
         ["npx", "next", "dev", "-p", str(fe_port)],
         cwd=str(_FRONTEND_DIR),
         env=fe_env,
-        stdout=open("/tmp/cogent-frontend.log", "w"),
+        stdout=open(fe_log, "w"),
         stderr=_sp.STDOUT,
         start_new_session=True,
     )
@@ -1357,7 +1365,7 @@ def dashboard_start(ctx: click.Context):
 
     click.echo(f"Dashboard started (backend={be_proc.pid}, frontend={fe_proc.pid})")
     click.echo(f"  http://localhost:{fe_port}")
-    click.echo("  Logs: /tmp/cogent-backend.log, /tmp/cogent-frontend.log")
+    click.echo(f"  Logs: {be_log}, {fe_log}")
 
 
 @dashboard_group.command("stop")
