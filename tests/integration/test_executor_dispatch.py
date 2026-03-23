@@ -77,11 +77,13 @@ def test_local_daemon_dispatch(tmp_path):
 
     # Executor should be busy
     executor = repo.get_executor("local-daemon")
+    assert executor is not None
     assert executor.status == ExecutorStatus.BUSY
     assert executor.current_run_id == UUID(result.run_id)
 
     # Process should be running
     updated = repo.get_process(proc.id)
+    assert updated is not None
     assert updated.status == ProcessStatus.RUNNING
 
     # Run should exist
@@ -151,6 +153,7 @@ def test_claude_code_executor_dispatch(tmp_path):
 
     # Process should still be RUNNABLE (one_shot doesn't wake like daemons)
     updated = repo.get_process(proc.id)
+    assert updated is not None
     assert updated.status == ProcessStatus.RUNNABLE
 
     # Dispatch
@@ -167,6 +170,7 @@ def test_claude_code_executor_dispatch(tmp_path):
 
     # Send to executor channel (what ingress.py does)
     exec_ch = repo.get_channel_by_name("system:executor:cc-test-abc123")
+    assert exec_ch is not None
     repo.append_channel_message(ChannelMessage(
         channel=exec_ch.id,
         payload=payload,
@@ -208,10 +212,12 @@ def test_claude_code_executor_dispatch(tmp_path):
     # Executor should be back to idle
     repo.update_executor_status("cc-test-abc123", ExecutorStatus.IDLE)
     executor = repo.get_executor("cc-test-abc123")
+    assert executor is not None
     assert executor.status == ExecutorStatus.IDLE
 
     # Run should be completed
     run = repo.get_run(run_id)
+    assert run is not None
     assert run.status == RunStatus.COMPLETED
 
     print("✓ Claude-code dispatch: process dispatched, stdin→executor, stdout+stderr written, run completed")
@@ -299,6 +305,7 @@ def test_lambda_pool_dispatch(tmp_path):
 
     # Lambda pool should stay IDLE (not BUSY)
     executor = repo.get_executor("lambda-pool")
+    assert executor is not None
     assert executor.status == ExecutorStatus.IDLE
 
     print("✓ Lambda pool: dispatched, executor stays idle (fire-and-forget)")

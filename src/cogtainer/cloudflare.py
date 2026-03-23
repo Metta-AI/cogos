@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from cogtainer.secrets import cogtainer_key
 
 # Single Access Application protects all cogent dashboards via wildcard.
+SECRET_PATH = cogtainer_key("cloudflare")
 ACCESS_APP_NAME = "cogent-dashboards"
 _EMAIL_POLICY_NAME = deploy_config("cloudflare_email_policy", "allow-softmax")
 

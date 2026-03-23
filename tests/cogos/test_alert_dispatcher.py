@@ -13,7 +13,7 @@ from cogos.lib.alert_rules import Action
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    proc = Process(name="alert-monitor", status=ProcessStatus.RUNNING, runner="local")
+    proc = Process(name="alert-monitor", status=ProcessStatus.RUNNING, required_tags=["local"])
     proc_id = repo.upsert_process(proc)
 
     # Create required channels

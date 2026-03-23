@@ -75,7 +75,7 @@ def _setup_supervisor(repo):
         name="supervisor",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
         priority=8.0,
     )
     repo.upsert_process(supervisor)
@@ -284,7 +284,7 @@ class TestSupervisorWorkerFlow:
             name="test-parent",
             mode=ProcessMode.ONE_SHOT,
             status=ProcessStatus.RUNNING,
-            runner="local",
+            required_tags=["local"],
         )
         repo.upsert_process(parent)
 

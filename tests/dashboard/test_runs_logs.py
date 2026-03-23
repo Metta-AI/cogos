@@ -19,7 +19,7 @@ def test_run_logs_endpoint_prefers_session_artifacts(tmp_path):
         name="alpha.worker",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 
@@ -169,7 +169,7 @@ def test_run_logs_endpoint_without_session_artifacts_returns_empty(tmp_path):
         name="alpha.worker",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 

@@ -18,7 +18,7 @@ class _ChannelsRepoStub:
             name="test-daemon",
             mode=ProcessMode.DAEMON,
             status=ProcessStatus.WAITING,
-            runner="lambda",
+            required_tags=[],
             created_at=now,
         )
         self.channel = Channel(

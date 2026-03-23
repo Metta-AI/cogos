@@ -19,7 +19,7 @@ def test_get_process_logs_returns_stdout_stderr(tmp_path):
         name="test-proc",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 
@@ -77,7 +77,7 @@ def test_get_process_logs_empty_when_no_channels(tmp_path):
         name="quiet-proc",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 

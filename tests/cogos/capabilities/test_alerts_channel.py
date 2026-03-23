@@ -7,7 +7,7 @@ from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    proc = Process(name="test-proc", status=ProcessStatus.RUNNING, runner="local")
+    proc = Process(name="test-proc", status=ProcessStatus.RUNNING, required_tags=["local"])
     proc_id = repo.upsert_process(proc)
 
     # Create system:alerts channel
@@ -60,7 +60,7 @@ def test_error_publishes_to_channel(tmp_path):
 def test_alert_without_channel_still_works(tmp_path):
     """If system:alerts channel doesn't exist, alert still goes to DB."""
     repo = LocalRepository(str(tmp_path))
-    proc = Process(name="test-proc", status=ProcessStatus.RUNNING, runner="local")
+    proc = Process(name="test-proc", status=ProcessStatus.RUNNING, required_tags=["local"])
     proc_id = repo.upsert_process(proc)
 
     # No system:alerts channel created

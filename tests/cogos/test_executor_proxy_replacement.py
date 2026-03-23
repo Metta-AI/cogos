@@ -25,7 +25,7 @@ def _make_process():
         name="test-proc",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
 
 

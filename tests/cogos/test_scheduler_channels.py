@@ -20,7 +20,7 @@ def _repo(tmp_path) -> LocalRepository:
 
 
 def _daemon(name: str, *, status: ProcessStatus = ProcessStatus.WAITING) -> Process:
-    return Process(name=name, mode=ProcessMode.DAEMON, status=status, runner="lambda")
+    return Process(name=name, mode=ProcessMode.DAEMON, status=status, required_tags=[])
 
 
 def test_channel_message_auto_creates_delivery(tmp_path):

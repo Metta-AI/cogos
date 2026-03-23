@@ -85,7 +85,7 @@ def test_executor_recreates_missing_dispatch_run(monkeypatch, tmp_path):
         name="discord-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -117,7 +117,7 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
         name="discord-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -169,7 +169,7 @@ def test_daemon_failure_returns_to_waiting_without_pending_deliveries(monkeypatc
         name="discord-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -201,7 +201,7 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
         name="discord-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -255,7 +255,7 @@ def test_daemon_suspended_after_consecutive_failures(monkeypatch, tmp_path):
         name="flaky-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -292,7 +292,7 @@ def test_daemon_not_suspended_with_fewer_than_threshold_failures(monkeypatch, tm
         name="recovering-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -322,7 +322,7 @@ def test_daemon_not_suspended_if_success_breaks_streak(monkeypatch, tmp_path):
         name="mixed-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(process)
 
@@ -357,7 +357,7 @@ def test_execute_process_rewrites_invalid_tool_names(monkeypatch, tmp_path):
         name="discord-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Handle the incoming Discord message.",
     )
     run = Run(process=process.id, status=RunStatus.RUNNING)
@@ -444,7 +444,7 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
         name="worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Intro\n@{prompt.md}",
     )
     repo.upsert_process(process)
@@ -497,7 +497,7 @@ def test_stateless_process_writes_session_artifacts_and_snapshot(monkeypatch, tm
         name="stateless-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         content="Handle a single event.",
     )
     repo.upsert_process(process)
@@ -544,7 +544,7 @@ def test_process_session_loads_previous_checkpoint(monkeypatch, tmp_path):
         name="reentrant-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         content="Continue the conversation.",
         metadata={"session": {"resume": True, "scope": "process"}},
     )
@@ -597,7 +597,7 @@ def test_legacy_session_mode_process_still_resumes(monkeypatch, tmp_path):
         name="legacy-reentrant-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         content="Continue the conversation.",
         metadata={"session": {"mode": "process"}},
     )
@@ -643,7 +643,7 @@ def test_checkpoint_survives_failure_after_assistant_step(monkeypatch, tmp_path)
         name="tool-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         content="Use tools when needed.",
         max_retries=1,
         metadata={"session": {"resume": True, "scope": "process"}},
@@ -729,7 +729,7 @@ def test_prompt_change_skips_resume(monkeypatch, tmp_path):
         name="drift-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         content="Original instructions.",
         metadata={"session": {"resume": True, "scope": "process"}},
     )
@@ -916,7 +916,7 @@ def test_per_process_io_channels_created_on_execute(monkeypatch, tmp_path):
         name="io-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Do work.",
     )
     repo.upsert_process(process)
@@ -941,7 +941,7 @@ def test_run_code_output_published_to_process_stdout(monkeypatch, tmp_path):
         name="code-runner",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Run code.",
     )
     repo.upsert_process(process)
@@ -975,7 +975,7 @@ def test_final_assistant_text_published_to_process_stderr(monkeypatch, tmp_path)
         name="chat-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Chat.",
     )
     repo.upsert_process(process)
@@ -1003,7 +1003,7 @@ def test_intermediate_assistant_text_published_to_stdout(monkeypatch, tmp_path):
         name="think-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Think and act.",
     )
     repo.upsert_process(process)
@@ -1042,7 +1042,7 @@ def test_tty_forwards_to_global_io_channels(monkeypatch, tmp_path):
         name="tty-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Run with tty.",
         tty=True,
     )
@@ -1091,7 +1091,7 @@ def test_no_tty_does_not_forward_to_global_io(monkeypatch, tmp_path):
         name="no-tty-worker",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNING,
-        runner="lambda",
+        required_tags=[],
         content="Run without tty.",
         tty=False,
     )

@@ -55,7 +55,7 @@ def test_dispatcher_dispatches_runnable_process(local_runtime, monkeypatch):
     repo = local_runtime.get_repository("test-cogent")
     p = Process(
         name="init", mode=ProcessMode.DAEMON,
-        status=ProcessStatus.RUNNABLE, runner="lambda", priority=100.0,
+        status=ProcessStatus.RUNNABLE, required_tags=[], priority=100.0,
     )
     repo.upsert_process(p)
 

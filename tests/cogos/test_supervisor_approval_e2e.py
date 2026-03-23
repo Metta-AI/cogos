@@ -36,7 +36,7 @@ def _setup_supervisor(repo):
         name="supervisor",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
         priority=8.0,
     )
     repo.upsert_process(supervisor)

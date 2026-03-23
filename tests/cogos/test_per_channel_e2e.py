@@ -93,7 +93,7 @@ def test_per_channel_dm_routing_full_flow(tmp_path):
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
         content="Discord dispatch handler",
-        runner="lambda",
+        required_tags=[],
     )
     parent_id = repo.upsert_process(parent)
     parent = repo.get_process(parent_id)
@@ -185,7 +185,7 @@ def test_idle_reaping_is_noop(tmp_path):
         name="discord-dm:42",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="lambda",
+        required_tags=[],
         idle_timeout_ms=1,
     )
     repo.upsert_process(child)

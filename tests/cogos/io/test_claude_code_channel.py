@@ -12,7 +12,7 @@ def _repo(tmp_path) -> LocalRepository:
 def test_claude_code_system_channels_created(tmp_path):
     """io:claude-code:inbound and io:claude-code:outbound are created."""
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)
@@ -35,7 +35,7 @@ def test_claude_code_inbound_schema_validates(tmp_path):
     from cogos.channels.schema_validator import SchemaValidator
 
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)
@@ -71,7 +71,7 @@ def test_claude_code_outbound_schema_validates(tmp_path):
     from cogos.channels.schema_validator import SchemaValidator
 
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)

@@ -27,7 +27,7 @@ def test_child_receives_delivery_on_fine_grained_channel(tmp_path):
         name="discord-handler",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(parent)
 

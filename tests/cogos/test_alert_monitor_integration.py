@@ -10,9 +10,9 @@ from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    emitter = Process(name="noisy-proc", status=ProcessStatus.RUNNING, runner="local")
+    emitter = Process(name="noisy-proc", status=ProcessStatus.RUNNING, required_tags=["local"])
     emitter_id = repo.upsert_process(emitter)
-    monitor_proc = Process(name="alert-monitor", status=ProcessStatus.RUNNING, runner="local")
+    monitor_proc = Process(name="alert-monitor", status=ProcessStatus.RUNNING, required_tags=["local"])
     monitor_id = repo.upsert_process(monitor_proc)
 
     for name in ["system:alerts", "supervisor:alerts"]:
