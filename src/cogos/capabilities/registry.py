@@ -1144,6 +1144,159 @@ BUILTIN_CAPABILITIES: list[dict] = [
             },
         },
     },
+    # ── Google Docs/Drive ─────────────────────────────────────
+    {
+        "name": "google_docs",
+        "description": "Create, read, and format Google Docs. List Drive files. Read and resolve comments.",
+        "handler": "cogos.capabilities.google_docs_cap.GoogleDocsCapability",
+        "instructions": (
+            "Use google_docs to work with Google Docs and Drive.\n"
+            "- google_docs.create_doc(name, folder_id?) — create a Google Doc\n"
+            "- google_docs.batch_update(doc_id, requests) — apply formatting/content\n"
+            "- google_docs.get_doc(doc_id) — read a doc's text content\n"
+            "- google_docs.list_files(folder_id, query?, order_by?, limit?) — list Drive files\n"
+            "- google_docs.get_comments(file_id, include_resolved?) — list comments\n"
+            "- google_docs.update_comment(file_id, comment_id, resolved?) — resolve/unresolve\n"
+            "Auth uses a service account. Docs index starts at 1 (implicit newline at 0)."
+        ),
+        "schema": {
+            "scope": {
+                "properties": {
+                    "folders": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Allowed Drive folder IDs",
+                    },
+                    "ops": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "create_doc", "batch_update", "get_doc",
+                                "list_files", "get_comments", "update_comment",
+                            ],
+                        },
+                    },
+                },
+            },
+            "create_doc": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Document title"},
+                        "folder_id": {"type": "string", "description": "Drive folder ID"},
+                    },
+                    "required": ["name"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                        "url": {"type": "string"},
+                    },
+                },
+            },
+            "batch_update": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "doc_id": {"type": "string"},
+                        "requests": {"type": "array", "items": {"type": "object"}},
+                    },
+                    "required": ["doc_id", "requests"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "doc_id": {"type": "string"},
+                        "replies_count": {"type": "integer"},
+                    },
+                },
+            },
+            "get_doc": {
+                "input": {
+                    "type": "object",
+                    "properties": {"doc_id": {"type": "string"}},
+                    "required": ["doc_id"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "body_text": {"type": "string"},
+                    },
+                },
+            },
+            "list_files": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "folder_id": {"type": "string"},
+                        "query": {"type": "string", "default": ""},
+                        "order_by": {"type": "string", "default": "createdTime desc"},
+                        "limit": {"type": "integer", "default": 10},
+                    },
+                    "required": ["folder_id"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "mime_type": {"type": "string"},
+                            "created_time": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            "get_comments": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "file_id": {"type": "string"},
+                        "include_resolved": {"type": "boolean", "default": False},
+                    },
+                    "required": ["file_id"],
+                },
+                "output": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "content": {"type": "string"},
+                            "author": {"type": "string"},
+                            "resolved": {"type": "boolean"},
+                            "quoted_text": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            "update_comment": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "file_id": {"type": "string"},
+                        "comment_id": {"type": "string"},
+                        "resolved": {"type": "boolean", "default": True},
+                    },
+                    "required": ["file_id", "comment_id"],
+                },
+                "output": {
+                    "type": "object",
+                    "properties": {
+                        "ok": {"type": "boolean"},
+                        "comment_id": {"type": "string"},
+                        "resolved": {"type": "boolean"},
+                    },
+                },
+            },
+        },
+    },
     # ── Cog Registry ───────────────────────────────────────────
     # cog_registry
     {
