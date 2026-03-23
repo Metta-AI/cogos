@@ -15,12 +15,24 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 
 function getTabFromHash(): TabId {
   if (typeof window === "undefined") return "overview";
-  const hash = window.location.hash.replace("#", "");
+  const hash = window.location.hash.replace("#", "").split(":")[0];
   if (hash === "handlers" || hash === "cron") return "events" as TabId;
   if (hash === "runs" || hash === "executors" || hash === "resources") return "processes" as TabId;
-  if (hash === "trace" || hash === "trace-viewer" || hash.startsWith("trace-viewer:")) return "events" as TabId;
+  if (hash === "trace" || hash === "trace-viewer") return "events" as TabId;
   if (hash === "setup" || hash === "integrations" || hash === "capabilities") return "configure" as TabId;
   return VALID_TABS.has(hash as TabId) ? (hash as TabId) : "overview";
+}
+
+function getSubTabFromHash(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const hash = window.location.hash.replace("#", "");
+  const parts = hash.split(":");
+  if (parts.length > 1) return parts[1];
+  // Direct subtab aliases: #executors → subtab=executors, #runs → subtab=runs, etc.
+  const subtabAliases: Record<string, string> = {
+    runs: "runs", executors: "executors", resources: "resources", capabilities: "capabilities",
+  };
+  return subtabAliases[hash];
 }
 
 function getTraceIdFromHash(): string | undefined {
@@ -62,6 +74,7 @@ function useCogentName(): string | null {
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>(getTabFromHash);
   const [initialTraceId, setInitialTraceId] = useState<string | undefined>(getTraceIdFromHash);
+  const [initialSubTab] = useState<string | undefined>(getSubTabFromHash);
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
@@ -84,10 +97,10 @@ export default function DashboardPage() {
     return <div className="h-screen overflow-hidden" />;
   }
 
-  return <Dashboard cogentName={cogentName} activeTab={activeTab} onTabChange={handleTabChange} initialTraceId={initialTraceId} />;
+  return <Dashboard cogentName={cogentName} activeTab={activeTab} onTabChange={handleTabChange} initialTraceId={initialTraceId} initialSubTab={initialSubTab} />;
 }
 
-function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId }: { cogentName: string; activeTab: TabId; onTabChange: (tab: TabId) => void; initialTraceId?: string }) {
+function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId, initialSubTab }: { cogentName: string; activeTab: TabId; onTabChange: (tab: TabId) => void; initialTraceId?: string; initialSubTab?: string }) {
   const { data, loading, error, refresh, timeRange, setTimeRange, connected, showHistory, setShowHistory } = useCogentData(cogentName);
 
   const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
@@ -156,6 +169,7 @@ function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId }: { cog
             eventTypes={data.eventTypes}
             currentEpoch={currentEpoch}
             executors={data.executors}
+            initialSubTab={initialSubTab}
           />
         )}
         {activeTab === "files" && (

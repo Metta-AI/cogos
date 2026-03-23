@@ -158,7 +158,7 @@ def process_list(filter_status: str | None, use_json: bool):
         procs = [p for p in procs if p.status.value == filter_status]
     data = [
         {"name": p.name, "mode": p.mode.value, "status": p.status.value,
-         "priority": p.priority, "runner": p.runner, "id": str(p.id)}
+         "priority": p.priority, "required_tags": p.required_tags, "id": str(p.id)}
         for p in procs
     ]
     _output(data, use_json=use_json)
@@ -181,17 +181,18 @@ def process_get(name: str, use_json: bool):
 @click.argument("name")
 @click.option("--mode", type=click.Choice(["daemon", "one_shot"]), default="one_shot")
 @click.option("--content", default="")
-@click.option("--runner", type=click.Choice(["lambda", "ecs"]), default="lambda")
+@click.option("--tags", "-t", default="", help="Comma-separated required executor tags")
 @click.option("--model", default=None)
 @click.option("--priority", type=float, default=0.0)
 def process_create(name: str, mode: str, content: str,
-                   runner: str, model: str | None, priority: float):
+                   tags: str, model: str | None, priority: float):
     """Create a new process."""
     from cogos.db.models import Process, ProcessMode, ProcessStatus
     repo = _repo()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     p = Process(
         name=name, mode=ProcessMode(mode), content=content,
-        runner=runner, model=model, priority=priority,
+        required_tags=tag_list, model=model, priority=priority,
         status=ProcessStatus.RUNNABLE,
     )
     pid = repo.upsert_process(p)

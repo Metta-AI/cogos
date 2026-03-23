@@ -23,7 +23,7 @@ class ProcessSummary(BaseModel):
     mode: str
     status: str
     priority: float
-    runner: str
+    required_tags: list[str] = []
     parent_process: str | None = None
 
 
@@ -86,7 +86,7 @@ class ProcsCapability(Capability):
                 mode=p.mode.value,
                 status=p.status.value,
                 priority=p.priority,
-                runner=p.runner,
+                required_tags=p.required_tags,
                 parent_process=str(p.parent_process) if p.parent_process else None,
             )
             for p in processes
@@ -129,7 +129,7 @@ class ProcsCapability(Capability):
         name: str,
         content: str = "",
         priority: float = 0.0,
-        runner: str = "lambda",
+        required_tags: list[str] | None = None,
         executor: str = "llm",
         model: str | None = None,
         capabilities: dict[str, "Capability | None"] | None = None,
@@ -176,7 +176,7 @@ class ProcsCapability(Capability):
             mode=proc_mode,
             content=content,
             priority=priority,
-            runner=runner,
+            required_tags=required_tags or [],
             executor=executor,
             status=initial_status,
             parent_process=parent_id,
@@ -370,7 +370,7 @@ class ProcsCapability(Capability):
         self.repo.upsert_process(target)
         return ProcessDetail(
             id=str(target.id), name=target.name, mode=target.mode.value,
-            status=target.status.value, priority=target.priority, runner=target.runner,
+            status=target.status.value, priority=target.priority, required_tags=target.required_tags,
             parent_process=str(init_id),
         )
 

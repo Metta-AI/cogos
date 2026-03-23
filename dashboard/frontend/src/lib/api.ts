@@ -747,6 +747,7 @@ export async function reboot(name: string): Promise<{ cleared: number }> {
 
 export interface ExecutorTokenItem {
   name: string;
+  token_raw: string;
   scope: string;
   created_at: string | null;
   revoked: boolean;

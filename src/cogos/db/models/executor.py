@@ -21,7 +21,8 @@ class Executor(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     executor_id: str  # human-readable ID, e.g. "executor-fargate-a1b2c3d4"
     channel_type: str = "claude-code"
-    capabilities: list[str] = Field(default_factory=list)
+    executor_tags: list[str] = Field(default_factory=list)
+    dispatch_type: str = "channel"  # "channel" | "lambda"
     metadata: dict[str, Any] = Field(default_factory=dict)
     status: ExecutorStatus = ExecutorStatus.IDLE
     current_run_id: UUID | None = None
@@ -33,6 +34,7 @@ class ExecutorToken(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
     token_hash: str  # SHA-256 of bearer token
+    token_raw: str = ""  # raw token stored for local dev (build launch commands)
     scope: str = "executor"
     created_at: datetime | None = None
     revoked_at: datetime | None = None

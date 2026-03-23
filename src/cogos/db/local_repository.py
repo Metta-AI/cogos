@@ -330,6 +330,13 @@ class LocalRepository(Repository):
             event = SpanEvent(**e)
             self._span_events[event.id] = event
         for ex in data.get("executors", []):
+            # Migrate capabilities → executor_tags
+            if "capabilities" in ex and "executor_tags" not in ex:
+                ex["executor_tags"] = ex.pop("capabilities")
+            elif "capabilities" in ex:
+                ex.pop("capabilities")
+            if "dispatch_type" not in ex:
+                ex["dispatch_type"] = "channel"
             executor = Executor(**ex)
             self._executors[executor.executor_id] = executor
         for et in data.get("executor_tokens", []):
@@ -338,6 +345,13 @@ class LocalRepository(Repository):
 
     def _migrate_legacy_process_prompt(self, raw: dict[str, Any]) -> dict[str, Any]:
         migrated = dict(raw)
+
+        # Migrate runner → required_tags
+        if "runner" in migrated and "required_tags" not in migrated:
+            runner = migrated.pop("runner")
+            migrated["required_tags"] = [runner] if runner and runner != "lambda" else []
+        elif "runner" in migrated:
+            migrated.pop("runner")
         refs: list[str] = []
 
         raw_files = raw.get("files") or []
@@ -542,6 +556,27 @@ class LocalRepository(Repository):
                 p.created_at = now
             p.updated_at = now
             self._processes[p.id] = p
+
+            # Ensure io channels exist (idempotent)
+            from cogos.db.models import Channel, ChannelType, Handler
+            for stream in ("stdin", "stdout", "stderr"):
+                ch = Channel(
+                    name=f"io:{stream}:{p.name}",
+                    owner_process=p.id,
+                    channel_type=ChannelType.NAMED,
+                )
+                self.upsert_channel(ch)
+
+            # Subscribe process to its stdin channel (idempotent)
+            stdin_ch = self.get_channel_by_name(f"io:stdin:{p.name}")
+            if stdin_ch:
+                existing_handlers = [
+                    h for h in self._handlers.values()
+                    if h.process == p.id and h.channel == stdin_ch.id
+                ]
+                if not existing_handlers:
+                    self.create_handler(Handler(process=p.id, channel=stdin_ch.id, enabled=True))
+
             return p.id
 
     def get_process(self, process_id: UUID) -> Process | None:
@@ -1531,24 +1566,24 @@ class LocalRepository(Repository):
 
     def select_executor(
         self,
-        required_caps: list[str] | None = None,
-        preferred_caps: list[str] | None = None,
+        required_tags: list[str] | None = None,
+        preferred_tags: list[str] | None = None,
     ) -> Executor | None:
         idle = self.list_executors(status=ExecutorStatus.IDLE)
         if not idle:
             return None
 
         candidates = idle
-        if required_caps:
-            req = set(required_caps)
-            candidates = [e for e in candidates if req.issubset(set(e.capabilities))]
+        if required_tags:
+            req = set(required_tags)
+            candidates = [e for e in candidates if req.issubset(set(e.executor_tags))]
 
         if not candidates:
             return None
 
-        if preferred_caps:
-            pref = set(preferred_caps)
-            candidates.sort(key=lambda e: len(pref & set(e.capabilities)), reverse=True)
+        if preferred_tags:
+            pref = set(preferred_tags)
+            candidates.sort(key=lambda e: len(pref & set(e.executor_tags)), reverse=True)
 
         return candidates[0]
 

@@ -29,7 +29,7 @@ def _format_process_table(procs: list[Process]) -> str:
         tty = "*" if p.tty else ""
         lines.append(
             f"{p.name:<24} {color}{p.status.value:<12}{_RESET} "
-            f"{p.mode.value:<10} {p.runner:<8} {tty:<5} {p.priority:>5.1f}"
+            f"{p.mode.value:<10} {','.join(p.required_tags) or '-':<16} {tty:<5} {p.priority:>5.1f}"
         )
     return "\n".join(lines)
 

@@ -72,16 +72,20 @@ class TestChannelCRUD:
         assert got is not None
 
     def test_list_channels(self, repo, process):
+        # process fixture auto-creates 3 io channels (stdin, stdout, stderr)
+        baseline = len(repo.list_channels())
         repo.upsert_channel(Channel(name="ch1", owner_process=process.id, channel_type=ChannelType.NAMED))
         repo.upsert_channel(Channel(name="ch2", owner_process=process.id, channel_type=ChannelType.NAMED))
-        assert len(repo.list_channels()) == 2
+        assert len(repo.list_channels()) == baseline + 2
 
     def test_list_channels_by_owner(self, repo, process):
+        baseline = len(repo.list_channels(owner_process=process.id))
         p2 = Process(name="other", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.WAITING)
         repo.upsert_process(p2)
+        baseline_p2 = len(repo.list_channels(owner_process=p2.id))
         repo.upsert_channel(Channel(name="ch1", owner_process=process.id, channel_type=ChannelType.NAMED))
         repo.upsert_channel(Channel(name="ch2", owner_process=p2.id, channel_type=ChannelType.NAMED))
-        assert len(repo.list_channels(owner_process=process.id)) == 1
+        assert len(repo.list_channels(owner_process=process.id)) == baseline + 1
 
     def test_close_channel(self, repo, process):
         ch = Channel(name="ch1", owner_process=process.id, channel_type=ChannelType.NAMED)

@@ -167,4 +167,5 @@ def test_spawn_with_multiple_subscribe(tmp_path):
     assert child is not None
     handlers = repo.list_handlers(process_id=child.id)
     assert handlers is not None
-    assert len(handlers) == 2
+    # 2 explicit subscriptions + 1 auto-created stdin handler
+    assert len(handlers) == 3

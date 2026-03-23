@@ -63,7 +63,7 @@ class CogletRuntimeCapability(Capability):
             priority=coglet.config.priority,
             executor=coglet.config.executor,
             model=coglet.config.model,
-            runner=coglet.config.runner,
+            required_tags=coglet.config.required_tags,
             idle_timeout_ms=coglet.config.idle_timeout_ms,
             capabilities=caps,
         )

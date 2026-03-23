@@ -380,12 +380,12 @@ class Repository:
         p.metadata = self._jsonb_safe(p.metadata) or {}
         response = self._execute(
             """INSERT INTO cogos_process
-                   (id, name, mode, content, priority, resources, runner, executor,
+                   (id, name, mode, content, priority, resources, required_tags, executor,
                     status, runnable_since, parent_process, preemptible,
                     model, model_constraints, return_schema,
                     idle_timeout_ms, max_duration_ms, max_retries, retry_count, retry_backoff_ms,
                     clear_context, tty, metadata, epoch)
-               VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :runner, :executor,
+               VALUES (:id, :name, :mode, :content, :priority, :resources::jsonb, :required_tags::jsonb, :executor,
                        :status, :runnable_since, :parent_process, :preemptible,
                        :model, :model_constraints::jsonb, :return_schema::jsonb,
                        :idle_timeout_ms, :max_duration_ms, :max_retries, :retry_count, :retry_backoff_ms,
@@ -394,7 +394,7 @@ class Repository:
                    mode = EXCLUDED.mode, content = EXCLUDED.content,
                    priority = EXCLUDED.priority,
                    status = EXCLUDED.status,
-                   resources = EXCLUDED.resources, runner = EXCLUDED.runner,
+                   resources = EXCLUDED.resources, required_tags = EXCLUDED.required_tags,
                    executor = EXCLUDED.executor,
                    preemptible = EXCLUDED.preemptible, model = EXCLUDED.model,
                    model_constraints = EXCLUDED.model_constraints,
@@ -416,7 +416,7 @@ class Repository:
                 self._param("content", p.content),
                 self._param("priority", p.priority),
                 self._param("resources", [str(r) for r in p.resources]),
-                self._param("runner", p.runner),
+                self._param("required_tags", p.required_tags),
                 self._param("executor", p.executor),
                 self._param("status", p.status.value),
                 self._param("runnable_since", p.runnable_since),
@@ -437,11 +437,42 @@ class Repository:
             ],
         )
         row = self._first_row(response)
-        if row:
-            p.created_at = self._ts(row, "created_at")
-            p.updated_at = self._ts(row, "updated_at")
-            return UUID(row["id"])
-        raise RuntimeError("Failed to upsert process")
+        if not row:
+            raise RuntimeError("Failed to upsert process")
+        p.id = UUID(row["id"])
+        p.created_at = self._ts(row, "created_at")
+        p.updated_at = self._ts(row, "updated_at")
+
+        # Ensure io channels exist (idempotent)
+        from cogos.db.models import Channel, ChannelType, Handler
+        for stream in ("stdin", "stdout", "stderr"):
+            ch = Channel(
+                name=f"io:{stream}:{p.name}",
+                owner_process=p.id,
+                channel_type=ChannelType.NAMED,
+            )
+            self.upsert_channel(ch)
+
+        # Subscribe process to its stdin channel (idempotent)
+        stdin_ch = self.get_channel_by_name(f"io:stdin:{p.name}")
+        if stdin_ch:
+            existing = self._first_row(self._execute(
+                "SELECT id FROM cogos_handler WHERE process = :pid AND channel = :cid",
+                [self._param("pid", p.id), self._param("cid", stdin_ch.id)],
+            ))
+            if not existing:
+                self._execute(
+                    """INSERT INTO cogos_handler (id, process, channel, enabled)
+                       VALUES (:id, :pid, :cid, true)
+                       ON CONFLICT DO NOTHING""",
+                    [
+                        self._param("id", Handler(process=p.id, channel=stdin_ch.id).id),
+                        self._param("pid", p.id),
+                        self._param("cid", stdin_ch.id),
+                    ],
+                )
+
+        return p.id
 
     def get_process(self, process_id: UUID) -> Process | None:
         response = self._execute(
@@ -537,7 +568,7 @@ class Repository:
             content=row.get("content", ""),
             priority=row.get("priority", 0.0),
             resources=resources,
-            runner=row.get("runner", "lambda"),
+            required_tags=self._json_field(row, "required_tags", []),
             executor=row.get("executor", "llm"),
             status=ProcessStatus(row["status"]),
             runnable_since=self._ts(row, "runnable_since"),
@@ -2355,9 +2386,9 @@ class Repository:
     # ═══════════════════════════════════════════════════════════
 
     def _row_to_executor(self, row: dict) -> Executor:
-        caps = row.get("capabilities")
-        if isinstance(caps, str):
-            caps = json.loads(caps)
+        tags = row.get("executor_tags")
+        if isinstance(tags, str):
+            tags = json.loads(tags)
         meta = row.get("metadata")
         if isinstance(meta, str):
             meta = json.loads(meta)
@@ -2366,7 +2397,8 @@ class Repository:
             id=UUID(row["id"]),
             executor_id=row["executor_id"],
             channel_type=row.get("channel_type", "claude-code"),
-            capabilities=caps or [],
+            executor_tags=tags or [],
+            dispatch_type=row.get("dispatch_type", "channel"),
             metadata=meta or {},
             status=ExecutorStatus(row.get("status", "idle")),
             current_run_id=UUID(run_id) if run_id else None,
@@ -2385,7 +2417,8 @@ class Repository:
             self._execute(
                 """UPDATE cogos_executor
                    SET channel_type = :channel_type,
-                       capabilities = :capabilities::jsonb,
+                       executor_tags = :executor_tags::jsonb,
+                       dispatch_type = :dispatch_type,
                        metadata = :metadata::jsonb,
                        status = 'idle',
                        current_run_id = NULL,
@@ -2395,7 +2428,8 @@ class Repository:
                 [
                     self._param("id", executor.id),
                     self._param("channel_type", executor.channel_type),
-                    self._param("capabilities", executor.capabilities),
+                    self._param("executor_tags", executor.executor_tags),
+                    self._param("dispatch_type", executor.dispatch_type),
                     self._param("metadata", executor.metadata),
                 ],
             )
@@ -2403,13 +2437,14 @@ class Repository:
 
         self._execute(
             """INSERT INTO cogos_executor
-               (id, executor_id, channel_type, capabilities, metadata, status, last_heartbeat_at, registered_at)
-               VALUES (:id, :executor_id, :channel_type, :capabilities::jsonb, :metadata::jsonb, 'idle', now(), now())""",
+               (id, executor_id, channel_type, executor_tags, dispatch_type, metadata, status, last_heartbeat_at, registered_at)
+               VALUES (:id, :executor_id, :channel_type, :executor_tags::jsonb, :dispatch_type, :metadata::jsonb, 'idle', now(), now())""",
             [
                 self._param("id", executor.id),
                 self._param("executor_id", executor.executor_id),
                 self._param("channel_type", executor.channel_type),
-                self._param("capabilities", executor.capabilities),
+                self._param("executor_tags", executor.executor_tags),
+                self._param("dispatch_type", executor.dispatch_type),
                 self._param("metadata", executor.metadata),
             ],
         )
@@ -2443,28 +2478,28 @@ class Repository:
 
     def select_executor(
         self,
-        required_caps: list[str] | None = None,
-        preferred_caps: list[str] | None = None,
+        required_tags: list[str] | None = None,
+        preferred_tags: list[str] | None = None,
     ) -> Executor | None:
-        """Select an idle executor matching required capabilities.
+        """Select an idle executor matching required tags.
 
-        Prefers executors with more of the *preferred_caps*.
+        Prefers executors with more of the *preferred_tags*.
         """
         idle = self.list_executors(status=ExecutorStatus.IDLE)
         if not idle:
             return None
 
         candidates = idle
-        if required_caps:
-            req = set(required_caps)
-            candidates = [e for e in candidates if req.issubset(set(e.capabilities))]
+        if required_tags:
+            req = set(required_tags)
+            candidates = [e for e in candidates if req.issubset(set(e.executor_tags))]
 
         if not candidates:
             return None
 
-        if preferred_caps:
-            pref = set(preferred_caps)
-            candidates.sort(key=lambda e: len(pref & set(e.capabilities)), reverse=True)
+        if preferred_tags:
+            pref = set(preferred_tags)
+            candidates.sort(key=lambda e: len(pref & set(e.executor_tags)), reverse=True)
 
         return candidates[0]
 

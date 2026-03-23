@@ -30,14 +30,14 @@ class ExecutorDaemon:
         repo,
         executor_id: str,
         *,
-        capabilities: list[str] | None = None,
+        executor_tags: list[str] | None = None,
         config: ExecutorConfig | None = None,
         heartbeat_s: float = _DEFAULT_HEARTBEAT_S,
         poll_s: float = _DEFAULT_POLL_S,
     ):
         self.repo = repo
         self.executor_id = executor_id
-        self.capabilities = capabilities or ["claude-code"]
+        self.executor_tags = executor_tags or ["python"]
         self.config = config or get_config()
         self.heartbeat_s = heartbeat_s
         self.poll_s = poll_s
@@ -53,7 +53,8 @@ class ExecutorDaemon:
         executor = Executor(
             executor_id=self.executor_id,
             channel_type="claude-code",
-            capabilities=self.capabilities,
+            executor_tags=self.executor_tags,
+            dispatch_type="channel",
             metadata={"daemon": True, "pid": __import__("os").getpid()},
         )
         self.repo.register_executor(executor)
@@ -146,7 +147,6 @@ class ExecutorDaemon:
                 run_id=str(run.id),
                 process_id=str(process.id),
                 process_name=process.name,
-                runner=process.runner,
                 message_id=str(run.message),
             )
             event_data = build_dispatch_event(self.repo, dispatch)
@@ -185,8 +185,8 @@ class ExecutorDaemon:
         signal.signal(signal.SIGTERM, _shutdown)
 
         logger.info(
-            "Daemon running: executor=%s capabilities=%s poll=%.1fs heartbeat=%.1fs",
-            self.executor_id, self.capabilities, self.poll_s, self.heartbeat_s,
+            "Daemon running: executor=%s tags=%s poll=%.1fs heartbeat=%.1fs",
+            self.executor_id, self.executor_tags, self.poll_s, self.heartbeat_s,
         )
 
         while not self._stop.is_set():

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { CogosProcess, CogosRun, CogosFile, CogosCapability, EventType, Resource, CogosExecutor } from "@/lib/types";
 import { ProcessesPanel } from "./ProcessesPanel";
 import { RunsPanel } from "@/components/runs/RunsPanel";
@@ -19,14 +19,24 @@ interface ProcessesViewProps {
   eventTypes: EventType[];
   currentEpoch?: number;
   executors: CogosExecutor[];
+  initialSubTab?: string;
 }
 
 type SubTab = "processes" | "runs" | "executors" | "capabilities" | "resources";
+const VALID_SUBTABS = new Set<SubTab>(["processes", "runs", "executors", "capabilities", "resources"]);
 
 export function ProcessesView({
   processes, cogentName, onRefresh, resources, runs, files, capabilities, eventTypes, currentEpoch, executors,
+  initialSubTab,
 }: ProcessesViewProps) {
-  const [subTab, setSubTab] = useState<SubTab>("processes");
+  const [subTab, setSubTab] = useState<SubTab>(
+    initialSubTab && VALID_SUBTABS.has(initialSubTab as SubTab) ? (initialSubTab as SubTab) : "processes"
+  );
+
+  const handleSubTab = useCallback((tab: SubTab) => {
+    setSubTab(tab);
+    window.location.hash = tab === "processes" ? "processes" : `processes:${tab}`;
+  }, []);
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     fontSize: "11px",
@@ -43,19 +53,19 @@ export function ProcessesView({
   return (
     <div>
       <div className="flex items-center gap-0 mb-4" style={{ borderBottom: "1px solid var(--border)" }}>
-        <button style={tabStyle(subTab === "processes")} onClick={() => setSubTab("processes")}>
+        <button style={tabStyle(subTab === "processes")} onClick={() => handleSubTab("processes")}>
           Processes ({processes.length})
         </button>
-        <button style={tabStyle(subTab === "runs")} onClick={() => setSubTab("runs")}>
+        <button style={tabStyle(subTab === "runs")} onClick={() => handleSubTab("runs")}>
           Runs ({runs.length})
         </button>
-        <button style={tabStyle(subTab === "executors")} onClick={() => setSubTab("executors")}>
+        <button style={tabStyle(subTab === "executors")} onClick={() => handleSubTab("executors")}>
           Executors ({executors.length})
         </button>
-        <button style={tabStyle(subTab === "capabilities")} onClick={() => setSubTab("capabilities")}>
+        <button style={tabStyle(subTab === "capabilities")} onClick={() => handleSubTab("capabilities")}>
           Capabilities ({capabilities.length})
         </button>
-        <button style={tabStyle(subTab === "resources")} onClick={() => setSubTab("resources")}>
+        <button style={tabStyle(subTab === "resources")} onClick={() => handleSubTab("resources")}>
           Resources ({resources.length})
         </button>
       </div>

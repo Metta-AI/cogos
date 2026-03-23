@@ -41,7 +41,7 @@ class TraceRunOut(BaseModel):
     id: str
     process: str
     process_name: str | None = None
-    runner: str | None = None
+    required_tags: list[str] | None = None
     status: str
     tokens_in: int
     tokens_out: int
@@ -199,13 +199,13 @@ def _run_out(
     run: Run,
     *,
     process_names: dict[UUID, str],
-    process_runners: dict[UUID, str],
+    process_runners: dict[UUID, list[str]],
 ) -> TraceRunOut:
     return TraceRunOut(
         id=str(run.id),
         process=str(run.process),
         process_name=process_names.get(run.process),
-        runner=process_runners.get(run.process),
+        required_tags=process_runners.get(run.process),
         status=run.status.value,
         tokens_in=run.tokens_in,
         tokens_out=run.tokens_out,
@@ -281,7 +281,7 @@ def list_message_traces(
     runs = repo.list_runs(limit=max(fetch_limit * 2, 1000), slim=True)
 
     process_names = {process.id: process.name for process in processes}
-    process_runners = {process.id: process.runner for process in processes}
+    process_runners = {process.id: process.required_tags for process in processes}
     channel_names = {channel.id: channel.name for channel in channels}
     handlers_by_id = {handler.id: handler for handler in handlers}
     runs_by_id = {run.id: run for run in runs}

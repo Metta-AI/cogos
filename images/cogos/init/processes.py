@@ -6,7 +6,7 @@ add_process(
     mode="daemon",
     content="@{mnt/boot/cogos/init.py}",
     executor="python",
-    runner="lambda",
+    required_tags=[],
     priority=100.0,
     capabilities=[
         "me", "procs", "fs_dir", "file", "discord", "channels",

@@ -113,7 +113,7 @@ def _spawn_cog(manifest):
         content=content,
         executor=config.get("executor", "llm"),
         model=config.get("model"),
-        runner=config.get("runner", "lambda"),
+        required_tags=config.get("required_tags", []),
         priority=config.get("priority", 0.0),
         idle_timeout_ms=config.get("idle_timeout_ms"),
         capabilities=caps,

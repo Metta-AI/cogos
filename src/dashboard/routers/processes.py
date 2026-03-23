@@ -27,7 +27,7 @@ class ProcessSummary(BaseModel):
     mode: str
     status: str
     priority: float
-    runner: str
+    required_tags: list[str] = []
     model: str | None = None
     preemptible: bool = False
     retry_count: int = 0
@@ -44,7 +44,7 @@ class ProcessDetail(BaseModel):
     content: str
     priority: float
     resources: list[str]
-    runner: str
+    required_tags: list[str] = []
     status: str
     runnable_since: str | None = None
     parent_process: str | None = None
@@ -74,7 +74,7 @@ class ProcessCreate(BaseModel):
     mode: str = "one_shot"
     content: str = ""
     priority: float = 0.0
-    runner: str = "lambda"
+    required_tags: list[str] = []
     status: str = "waiting"
     parent_process: str | None = None
     model: str | None = None
@@ -97,7 +97,7 @@ class ProcessUpdate(BaseModel):
     mode: str | None = None
     content: str | None = None
     priority: float | None = None
-    runner: str | None = None
+    required_tags: list[str] | None = None
     status: str | None = None
     model: str | None = None
     model_constraints: dict | None = None
@@ -138,7 +138,7 @@ def _summary(p: Process) -> ProcessSummary:
         mode=p.mode.value,
         status=p.status.value,
         priority=p.priority,
-        runner=p.runner,
+        required_tags=p.required_tags,
         model=p.model,
         preemptible=p.preemptible,
         retry_count=p.retry_count,
@@ -157,7 +157,7 @@ def _detail(p: Process) -> ProcessDetail:
         content=p.content,
         priority=p.priority,
         resources=[str(r) for r in p.resources],
-        runner=p.runner,
+        required_tags=p.required_tags,
         status=p.status.value,
         runnable_since=str(p.runnable_since) if p.runnable_since else None,
         parent_process=str(p.parent_process) if p.parent_process else None,
@@ -351,7 +351,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         mode=ProcessMode(body.mode),
         content=body.content,
         priority=body.priority,
-        runner=body.runner,
+        required_tags=body.required_tags,
         status=ProcessStatus(body.status),
         parent_process=UUID(body.parent_process) if body.parent_process else None,
         model=body.model,
@@ -366,6 +366,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
     if body.output_events is not None:
         p.output_events = body.output_events
     repo.upsert_process(p)
+
     if body.cap_grants is not None:
         _sync_capabilities_from_grants(p.id, body.cap_grants, repo)
     elif body.capabilities is not None:
@@ -393,8 +394,8 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
         p.content = body.content
     if body.priority is not None:
         p.priority = body.priority
-    if body.runner is not None:
-        p.runner = body.runner
+    if body.required_tags is not None:
+        p.required_tags = body.required_tags
     if body.status is not None:
         p.status = ProcessStatus(body.status)
     if body.model is not None:

@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS cogos_process (
     content             TEXT NOT NULL DEFAULT '',
     priority            DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     resources           JSONB NOT NULL DEFAULT '[]',
-    runner              TEXT NOT NULL DEFAULT 'lambda',
+    required_tags       JSONB NOT NULL DEFAULT '[]',
     status              TEXT NOT NULL DEFAULT 'waiting'
                         CHECK (status IN ('waiting', 'runnable', 'running', 'blocked',
                                           'suspended', 'completed', 'disabled')),

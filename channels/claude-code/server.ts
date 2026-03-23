@@ -307,7 +307,8 @@ async function registerExecutor(): Promise<string> {
       body: JSON.stringify({
         executor_id: EXECUTOR_ID,
         channel_type: "claude-code",
-        capabilities: ["claude-code"],
+        executor_tags: ["claude-code"],
+        dispatch_type: "channel",
         metadata: { mcp: true, hostname: hostname() },
       }),
     });
@@ -319,7 +320,9 @@ async function registerExecutor(): Promise<string> {
     const channel = data.channel || "";
     if (channel) {
       CHANNEL_PATTERNS.push(channel);
-      process.stderr.write(`[cogos] registered ${EXECUTOR_ID}, channel: ${channel}\n`);
+      const maskedKey = API_KEY ? API_KEY.slice(0, 6) + "..." : "none";
+      const msg = `Cogos: registered [${COGENT_NAME}] [${EXECUTOR_ID}] [${maskedKey}]`;
+      process.stderr.write(`${msg}\n`);
     }
     return channel;
   } catch (e) {
@@ -763,7 +766,18 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   // Register executor and start polling after MCP connection is established
-  await registerExecutor();
+  const channel = await registerExecutor();
+  if (channel) {
+    const maskedKey = API_KEY ? API_KEY.slice(0, 6) + "..." : "none";
+    await server.notification({
+      method: "notifications/claude/channel",
+      params: {
+        channel: "system:cogos",
+        content: `Cogos: registered [${COGENT_NAME}] [${EXECUTOR_ID}] [${maskedKey}]`,
+        meta: { channel_name: "system:cogos" },
+      },
+    });
+  }
   startPolling();
 }
 

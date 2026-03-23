@@ -2,10 +2,7 @@
   "mcpServers": {
     "cogos": {
       "command": "bun",
-      "args": ["./channels/claude-code/server.ts"],
-      "env": {
-        "COGOS_CHANNELS": "io:claude-code:*,system:alerts"
-      }
+      "args": ["./channels/claude-code/server.ts"]
     }
   }
 }

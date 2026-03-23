@@ -39,7 +39,7 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 
 const STATUSES = ["waiting", "runnable", "running", "completed", "disabled", "blocked", "suspended"];
 const MODES: ("daemon" | "one_shot")[] = ["one_shot", "daemon"];
-const RUNNERS = ["lambda", "ecs"];
+// Runner constants removed — processes use required_tags instead
 const EXECUTOR_DEFAULT_MODEL_LABEL = "default (sonnet)";
 
 const INPUT_CLS = "bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[12px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] w-full";
@@ -55,7 +55,7 @@ interface ProcessForm {
   mode: "daemon" | "one_shot";
   content: string;
   priority: string;
-  runner: string;
+  required_tags: string[];
   status: string;
   model: string;
   max_duration_val: string;
@@ -76,7 +76,7 @@ const EMPTY_FORM: ProcessForm = {
   mode: "one_shot",
   content: "",
   priority: "0",
-  runner: "lambda",
+  required_tags: [],
   status: "runnable",
   model: "",
   max_duration_val: "",
@@ -121,7 +121,7 @@ function formFromProcess(
     mode: p.mode,
     content: p.content,
     priority: String(p.priority),
-    runner: p.runner,
+    required_tags: p.required_tags ?? [],
     status: p.status,
     model: p.model ?? "",
     ...msToFormDuration(p.max_duration_ms),
@@ -1189,7 +1189,7 @@ function SessionLogToggle({ onClick }: { cogentName?: string; runId?: string; on
 
 /* ── Last Run Display ── */
 
-function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogentName?: string; runner?: string }) {
+function LastRunInfo({ run, cogentName }: { run: CogosProcessRun; cogentName?: string }) {
   const [showResult, setShowResult] = useState(false);
   const [showSessionLog, setShowSessionLog] = useState(false);
   return (
@@ -1206,7 +1206,7 @@ function LastRunInfo({ run, cogentName, runner }: { run: CogosProcessRun; cogent
           {cogentName && (
             <>
               <a
-                href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, runner)}
+                href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--accent)] text-[10px] hover:underline"
@@ -1765,7 +1765,7 @@ function ProcessFormEditor({
         </div>
       </div>
 
-      {/* Toggles row: mode, runner, status, preemptible, clear context */}
+      {/* Toggles row: mode, tags, status, preemptible, clear context */}
       <div className="flex gap-4 items-end flex-wrap">
         <IconButtonGroup
           label="Process Mode"
@@ -1805,15 +1805,18 @@ function ProcessFormEditor({
             { value: "on" as const, icon: "on", title: "Resume from the latest process session checkpoint" },
           ]}
         />
-        <IconButtonGroup
-          label="Runner"
-          value={form.runner}
-          onChange={(runner) => onChange({ ...form, runner })}
-          options={[
-            { value: "lambda", icon: "λ", title: "Lambda" },
-            { value: "ecs", icon: "🖥", title: "ECS" },
-          ]}
-        />
+        <div style={{ minWidth: "140px" }}>
+          <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Required Tags</label>
+          <input
+            className={INPUT_CLS}
+            value={form.required_tags.join(", ")}
+            onChange={(e) => onChange({
+              ...form,
+              required_tags: e.target.value.split(",").map((t: string) => t.trim()).filter(Boolean),
+            })}
+            placeholder="e.g. claude-code, gpu"
+          />
+        </div>
         <StatusMenu value={form.status} onChange={(status) => onChange({ ...form, status })} />
         <div>
           <label className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Preempt</label>
@@ -2100,7 +2103,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
         mode: form.mode,
         content: form.content,
         priority: parseFloat(form.priority) || 0,
-        runner: form.runner,
+        required_tags: form.required_tags,
         status: form.status,
         model: form.model.trim() || null,
         max_duration_ms: formDurationToMs(form.max_duration_val, form.max_duration_unit),
@@ -2409,7 +2412,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                   <span className="inline-flex items-center justify-center w-[22px] h-[18px]">
                     {lastRun ? (
                       <a
-                        href={buildCogentRunLogsUrl(cogentName, lastRun.id, lastRun.created_at, proc.runner)}
+                        href={buildCogentRunLogsUrl(cogentName, lastRun.id, lastRun.created_at)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[10px] font-mono px-1 py-0 rounded hover:underline"
@@ -2430,13 +2433,15 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                       <span className="text-[var(--text-muted)] text-[10px]">·</span>
                     )}
                   </span>
-                  <span
-                    className="inline-flex items-center justify-center w-[22px] h-[18px] text-[10px] font-mono rounded"
-                    style={{ background: proc.runner === "ecs" ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)", color: proc.runner === "ecs" ? "#a78bfa" : "#60a5fa" }}
-                    title={proc.runner}
-                  >
-                    {proc.runner === "ecs" ? "🖥" : "λ"}
-                  </span>
+                  {proc.required_tags.length > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center h-[18px] text-[10px] font-mono rounded px-1"
+                      style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}
+                      title={proc.required_tags.join(", ")}
+                    >
+                      {proc.required_tags.join(",")}
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -2704,7 +2709,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                                 <td className="px-2 py-1 text-right whitespace-nowrap">
                                   <span className="inline-flex items-center gap-1">
                                     <a
-                                      href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, proc.runner)}
+                                      href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-[var(--accent)] text-[10px] hover:underline"

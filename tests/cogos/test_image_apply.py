@@ -94,7 +94,8 @@ def test_apply_creates_processes_with_bindings(tmp_path):
 
     handlers = repo.list_handlers(process_id=procs[0].id)
     assert handlers is not None
-    assert len(handlers) == 0
+    # upsert_process auto-creates a stdin handler for each process
+    assert len(handlers) == 1
 
 
 def test_apply_capability_grants_have_names(tmp_path):
@@ -146,7 +147,8 @@ def test_apply_upsert_is_idempotent(tmp_path):
     assert len(repo.list_cron_rules()) == 0
     handlers = repo.list_handlers(process_id=repo.list_processes()[0].id)
     assert handlers is not None
-    assert len(handlers) == 0
+    # upsert_process auto-creates a stdin handler for each process
+    assert len(handlers) == 1
 
 
 def test_spawn_with_named_scoped_capabilities(tmp_path):

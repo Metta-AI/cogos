@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS cogos_executor (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     executor_id       TEXT NOT NULL,
     channel_type      TEXT NOT NULL DEFAULT 'claude-code',
-    capabilities      JSONB NOT NULL DEFAULT '[]',
+    executor_tags     JSONB NOT NULL DEFAULT '[]',
+    dispatch_type     TEXT NOT NULL DEFAULT 'channel',
     metadata          JSONB NOT NULL DEFAULT '{}',
     status            TEXT NOT NULL DEFAULT 'idle'
                       CHECK (status IN ('idle', 'busy', 'stale', 'dead')),

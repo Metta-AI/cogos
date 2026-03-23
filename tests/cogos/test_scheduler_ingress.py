@@ -9,6 +9,7 @@ from cogos.db.models import (
     ChannelType,
     Cron,
     DeliveryStatus,
+    Executor,
     Handler,
     Process,
     ProcessMode,
@@ -29,8 +30,17 @@ def _daemon(name: str, *, status: ProcessStatus = ProcessStatus.WAITING) -> Proc
         name=name,
         mode=ProcessMode.DAEMON,
         status=status,
-        runner="lambda",
     )
+
+
+def _register_lambda_executor(repo):
+    """Register a lambda-pool executor so dispatch_to_executor can find one."""
+    executor = Executor(
+        executor_id="lambda-pool-1",
+        executor_tags=[],
+        dispatch_type="lambda",
+    )
+    repo.register_executor(executor)
 
 
 def _setup_channel_and_handler(repo, proc, channel_name="io:discord:dm"):
@@ -79,6 +89,7 @@ def test_match_messages_idempotent_per_handler(tmp_path):
 
 def test_match_and_dispatch(tmp_path):
     repo = _repo(tmp_path)
+    _register_lambda_executor(repo)
     scheduler = SchedulerCapability(repo, UUID(int=0))
 
     proc = _daemon("discord-daemon")
@@ -119,6 +130,7 @@ def test_match_and_dispatch(tmp_path):
 
 def test_dispatch_rolls_back_failed_invoke(tmp_path):
     repo = _repo(tmp_path)
+    _register_lambda_executor(repo)
     scheduler = SchedulerCapability(repo, UUID(int=0))
 
     proc = _daemon("discord-daemon")

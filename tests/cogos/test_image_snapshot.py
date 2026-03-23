@@ -16,7 +16,7 @@ def test_snapshot_round_trips(tmp_path):
         resources=[],
         processes=[
             {"name": "scheduler", "mode": "daemon", "content": "@{cogos/scheduler.md}",
-             "runner": "lambda", "model": None,
+             "required_tags": [], "model": None,
              "priority": 100.0, "capabilities": ["dir"],
              "handlers": [], "metadata": {}},
         ],
@@ -42,5 +42,6 @@ def test_snapshot_round_trips(tmp_path):
     assert restored.processes[0]["name"] == "scheduler"
     assert restored.processes[0]["content"] == "@{cogos/scheduler.md}"
     assert "dir" in restored.processes[0]["capabilities"]
-    assert restored.processes[0]["handlers"] == []
+    # upsert_process auto-creates a stdin handler for each process
+    assert restored.processes[0]["handlers"] == ["io:stdin:scheduler"]
     assert restored.files["mnt/boot/cogos/scheduler.md"] == "You are the scheduler."

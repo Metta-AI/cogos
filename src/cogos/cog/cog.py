@@ -45,7 +45,7 @@ class CogConfig(BaseModel):
     priority: float = 0.0
     executor: str = "llm"  # "llm" | "python" | "agent_sdk"
     model: str | None = None
-    runner: str = "lambda"  # "lambda" | "ecs"
+    required_tags: list[str] = Field(default_factory=list)
     capabilities: list = Field(default_factory=list)
     handlers: list[str] = Field(default_factory=list)
     idle_timeout_ms: int | None = None

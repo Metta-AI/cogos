@@ -23,7 +23,7 @@ class RunSummary(BaseModel):
     epoch: int = 0
     process: str
     process_name: str | None = None
-    runner: str | None = None
+    required_tags: list[str] | None = None
     event: str | None = None
     conversation: str | None = None
     status: str
@@ -260,14 +260,14 @@ def _session_log_preview(repo, run: Run, limit: int) -> RunLogsResponse | None:
 def _summary(
     r: Run,
     process_names: dict[UUID, str] | None = None,
-    process_runners: dict[UUID, str] | None = None,
+    process_runners: dict[UUID, list[str]] | None = None,
 ) -> RunSummary:
     return RunSummary(
         id=str(r.id),
         epoch=r.epoch,
         process=str(r.process),
         process_name=process_names.get(r.process) if process_names else None,
-        runner=process_runners.get(r.process) if process_runners else None,
+        required_tags=process_runners.get(r.process) if process_runners else None,
         event=str(r.message) if r.message else None,
         conversation=str(r.conversation) if r.conversation else None,
         status=r.status.value,
@@ -319,7 +319,7 @@ def list_runs(
     proc_epoch = ALL_EPOCHS if epoch == "all" else None
     processes = repo.list_processes(epoch=proc_epoch)
     process_names = {p.id: p.name for p in processes}
-    process_runners = {p.id: p.runner for p in processes}
+    process_runners = {p.id: p.required_tags for p in processes}
     out = [_summary(r, process_names, process_runners) for r in items]
     return RunsResponse(count=len(out), runs=out)
 

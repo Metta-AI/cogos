@@ -47,7 +47,6 @@ class DispatchResult(BaseModel):
     run_id: str
     process_id: str
     process_name: str
-    runner: str
     message_id: str | None = None
     delivery_id: str | None = None
     trace_id: str | None = None
@@ -75,12 +74,15 @@ class KillResult(BaseModel):
     new_status: str
 
 
-class ChannelDispatchResult(BaseModel):
+class ExecutorDispatchResult(BaseModel):
     run_id: str
     process_id: str
     process_name: str
     executor_id: str
-    runner: str = "channel"
+    dispatch_type: str = "channel"
+    message_id: str | None = None
+    delivery_id: str | None = None
+    trace_id: str | None = None
 
 
 class SchedulerError(BaseModel):
@@ -210,7 +212,6 @@ class SchedulerCapability(Capability):
             run_id=str(run_id),
             process_id=str(target_id),
             process_name=proc.name,
-            runner=proc.runner,
             message_id=str(message_id) if message_id else None,
             delivery_id=str(delivery_id) if delivery_id else None,
             trace_id=str(trace_id) if trace_id else None,
@@ -276,12 +277,13 @@ class SchedulerCapability(Capability):
             new_status=ProcessStatus.DISABLED.value,
         )
 
-    def dispatch_channel(self, process_id: str) -> ChannelDispatchResult | SchedulerError:
-        """Dispatch a process to a channel executor.
+    def dispatch_to_executor(self, process_id: str) -> ExecutorDispatchResult | SchedulerError:
+        """Dispatch a process to a matching executor by required_tags.
 
-        Finds an idle executor matching the process's runner_config capabilities
-        (if any), marks it busy, and returns the executor assignment.
-        The caller is responsible for actually pushing work to the executor's channel.
+        Finds an idle executor whose executor_tags are a superset of the
+        process's required_tags, marks it busy, and returns the assignment.
+        The caller is responsible for delivering work via the executor's
+        dispatch_type (channel message or lambda invoke).
         """
         if not process_id:
             return SchedulerError(error="process_id is required")
@@ -291,21 +293,13 @@ class SchedulerCapability(Capability):
         if proc is None:
             return SchedulerError(error="process not found")
 
-        if proc.runner != "channel":
-            return SchedulerError(error=f"process runner is '{proc.runner}', expected 'channel'")
-
         if proc.status != ProcessStatus.RUNNABLE:
             return SchedulerError(error=f"process is {proc.status.value}, expected runnable")
 
-        # Extract executor filter from process metadata
-        runner_config = proc.metadata.get("runner_config", {})
-        executor_filter = runner_config.get("executor_filter", {})
-        required_caps = executor_filter.get("capabilities", [])
-        preferred_caps = executor_filter.get("prefer", [])
+        required_tags = proc.required_tags or []
 
         executor = self.repo.select_executor(
-            required_caps=required_caps or None,
-            preferred_caps=preferred_caps or None,
+            required_tags=required_tags or None,
         )
         if not executor:
             self.repo.update_process_status(target_id, ProcessStatus.BLOCKED)
@@ -325,16 +319,21 @@ class SchedulerCapability(Capability):
         if delivery_id:
             self.repo.mark_queued(delivery_id, run_id)
 
-        # Mark executor busy with this run
-        self.repo.update_executor_status(
-            executor.executor_id, ExecutorStatus.BUSY, current_run_id=run_id,
-        )
+        # Mark channel executors busy (lambda pools stay idle — fire-and-forget)
+        if executor.dispatch_type == "channel":
+            self.repo.update_executor_status(
+                executor.executor_id, ExecutorStatus.BUSY, current_run_id=run_id,
+            )
 
-        return ChannelDispatchResult(
+        return ExecutorDispatchResult(
             run_id=str(run_id),
             process_id=str(target_id),
             process_name=proc.name,
             executor_id=executor.executor_id,
+            dispatch_type=executor.dispatch_type,
+            message_id=str(message_id) if message_id else None,
+            delivery_id=str(delivery_id) if delivery_id else None,
+            trace_id=str(trace_id) if trace_id else None,
         )
 
     def reap_stale_executors(self, heartbeat_interval_s: int = 30) -> int:
@@ -379,5 +378,5 @@ class SchedulerCapability(Capability):
     def __repr__(self) -> str:
         return (
             "<SchedulerCapability match_messages() select_processes()"
-            " dispatch_process() dispatch_channel() unblock_processes() kill_process()>"
+            " dispatch_process() dispatch_to_executor() unblock_processes() kill_process()>"
         )

@@ -930,7 +930,7 @@ export function TracePanel({ traces, cogentName, timeRange, onRefresh }: TracePa
                                 <span>{run.process_name ?? run.process}</span>
                               </div>
                               <a
-                                href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, run.runner)}
+                                href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-[12px] text-[var(--accent)] hover:underline"

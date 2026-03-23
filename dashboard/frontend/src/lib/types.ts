@@ -17,7 +17,7 @@ export interface CogosProcess {
   content: string;
   priority: number;
   resources: string[];
-  runner: string;
+  required_tags: string[];
   status: string;
   runnable_since: string | null;
   parent_process: string | null;
@@ -112,7 +112,7 @@ export interface CogosRun {
   epoch: number;
   process: string;
   process_name?: string;
-  runner?: string | null;
+  required_tags?: string[] | null;
   status: string;
   tokens_in: number;
   tokens_out: number;
@@ -249,7 +249,7 @@ export interface TraceRun {
   id: string;
   process: string;
   process_name: string | null;
-  runner: string | null;
+  required_tags: string[] | null;
   status: string;
   tokens_in: number;
   tokens_out: number;
@@ -412,7 +412,8 @@ export interface CogosExecutor {
   id: string;
   executor_id: string;
   channel_type: string;
-  capabilities: string[];
+  executor_tags: string[];
+  dispatch_type: string;
   metadata: Record<string, unknown>;
   status: string;
   current_run_id: string | null;

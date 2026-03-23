@@ -20,7 +20,8 @@ router = APIRouter(tags=["executors"])
 class RegisterRequest(BaseModel):
     executor_id: str
     channel_type: str = "claude-code"
-    capabilities: list[str] = []
+    executor_tags: list[str] = []
+    dispatch_type: str = "channel"
     metadata: dict[str, Any] = {}
 
 
@@ -54,7 +55,8 @@ class ExecutorItem(BaseModel):
     id: str
     executor_id: str
     channel_type: str = "claude-code"
-    capabilities: list[str] = []
+    executor_tags: list[str] = []
+    dispatch_type: str = "channel"
     metadata: dict[str, Any] = {}
     status: str = "idle"
     current_run_id: str | None = None
@@ -80,6 +82,7 @@ class CreateTokenResponse(BaseModel):
 
 class TokenItem(BaseModel):
     name: str
+    token_raw: str = ""
     scope: str = "executor"
     created_at: str | None = None
     revoked: bool = False
@@ -105,7 +108,8 @@ def list_executors(name: str, status: str | None = None):
             id=str(e.id),
             executor_id=e.executor_id,
             channel_type=e.channel_type,
-            capabilities=e.capabilities,
+            executor_tags=e.executor_tags,
+            dispatch_type=e.dispatch_type,
             metadata=e.metadata,
             status=e.status.value,
             current_run_id=str(e.current_run_id) if e.current_run_id else None,
@@ -128,7 +132,8 @@ def get_executor(name: str, executor_id: str):
         id=str(e.id),
         executor_id=e.executor_id,
         channel_type=e.channel_type,
-        capabilities=e.capabilities,
+        executor_tags=e.executor_tags,
+        dispatch_type=e.dispatch_type,
         metadata=e.metadata,
         status=e.status.value,
         current_run_id=str(e.current_run_id) if e.current_run_id else None,
@@ -156,7 +161,8 @@ def register_executor(
     executor = Executor(
         executor_id=body.executor_id,
         channel_type=body.channel_type,
-        capabilities=body.capabilities,
+        executor_tags=body.executor_tags,
+        dispatch_type=body.dispatch_type,
         metadata=body.metadata,
     )
     repo.register_executor(executor)
@@ -289,6 +295,7 @@ def create_token(name: str, body: CreateTokenRequest, request: Request):
     token = ExecutorToken(
         name=token_name,
         token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+        token_raw=raw_token,
     )
     repo.create_executor_token(token)
 
@@ -310,6 +317,7 @@ def list_tokens(name: str):
     items = [
         TokenItem(
             name=t.name,
+            token_raw=t.token_raw,
             scope=t.scope,
             created_at=str(t.created_at) if t.created_at else None,
             revoked=t.revoked_at is not None,

@@ -75,7 +75,7 @@ function renderLogPreview(
         {state.log_stream ? <span>stream: {state.log_stream}</span> : null}
         {cogentName ? (
           <a
-            href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at, run.runner)}
+            href={buildCogentRunLogsUrl(cogentName, run.id, run.created_at)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
@@ -187,7 +187,7 @@ function makeColumns(
         <span className="inline-flex items-center gap-1">
           {cogentName && (
             <a
-              href={buildCogentRunLogsUrl(cogentName, row.id, row.created_at, row.runner)}
+              href={buildCogentRunLogsUrl(cogentName, row.id, row.created_at)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[10px] font-mono px-1 py-0 rounded hover:underline"

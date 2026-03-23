@@ -47,6 +47,9 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
     try:
         repo.set_meta("scheduler:last_tick")
         repo.set_meta("state:modified_at")
+        # Heartbeat the local-daemon executor
+        from cogos.db.models import ExecutorStatus
+        repo.heartbeat_executor("local-daemon", status=ExecutorStatus.IDLE)
     except Exception:
         logger.warning("Heartbeat failed", exc_info=True)
 
@@ -186,6 +189,18 @@ def run_loop(repo: Any, runtime: Any, cogent_name: str, *, tick_interval: int = 
     Between full ticks the loop drains the local ingress queue (SQS mock)
     every second so that channel-message nudges trigger near-instant dispatch.
     """
+    # Seed a local daemon executor so processes with no tags (or "python" tag) get dispatched
+    from cogos.db.models.executor import Executor
+    local_executor = Executor(
+        executor_id="local-daemon",
+        channel_type="local",
+        executor_tags=["python"],
+        dispatch_type="channel",
+        metadata={"local": True},
+    )
+    repo.register_executor(local_executor)
+    logger.info("Registered local-daemon executor")
+
     shutdown = False
 
     def _handle_signal(signum: int, frame: Any) -> None:

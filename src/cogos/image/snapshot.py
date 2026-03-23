@@ -99,7 +99,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
         parts.append(f'    mode={_repr_val(p.mode.value)}')
         if p.content:
             parts.append(f'    content={_repr_val(p.content)}')
-        parts.append(f'    runner={_repr_val(p.runner)}')
+        parts.append(f'    required_tags={_repr_val(p.required_tags)}')
         if p.model:
             parts.append(f'    model={_repr_val(p.model)}')
         parts.append(f'    priority={_repr_val(p.priority)}')

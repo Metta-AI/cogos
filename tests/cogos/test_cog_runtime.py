@@ -133,7 +133,7 @@ class TestRunCog:
     def test_passes_config_fields(self, tmp_path):
         cog = _make_cog(tmp_path, config={
             "mode": "daemon", "priority": 5.0, "executor": "llm",
-            "model": "gpt-4", "runner": "ecs", "idle_timeout_ms": 3000,
+            "model": "gpt-4", "required_tags": ["ecs"], "idle_timeout_ms": 3000,
         })
         procs = _mock_procs()
         rt = _make_runtime(cog)
@@ -143,7 +143,7 @@ class TestRunCog:
         assert kw["priority"] == 5.0
         assert kw["executor"] == "llm"
         assert kw["model"] == "gpt-4"
-        assert kw["runner"] == "ecs"
+        assert kw["required_tags"] == ["ecs"]
         assert kw["idle_timeout_ms"] == 3000
 
     def test_subscribe_from_handlers(self, tmp_path):

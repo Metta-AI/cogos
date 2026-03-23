@@ -99,7 +99,7 @@ class TestCogConfig:
         assert c.priority == 0.0
         assert c.executor == "llm"
         assert c.model is None
-        assert c.runner == "lambda"
+        assert c.required_tags == []
         assert c.capabilities == []
         assert c.handlers == []
         assert c.idle_timeout_ms is None

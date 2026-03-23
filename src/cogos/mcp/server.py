@@ -30,7 +30,7 @@ class CogosServer:
         poll_ms: int = 3000,
         heartbeat_s: int = 15,
         executor_id: str | None = None,
-        capabilities: list[str] | None = None,
+        executor_tags: list[str] | None = None,
     ) -> None:
         self.api_url = api_url.rstrip("/")
         self.cogent_name = cogent_name
@@ -39,7 +39,7 @@ class CogosServer:
         self.poll_ms = poll_ms
         self.heartbeat_s = heartbeat_s
         self.executor_id = executor_id or f"cc-{platform.node()}-{secrets.token_hex(4)}"
-        self.capabilities = capabilities or ["claude-code"]
+        self.executor_tags = executor_tags or ["claude-code"]
 
         # Channel state
         self.seen_messages: set[str] = set()
@@ -91,7 +91,8 @@ class CogosServer:
                 json={
                     "executor_id": self.executor_id,
                     "channel_type": "claude-code",
-                    "capabilities": self.capabilities,
+                    "executor_tags": self.executor_tags,
+                    "dispatch_type": "channel",
                     "metadata": {"mcp": True, "hostname": platform.node()},
                 },
             )

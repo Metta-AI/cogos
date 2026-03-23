@@ -51,6 +51,17 @@ def handler(event: dict, context) -> dict:
         safe_name = os.environ["COGENT"].replace(".", "-")
         executor_fn = f"cogent-{safe_name}-executor"
 
+    # Ensure a lambda pool executor is registered for processes requiring "lambda" tag
+    from cogos.db.models.executor import Executor
+    lambda_executor = Executor(
+        executor_id="lambda-pool",
+        channel_type="lambda",
+        executor_tags=["lambda", "python"],
+        dispatch_type="lambda",
+        metadata={"pool": True},
+    )
+    repo.register_executor(lambda_executor)
+
     # Heartbeat — lets the dashboard show time-since-last-tick
     try:
         repo.set_meta("scheduler:last_tick")

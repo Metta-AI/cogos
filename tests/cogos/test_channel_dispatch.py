@@ -1,10 +1,10 @@
-"""Tests for channel-based executor dispatch via the scheduler."""
+"""Tests for executor dispatch via the scheduler."""
 
 from uuid import UUID
 
 import pytest
 
-from cogos.capabilities.scheduler import ChannelDispatchResult, SchedulerCapability, SchedulerError
+from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerCapability, SchedulerError
 from cogos.db.local_repository import LocalRepository
 from cogos.db.models import (
     Channel,
@@ -32,12 +32,13 @@ def scheduler(repo):
     return cap
 
 
-def _make_channel_process(repo, *, name="channel-proc", status=ProcessStatus.RUNNABLE, metadata=None) -> Process:
+def _make_process(repo, *, name="test-proc", status=ProcessStatus.RUNNABLE,
+                  required_tags=None, metadata=None) -> Process:
     p = Process(
         name=name,
         mode=ProcessMode.DAEMON,
         status=status,
-        runner="channel",
+        required_tags=required_tags or [],
         priority=50.0,
         metadata=metadata or {},
     )
@@ -45,26 +46,27 @@ def _make_channel_process(repo, *, name="channel-proc", status=ProcessStatus.RUN
     return p
 
 
-def _register_executor(repo, *, executor_id="exec-1", capabilities=None) -> Executor:
+def _register_executor(repo, *, executor_id="exec-1", executor_tags=None,
+                        dispatch_type="channel") -> Executor:
     e = Executor(
         executor_id=executor_id,
-        capabilities=capabilities or ["claude-code", "git"],
+        executor_tags=executor_tags or ["claude-code", "git"],
+        dispatch_type=dispatch_type,
     )
     repo.register_executor(e)
     return e
 
 
-class TestDispatchChannel:
+class TestDispatchToExecutor:
     def test_dispatch_success(self, repo, scheduler):
-        proc = _make_channel_process(repo)
+        proc = _make_process(repo)
         _register_executor(repo)
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
-        assert isinstance(result, ChannelDispatchResult)
-        assert result.process_name == "channel-proc"
+        assert isinstance(result, ExecutorDispatchResult)
+        assert result.process_name == "test-proc"
         assert result.executor_id == "exec-1"
-        assert result.runner == "channel"
 
         # Process should be RUNNING
         updated = repo.get_process(proc.id)
@@ -81,75 +83,51 @@ class TestDispatchChannel:
         assert runs[0].status == RunStatus.RUNNING
 
     def test_dispatch_no_executor_blocks_process(self, repo, scheduler):
-        proc = _make_channel_process(repo)
-        # No executors registered
+        proc = _make_process(repo)
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
         assert isinstance(result, SchedulerError)
         assert "no available executor" in result.error
 
-        # Process should be BLOCKED
         updated = repo.get_process(proc.id)
         assert updated.status == ProcessStatus.BLOCKED
 
-    def test_dispatch_wrong_runner_rejected(self, repo, scheduler):
-        p = Process(name="lambda-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, runner="lambda")
-        repo.upsert_process(p)
-        _register_executor(repo)
-
-        result = scheduler.dispatch_channel(process_id=str(p.id))
-
-        assert isinstance(result, SchedulerError)
-        assert "expected 'channel'" in result.error
-
     def test_dispatch_not_runnable_rejected(self, repo, scheduler):
-        proc = _make_channel_process(repo, status=ProcessStatus.WAITING)
+        proc = _make_process(repo, status=ProcessStatus.WAITING)
         _register_executor(repo)
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
         assert isinstance(result, SchedulerError)
         assert "expected runnable" in result.error
 
     def test_dispatch_nonexistent_process(self, repo, scheduler):
-        result = scheduler.dispatch_channel(process_id="00000000-0000-0000-0000-000000000000")
+        result = scheduler.dispatch_to_executor(process_id="00000000-0000-0000-0000-000000000000")
         assert isinstance(result, SchedulerError)
         assert "not found" in result.error
 
     def test_dispatch_empty_process_id(self, repo, scheduler):
-        result = scheduler.dispatch_channel(process_id="")
+        result = scheduler.dispatch_to_executor(process_id="")
         assert isinstance(result, SchedulerError)
 
-    def test_dispatch_with_capability_filter(self, repo, scheduler):
-        """Process requires GPU executor — only GPU executor should be selected."""
-        proc = _make_channel_process(repo, metadata={
-            "runner_config": {
-                "executor_filter": {
-                    "capabilities": ["claude-code", "gpu"],
-                }
-            }
-        })
-        _register_executor(repo, executor_id="exec-cpu", capabilities=["claude-code", "git"])
-        _register_executor(repo, executor_id="exec-gpu", capabilities=["claude-code", "git", "gpu"])
+    def test_dispatch_with_tag_filter(self, repo, scheduler):
+        """Process requires GPU — only GPU executor should be selected."""
+        proc = _make_process(repo, required_tags=["claude-code", "gpu"])
+        _register_executor(repo, executor_id="exec-cpu", executor_tags=["claude-code", "git"])
+        _register_executor(repo, executor_id="exec-gpu", executor_tags=["claude-code", "git", "gpu"])
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
-        assert isinstance(result, ChannelDispatchResult)
+        assert isinstance(result, ExecutorDispatchResult)
         assert result.executor_id == "exec-gpu"
 
-    def test_dispatch_with_unmet_capability_blocks(self, repo, scheduler):
-        """No executor has required GPU capability."""
-        proc = _make_channel_process(repo, metadata={
-            "runner_config": {
-                "executor_filter": {
-                    "capabilities": ["gpu"],
-                }
-            }
-        })
-        _register_executor(repo, capabilities=["claude-code", "git"])
+    def test_dispatch_with_unmet_tags_blocks(self, repo, scheduler):
+        """No executor has required GPU tag."""
+        proc = _make_process(repo, required_tags=["gpu"])
+        _register_executor(repo, executor_tags=["claude-code", "git"])
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
         assert isinstance(result, SchedulerError)
         assert "no available executor" in result.error
@@ -157,48 +135,71 @@ class TestDispatchChannel:
         assert updated.status == ProcessStatus.BLOCKED
 
     def test_dispatch_skips_busy_executors(self, repo, scheduler):
-        proc = _make_channel_process(repo)
+        proc = _make_process(repo)
         _register_executor(repo, executor_id="exec-busy")
         _register_executor(repo, executor_id="exec-idle")
         repo.update_executor_status("exec-busy", ExecutorStatus.BUSY)
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
-        assert isinstance(result, ChannelDispatchResult)
+        assert isinstance(result, ExecutorDispatchResult)
         assert result.executor_id == "exec-idle"
 
     def test_dispatch_with_pending_delivery(self, repo, scheduler):
-        """Channel dispatch should consume pending deliveries."""
-        proc = _make_channel_process(repo)
+        """Dispatch should consume pending deliveries."""
+        proc = _make_process(repo)
         _register_executor(repo)
 
-        # Set up channel + handler + message -> delivery
         ch = Channel(name="task:assigned", channel_type=ChannelType.NAMED)
         repo.upsert_channel(ch)
         repo.create_handler(Handler(process=proc.id, channel=ch.id, enabled=True))
         msg = ChannelMessage(channel=ch.id, payload={"topic": "test"})
         repo.append_channel_message(msg)
 
-        # Match messages to create deliveries
         scheduler.match_messages()
 
-        result = scheduler.dispatch_channel(process_id=str(proc.id))
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
 
-        assert isinstance(result, ChannelDispatchResult)
+        assert isinstance(result, ExecutorDispatchResult)
         assert result.run_id
 
     def test_multiple_dispatches_use_different_executors(self, repo, scheduler):
-        proc1 = _make_channel_process(repo, name="proc-1")
-        proc2 = _make_channel_process(repo, name="proc-2")
+        proc1 = _make_process(repo, name="proc-1")
+        proc2 = _make_process(repo, name="proc-2")
         _register_executor(repo, executor_id="exec-1")
         _register_executor(repo, executor_id="exec-2")
 
-        r1 = scheduler.dispatch_channel(process_id=str(proc1.id))
-        r2 = scheduler.dispatch_channel(process_id=str(proc2.id))
+        r1 = scheduler.dispatch_to_executor(process_id=str(proc1.id))
+        r2 = scheduler.dispatch_to_executor(process_id=str(proc2.id))
 
-        assert isinstance(r1, ChannelDispatchResult)
-        assert isinstance(r2, ChannelDispatchResult)
+        assert isinstance(r1, ExecutorDispatchResult)
+        assert isinstance(r2, ExecutorDispatchResult)
         assert r1.executor_id != r2.executor_id
+
+    def test_lambda_pool_dispatch(self, repo, scheduler):
+        """Lambda pool executor stays idle after dispatch (fire-and-forget)."""
+        proc = _make_process(repo, required_tags=["lambda"])
+        _register_executor(repo, executor_id="lambda-pool",
+                          executor_tags=["lambda", "python"],
+                          dispatch_type="lambda")
+
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
+
+        assert isinstance(result, ExecutorDispatchResult)
+        assert result.executor_id == "lambda-pool"
+        assert result.dispatch_type == "lambda"
+
+        # Lambda pool should remain IDLE
+        executor = repo.get_executor("lambda-pool")
+        assert executor.status == ExecutorStatus.IDLE
+
+    def test_no_tags_matches_any_executor(self, repo, scheduler):
+        """Process with no required_tags matches any executor."""
+        proc = _make_process(repo, required_tags=[])
+        _register_executor(repo)
+
+        result = scheduler.dispatch_to_executor(process_id=str(proc.id))
+        assert isinstance(result, ExecutorDispatchResult)
 
 
 class TestReapStaleExecutors:

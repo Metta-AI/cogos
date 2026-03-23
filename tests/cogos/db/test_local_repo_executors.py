@@ -21,14 +21,14 @@ def repo(tmp_path):
 
 class TestExecutorCRUD:
     def test_register_and_get(self, repo):
-        e = Executor(executor_id="executor-test-abc123", capabilities=["claude-code", "git"])
+        e = Executor(executor_id="executor-test-abc123", executor_tags=["claude-code", "git"])
         eid = repo.register_executor(e)
         got = repo.get_executor("executor-test-abc123")
         assert got is not None
         assert got.id == eid
         assert got.executor_id == "executor-test-abc123"
         assert got.status == ExecutorStatus.IDLE
-        assert got.capabilities == ["claude-code", "git"]
+        assert got.executor_tags == ["claude-code", "git"]
         assert got.last_heartbeat_at is not None
 
     def test_get_nonexistent(self, repo):
@@ -42,13 +42,13 @@ class TestExecutorCRUD:
         assert got.executor_id == "executor-uuid-test"
 
     def test_reregister_updates(self, repo):
-        e1 = Executor(executor_id="executor-rereg", capabilities=["git"])
+        e1 = Executor(executor_id="executor-rereg", executor_tags=["git"])
         id1 = repo.register_executor(e1)
-        e2 = Executor(executor_id="executor-rereg", capabilities=["git", "gpu"])
+        e2 = Executor(executor_id="executor-rereg", executor_tags=["git", "gpu"])
         id2 = repo.register_executor(e2)
         assert id1 == id2
         got = repo.get_executor("executor-rereg")
-        assert got.capabilities == ["git", "gpu"]
+        assert got.executor_tags == ["git", "gpu"]
         assert got.status == ExecutorStatus.IDLE
 
     def test_list_all(self, repo):
@@ -80,7 +80,7 @@ class TestExecutorCRUD:
 
 class TestExecutorSelection:
     def test_select_idle(self, repo):
-        repo.register_executor(Executor(executor_id="exec-1", capabilities=["claude-code"]))
+        repo.register_executor(Executor(executor_id="exec-1", executor_tags=["claude-code"]))
         selected = repo.select_executor()
         assert selected is not None
         assert selected.executor_id == "exec-1"
@@ -91,27 +91,27 @@ class TestExecutorSelection:
         assert repo.select_executor() is None
 
     def test_select_with_required_caps(self, repo):
-        repo.register_executor(Executor(executor_id="exec-cpu", capabilities=["claude-code", "git"]))
-        repo.register_executor(Executor(executor_id="exec-gpu", capabilities=["claude-code", "git", "gpu"]))
+        repo.register_executor(Executor(executor_id="exec-cpu", executor_tags=["claude-code", "git"]))
+        repo.register_executor(Executor(executor_id="exec-gpu", executor_tags=["claude-code", "git", "gpu"]))
 
         # Require GPU
-        selected = repo.select_executor(required_caps=["gpu"])
+        selected = repo.select_executor(required_tags=["gpu"])
         assert selected is not None
         assert selected.executor_id == "exec-gpu"
 
         # Require only basic caps — either could match
-        selected = repo.select_executor(required_caps=["claude-code", "git"])
+        selected = repo.select_executor(required_tags=["claude-code", "git"])
         assert selected is not None
 
     def test_select_with_required_caps_no_match(self, repo):
-        repo.register_executor(Executor(executor_id="exec-cpu", capabilities=["claude-code"]))
-        selected = repo.select_executor(required_caps=["gpu"])
+        repo.register_executor(Executor(executor_id="exec-cpu", executor_tags=["claude-code"]))
+        selected = repo.select_executor(required_tags=["gpu"])
         assert selected is None
 
     def test_select_prefers_caps(self, repo):
-        repo.register_executor(Executor(executor_id="exec-basic", capabilities=["claude-code"]))
-        repo.register_executor(Executor(executor_id="exec-fancy", capabilities=["claude-code", "gpu"]))
-        selected = repo.select_executor(preferred_caps=["gpu"])
+        repo.register_executor(Executor(executor_id="exec-basic", executor_tags=["claude-code"]))
+        repo.register_executor(Executor(executor_id="exec-fancy", executor_tags=["claude-code", "gpu"]))
+        selected = repo.select_executor(preferred_tags=["gpu"])
         assert selected.executor_id == "exec-fancy"
 
     def test_select_empty_repo(self, repo):

@@ -370,23 +370,24 @@ def process_get(name: str, use_json: bool):
 @click.argument("name")
 @click.option("--mode", type=click.Choice(["daemon", "one_shot"]), default="one_shot")
 @click.option("--content", default="")
-@click.option("--runner", type=click.Choice(["lambda", "ecs", "channel"]), default="lambda")
+@click.option("--tags", "-t", default="", help="Comma-separated required executor tags")
 @click.option("--executor", type=click.Choice(["llm", "python"]), default="llm")
 @click.option("--model", default=None)
 @click.option("--priority", type=float, default=0.0)
 @click.option("--capability", "-cap", multiple=True, help="Capability name to grant (repeatable)")
 def process_create(name: str, mode: str, content: str,
-                   runner: str, executor: str, model: str | None,
+                   tags: str, executor: str, model: str | None,
                    priority: float, capability: tuple[str, ...]):
     """Create a new process."""
     from cogos.db.models import Process, ProcessCapability, ProcessMode, ProcessStatus
     repo = _repo()
 
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     p = Process(
         name=name,
         mode=ProcessMode(mode),
         content=content,
-        runner=runner,
+        required_tags=tag_list,
         executor=executor,
         model=model,
         priority=priority,
@@ -408,10 +409,9 @@ def process_create(name: str, mode: str, content: str,
 
 @process.command("run")
 @click.argument("name")
-@click.option("--executor", "executor_override", type=click.Choice(["lambda", "ecs", "local"]),
-              default=None, help="Executor backend (default: from process runner field)")
+@click.option("--local", "run_local", is_flag=True, default=False, help="Run locally instead of dispatching")
 @click.option("--event", default=None, help="JSON event data (e.g. '{\"channel_name\":\"system:tick:hour\"}')")
-def process_run(name: str, executor_override: str | None, event: str | None):
+def process_run(name: str, run_local: bool, event: str | None):
     """Trigger a process to run."""
     repo = _repo()
     p = repo.get_process_by_name(name)
@@ -419,9 +419,7 @@ def process_run(name: str, executor_override: str | None, event: str | None):
         click.echo(f"Process not found: {name}")
         return
 
-    executor = executor_override or p.runner
-
-    if executor == "local":
+    if run_local:
         from cogos.db.models import ProcessStatus, Run, RunStatus
         from cogos.executor.handler import get_config
         from cogos.runtime.local import run_and_complete
@@ -467,10 +465,10 @@ def process_run(name: str, executor_override: str | None, event: str | None):
             error = (db_run.error if db_run else None) or run.error or "(unknown)"
             click.echo(f"Run failed: {error}")
     else:
-        # lambda or ecs: mark as runnable for scheduler
+        # Mark as runnable for scheduler to dispatch to a matching executor
         from cogos.db.models import ProcessStatus
         repo.update_process_status(p.id, ProcessStatus.RUNNABLE)
-        click.echo(f"Process {name} marked RUNNABLE (executor={executor})")
+        click.echo(f"Process {name} marked RUNNABLE (tags={p.required_tags})")
 
 
 @process.command("disable")
@@ -542,7 +540,7 @@ def process_load(file_path: str):
             name=name,
             mode=mode,
             content=entry.get("content", ""),
-            runner=entry.get("runner", "lambda"),
+            required_tags=entry.get("required_tags", []),
             executor=entry.get("executor", "llm"),
             model=entry.get("model"),
             priority=float(entry.get("priority", 0.0)),
@@ -1640,11 +1638,11 @@ def executor_remove(executor_id: str):
 
 @executor.command("daemon")
 @click.option("--id", "executor_id", default=None, help="Executor ID (auto-generated if omitted)")
-@click.option("--capabilities", "-c", default="claude-code", help="Comma-separated capabilities")
+@click.option("--tags", "-t", default="python", help="Comma-separated executor tags")
 @click.option("--poll", "poll_s", default=2.0, type=float, help="Poll interval seconds")
 @click.option("--heartbeat", "heartbeat_s", default=15.0, type=float, help="Heartbeat interval seconds")
 @click.pass_context
-def executor_daemon(ctx, executor_id: str | None, capabilities: str, poll_s: float, heartbeat_s: float):
+def executor_daemon(ctx, executor_id: str | None, tags: str, poll_s: float, heartbeat_s: float):
     """Run a local executor daemon that registers, heartbeats, and executes work."""
     import platform
     import secrets
@@ -1656,7 +1654,7 @@ def executor_daemon(ctx, executor_id: str | None, capabilities: str, poll_s: flo
         short = secrets.token_hex(4)
         executor_id = f"local-{platform.node()}-{short}"
 
-    caps = [c.strip() for c in capabilities.split(",") if c.strip()]
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
     # Try cogtainer runtime first, fall back to LocalRepository
     runtime = (ctx.obj or {}).get("runtime")
@@ -1670,13 +1668,13 @@ def executor_daemon(ctx, executor_id: str | None, capabilities: str, poll_s: flo
     config = get_config()
 
     click.echo(f"Starting executor daemon: {executor_id}")
-    click.echo(f"  capabilities: {caps}")
+    click.echo(f"  tags: {tag_list}")
     click.echo(f"  poll: {poll_s}s, heartbeat: {heartbeat_s}s")
 
     daemon = ExecutorDaemon(
         repo,
         executor_id,
-        capabilities=caps,
+        executor_tags=tag_list,
         config=config,
         heartbeat_s=heartbeat_s,
         poll_s=poll_s,

@@ -58,7 +58,6 @@ def main() -> None:
             run_id=str(run.id),
             process_id=str(process_id),
             process_name=process.name,
-            runner=process.runner,
             message_id=str(run.message),
         )
         event_data = build_dispatch_event(repo, dispatch)

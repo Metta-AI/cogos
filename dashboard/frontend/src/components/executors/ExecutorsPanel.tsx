@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { CogosExecutor, CogosRun } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { TokenManager } from "@/components/executors/TokenManager";
@@ -66,11 +67,11 @@ function RunInfo({ runId, runs }: { runId: string | null; runs: CogosRun[] }) {
   );
 }
 
-function CapabilityTags({ capabilities }: { capabilities: string[] }) {
-  if (!capabilities.length) return <span className="text-[var(--text-muted)]">none</span>;
+function CapabilityTags({ tags }: { tags: string[] }) {
+  if (!tags.length) return <span className="text-[var(--text-muted)]">none</span>;
   return (
     <div className="flex flex-wrap gap-1">
-      {capabilities.map((cap) => (
+      {tags.map((cap) => (
         <span
           key={cap}
           className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-hover)] text-[var(--text-muted)]"
@@ -90,16 +91,26 @@ function findRecentRuns(executorId: string, runs: CogosRun[], limit = 3): CogosR
     .slice(0, limit);
 }
 
+const INACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+function isHeartbeatStale(lastHeartbeat: string | null): boolean {
+  if (!lastHeartbeat) return true;
+  const ts = new Date(lastHeartbeat.replace(" ", "T")).getTime();
+  if (isNaN(ts)) return true;
+  return Date.now() - ts > INACTIVE_THRESHOLD_MS;
+}
+
 export function ExecutorsPanel({ executors = [], runs = [], cogentName }: ExecutorsPanelProps) {
-  const idle = executors.filter((e) => e.status === "idle");
-  const busy = executors.filter((e) => e.status === "busy");
+  const [showInactive, setShowInactive] = useState(false);
   const stale = executors.filter((e) => e.status === "stale");
   const dead = executors.filter((e) => e.status === "dead");
-  const active = executors.filter((e) => e.status === "idle" || e.status === "busy");
+  const active = executors.filter((e) => (e.status === "idle" || e.status === "busy") && !isHeartbeatStale(e.last_heartbeat_at));
+  const inactive = executors.filter((e) => (e.status === "idle" || e.status === "busy") && isHeartbeatStale(e.last_heartbeat_at));
 
   // Recent completed runs (for "recently finished" section)
+  const busyExecutors = active.filter((e) => e.status === "busy");
   const recentRuns = runs
-    .filter((r) => r.runner === "channel" || busy.some((e) => e.current_run_id === r.id))
+    .filter((r) => busyExecutors.some((e) => e.current_run_id === r.id) || r.status !== "running")
     .filter((r) => r.status !== "running")
     .slice(0, 10);
 
@@ -108,20 +119,20 @@ export function ExecutorsPanel({ executors = [], runs = [], cogentName }: Execut
       {/* Token Management */}
       <TokenManager cogentName={cogentName} />
 
-      {/* Active Executors (busy first, then idle) */}
+      {/* Executors */}
       <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden">
         <div className="px-4 py-2.5 border-b border-[var(--border)]">
           <span className="text-[13px] font-semibold text-[var(--text-primary)]">
-            Active Executors
+            Executors
           </span>
           <span className="text-[11px] text-[var(--text-muted)] ml-2">
-            ({active.length})
+            ({active.length} active{inactive.length > 0 ? `, ${inactive.length} inactive` : ""})
           </span>
         </div>
 
-        {active.length === 0 ? (
+        {active.length === 0 && inactive.length === 0 ? (
           <div className="px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">
-            No active executors registered
+            No executors registered
           </div>
         ) : (
           <table className="w-full text-left text-[12px]">
@@ -140,12 +151,12 @@ export function ExecutorsPanel({ executors = [], runs = [], cogentName }: Execut
                   Current Run
                 </th>
                 <th className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] uppercase tracking-wide font-medium">
-                  Capabilities
+                  Tags
                 </th>
               </tr>
             </thead>
             <tbody>
-              {[...busy, ...idle].map((e) => (
+              {active.map((e) => (
                 <tr
                   key={e.id}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors"
@@ -166,10 +177,47 @@ export function ExecutorsPanel({ executors = [], runs = [], cogentName }: Execut
                     <RunInfo runId={e.current_run_id} runs={runs} />
                   </td>
                   <td className="px-3 py-2.5">
-                    <CapabilityTags capabilities={e.capabilities} />
+                    <CapabilityTags tags={e.executor_tags} />
                   </td>
                 </tr>
               ))}
+              {/* Inactive collapse/expand */}
+              {inactive.length > 0 && (
+                <>
+                  <tr
+                    className="border-b border-[var(--border)] cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                    onClick={() => setShowInactive(!showInactive)}
+                  >
+                    <td colSpan={5} className="px-4 py-1.5 text-[11px] text-[var(--text-muted)]">
+                      <span className="inline-block w-3 text-center mr-1">{showInactive ? "▾" : "▸"}</span>
+                      {inactive.length} inactive (no heartbeat for 5m+)
+                    </td>
+                  </tr>
+                  {showInactive && inactive.map((e) => (
+                    <tr
+                      key={e.id}
+                      className="border-b border-[var(--border)] last:border-0"
+                      style={{ opacity: 0.5 }}
+                    >
+                      <td className="px-4 py-2">
+                        <span className="font-mono text-[var(--text-muted)]">{e.executor_id}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant="neutral">inactive</Badge>
+                      </td>
+                      <td className="px-3 py-2">
+                        <HeartbeatIndicator lastHeartbeat={e.last_heartbeat_at} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-[var(--text-muted)]">--</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <CapabilityTags tags={e.executor_tags} />
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )}
             </tbody>
           </table>
         )}
