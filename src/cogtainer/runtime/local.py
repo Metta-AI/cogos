@@ -51,12 +51,11 @@ class LocalRuntime(CogtainerRuntime):
 
         cogent_dir = self._data_dir / cogent_name
         cogent_dir.mkdir(parents=True, exist_ok=True)
-        repo = LocalRepository(data_dir=str(cogent_dir))
-        # Wire up the local ingress queue so channel-message nudges
-        # trigger immediate dispatch instead of waiting for the next tick.
-        repo._ingress_queue_url = "local://ingress"
-        repo._nudge_callback = self.ingress_queue.send
-        return repo
+        return LocalRepository(
+            data_dir=str(cogent_dir),
+            ingress_queue_url="local://ingress",
+            nudge_callback=self._ingress_queue.send,
+        )
 
     # ── LLM ──────────────────────────────────────────────────
 
@@ -96,11 +95,7 @@ class LocalRuntime(CogtainerRuntime):
 
     def spawn_executor(self, cogent_name: str, process_id: str) -> None:
         cogent_dir = self._data_dir / cogent_name
-        llm_cfg = self._entry.llm
-        llm_provider = (
-            llm_cfg.provider if hasattr(llm_cfg, "provider")
-            else (llm_cfg.get("provider", "openrouter") if isinstance(llm_cfg, dict) else "openrouter")
-        )
+        llm_provider = self._entry.llm.provider
         env = {
             **os.environ,
             "COGTAINER": self._entry.type,

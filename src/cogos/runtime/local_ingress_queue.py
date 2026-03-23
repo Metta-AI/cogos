@@ -11,9 +11,11 @@ near-instant dispatch for event-driven workloads.
 Usage:
     queue = LocalIngressQueue()
 
-    # Register as the nudge callback on LocalRepository:
-    repo._nudge_callback = queue.send
-    repo._ingress_queue_url = "local://ingress"
+    repo = LocalRepository(
+        data_dir=...,
+        ingress_queue_url="local://ingress",
+        nudge_callback=queue.send,
+    )
 
     # In the dispatcher loop, drain between ticks:
     for msg in queue.drain():

@@ -17,6 +17,9 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from cogos.db.protocol import RepositoryProtocol
+from cogtainer.runtime.base import CogtainerRuntime
+
 logger = logging.getLogger(__name__)
 
 _THROTTLE_COOLDOWN_MS = 300_000  # 5 minutes
@@ -25,7 +28,7 @@ _NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 def _dispatch_to_matched_executor(
-    repo: Any, scheduler: Any, runtime: Any, cogent_name: str,
+    repo: RepositoryProtocol, scheduler: Any, runtime: CogtainerRuntime, cogent_name: str,
     process_id: str, process_name: str,
 ) -> bool:
     """Dispatch a process to a tag-matched executor.
@@ -34,7 +37,7 @@ def _dispatch_to_matched_executor(
     spawn_executor; channel executors get a channel message. Returns
     True if dispatched successfully.
     """
-    from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerError
+    from cogos.capabilities.scheduler import SchedulerError
     from cogos.db.models import ChannelMessage
     from cogos.runtime.dispatch import build_dispatch_event
 
@@ -71,7 +74,7 @@ def _dispatch_to_matched_executor(
     return True
 
 
-def _emit_missing_tags_alert(repo: Any, process_id: str, process_name: str, error: str) -> None:
+def _emit_missing_tags_alert(repo: RepositoryProtocol, process_id: str, process_name: str, error: str) -> None:
     """Emit an alert when no executor matches required tags."""
     from cogos.db.models import Channel, ChannelMessage, ChannelType
 
@@ -90,7 +93,7 @@ def _emit_missing_tags_alert(repo: Any, process_id: str, process_name: str, erro
     ))
 
 
-def _is_throttle_cooldown_active(repo: Any) -> bool:
+def _is_throttle_cooldown_active(repo: RepositoryProtocol) -> bool:
     """Check if any recent run was throttled, indicating we should back off."""
     from cogos.db.models import RunStatus
 
@@ -98,13 +101,12 @@ def _is_throttle_cooldown_active(repo: Any) -> bool:
     return any(r.status == RunStatus.THROTTLED for r in recent)
 
 
-def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
+def run_tick(repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str) -> dict:
     """Single scheduler tick. Returns {"dispatched": int}."""
     from cogos.capabilities.scheduler import SchedulerCapability
     from cogos.runtime.schedule import apply_scheduled_messages
 
-    if hasattr(repo, "_load"):
-        repo._load()
+    repo.reload()
 
     scheduler = SchedulerCapability(repo, _NULL_UUID)
     dispatched = 0
@@ -121,10 +123,9 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
 
     # 2a. Reap dead executor subprocesses
     try:
-        if hasattr(runtime, "reap_dead_executors"):
-            dead = runtime.reap_dead_executors(repo)
-            if dead:
-                logger.warning("Failed %s runs from dead executor subprocesses", dead)
+        dead = runtime.reap_dead_executors(repo)
+        if dead:
+            logger.warning("Failed %s runs from dead executor subprocesses", dead)
     except Exception:
         logger.warning("Reap dead executors failed", exc_info=True)
 
@@ -181,14 +182,14 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
     return {"dispatched": dispatched}
 
 
-def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int:
+def _dispatch_nudged_processes(repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str) -> int:
     """Drain the local ingress queue and dispatch any nudged processes.
 
     This mirrors the production ingress Lambda: explicitly nudged process IDs
     are dispatched immediately (bypassing weighted random selection), then a
     small batch of other runnable processes is selected.
     """
-    ingress_queue = getattr(runtime, "ingress_queue", None)
+    ingress_queue = runtime.ingress_queue
     if ingress_queue is None:
         return 0
 
@@ -196,11 +197,10 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
     if not messages:
         return 0
 
-    from cogos.capabilities.scheduler import SchedulerCapability, SchedulerError
+    from cogos.capabilities.scheduler import SchedulerCapability
     from cogos.db.models import ProcessStatus
 
-    if hasattr(repo, "_load"):
-        repo._load()
+    repo.reload()
 
     scheduler = SchedulerCapability(repo, _NULL_UUID)
     dispatched = 0
@@ -239,7 +239,10 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
     return dispatched
 
 
-def run_loop(repo: Any, runtime: Any, cogent_name: str, *, tick_interval: int = _DEFAULT_TICK_INTERVAL) -> None:
+def run_loop(
+    repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str,
+    *, tick_interval: int = _DEFAULT_TICK_INTERVAL,
+) -> None:
     """Tick every *tick_interval* seconds until SIGINT/SIGTERM.
 
     Between full ticks the loop drains the local ingress queue (SQS mock)
@@ -267,7 +270,7 @@ def run_loop(repo: Any, runtime: Any, cogent_name: str, *, tick_interval: int = 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    ingress_queue = getattr(runtime, "ingress_queue", None)
+    ingress_queue = runtime.ingress_queue
     if ingress_queue is not None:
         logger.info(
             "Local dispatcher started for cogent %s (tick every %ds, ingress queue enabled)",

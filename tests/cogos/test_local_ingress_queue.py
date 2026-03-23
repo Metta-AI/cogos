@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from uuid import UUID
 
 import pytest
 
@@ -18,7 +17,6 @@ from cogos.db.models import (
     ProcessStatus,
 )
 from cogos.runtime.local_ingress_queue import LocalIngressQueue
-
 
 # ── Unit tests ──────────────────────────────────────────────
 
@@ -72,11 +70,14 @@ def repo(tmp_path) -> LocalRepository:
     return LocalRepository(data_dir=str(tmp_path))
 
 
-def test_channel_message_nudges_ingress(repo):
+def test_channel_message_nudges_ingress(tmp_path):
     """When a channel message wakes a WAITING process, the local ingress queue gets nudged."""
     q = LocalIngressQueue()
-    repo._ingress_queue_url = "local://ingress"
-    repo._nudge_callback = q.send
+    repo = LocalRepository(
+        data_dir=str(tmp_path),
+        ingress_queue_url="local://ingress",
+        nudge_callback=q.send,
+    )
 
     # Set up a daemon process in WAITING state with a handler on a channel
     proc = Process(name="worker", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING)
@@ -103,11 +104,14 @@ def test_channel_message_nudges_ingress(repo):
     assert nudges[0]["source"] == "channel_message"
 
 
-def test_no_nudge_when_already_runnable(repo):
+def test_no_nudge_when_already_runnable(tmp_path):
     """A process already RUNNABLE should not be nudged again."""
     q = LocalIngressQueue()
-    repo._ingress_queue_url = "local://ingress"
-    repo._nudge_callback = q.send
+    repo = LocalRepository(
+        data_dir=str(tmp_path),
+        ingress_queue_url="local://ingress",
+        nudge_callback=q.send,
+    )
 
     proc = Process(name="worker", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
     repo.upsert_process(proc)

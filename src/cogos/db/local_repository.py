@@ -61,7 +61,13 @@ class LocalRepository(Repository):
     """In-memory CogOS repository backed by a JSON file."""
 
 
-    def __init__(self, data_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: str | None = None,
+        *,
+        ingress_queue_url: str = "",
+        nudge_callback: Any = None,
+    ) -> None:
         if data_dir is None:
             data_dir = str(Path.home() / ".cogos" / "local")
         self._data_dir = Path(data_dir)
@@ -95,10 +101,14 @@ class LocalRepository(Repository):
         self._executor_tokens: dict[UUID, ExecutorToken] = {}
         self._wait_conditions: dict[UUID, WaitCondition] = {}
         self._reboot_epoch: int = 0
-        # Ingress nudge — set by the runtime to enable event-driven dispatch.
-        self._ingress_queue_url: str = ""
-        self._nudge_callback: Any = None
+        self._ingress_queue_url = ingress_queue_url
+        self._nudge_callback = nudge_callback
 
+        self._load()
+
+    # ── Lifecycle ──────────────────────────────────────────────
+
+    def reload(self) -> None:
         self._load()
 
     # ── Persistence ──────────────────────────────────────────

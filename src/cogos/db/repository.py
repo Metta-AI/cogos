@@ -2720,3 +2720,8 @@ class Repository:
             [self._param("name", name)],
         )
         return response.get("numberOfRecordsUpdated", 0) > 0
+
+    # ── Lifecycle ─────────────────────────────────────────────
+
+    def reload(self) -> None:
+        pass
