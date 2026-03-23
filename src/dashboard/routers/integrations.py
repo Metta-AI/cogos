@@ -68,12 +68,7 @@ def _mask_value(field_type: str, value: str) -> str:
 
 def _build_response(integration, cogent_name: str, secrets_provider) -> dict:
     config = integration.load_config(cogent_name, secrets_provider=secrets_provider)
-    status = integration.status(cogent_name, secrets_provider=secrets_provider)
-    logger.info(
-        "Integration %s for %s: configured=%s, missing=%s, config_keys=%s",
-        integration.name, cogent_name, status["configured"],
-        status["missing_fields"], list(config.keys()),
-    )
+    status = integration.status(cogent_name, secrets_provider=secrets_provider, _config=config)
 
     # Mask secret fields
     field_types = {f.name: f.field_type for f in integration.fields()}

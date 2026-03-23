@@ -117,14 +117,23 @@ class AwsSecretsProvider:
         self._region = region
         self._sm_client = None
         self._ssm_client = None
+        self._cache: dict[str, str] = {}
+        self._negative_cache: set[str] = set()
 
     def get_secret(self, key: str, field: str | None = None) -> str:
         """Try Secrets Manager first, then SSM Parameter Store."""
-        value = self._try_secrets_manager(key)
-        if value is None:
-            value = self._try_ssm(key)
-        if value is None:
+        if key in self._negative_cache:
             raise KeyError(key)
+        if key in self._cache:
+            value = self._cache[key]
+        else:
+            value = self._try_secrets_manager(key)
+            if value is None:
+                value = self._try_ssm(key)
+            if value is None:
+                self._negative_cache.add(key)
+                raise KeyError(key)
+            self._cache[key] = value
         if field is not None:
             extracted = _extract_field(value, field, key)
             if extracted is None:
@@ -140,6 +149,8 @@ class AwsSecretsProvider:
             self._sm_client.put_secret_value(SecretId=key, SecretString=value)
         except self._sm_client.exceptions.ResourceNotFoundException:
             self._sm_client.create_secret(Name=key, SecretString=value)
+        self._cache[key] = value
+        self._negative_cache.discard(key)
 
     def list_secrets(self, prefix: str) -> list[str]:
         if self._sm_client is None:
@@ -155,6 +166,8 @@ class AwsSecretsProvider:
         if self._sm_client is None:
             self._sm_client = self._session.client("secretsmanager", region_name=self._region)
         self._sm_client.delete_secret(SecretId=key, ForceDeleteWithoutRecovery=True)
+        self._cache.pop(key, None)
+        self._negative_cache.add(key)
 
     # -- private --
 

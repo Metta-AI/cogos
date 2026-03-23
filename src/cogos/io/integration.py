@@ -93,9 +93,9 @@ class Integration(ABC):
         key = self._secret_key(cogent_name)
         secrets_provider.delete_secret(key)  # type: ignore[union-attr]
 
-    def status(self, cogent_name: str, *, secrets_provider: object) -> dict[str, Any]:
+    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
         """Return current status: configured fields + readiness."""
-        config = self.load_config(cogent_name, secrets_provider=secrets_provider)
+        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
         configured = bool(config)
         required_fields = [f.name for f in self.fields() if f.required]
         missing = [f for f in required_fields if not config.get(f)]
@@ -147,8 +147,8 @@ class NotificationsIntegration(Integration):
             FieldSpec(name="email_requests", label="Requests", field_type="toggle", required=False),
         ]
 
-    def status(self, cogent_name: str, *, secrets_provider: object) -> dict[str, Any]:
-        config = self.load_config(cogent_name, secrets_provider=secrets_provider)
+    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
         has_discord = bool(config.get("discord_handle"))
         has_email = bool(config.get("email_address"))
         configured = has_discord or has_email
@@ -177,10 +177,10 @@ class DiscordIntegration(Integration):
             FieldSpec(name="default_channels", label="Default Channels", required=False, help_text="Comma-separated list of default channel names."),
         ]
 
-    def status(self, cogent_name: str, *, secrets_provider: object) -> dict[str, Any]:
+    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
         """Check both shared bot token and per-cogent persona config."""
         # Check per-cogent persona config
-        persona = self.load_config(cogent_name, secrets_provider=secrets_provider)
+        persona = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
         # Check shared bot token
         bot_configured = False
         try:
