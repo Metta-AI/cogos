@@ -154,6 +154,40 @@ class TestWait:
             handle.wait()
 
 
+class TestPythonWaitBan:
+    def _make_handle(self, repo, parent_id, child_process, executor="python"):
+        run_id = uuid4()
+        parent = Process(name="parent", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING, executor=executor)
+        parent.id = parent_id
+        repo.get_process.return_value = parent
+        repo.get_channel_by_name.return_value = None
+        return ProcessHandle(
+            repo=repo, caller_process_id=parent_id, process=child_process,
+            send_channel=None, recv_channel=None, run_id=run_id,
+        )
+
+    def test_wait_raises_for_python(self, repo, parent_id, child_process):
+        handle = self._make_handle(repo, parent_id, child_process, executor="python")
+        with pytest.raises(RuntimeError, match="Python-executed processes"):
+            handle.wait()
+
+    def test_wait_any_raises_for_python(self, repo, parent_id, child_process):
+        handle = self._make_handle(repo, parent_id, child_process, executor="python")
+        with pytest.raises(RuntimeError, match="Python-executed processes"):
+            ProcessHandle.wait_any([handle])
+
+    def test_wait_all_raises_for_python(self, repo, parent_id, child_process):
+        handle = self._make_handle(repo, parent_id, child_process, executor="python")
+        with pytest.raises(RuntimeError, match="Python-executed processes"):
+            ProcessHandle.wait_all([handle])
+
+    def test_wait_ok_for_llm(self, repo, parent_id, child_process):
+        from cogos.sandbox.executor import WaitSuspend
+        handle = self._make_handle(repo, parent_id, child_process, executor="llm")
+        with pytest.raises(WaitSuspend):
+            handle.wait()
+
+
 class TestRuns:
     def test_runs_returns_run_info(self, repo, parent_id, child_process):
         now = datetime.now(UTC)

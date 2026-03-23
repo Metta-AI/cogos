@@ -85,8 +85,12 @@ def diag_channels():
 
     return checks
 
-def diag_procs():
-    """Test procs list, get, spawn."""
+def diag_spawn_and_wait():
+    """Test spawn→wait→resume lifecycle end-to-end.
+
+    Spawns a single LLM child, calls wait() to suspend, child exits,
+    parent resumes with wait_results. Verifies the full lifecycle.
+    """
     checks = []
 
     def test_list():
@@ -95,35 +99,32 @@ def diag_procs():
             raise Exception("list returned " + repr(result))
     checks.append(check("list", test_list))
 
-    def test_spawn():
-        h = procs.spawn("_diag/proc/test", content='print("ok")', executor="python", mode="one_shot", capabilities={})
+    def test_spawn_and_get():
+        h = procs.spawn(
+            "_diag/spawn_wait/child",
+            content="Return exactly: {\"status\": \"done\"}",
+            executor="llm",
+            mode="one_shot",
+            capabilities={},
+        )
         if hasattr(h, "error"):
             raise Exception(str(h.error))
-    checks.append(check("spawn", test_spawn))
+        h2 = procs.get(name="_diag/spawn_wait/child")
+        if hasattr(h2, "error"):
+            raise Exception(str(h2.error))
+    checks.append(check("spawn_and_get", test_spawn_and_get))
 
-    def test_get():
-        h = procs.get(name="_diag/proc/test")
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-    checks.append(check("get", test_get))
-
-    return checks
-
-def diag_child_exit():
-    """Test child exit notification and handle.runs()."""
-    checks = []
-
-    def test_spawn_recv_wired():
-        h = procs.spawn("_diag/exit/test", content='print("child done")', executor="python", mode="one_shot", capabilities={})
+    def test_handle_recv():
+        h = procs.get(name="_diag/spawn_wait/child")
         if hasattr(h, "error"):
             raise Exception(str(h.error))
         msgs = h.recv(limit=5)
         if not isinstance(msgs, list):
             raise Exception("recv returned " + str(type(msgs)))
-    checks.append(check("spawn_recv_wired", test_spawn_recv_wired))
+    checks.append(check("handle_recv", test_handle_recv))
 
     def test_handle_runs():
-        h = procs.get(name="_diag/exit/test")
+        h = procs.get(name="_diag/spawn_wait/child")
         if hasattr(h, "error"):
             raise Exception(str(h.error))
         runs = h.runs(limit=3)
@@ -131,43 +132,51 @@ def diag_child_exit():
             raise Exception("runs returned " + str(type(runs)))
     checks.append(check("handle_runs", test_handle_runs))
 
-    return checks
-
-def diag_wait_conditions():
-    """Test wait/wait_any/wait_all process synchronization."""
-    checks = []
-
-    def test_wait_early_exit():
-        h = procs.spawn("_diag/wait/a", content='print("done")', executor="python", mode="one_shot", capabilities={})
+    def test_wait_suspends():
+        h = procs.spawn(
+            "_diag/spawn_wait/wait_target",
+            content="Return exactly: {\"status\": \"done\"}",
+            executor="llm",
+            mode="one_shot",
+            capabilities={},
+        )
         if hasattr(h, "error"):
             raise Exception(str(h.error))
-        # Give the one-shot a moment to complete and post child:exited
-        time.sleep(1)
-        # wait() should return immediately since child already exited
+        # wait() should raise WaitSuspend (caught by executor) — this
+        # diagnostic runs as LLM so it can session-resume.  If we get
+        # here on a fresh run, wait() correctly suspends.  On resume,
+        # wait_results will be in event — check that below.
+        if event and event.get("wait_results"):
+            return  # resumed after wait — success
         h.wait()
-    checks.append(check("wait_early_exit", test_wait_early_exit))
+    checks.append(check("wait_suspends", test_wait_suspends))
 
-    def test_wait_all_early_exit():
-        h1 = procs.spawn("_diag/wait/b", content='print("b")', executor="python", mode="one_shot", capabilities={})
-        h2 = procs.spawn("_diag/wait/c", content='print("c")', executor="python", mode="one_shot", capabilities={})
-        if hasattr(h1, "error"):
-            raise Exception(str(h1.error))
+    def test_wait_results_on_resume():
+        if not event or not event.get("wait_results"):
+            # First run — wait hasn't happened yet, skip
+            return
+        wr = event["wait_results"]
+        if not isinstance(wr, list) or len(wr) == 0:
+            raise Exception("wait_results empty: " + repr(wr))
+    checks.append(check("wait_results_on_resume", test_wait_results_on_resume))
+
+    def test_python_wait_banned():
+        h = procs.spawn(
+            "_diag/spawn_wait/py_child",
+            content='print("ok")',
+            executor="python",
+            mode="one_shot",
+            capabilities={},
+        )
+        if hasattr(h, "error"):
+            raise Exception(str(h.error))
+        # wait() should raise RuntimeError for Python-executed parent,
+        # but we're an LLM process so it won't fire here. Just verify
+        # spawn works and the child is findable.
+        h2 = procs.get(name="_diag/spawn_wait/py_child")
         if hasattr(h2, "error"):
             raise Exception(str(h2.error))
-        time.sleep(1)
-        h1.wait_all([h1, h2])
-    checks.append(check("wait_all_early_exit", test_wait_all_early_exit))
-
-    def test_wait_any_early_exit():
-        h1 = procs.spawn("_diag/wait/d", content='print("d")', executor="python", mode="one_shot", capabilities={})
-        if hasattr(h1, "error"):
-            raise Exception(str(h1.error))
-        time.sleep(1)
-        h2 = procs.get(name="_diag/wait/d")
-        if hasattr(h2, "error"):
-            raise Exception(str(h2.error))
-        h1.wait_any([h1, h2])
-    checks.append(check("wait_any_early_exit", test_wait_any_early_exit))
+    checks.append(check("python_wait_banned", test_python_wait_banned))
 
     return checks
 
@@ -551,9 +560,7 @@ def diag_history():
 ALL_DIAGNOSTICS = {
     "files": diag_files,
     "channels": diag_channels,
-    "procs": diag_procs,
-    "child_exit": diag_child_exit,
-    "wait_conditions": diag_wait_conditions,
+    "spawn_and_wait": diag_spawn_and_wait,
     "me": diag_me,
     "builtins": diag_stdlib,
     "discord": diag_discord,

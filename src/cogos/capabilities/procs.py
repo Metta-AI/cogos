@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
 from cogos.capabilities.process_handle import ProcessHandle
-from cogos.db.models import Channel, ChannelType, Process, ProcessCapability, ProcessMode, ProcessStatus
+from cogos.db.models import Channel, ChannelType, Handler, Process, ProcessCapability, ProcessMode, ProcessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -152,12 +152,9 @@ class ProcsCapability(Capability):
 
         self._check("spawn")
 
-        init_spawning_detached = False
         if detached:
             init_id = self._init_process_id()
-            # Detached children are parented to init for tree display.
             parent_id = init_id if init_id else self.process_id
-            init_spawning_detached = init_id is not None and init_id == self.process_id
         else:
             parent_id = self.process_id
 
@@ -284,9 +281,7 @@ class ProcsCapability(Capability):
             inline_schema=inline_schema,
             schema_id=schema_id,
         )
-        # Use the DB-returned ID (handles ON CONFLICT returning existing row's ID)
-        _recv_id = self.repo.upsert_channel(recv_ch)
-        recv_ch_id = _recv_id if isinstance(_recv_id, UUID) else recv_ch.id
+        self.repo.upsert_channel(recv_ch)
 
         # Create per-process stdio channels (legacy names + coglet aliases)
         for stream in ("stdin", "stdout", "stderr"):
@@ -330,14 +325,6 @@ class ProcsCapability(Capability):
             channel_type=ChannelType.NAMED,
         )
         self.repo.upsert_channel(cog_to_ch)
-
-        # Register parent for wakeup on the recv channel (child→parent) so
-        # child:exited notifications create deliveries and wake the parent.
-        # Skip for init's own detached children — init would re-run its boot
-        # script on every child exit, creating an infinite loop.
-        from cogos.db.models import Handler
-        if not init_spawning_detached:
-            self.repo.create_handler(Handler(process=parent_id, channel=recv_ch_id, epoch=child_epoch))
 
         # Bind child to channel handlers if subscribe is set
         if subscribe:

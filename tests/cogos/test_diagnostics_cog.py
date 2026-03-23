@@ -65,6 +65,6 @@ class TestDiagnosticsCog:
         import re
         main_content = (DIAGNOSTICS_DIR / "main.py").read_text()
         diag_keys = set(re.findall(r'"(\w+)":\s*diag_\w+', main_content))
-        expected = {"files", "channels", "procs", "me"}
+        expected = {"files", "channels", "spawn_and_wait", "me"}
         missing = expected - diag_keys
         assert not missing, f"Missing diagnostics: {missing}"

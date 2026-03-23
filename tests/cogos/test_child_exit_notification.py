@@ -105,10 +105,11 @@ def test_failure_notification(tmp_path):
 
 
 def test_parent_handler_creates_delivery(tmp_path):
-    """The parent Handler on the recv channel means match_messages creates a delivery."""
+    """Explicit handler on the recv channel means match_messages creates a delivery."""
     from uuid import UUID
 
     from cogos.capabilities.scheduler import SchedulerCapability
+    from cogos.db.models import Handler
 
     repo, parent = _setup(tmp_path)
     procs = ProcsCapability(repo, parent.id)
@@ -116,6 +117,12 @@ def test_parent_handler_creates_delivery(tmp_path):
     handle = procs.spawn(name="child-delivery", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-delivery")
     assert child is not None
+
+    # Manually register handler (simulates what wait() would do)
+    recv_ch = repo.get_channel_by_name(f"spawn:{child.id}\u2192{parent.id}")
+    assert recv_ch is not None
+    repo.create_handler(Handler(process=parent.id, channel=recv_ch.id))
+
     run = Run(process=child.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from cogos.db.models import Channel, ChannelMessage, ProcessStatus
+from cogos.db.models import Channel, ChannelMessage, Handler, ProcessStatus
 from cogos.db.models.wait_condition import WaitCondition, WaitConditionType
 from cogos.sandbox.executor import WaitSuspend
 
@@ -116,6 +116,14 @@ class ProcessHandle:
             return s.definition if s else None
         return None
 
+    def _check_not_python(self) -> None:
+        caller = self._repo.get_process(self._caller_id)
+        if caller and caller.executor == "python":
+            raise RuntimeError(
+                "wait() cannot be used from Python-executed processes — "
+                "Python processes cannot session-resume after WaitSuspend"
+            )
+
     def _child_already_exited(self, child_pid: UUID) -> bool:
         ch = self._repo.get_channel_by_name(f"spawn:{child_pid}\u2192{self._caller_id}")
         if not ch:
@@ -126,11 +134,21 @@ class ProcessHandle:
             for m in msgs
         )
 
+    def _ensure_handler(self) -> None:
+        if self._recv_channel is None:
+            return
+        self._repo.create_handler(Handler(
+            process=self._caller_id,
+            channel=self._recv_channel.id,
+        ))
+
     def wait(self) -> None:
+        self._check_not_python()
         if self._child_already_exited(self._process.id):
             return
         if self._run_id is None:
             raise RuntimeError("wait() requires run_id on ProcessHandle")
+        self._ensure_handler()
         self._repo.create_wait_condition(WaitCondition(
             run=self._run_id,
             type=WaitConditionType.WAIT,
@@ -140,12 +158,15 @@ class ProcessHandle:
 
     @staticmethod
     def wait_any(handles: list[ProcessHandle]) -> None:
+        handles[0]._check_not_python()
         if any(h._child_already_exited(h._process.id) for h in handles):
             return
         repo = handles[0]._repo
         run_id = handles[0]._run_id
         if run_id is None:
             raise RuntimeError("wait_any() requires run_id on ProcessHandle")
+        for h in handles:
+            h._ensure_handler()
         repo.create_wait_condition(WaitCondition(
             run=run_id,
             type=WaitConditionType.WAIT_ANY,
@@ -155,6 +176,7 @@ class ProcessHandle:
 
     @staticmethod
     def wait_all(handles: list[ProcessHandle]) -> None:
+        handles[0]._check_not_python()
         still_pending = [h.id for h in handles if not h._child_already_exited(h._process.id)]
         if not still_pending:
             return
@@ -162,6 +184,9 @@ class ProcessHandle:
         run_id = handles[0]._run_id
         if run_id is None:
             raise RuntimeError("wait_all() requires run_id on ProcessHandle")
+        for h in handles:
+            if h.id in still_pending:
+                h._ensure_handler()
         repo.create_wait_condition(WaitCondition(
             run=run_id,
             type=WaitConditionType.WAIT_ALL,
