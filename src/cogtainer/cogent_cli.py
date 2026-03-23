@@ -41,6 +41,14 @@ def create(name: str) -> None:
     runtime.create_cogent(name)
     click.echo(f"Created cogent '{name}' in cogtainer '{cogtainer_name}'.")
 
+    try:
+        from cogos.io.google.provisioning import create_service_account
+
+        sa_email = create_service_account(name, runtime.get_secrets_provider())
+        click.echo(f"Google service account: {sa_email}")
+    except Exception as e:
+        click.echo(f"Warning: Google service account creation failed: {e}", err=True)
+
 
 @cli.command()
 @click.argument("name")
@@ -53,6 +61,14 @@ def destroy(name: str) -> None:
         return
 
     runtime.destroy_cogent(name)
+
+    try:
+        from cogos.io.google.provisioning import delete_service_account
+
+        delete_service_account(name, runtime.get_secrets_provider())
+    except Exception:
+        pass
+
     click.echo(f"Destroyed cogent '{name}'.")
 
 
