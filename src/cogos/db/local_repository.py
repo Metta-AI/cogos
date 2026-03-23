@@ -1411,6 +1411,10 @@ class LocalRepository(Repository):
 
             return msg.id
 
+    def get_channel_message(self, message_id: UUID) -> ChannelMessage | None:
+        self._maybe_reload()
+        return self._channel_messages.get(message_id)
+
     def list_channel_messages(
         self, channel_id: UUID | None = None, *, limit: int = 100, since=None
     ) -> list[ChannelMessage]:

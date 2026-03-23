@@ -11,7 +11,7 @@ router = APIRouter(tags=["resources"])
 @router.get("/resources", response_model=ResourcesResponse)
 def list_resources(name: str) -> ResourcesResponse:
     repo = get_repo()
-    resources = repo.list_resources() if hasattr(repo, "list_resources") else []  # type: ignore[attr-defined]
+    resources = repo.list_resources()
     items = [
         ResourceItem(
             name=r.name,

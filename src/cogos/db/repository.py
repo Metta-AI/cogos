@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Iterator
 from uuid import UUID
 
 from cogos.db.models import (
@@ -66,6 +67,10 @@ class Repository:
         self._region = region
         self._ingress_queue_url = os.environ.get("COGOS_INGRESS_QUEUE_URL", "")
         self._nudge_callback = nudge_callback
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        yield
 
     def _nudge_ingress(self, *, process_id: UUID | None = None) -> None:
         """Send a message to the ingress SQS queue to trigger immediate dispatch.
@@ -2282,6 +2287,25 @@ class Repository:
             [self._param("handler", handler_id)],
         ))
         return self._ts(row, "latest") if row and row.get("latest") else None
+
+    def get_channel_message(self, message_id: UUID) -> ChannelMessage | None:
+        response = self._execute(
+            "SELECT * FROM cogos_channel_message WHERE id = :id",
+            [self._param("id", message_id)],
+        )
+        rows = self._rows_to_dicts(response)
+        if not rows:
+            return None
+        r = rows[0]
+        return ChannelMessage(
+            id=UUID(r["id"]),
+            channel=UUID(r["channel"]),
+            sender_process=UUID(r["sender_process"]) if r.get("sender_process") else None,
+            payload=self._json_field(r, "payload", {}),
+            trace_id=UUID(r["trace_id"]) if r.get("trace_id") else None,
+            trace_meta=self._json_field(r, "trace_meta"),
+            created_at=self._ts(r, "created_at"),
+        )
 
     def list_channel_messages(
         self, channel_id: UUID | None = None, *, limit: int = 100, since=None,

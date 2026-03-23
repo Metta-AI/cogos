@@ -13,89 +13,27 @@ logger = logging.getLogger(__name__)
 def _load_message_payload(repo, message_id: str | None) -> dict[str, Any]:
     if not message_id:
         return {}
-
-    msg_uuid = UUID(message_id)
-
-    channel_messages = getattr(repo, "_channel_messages", None)
-    if isinstance(channel_messages, dict):
-        msg = channel_messages.get(msg_uuid)
-        if msg is not None:
-            return msg.payload or {}
-
-    try:
-        rows = repo.query(
-            "SELECT payload FROM cogos_channel_message WHERE id = :id",
-            {"id": msg_uuid},
-        )
-    except Exception:
-        logger.debug("Failed to load message payload for %s", message_id, exc_info=True)
-        return {}
-
-    if not rows:
-        return {}
-
-    json_field = getattr(repo, "_json_field", None)
-    if callable(json_field):
-        return json_field(rows[0], "payload", {})
-
-    payload = rows[0].get("payload")
-    return payload if isinstance(payload, dict) else {}
+    msg = repo.get_channel_message(UUID(message_id))
+    return msg.payload or {} if msg else {}
 
 
 def _resolve_channel_name(repo, message_id: str | None) -> str | None:
-    """Look up the channel name for a message."""
     if not message_id:
         return None
-    msg_uuid = UUID(message_id)
-
-    # Fast path: local repository in-memory lookup
-    channel_messages = getattr(repo, "_channel_messages", None)
-    if isinstance(channel_messages, dict):
-        msg = channel_messages.get(msg_uuid)
-        if msg is not None:
-            ch = repo.get_channel(msg.channel)
-            return ch.name if ch else None
-
-    # RDS path
-    try:
-        rows = repo.query(
-            """SELECT c.name FROM cogos_channel_message m
-               JOIN cogos_channel c ON c.id = m.channel
-               WHERE m.id = :id""",
-            {"id": msg_uuid},
-        )
-        return rows[0]["name"] if rows else None
-    except Exception:
-        logger.debug("Failed to resolve channel name for %s", message_id, exc_info=True)
+    msg = repo.get_channel_message(UUID(message_id))
+    if msg is None:
         return None
+    ch = repo.get_channel(msg.channel)
+    return ch.name if ch else None
 
 
 def _extract_parent_span_id(repo, message_id: str | None) -> str | None:
-    """Extract parent_span_id from a channel message's trace_meta."""
     if not message_id:
         return None
-
-    msg_uuid = UUID(message_id)
     try:
-        # Try local cache first
-        channel_messages = getattr(repo, "_channel_messages", None)
-        if isinstance(channel_messages, dict):
-            msg = channel_messages.get(msg_uuid)
-            if msg and msg.trace_meta:
-                return msg.trace_meta.get("span_id")
-        else:
-            rows = repo.query(
-                "SELECT trace_meta FROM cogos_channel_message WHERE id = :id",
-                {"id": msg_uuid},
-            )
-            if rows:
-                import json
-
-                trace_meta = rows[0].get("trace_meta")
-                if isinstance(trace_meta, str):
-                    trace_meta = json.loads(trace_meta)
-                if trace_meta:
-                    return trace_meta.get("span_id")
+        msg = repo.get_channel_message(UUID(message_id))
+        if msg and msg.trace_meta:
+            return msg.trace_meta.get("span_id")
     except Exception:
         logger.debug("Failed to extract parent_span_id for %s", message_id, exc_info=True)
     return None
@@ -118,7 +56,6 @@ def build_dispatch_event(repo, dispatch_result) -> dict[str, Any]:
         "payload": _load_message_payload(repo, dispatch_result.message_id),
     }
 
-    # Include process content so channel executors (e.g. Claude Code) have the task.
     try:
         proc = repo.get_process(_UUID(dispatch_result.process_id))
         if proc:

@@ -993,11 +993,10 @@ def status():
     caps = repo.list_capabilities()
     click.echo(f"Capabilities: {len(caps)}")
 
-    if hasattr(repo, "list_channels"):
-        channels = repo.list_channels()
-        click.echo(f"Channels: {len(channels)}")
-        for ch in channels:
-            click.echo(f"  {ch.name} ({ch.channel_type.value})")
+    channels = repo.list_channels()
+    click.echo(f"Channels: {len(channels)}")
+    for ch in channels:
+        click.echo(f"  {ch.name} ({ch.channel_type.value})")
 
 
 # ═══════════════════════════════════════════════════════════

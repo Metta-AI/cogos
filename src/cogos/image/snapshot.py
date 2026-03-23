@@ -113,9 +113,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     (init_dir / "processes.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Schemas --
-    schemas = []
-    if hasattr(repo, "list_schemas"):
-        schemas = repo.list_schemas()
+    schemas = repo.list_schemas()
     lines = []
     for s in schemas:
         file_key = None
@@ -134,9 +132,7 @@ def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) ->
     (init_dir / "schemas.py").write_text("\n\n".join(lines) + "\n" if lines else "")
 
     # -- Channels --
-    channels = []
-    if hasattr(repo, "list_channels"):
-        channels = repo.list_channels()
+    channels = repo.list_channels()
     lines = []
     for ch in channels:
         schema_name = None

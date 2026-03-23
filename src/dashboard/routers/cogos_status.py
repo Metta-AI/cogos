@@ -67,7 +67,7 @@ def cogos_status(
     cap_count = len(caps)
 
     # Channel count
-    channels = repo.list_channels() if hasattr(repo, 'list_channels') else []
+    channels = repo.list_channels()
     channel_count = len(channels)
 
     # Recent runs (last 10) with process name

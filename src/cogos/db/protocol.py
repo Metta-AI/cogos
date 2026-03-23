@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from decimal import Decimal
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Iterator, Protocol, runtime_checkable
 from uuid import UUID
 
 from cogos.db.models import (
@@ -41,6 +42,12 @@ class RepositoryProtocol(Protocol):
     def reboot_epoch(self) -> int: ...
 
     def increment_epoch(self) -> int: ...
+
+    # ── Batch ────────────────────────────────────────────────
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        yield
 
     # ── Raw SQL ──────────────────────────────────────────────
 
@@ -353,6 +360,8 @@ class RepositoryProtocol(Protocol):
     # ── Channel Messages ─────────────────────────────────────
 
     def append_channel_message(self, msg: ChannelMessage) -> UUID: ...
+
+    def get_channel_message(self, message_id: UUID) -> ChannelMessage | None: ...
 
     def list_channel_messages(
         self, channel_id: UUID | None = None, *, limit: int = 100, since: Any = None,

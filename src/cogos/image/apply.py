@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from contextlib import nullcontext
 
 from cogos.db.models import (
     Capability,
@@ -21,7 +20,6 @@ from cogos.db.models import (
     Schema,
 )
 from cogos.files.references import extract_file_references
-from cogos.files.store import FileStore
 from cogos.image.spec import ImageSpec
 
 logger = logging.getLogger(__name__)
@@ -29,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]:
     """Apply an image spec to the database. Returns counts of entities created/updated."""
-    batch_ctx = repo.batch() if hasattr(repo, "batch") else nullcontext()
-    with batch_ctx:
+    with repo.batch():
         return _apply_image_inner(spec, repo, clean=clean)
 
 
@@ -54,49 +51,38 @@ def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[st
         repo.upsert_capability(cap)
         counts["capabilities"] += 1
 
-    # 2. Resources (skip if no table/method yet)
-    if hasattr(repo, "upsert_resource"):
-        for res_dict in spec.resources:
-            r = Resource(
-                name=res_dict["name"],
-                resource_type=ResourceType(res_dict.get("resource_type", res_dict.get("type", "pool"))),
-                capacity=float(res_dict.get("capacity", 1.0)),
-                metadata=res_dict.get("metadata") or {},
-            )
-            repo.upsert_resource(r)
-            counts["resources"] += 1
-    elif spec.resources:
-        logger.warning("Skipping %d resources — upsert_resource not implemented", len(spec.resources))
+    # 2. Resources
+    for res_dict in spec.resources:
+        r = Resource(
+            name=res_dict["name"],
+            resource_type=ResourceType(res_dict.get("resource_type", res_dict.get("type", "pool"))),
+            capacity=float(res_dict.get("capacity", 1.0)),
+            metadata=res_dict.get("metadata") or {},
+        )
+        repo.upsert_resource(r)
+        counts["resources"] += 1
 
-    # 3. Cron rules (skip if no table/method yet)
-    if hasattr(repo, "upsert_cron"):
-        for cron_dict in spec.cron_rules:
-            channel_name = cron_dict.get("channel_name") or cron_dict.get("event_type")
-            if not channel_name:
-                raise ValueError("cron rule missing channel_name")
-            c = Cron(
-                expression=cron_dict["expression"],
-                channel_name=channel_name,
-                payload=cron_dict.get("payload") or {},
-                enabled=cron_dict.get("enabled", True),
-            )
-            repo.upsert_cron(c)
-            counts["cron"] += 1
-    elif spec.cron_rules:
-        logger.warning("Skipping %d cron rules — upsert_cron not implemented", len(spec.cron_rules))
+    # 3. Cron rules
+    for cron_dict in spec.cron_rules:
+        channel_name = cron_dict.get("channel_name") or cron_dict.get("event_type")
+        if not channel_name:
+            raise ValueError("cron rule missing channel_name")
+        c = Cron(
+            expression=cron_dict["expression"],
+            channel_name=channel_name,
+            payload=cron_dict.get("payload") or {},
+            enabled=cron_dict.get("enabled", True),
+        )
+        repo.upsert_cron(c)
+        counts["cron"] += 1
 
     # 4. Files
-    fs = FileStore(repo)
-    if callable(getattr(repo, "bulk_upsert_files", None)) and spec.files:
+    if spec.files:
         bulk_entries = [
             (key, content, "image", extract_file_references(content, exclude_key=key))
             for key, content in spec.files.items()
         ]
         counts["files"] = repo.bulk_upsert_files(bulk_entries)
-    else:
-        for key, content in spec.files.items():
-            fs.upsert(key, content, source="image")
-            counts["files"] += 1
 
     # 5. Schemas
     for schema_dict in spec.schemas:
@@ -134,7 +120,7 @@ def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[st
     # (section 9) to avoid a race where the dispatcher picks up init before
     # the manifest is ready.
     counts["cogs"] = len(spec.cogs)
-    fs.upsert("mnt/boot/_boot/cog_manifests.json", json.dumps(spec.cogs, indent=2))
+    repo.bulk_upsert_files([("mnt/boot/_boot/cog_manifests.json", json.dumps(spec.cogs, indent=2), "image", [])])
 
     # 9. Processes (with capability bindings and handlers)
     # IMPORTANT: This must come AFTER the boot manifest is written (section 8)
@@ -211,7 +197,6 @@ def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[st
             counts["channels"] += 1
 
     # Record image boot timestamp
-    if hasattr(repo, "set_meta"):
-        repo.set_meta("image:booted_at")
+    repo.set_meta("image:booted_at")
 
     return counts
