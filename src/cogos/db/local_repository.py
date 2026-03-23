@@ -38,7 +38,7 @@ from cogos.db.models import (
 )
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 from cogos.db.models.span import Span, SpanEvent, SpanStatus
-from cogos.db.models.trace import RequestTrace
+from cogos.db.models.trace import RequestTrace, Trace
 from cogos.db.models.wait_condition import WaitCondition, WaitConditionStatus
 from cogos.db.repository import Repository
 
@@ -60,8 +60,6 @@ def _json_serial(obj: Any) -> Any:
 class LocalRepository(Repository):
     """In-memory CogOS repository backed by a JSON file."""
 
-    # Disable inherited batch method — LocalRepository uses in-memory dicts, not RDS Data API.
-    bulk_upsert_files = None  # type: ignore[assignment]
 
     def __init__(self, data_dir: str | None = None) -> None:
         if data_dir is None:
@@ -961,17 +959,17 @@ class LocalRepository(Repository):
 
     # ── Resources ─────────────────────────────────────────────
 
-    def upsert_resource(self, r: Resource) -> str:
+    def upsert_resource(self, resource: Resource) -> str:
         with self._writing():
             now = datetime.now(UTC)
-            existing = self._resources.get(r.name)
+            existing = self._resources.get(resource.name)
             if existing:
-                r.id = existing.id
-                r.created_at = existing.created_at
+                resource.id = existing.id
+                resource.created_at = existing.created_at
             else:
-                r.created_at = now
-            self._resources[r.name] = r
-            return r.name
+                resource.created_at = now
+            self._resources[resource.name] = resource
+            return resource.name
 
     def list_resources(self) -> list[Resource]:
         self._maybe_reload()
@@ -1726,3 +1724,60 @@ class LocalRepository(Repository):
                     t.revoked_at = datetime.now(UTC)
                     return True
             return False
+
+    # ── Cron (gap-fill) ──────────────────────────────────────
+
+    def delete_cron(self, cron_id: UUID) -> bool:
+        with self._writing():
+            if cron_id in self._cron_rules:
+                del self._cron_rules[cron_id]
+                return True
+            return False
+
+    def update_cron_enabled(self, cron_id: UUID, enabled: bool) -> bool:
+        with self._writing():
+            cron = self._cron_rules.get(cron_id)
+            if cron is None:
+                return False
+            cron.enabled = enabled
+            return True
+
+    # ── Alerts (gap-fill) ────────────────────────────────────
+
+    def resolve_alert(self, alert_id: Any) -> None:
+        with self._writing():
+            alert = self._alerts.get(alert_id)
+            if alert:
+                alert.resolved_at = datetime.now(UTC)
+
+    # ── Traces (gap-fill) ────────────────────────────────────
+
+    def create_trace(self, trace: Trace) -> UUID:
+        return trace.id
+
+    # ── Files (gap-fill) ─────────────────────────────────────
+
+    def bulk_upsert_files(
+        self,
+        files: list[tuple[str, str, str, list[str]]],
+        *,
+        batch_size: int = 100,
+    ) -> int:
+        with self._writing():
+            for key, content, source, includes in files:
+                f = self.get_file_by_key(key)
+                if f is None:
+                    f = File(key=key, includes=includes)
+                    self.insert_file(f)
+                else:
+                    f.includes = includes
+                max_v = self.get_max_file_version(f.id)
+                fv = FileVersion(
+                    file_id=f.id,
+                    version=max_v + 1,
+                    content=content,
+                    source=source,
+                    is_active=True,
+                )
+                self.insert_file_version(fv)
+        return len(files)
