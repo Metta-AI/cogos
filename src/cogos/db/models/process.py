@@ -34,7 +34,7 @@ class Process(BaseModel):
     priority: float = 0.0
     resources: list[UUID] = Field(default_factory=list)  # FK -> Resource
     required_tags: list[str] = Field(default_factory=list)
-    executor: str = "llm"  # "llm" | "python"
+    executor: str = "llm"  # "llm" | "python" | "agent_sdk"
     status: ProcessStatus = ProcessStatus.WAITING
     runnable_since: datetime | None = None
     parent_process: UUID | None = None  # FK -> Process.id

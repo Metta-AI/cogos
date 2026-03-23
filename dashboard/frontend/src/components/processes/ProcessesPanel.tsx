@@ -2383,6 +2383,9 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     </span>
                   )}
                   {proc.name}
+                  {proc.executor && proc.executor !== "llm" && (
+                    <span className="text-[9px] px-1 py-0 rounded font-mono" style={{ background: "var(--bg-deep)", color: "var(--text-muted)" }}>{proc.executor}</span>
+                  )}
                   {viewMode === "tree" && (
                     <Badge variant={STATUS_VARIANT[proc.status] || "neutral"}>{proc.status}</Badge>
                   )}
@@ -2467,6 +2470,7 @@ export function ProcessesPanel({ processes, cogentName, onRefresh, resources, ru
                     >
                       id 📋
                     </button>
+                    <span className="text-[var(--text-muted)]">executor: <span className="text-[var(--text-secondary)]">{proc.executor || "llm"}</span></span>
                     <span className="text-[var(--text-muted)]">retries: <span className="text-[var(--text-secondary)]">{proc.retry_count}/{proc.max_retries}</span></span>
                     {proc.max_duration_ms != null && (
                       <span className="text-[var(--text-muted)]">max duration: <span className="text-[var(--text-secondary)]">{fmtDuration(proc.max_duration_ms)}</span></span>

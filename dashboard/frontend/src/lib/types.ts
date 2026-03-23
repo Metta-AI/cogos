@@ -14,6 +14,7 @@ export interface CogosProcess {
   epoch: number;
   name: string;
   mode: "daemon" | "one_shot";
+  executor: string;
   content: string;
   priority: number;
   resources: string[];
@@ -112,6 +113,7 @@ export interface CogosRun {
   epoch: number;
   process: string;
   process_name?: string;
+  executor?: string | null;
   required_tags?: string[] | null;
   status: string;
   tokens_in: number;

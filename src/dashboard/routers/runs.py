@@ -23,6 +23,7 @@ class RunSummary(BaseModel):
     epoch: int = 0
     process: str
     process_name: str | None = None
+    executor: str | None = None
     required_tags: list[str] | None = None
     event: str | None = None
     conversation: str | None = None
@@ -261,12 +262,14 @@ def _summary(
     r: Run,
     process_names: dict[UUID, str] | None = None,
     process_runners: dict[UUID, list[str]] | None = None,
+    process_executors: dict[UUID, str] | None = None,
 ) -> RunSummary:
     return RunSummary(
         id=str(r.id),
         epoch=r.epoch,
         process=str(r.process),
         process_name=process_names.get(r.process) if process_names else None,
+        executor=process_executors.get(r.process) if process_executors else None,
         required_tags=process_runners.get(r.process) if process_runners else None,
         event=str(r.message) if r.message else None,
         conversation=str(r.conversation) if r.conversation else None,
@@ -320,7 +323,8 @@ def list_runs(
     processes = repo.list_processes(epoch=proc_epoch)
     process_names = {p.id: p.name for p in processes}
     process_runners = {p.id: p.required_tags for p in processes}
-    out = [_summary(r, process_names, process_runners) for r in items]
+    process_executors = {p.id: p.executor for p in processes}
+    out = [_summary(r, process_names, process_runners, process_executors) for r in items]
     return RunsResponse(count=len(out), runs=out)
 
 

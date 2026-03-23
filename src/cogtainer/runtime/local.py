@@ -103,10 +103,15 @@ class LocalRuntime(CogtainerRuntime):
             "LLM_PROVIDER": llm_provider,
             "AWS_REGION": self._entry.region or "us-east-1",
         }
+        log_path = self._data_dir / "executor.log"
+        log_fh = open(log_path, "a")  # noqa: SIM115
         proc = subprocess.Popen(
             [sys.executable, "-m", "cogos.executor", process_id],
             env=env,
+            stdout=log_fh,
+            stderr=log_fh,
         )
+        log_fh.close()
         self._child_procs.append((proc, process_id))
 
     def reap_dead_executors(self, repo: Any) -> int:

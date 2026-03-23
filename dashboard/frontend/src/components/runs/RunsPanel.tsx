@@ -126,6 +126,9 @@ function makeColumns(
           <span className="text-[var(--text-primary)] font-medium">
             {row.process_name || row.process}
           </span>
+          {row.executor && row.executor !== "llm" && (
+            <span className="text-[9px] px-1 py-0 rounded font-mono" style={{ background: "var(--bg-deep)", color: "var(--text-muted)" }}>{row.executor}</span>
+          )}
         </span>
       ),
     },

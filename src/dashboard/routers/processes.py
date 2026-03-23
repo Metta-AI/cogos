@@ -25,6 +25,7 @@ class ProcessSummary(BaseModel):
     id: str
     name: str
     mode: str
+    executor: str = "llm"
     status: str
     priority: float
     required_tags: list[str] = []
@@ -41,6 +42,7 @@ class ProcessDetail(BaseModel):
     epoch: int = 0
     name: str
     mode: str
+    executor: str = "llm"
     content: str
     priority: float
     resources: list[str]
@@ -136,6 +138,7 @@ def _summary(p: Process) -> ProcessSummary:
         id=str(p.id),
         name=p.name,
         mode=p.mode.value,
+        executor=p.executor,
         status=p.status.value,
         priority=p.priority,
         required_tags=p.required_tags,
@@ -154,6 +157,7 @@ def _detail(p: Process) -> ProcessDetail:
         epoch=p.epoch,
         name=p.name,
         mode=p.mode.value,
+        executor=p.executor,
         content=p.content,
         priority=p.priority,
         resources=[str(r) for r in p.resources],
