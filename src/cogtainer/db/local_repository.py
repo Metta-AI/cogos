@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,8 @@ from uuid import UUID
 
 from cogtainer.db.models import (
     Alert,
+    Budget,
+    BudgetPeriod,
     Conversation,
     ConversationStatus,
     Cron,
@@ -74,6 +75,8 @@ class LocalRepository(Repository):
         self._resource_usage: list[ResourceUsage] = []
 
         self._tools: dict[str, Tool] = {}
+        self._budgets: dict[tuple[str, str], Budget] = {}
+        self._resource_usage_seq: int = 0
 
         # Versioned memory (v2)
         self._memories: dict[UUID, Memory] = {}  # keyed by memory.id
@@ -386,11 +389,18 @@ class LocalRepository(Repository):
         self._save()
         return True
 
+    def upsert_cron(self, cron: Cron) -> UUID:
+        for ec in self._crons.values():
+            if ec.cron_expression == cron.cron_expression and ec.event_pattern == cron.event_pattern:
+                return ec.id
+        return self.insert_cron(cron)
+
     # ── Events ───────────────────────────────────────────────
 
-    def append_event(self, event: Event) -> int:
+    def append_event(self, event: Event, *, status: str = "sent") -> int:
         self._event_seq += 1
         event.id = self._event_seq
+        event.status = status
         event.created_at = datetime.now(UTC)
         self._events.append(event)
         self._save()
@@ -428,6 +438,17 @@ class LocalRepository(Repository):
             current = by_id[current.parent_event_id]
         assert current.id is not None
         return self.get_event_tree(current.id)
+
+    def get_proposed_events(self, *, limit: int = 50) -> list[Event]:
+        return [e for e in self._events if e.status == "proposed"][:limit]
+
+    def mark_event_sent(self, event_id: int) -> bool:
+        for e in self._events:
+            if e.id == event_id:
+                e.status = "sent"
+                self._save()
+                return True
+        return False
 
     # ── Runs ─────────────────────────────────────────────────
 
@@ -499,6 +520,14 @@ class LocalRepository(Repository):
         convs.sort(key=lambda c: c.last_active or datetime.min, reverse=True)
         return convs[:limit]
 
+    def close_conversation(self, conversation_id: UUID) -> bool:
+        conv = self._conversations.get(conversation_id)
+        if not conv:
+            return False
+        conv.status = ConversationStatus.CLOSED
+        self._save()
+        return True
+
     # ── Alerts ───────────────────────────────────────────────
 
     def create_alert(self, alert: Alert) -> UUID:
@@ -543,6 +572,46 @@ class LocalRepository(Repository):
             return True
         return False
 
+    # ── Budget ───────────────────────────────────────────────
+
+    def get_or_create_budget(
+        self,
+        period: BudgetPeriod,
+        period_start: date,
+        *,
+        token_limit: int = 0,
+        cost_limit_usd: Decimal = Decimal("0"),
+    ) -> Budget:
+        key = (period.value, period_start.isoformat())
+        if key not in self._budgets:
+            self._budgets[key] = Budget(
+                period=period,
+                period_start=period_start,
+                token_limit=token_limit,
+                cost_limit_usd=cost_limit_usd,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        return self._budgets[key]
+
+    def record_spend(
+        self,
+        period: BudgetPeriod,
+        period_start: date,
+        *,
+        tokens: int = 0,
+        cost_usd: Decimal = Decimal("0"),
+    ) -> Budget:
+        budget = self.get_or_create_budget(period, period_start)
+        budget.tokens_spent += tokens
+        budget.cost_spent_usd += cost_usd
+        budget.updated_at = datetime.now(UTC)
+        return budget
+
+    def check_budget(self, period: BudgetPeriod, period_start: date) -> Budget | None:
+        key = (period.value, period_start.isoformat())
+        return self._budgets.get(key)
+
     # ── Traces ───────────────────────────────────────────────
 
     def insert_trace(self, trace: Trace) -> UUID:
@@ -565,12 +634,24 @@ class LocalRepository(Repository):
         self._maybe_reload()
         return list(self._resources.values())
 
+    def get_resource(self, name: str) -> Resource | None:
+        self._maybe_reload()
+        return self._resources.get(name)
+
     def delete_resource(self, name: str) -> bool:
         if name in self._resources:
             del self._resources[name]
             self._save()
             return True
         return False
+
+    def insert_resource_usage(self, usage: ResourceUsage) -> int:
+        self._resource_usage_seq += 1
+        usage.id = self._resource_usage_seq
+        usage.created_at = datetime.now(UTC)
+        self._resource_usage.append(usage)
+        self._save()
+        return usage.id
 
     def get_pool_usage(self, resource_name: str) -> int:
         """Count running tasks that consume this pool resource."""

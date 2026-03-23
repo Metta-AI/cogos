@@ -22,10 +22,12 @@ from cogtainer.db.models import (
     Trigger,
     TriggerConfig,
 )
+from cogtainer.db.protocol import RepositoryProtocol
 from cogtainer.db.repository import Repository
 
 __all__ = [
     "Repository",
+    "RepositoryProtocol",
     "Alert",
     "AlertSeverity",
     "Budget",
@@ -35,7 +37,6 @@ __all__ = [
     "Cron",
     "Event",
     "Program",
-
     "Resource",
     "ResourceType",
     "ResourceUsage",

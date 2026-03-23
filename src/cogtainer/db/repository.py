@@ -1156,6 +1156,8 @@ class Repository:
         self,
         *,
         program_name: str | None = None,
+        conversation_id: UUID | None = None,
+        task_id: UUID | None = None,
         status: RunStatus | None = None,
         limit: int = 50,
     ) -> list[Run]:
@@ -1165,6 +1167,12 @@ class Repository:
         if program_name:
             conditions.append("program_name = :program_name")
             params.append(self._param("program_name", program_name))
+        if conversation_id:
+            conditions.append("conversation_id = :conversation_id")
+            params.append(self._param("conversation_id", conversation_id))
+        if task_id:
+            conditions.append("task_id = :task_id")
+            params.append(self._param("task_id", task_id))
         if status:
             conditions.append("status = :status")
             params.append(self._param("status", status.value))
@@ -1521,6 +1529,13 @@ class Repository:
             [self._param("limit", limit)],
         )
         return [self._alert_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def delete_alert(self, alert_id: UUID) -> bool:
+        response = self._execute(
+            "DELETE FROM alerts WHERE id = :id",
+            [self._param("id", alert_id)],
+        )
+        return response.get("numberOfRecordsUpdated", 0) == 1
 
     def _alert_from_row(self, row: dict) -> Alert:
         metadata = row.get("metadata", {})
