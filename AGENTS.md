@@ -493,6 +493,17 @@ uv run pytest tests/ -q       # Unit tests — must pass
 
 Do NOT push, commit, or claim work is done until both pass cleanly. If either fails, fix the issues first.
 
+### Remote / Headless Sessions
+
+When running as a remote Claude Code session (dispatched from desktop or mobile), run `/sandbox.up` at the start of the session before testing any code changes. This idempotently ensures:
+
+- Dependencies are installed (`uv sync`)
+- A local cogtainer and cogent exist
+- The cogent selection is persisted to `.env`
+- The dispatcher is running with the latest code
+
+For full end-to-end verification (diagnostics + dashboard), use `/sandbox.local-test` instead.
+
 ## Git Workflow
 
 - Do not push directly to `main` unless the user explicitly asks for that push in the current conversation.
