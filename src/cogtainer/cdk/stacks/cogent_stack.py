@@ -582,7 +582,7 @@ class CogentStack(Stack):
             )
         )
 
-        # Secrets — cogent-specific + shared (cogent/all/*) secrets
+        # Secrets — read shared + cogent-specific; write cogent-specific only
         task_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
@@ -590,6 +590,14 @@ class CogentStack(Stack):
                     db_secret_arn,
                     f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogent/{cogent_name}/*",
                     f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogent/all/*",
+                ],
+            )
+        )
+        task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:PutSecretValue", "secretsmanager:CreateSecret"],
+                resources=[
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:cogent/{cogent_name}/*",
                 ],
             )
         )

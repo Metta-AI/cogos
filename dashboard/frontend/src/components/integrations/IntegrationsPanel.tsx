@@ -416,17 +416,10 @@ function FieldRow({
   const [revealed, setRevealed] = useState(false);
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const isSecret = field.type === "secret";
-  const inputType = isSecret ? "password" : field.type === "email" ? "email" : field.type === "url" ? "url" : "text";
-
-  const displayCurrent = !currentValue
-    ? ""
-    : isSecret && !revealed
-      ? currentValue
-      : isSecret && revealed && revealedValue !== null
-        ? revealedValue
-        : currentValue;
+  const inputType = isSecret && !revealed ? "password" : field.type === "email" ? "email" : field.type === "url" ? "url" : "text";
 
   const handleReveal = async () => {
     if (revealed) { setRevealed(false); return; }
@@ -439,7 +432,23 @@ function FieldRow({
     finally { setRevealing(false); }
   };
 
-  const placeholder = currentValue ? `Current: ${currentValue}` : field.placeholder || field.label;
+  const handleCopy = async () => {
+    try {
+      let value = revealedValue;
+      if (!value) {
+        value = await revealIntegrationField(cogentName, integrationName, field.name);
+      }
+      if (value) {
+        await navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const placeholder = currentValue
+    ? revealed && revealedValue ? revealedValue : `Current: ${currentValue}`
+    : field.placeholder || field.label;
 
   return (
     <div>
@@ -449,47 +458,77 @@ function FieldRow({
           {field.required && <span style={{ color: "var(--error)", marginLeft: 2 }}>*</span>}
           {isMissing && <span className="text-[9px] ml-1">(required)</span>}
         </label>
-        {isSecret && currentValue && (
-          <button
-            onClick={handleReveal}
-            disabled={revealing}
-            className="text-[9px] px-1.5 py-0.5 rounded border cursor-pointer"
-            style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" }}
-          >
-            {revealing ? "..." : revealed ? "Hide" : "View"}
-          </button>
-        )}
         {currentValue && !isSecret && (
-          <span className="text-[10px] font-mono text-[var(--text-muted)]">{displayCurrent}</span>
-        )}
-        {isSecret && revealed && revealedValue && (
-          <span className="text-[10px] font-mono text-[var(--text-muted)]">{revealedValue}</span>
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">{currentValue}</span>
         )}
       </div>
-      {field.type === "textarea" ? (
-        <textarea
-          value={editValue}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={3}
-          className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
-          style={{ background: "var(--bg-base)", borderColor: "var(--border)", color: "var(--text-primary)" }}
-        />
-      ) : (
-        <input
-          type={inputType}
-          value={editValue}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full px-2 py-1.5 text-[12px] rounded border"
-          style={{
-            background: "var(--bg-base)",
-            borderColor: "var(--border)",
-            color: "var(--text-primary)",
-            fontFamily: inputType === "password" ? "inherit" : "var(--font-mono)",
-          }}
-        />
-      )}
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        {field.type === "textarea" ? (
+          <textarea
+            value={editValue}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            rows={3}
+            className="w-full px-2 py-1.5 text-[12px] rounded border font-mono resize-y"
+            style={{ background: "var(--bg-base)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+          />
+        ) : (
+          <input
+            type={inputType}
+            value={editValue}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="flex-1 min-w-0 px-2 py-1.5 text-[12px] rounded border"
+            style={{
+              background: "var(--bg-base)",
+              borderColor: "var(--border)",
+              color: "var(--text-primary)",
+              fontFamily: isSecret && !revealed ? "inherit" : "var(--font-mono)",
+            }}
+          />
+        )}
+        {isSecret && currentValue && (
+          <>
+            <button
+              onClick={handleReveal}
+              disabled={revealing}
+              title={revealed ? "Hide" : "View"}
+              className="text-[11px] px-1.5 py-1.5 rounded border cursor-pointer shrink-0"
+              style={{ background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)", lineHeight: 1 }}
+            >
+              {revealing ? "..." : revealed ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={handleCopy}
+              title="Copy to clipboard"
+              className="text-[11px] px-1.5 py-1.5 rounded border cursor-pointer shrink-0"
+              style={{ background: "transparent", borderColor: "var(--border)", color: copied ? "var(--success)" : "var(--text-muted)", lineHeight: 1 }}
+            >
+              {copied ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              )}
+            </button>
+          </>
+        )}
+      </div>
       {field.help_text && (
         <div className="text-[10px] text-[var(--text-muted)] mt-1">{field.help_text}</div>
       )}
