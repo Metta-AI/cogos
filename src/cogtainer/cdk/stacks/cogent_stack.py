@@ -620,6 +620,14 @@ class CogentStack(Stack):
             )
         )
 
+        # SES — domain verification check for email setup
+        task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ses:GetIdentityVerificationAttributes"],
+                resources=["*"],
+            )
+        )
+
         # S3 — scoped to this cogent's prefix + shared dashboard/ prefix
         task_role.add_to_policy(
             iam.PolicyStatement(
