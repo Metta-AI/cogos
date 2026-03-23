@@ -193,7 +193,9 @@ class MeCapability(Capability):
     def stdin(self, limit: int = 1) -> str | list[str] | None:
         """Read next message(s) from process stdin."""
         name = self._process_name()
-        ch = self.repo.get_channel_by_name(f"process:{name}:stdin")
+        ch = self.repo.get_channel_by_name(f"io:stdin:{name}")
+        if not ch:
+            ch = self.repo.get_channel_by_name(f"process:{name}:stdin")
         if not ch:
             return None
         msgs = self.repo.list_channel_messages(ch.id, limit=limit)

@@ -221,7 +221,9 @@ class ProcessHandle:
 
     def stdin(self, text: str) -> dict:
         """Write to child's stdin channel."""
-        ch = self._repo.get_channel_by_name(f"process:{self._process.name}:stdin")
+        ch = self._repo.get_channel_by_name(f"io:stdin:{self._process.name}")
+        if not ch:
+            ch = self._repo.get_channel_by_name(f"process:{self._process.name}:stdin")
         if not ch:
             return {"error": f"No stdin channel for {self._process.name}"}
         msg = ChannelMessage(channel=ch.id, sender_process=self._caller_id, payload={"text": text})

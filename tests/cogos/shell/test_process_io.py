@@ -97,7 +97,7 @@ def test_me_stderr(tmp_path):
 
 def test_me_stdin(tmp_path):
     repo, _, me = _me_setup(tmp_path)
-    ch = repo.get_channel_by_name("process:worker:stdin")
+    ch = repo.get_channel_by_name("io:stdin:worker")
     assert ch is not None
     repo.append_channel_message(ChannelMessage(channel=ch.id, sender_process=None, payload={"text": "input"}))
     assert me.stdin() == "input"
@@ -145,7 +145,7 @@ def _handle_setup(tmp_path):
 def test_handle_stdin_writes(tmp_path):
     repo, handle = _handle_setup(tmp_path)
     handle.stdin("hello child")
-    ch = repo.get_channel_by_name("process:child:stdin")
+    ch = repo.get_channel_by_name("io:stdin:child")
     assert ch is not None
     assert repo.list_channel_messages(ch.id)[0].payload["text"] == "hello child"
 

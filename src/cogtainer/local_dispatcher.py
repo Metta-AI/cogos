@@ -24,6 +24,72 @@ _DEFAULT_TICK_INTERVAL = 60  # seconds
 _NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
+def _dispatch_to_matched_executor(
+    repo: Any, scheduler: Any, runtime: Any, cogent_name: str,
+    process_id: str, process_name: str,
+) -> bool:
+    """Dispatch a process to a tag-matched executor.
+
+    Uses dispatch_to_executor for tag matching. Local executors get
+    spawn_executor; channel executors get a channel message. Returns
+    True if dispatched successfully.
+    """
+    from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerError
+    from cogos.db.models import ChannelMessage
+    from cogos.runtime.dispatch import build_dispatch_event
+
+    result = scheduler.dispatch_to_executor(process_id=process_id)
+    if isinstance(result, SchedulerError):
+        # Emit alert so missing-tag issues are visible
+        _emit_missing_tags_alert(repo, process_id, process_name, result.error)
+        logger.warning("Dispatch failed for %s: %s", process_name, result.error)
+        return False
+
+    if result.dispatch_type == "local" or result.executor_id == "local-daemon":
+        runtime.spawn_executor(cogent_name, process_id)
+    else:
+        # Channel dispatch: send work to executor's channel
+        exec_ch = repo.get_channel_by_name(f"system:executor:{result.executor_id}")
+        if exec_ch:
+            payload = build_dispatch_event(repo, result)
+            repo.append_channel_message(ChannelMessage(
+                channel=exec_ch.id,
+                payload=payload,
+            ))
+            logger.info(
+                "Dispatched %s to channel executor %s (run %s)",
+                process_name, result.executor_id, result.run_id,
+            )
+        else:
+            logger.error("Executor channel not found for %s", result.executor_id)
+            repo.rollback_dispatch(
+                UUID(process_id), UUID(result.run_id), None,
+                error="executor channel not found",
+            )
+            return False
+
+    return True
+
+
+def _emit_missing_tags_alert(repo: Any, process_id: str, process_name: str, error: str) -> None:
+    """Emit an alert when no executor matches required tags."""
+    from cogos.db.models import Channel, ChannelMessage, ChannelType
+
+    ch_name = "system:executor:error:missing-tags"
+    ch = repo.get_channel_by_name(ch_name)
+    if not ch:
+        ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
+        repo.upsert_channel(ch)
+    repo.append_channel_message(ChannelMessage(
+        channel=ch.id,
+        payload={
+            "process_id": process_id,
+            "process_name": process_name,
+            "error": error,
+        },
+    ))
+
+
 def _is_throttle_cooldown_active(repo: Any) -> bool:
     """Check if any recent run was throttled, indicating we should back off."""
     from cogos.db.models import RunStatus
@@ -99,16 +165,13 @@ def run_tick(repo: Any, runtime: Any, cogent_name: str) -> dict:
         logger.warning("Select processes failed", exc_info=True)
         return {"dispatched": dispatched}
 
-    # 7. Dispatch via runtime.spawn_executor
+    # 7. Dispatch via executor tag matching
     if select_result.selected:
         for proc in select_result.selected:
             try:
-                dispatch_result = scheduler.dispatch_process(process_id=proc.id)
-                if hasattr(dispatch_result, "error"):
-                    logger.warning("Dispatch failed for %s: %s", proc.name, getattr(dispatch_result, "error", ""))
-                    continue
-                runtime.spawn_executor(cogent_name, proc.id)
-                dispatched += 1
+                result = _dispatch_to_matched_executor(repo, scheduler, runtime, cogent_name, proc.id, proc.name)
+                if result:
+                    dispatched += 1
             except Exception:
                 logger.exception("Failed to dispatch process %s", proc.name)
 
@@ -153,12 +216,8 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
             proc = repo.get_process(UUID(pid_str))
             if proc is None or proc.status != ProcessStatus.RUNNABLE:
                 continue
-            dispatch_result = scheduler.dispatch_process(process_id=pid_str)
-            if isinstance(dispatch_result, SchedulerError):
-                logger.warning("Nudge dispatch failed for %s: %s", pid_str, dispatch_result.error)
-                continue
-            runtime.spawn_executor(cogent_name, pid_str)
-            dispatched += 1
+            if _dispatch_to_matched_executor(repo, scheduler, runtime, cogent_name, pid_str, proc.name):
+                dispatched += 1
         except Exception:
             logger.exception("Failed to dispatch nudged process %s", pid_str)
 
@@ -167,11 +226,8 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
         select_result = scheduler.select_processes(slots=5)
         for proc_info in select_result.selected:
             try:
-                dispatch_result = scheduler.dispatch_process(process_id=proc_info.id)
-                if hasattr(dispatch_result, "error"):
-                    continue
-                runtime.spawn_executor(cogent_name, proc_info.id)
-                dispatched += 1
+                if _dispatch_to_matched_executor(repo, scheduler, runtime, cogent_name, proc_info.id, proc_info.name):
+                    dispatched += 1
             except Exception:
                 logger.exception("Failed to dispatch process %s", proc_info.name)
     except Exception:

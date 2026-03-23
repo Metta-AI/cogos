@@ -103,9 +103,12 @@ def _extract_parent_span_id(repo, message_id: str | None) -> str | None:
 
 def build_dispatch_event(repo, dispatch_result) -> dict[str, Any]:
     """Build the executor event envelope used by both local and prod dispatch."""
-    return {
+    from uuid import UUID as _UUID
+
+    event: dict[str, Any] = {
         "process_id": dispatch_result.process_id,
         "run_id": dispatch_result.run_id,
+        "process_name": getattr(dispatch_result, "process_name", None),
         "message_id": dispatch_result.message_id,
         "trace_id": getattr(dispatch_result, "trace_id", None),
         "parent_span_id": _extract_parent_span_id(repo, dispatch_result.message_id),
@@ -114,3 +117,13 @@ def build_dispatch_event(repo, dispatch_result) -> dict[str, Any]:
         "channel_name": _resolve_channel_name(repo, dispatch_result.message_id),
         "payload": _load_message_payload(repo, dispatch_result.message_id),
     }
+
+    # Include process content so channel executors (e.g. Claude Code) have the task.
+    try:
+        proc = repo.get_process(_UUID(dispatch_result.process_id))
+        if proc:
+            event["content"] = proc.content
+    except (ValueError, AttributeError):
+        pass
+
+    return event

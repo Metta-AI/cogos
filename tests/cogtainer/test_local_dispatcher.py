@@ -159,5 +159,6 @@ def test_run_loop_logs_custom_tick_interval(local_runtime: LocalRuntime):
         except KeyboardInterrupt:
             pass
 
-    start_call = mock_logger.info.call_args_list[0]
-    assert 15 in start_call[0]
+    # Find the log call containing the tick interval (skip executor registration log)
+    found = any(15 in call[0] for call in mock_logger.info.call_args_list)
+    assert found, f"Expected tick_interval=15 in log calls: {mock_logger.info.call_args_list}"

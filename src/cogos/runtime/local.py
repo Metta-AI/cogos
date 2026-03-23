@@ -199,6 +199,17 @@ def run_local_tick(
 
     Returns the number of processes executed.
     """
+    from cogos.db.models.executor import Executor
+
+    # Ensure a local executor is registered so dispatch_to_executor can match.
+    repo.register_executor(Executor(
+        executor_id="local-daemon",
+        channel_type="local",
+        executor_tags=["python"],
+        dispatch_type="local",
+        metadata={"local": True},
+    ))
+
     scheduler = SchedulerCapability(repo, process_id=_SENTINEL_UUID)
 
     apply_scheduled_messages(repo, now=now)
@@ -216,7 +227,7 @@ def run_local_tick(
             break
 
         proc_info = selection.selected[0]
-        dispatch = scheduler.dispatch_process(proc_info.id)
+        dispatch = scheduler.dispatch_to_executor(proc_info.id)
 
         if isinstance(dispatch, SchedulerError):
             logger.warning("dispatch error for %s: %s", proc_info.id, dispatch.error)
