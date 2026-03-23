@@ -1,0 +1,9 @@
+pydantic
+pydantic-settings
+pydantic-core
+annotated-types
+Pillow
+google-genai
+anthropic
+asana
+pyyaml

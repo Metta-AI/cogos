@@ -21,6 +21,7 @@ from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_lambda_event_sources as lambda_event_sources
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
@@ -323,6 +324,37 @@ class CogentStack(Stack):
                 "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
             },
         )
+
+        ingress_fn = lambda_.Function(
+            self, "IngressFn",
+            function_name=_lambda_name(cogtainer_name, safe_name, "ingress"),
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="cogtainer.lambdas.ingress.handler.handler",
+            code=code,
+            role=self.cogent_role,
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            environment={
+                **lambda_env,
+                "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
+            },
+        )
+
+        # Wire SQS ingress queue to ingress Lambda
+        ingress_fn.add_event_source(
+            lambda_event_sources.SqsEventSource(
+                self.ingress_queue,
+                batch_size=1,
+            )
+        )
+
+        # Pass ingress queue URL to executor, dispatcher, and bridge so they
+        # can nudge it for immediate dispatch instead of waiting for the
+        # 60-second dispatcher tick.
+        for fn in [_executor_fn, dispatcher_fn]:
+            fn.add_environment(
+                "COGOS_INGRESS_QUEUE_URL", self.ingress_queue.queue_url,
+            )
 
         # CatchAll rule: source prefix "cogent." AND detail.cogent_name matches
         events.Rule(
@@ -711,12 +743,14 @@ class CogentStack(Stack):
             "SESSIONS_PREFIX": safe_name,
             "EXECUTOR_FUNCTION_NAME": _lambda_name(cogtainer_name, safe_name, "executor"),
             "DISCORD_REPLY_QUEUE_URL": replies_queue.queue_url,
+            "COGOS_INGRESS_QUEUE_URL": self.ingress_queue.queue_url,
         }
 
         bridge_task_def.add_container(
             "bridge",
             image=image,
-            command=["python", "-m", "cogos.io.discord.bridge"],
+            entry_point=["python", "-m", "cogos.io.discord.bridge"],
+            command=[],
             environment=bridge_env,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="discord-bridge"),
         )

@@ -18,7 +18,6 @@ r = procs.spawn("discord/handler",
     idle_timeout_ms=300000,
     capabilities={
         "discord": None, "channels": None,
-        "procs": None,
         "image": None, "blob": None, "secrets": None, "web": None,
         "disk": disk,
     },

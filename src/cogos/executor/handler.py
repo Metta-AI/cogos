@@ -684,6 +684,10 @@ def execute_process(
         checkpoint_key=checkpoint_key,
     )
 
+    # Pre-process Discord payloads: enrich with conversation history from DB
+    # so the handler doesn't need to call discord.history() (saves 2-5s).
+    _enrich_discord_context(repo, process, event_data)
+
     # Build user message from the triggering event only. Process instructions
     # already live in the system prompt, including any `@{file-key}` refs.
     user_text = ""
@@ -1156,6 +1160,26 @@ def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -
             ))
     except Exception:
         logger.warning("Failed to emit lifecycle message for process %s", process.name, exc_info=True)
+
+
+def _enrich_discord_context(repo: Repository, process: Process, event_data: dict) -> None:
+    """Pre-fetch Discord conversation history from DB channels.
+
+    For Discord handler processes, this replaces the slow discord.history()
+    round-trip (which polls through the bridge) with a direct DB read.
+    The formatted history is injected into the payload as ``_history``.
+    """
+    channel_name = event_data.get("channel_name", "")
+    if not channel_name or not channel_name.startswith("io:discord:"):
+        return
+    payload = event_data.get("payload")
+    if not isinstance(payload, dict) or not payload.get("channel_id"):
+        return
+    try:
+        from cogos.io.discord.preprocessor import enrich_discord_payload
+        enrich_discord_payload(repo, payload)
+    except Exception:
+        logger.debug("Discord context enrichment failed", exc_info=True)
 
 
 def _read_cog_from_messages(repo: Repository, process: Process) -> list:

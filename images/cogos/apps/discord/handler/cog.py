@@ -5,7 +5,7 @@ config = CogConfig(
     model=model("sonnet"),
     emoji="💬",
     capabilities=[
-        "discord", "channels", "procs",
+        "discord", "channels",
         "image", "blob", "secrets", "web",
     ],
     handlers=[

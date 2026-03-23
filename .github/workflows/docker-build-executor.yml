@@ -80,8 +80,7 @@ jobs:
         run: |
           DEPS_DIR=$(mktemp -d)
           uv pip install --target "$DEPS_DIR" --quiet --python 3.12 --python-platform linux \
-            pydantic pydantic-settings pydantic-core annotated-types \
-            Pillow google-genai anthropic asana
+            -r sandbox-requirements.txt
 
           cd src
           zip -qr /tmp/lambda.zip . -x '*/__pycache__/*' '*.pyc' '*.egg-info/*'

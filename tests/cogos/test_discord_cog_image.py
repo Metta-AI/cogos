@@ -101,7 +101,7 @@ class TestDiscordCogImage:
         caps = mod.config.capabilities
         assert "discord" in caps
         assert "channels" in caps
-        assert "procs" in caps
+        assert "procs" not in caps  # handler doesn't need process management
         assert "image" in caps
         assert "cogent" not in caps
 

@@ -392,25 +392,67 @@ def discover_aws(region: str, profile: str | None) -> None:
 
 
 def _get_cogent_names(session, cogtainer_name: str, region: str) -> list[str]:
-    """Get cogent names for a cogtainer from DynamoDB status table."""
-    ddb = session.resource("dynamodb", region_name=region)
-    table = ddb.Table(f"cogtainer-{cogtainer_name}-status")
+    """Get cogent names for a cogtainer.
 
-    items: list[dict] = []
-    params: dict = {}
-    while True:
-        resp = table.scan(**params)
-        items.extend(resp.get("Items", []))
-        last_key = resp.get("LastEvaluatedKey")
-        if not last_key:
-            break
-        params["ExclusiveStartKey"] = last_key
+    Tries DynamoDB status table first, falls back to discovering
+    cogent names from Lambda function naming conventions.
+    """
+    # Try DynamoDB first
+    try:
+        ddb = session.resource("dynamodb", region_name=region)
+        table_name = f"cogtainer-{cogtainer_name}-status"
+        table = ddb.Table(table_name)
+        items: list[dict] = []
+        params: dict = {}
+        while True:
+            resp = table.scan(**params)
+            items.extend(resp.get("Items", []))
+            last_key = resp.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            params["ExclusiveStartKey"] = last_key
+        names = sorted(item["cogent_name"] for item in items if item.get("cogent_name"))
+        if names:
+            return names
+    except Exception:
+        pass
 
-    return sorted(
-        item["cogent_name"]
-        for item in items
-        if item.get("cogent_name")
-    )
+    # Also try legacy table name
+    try:
+        table = ddb.Table("cogent-status")
+        items = []
+        params = {}
+        while True:
+            resp = table.scan(**params)
+            items.extend(resp.get("Items", []))
+            last_key = resp.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            params["ExclusiveStartKey"] = last_key
+        names = sorted(item["cogent_name"] for item in items if item.get("cogent_name"))
+        if names:
+            return names
+    except Exception:
+        pass
+
+    # Fall back: discover from Lambda function names
+    lambda_client = session.client("lambda", region_name=region)
+    prefix = f"cogtainer-{cogtainer_name}-"
+    funcs = lambda_client.list_functions(MaxItems=200)["Functions"]
+    cogent_names: set[str] = set()
+    for f in funcs:
+        fn = f["FunctionName"]
+        if not fn.startswith(prefix):
+            continue
+        # Strip prefix and known suffixes to extract cogent name
+        remainder = fn[len(prefix):]
+        for suffix in ("-executor", "-dispatcher", "-event-router", "-ingress"):
+            if remainder.endswith(suffix):
+                name = remainder[: -len(suffix)]
+                if name:
+                    cogent_names.add(name.replace("-", "."))
+                break
+    return sorted(cogent_names)
 
 
 def _update_lambdas(
@@ -424,7 +466,7 @@ def _update_lambdas(
 ) -> None:
     """Update Lambda function code for all cogents."""
     lambda_client = session.client("lambda", region_name=region)
-    suffixes = ["event-router", "executor", "dispatcher"]
+    suffixes = ["event-router", "executor", "dispatcher", "ingress"]
 
     for cogent_name in cogent_names:
         safe_name = cogent_name.replace(".", "-")
@@ -531,11 +573,63 @@ def _update_services(
                 click.echo(f"  {service_name}: {e}")
 
 
+def _build_lambda_zip() -> bytes:
+    """Package src/ with pip dependencies into a Lambda-ready zip."""
+    import subprocess
+    import tempfile
+    import zipfile
+    from io import BytesIO
+    from pathlib import Path
+
+    src_dir = Path(__file__).resolve().parent.parent  # repo/src
+
+    # Install deps to a temp directory
+    deps_dir = tempfile.mkdtemp()
+    repo_root = src_dir.parent  # repo root
+    req_file = repo_root / "sandbox-requirements.txt"
+    install_cmd = [
+        "uv", "pip", "install", "--target", deps_dir,
+        "--quiet", "--python", "3.12", "--python-platform", "linux",
+    ]
+    if req_file.is_file():
+        install_cmd += ["-r", str(req_file)]
+    else:
+        install_cmd += [
+            "pydantic", "pydantic-settings", "pydantic-core", "annotated-types",
+            "Pillow", "google-genai", "anthropic", "asana", "pyyaml",
+        ]
+    subprocess.run(install_cmd, check=True, capture_output=True)
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Add src/
+        for path in sorted(src_dir.rglob("*")):
+            if path.is_dir():
+                continue
+            if "__pycache__" in str(path) or path.suffix == ".pyc":
+                continue
+            arcname = str(path.relative_to(src_dir))
+            zf.write(path, arcname)
+
+        # Add deps
+        deps_path = Path(deps_dir)
+        for path in sorted(deps_path.rglob("*")):
+            if path.is_dir():
+                continue
+            if "__pycache__" in str(path) or path.suffix == ".pyc":
+                continue
+            arcname = str(path.relative_to(deps_path))
+            zf.write(path, arcname)
+
+    return buf.getvalue()
+
+
 @cli.command("update")
 @click.argument("name")
 @click.option("--lambdas", "update_lambdas", is_flag=True, help="Update Lambda function code")
 @click.option("--services", "update_services", is_flag=True, help="Restart ECS services with new image")
 @click.option("--all", "update_all", is_flag=True, help="Update both lambdas and services")
+@click.option("--from-source", "from_source", is_flag=True, help="Package and deploy Lambda zip from local src/")
 @click.option("--lambda-s3-bucket", default="", help="S3 bucket for Lambda zip")
 @click.option("--lambda-s3-key", default="", help="S3 key for Lambda zip")
 @click.option("--image-tag", default="", help="ECR image tag for Lambda/ECS update")
@@ -546,6 +640,7 @@ def update_cmd(
     update_lambdas: bool,
     update_services: bool,
     update_all: bool,
+    from_source: bool,
     lambda_s3_bucket: str,
     lambda_s3_key: str,
     image_tag: str,
@@ -556,6 +651,9 @@ def update_cmd(
 
     If neither --lambdas nor --services is specified, updates both (same as --all).
     """
+    if from_source:
+        update_lambdas = True
+
     # If neither flag is set, update both
     if not update_lambdas and not update_services:
         update_all = True
@@ -566,22 +664,45 @@ def update_cmd(
 
     session, _account_id = _get_aws_session(region=region, profile=profile)
 
-    # Get cogent list from DynamoDB
+    # Get cogent list
     cogent_names = _get_cogent_names(session, name, region)
     if not cogent_names:
         click.echo(f"No cogents found for cogtainer '{name}'.")
         return
 
-    click.echo(f"Updating cogtainer '{name}' ({len(cogent_names)} cogent(s))...")
+    click.echo(f"Updating cogtainer '{name}' ({len(cogent_names)} cogent(s): {', '.join(cogent_names)})...")
 
     if update_lambdas:
-        click.echo("Updating Lambda functions...")
-        _update_lambdas(
-            session, name, cogent_names, region,
-            s3_bucket=lambda_s3_bucket,
-            s3_key=lambda_s3_key,
-            image_tag=image_tag,
-        )
+        if from_source:
+            click.echo("Packaging Lambda zip from source...")
+            zipfile_bytes = _build_lambda_zip()
+            click.echo(f"  zip size: {len(zipfile_bytes) / 1024 / 1024:.1f} MB")
+
+            click.echo("Uploading to Lambda functions...")
+            lambda_client = session.client("lambda", region_name=region)
+            suffixes = ["event-router", "executor", "dispatcher", "ingress"]
+            for cogent_name in cogent_names:
+                safe_name = cogent_name.replace(".", "-")
+                for suffix in suffixes:
+                    fn_name = f"cogtainer-{name}-{safe_name}-{suffix}"
+                    try:
+                        lambda_client.update_function_code(
+                            FunctionName=fn_name,
+                            ZipFile=zipfile_bytes,
+                        )
+                        click.echo(f"  {fn_name}: updated")
+                    except lambda_client.exceptions.ResourceNotFoundException:
+                        click.echo(f"  {fn_name}: not found (skip)")
+                    except Exception as e:
+                        click.echo(f"  {fn_name}: {e}")
+        else:
+            click.echo("Updating Lambda functions...")
+            _update_lambdas(
+                session, name, cogent_names, region,
+                s3_bucket=lambda_s3_bucket,
+                s3_key=lambda_s3_key,
+                image_tag=image_tag,
+            )
 
     if update_services:
         click.echo("Restarting ECS services...")
