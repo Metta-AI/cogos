@@ -21,7 +21,7 @@ def server() -> CogosServer:
         api_key="test-key",
         channel_patterns=["io:claude-code:*", "system:alerts"],
         executor_id="cc-test-1234",
-        capabilities=["claude-code"],
+        executor_tags=["claude-code"],
     )
 
 
@@ -34,7 +34,7 @@ class TestInit:
         assert s.cogent_name == ""
         assert s.channel_patterns == ["io:claude-code:*"]
         assert s.executor_id.startswith("cc-")
-        assert s.capabilities == ["claude-code"]
+        assert s.executor_tags == ["claude-code"]
         assert s.seen_messages == set()
         assert s.channel_index == {}
         assert s.current_run_id is None

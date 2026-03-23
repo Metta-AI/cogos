@@ -30,7 +30,7 @@ class _ExecutorRepoStub:
             id=uuid4(),
             executor_id="executor-test-abc123",
             channel_type="claude-code",
-            capabilities=["claude-code", "git"],
+            executor_tags=["claude-code", "git"],
             metadata={"machine": "test-host"},
             status=ExecutorStatus.IDLE,
             last_heartbeat_at=now,
@@ -128,7 +128,7 @@ def test_get_executor():
         response = client.get("/api/cogents/test/executors/executor-test-abc123")
     assert response.status_code == 200
     assert response.json()["executor_id"] == "executor-test-abc123"
-    assert response.json()["capabilities"] == ["claude-code", "git"]
+    assert response.json()["executor_tags"] == ["claude-code", "git"]
 
 
 def test_get_executor_not_found():
@@ -155,7 +155,7 @@ def test_register_executor_with_valid_token():
             "/api/cogents/test/executors/register",
             json={
                 "executor_id": "exec-new",
-                "capabilities": ["claude-code", "filesystem"],
+                "executor_tags": ["claude-code", "filesystem"],
             },
             headers={"Authorization": _BEARER},
         )

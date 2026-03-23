@@ -18,7 +18,7 @@ def _make_ddb_table_mock(cogent_names: list[str]):
     return table
 
 
-def _mock_aws_session(cogent_names: list[str]):
+def _mock_aws_session(cogent_names: list[str], service_arns: list[str] | None = None):
     """Return (session_mock, lambda_mock, ecs_mock)."""
     session = MagicMock()
     table = _make_ddb_table_mock(cogent_names)
@@ -34,6 +34,10 @@ def _mock_aws_session(cogent_names: list[str]):
     ecs_client.exceptions = MagicMock()
     ecs_client.exceptions.ServiceNotFoundException = type("ServiceNotFoundException", (Exception,), {})
     ecs_client.describe_clusters.return_value = {"clusters": []}
+
+    paginator = MagicMock()
+    paginator.paginate.return_value = [{"serviceArns": service_arns or []}]
+    ecs_client.get_paginator.return_value = paginator
 
     def client_factory(service, **kwargs):
         if service == "lambda":
@@ -99,7 +103,13 @@ def test_update_services_only(mock_get_session, tmp_path, monkeypatch):
     }))
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
 
-    session, lambda_client, ecs_client = _mock_aws_session(["alpha"])
+    session, lambda_client, ecs_client = _mock_aws_session(
+        ["alpha"],
+        service_arns=[
+            "arn:aws:ecs:us-east-1:901289084804:service/cogtainer/cogent-alpha-dashboard",
+            "arn:aws:ecs:us-east-1:901289084804:service/cogtainer/cogent-alpha-discord",
+        ],
+    )
     mock_get_session.return_value = (session, "901289084804")
 
     runner = CliRunner()
@@ -136,7 +146,10 @@ def test_update_default_updates_both(mock_get_session, tmp_path, monkeypatch):
     }))
     monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
 
-    session, lambda_client, ecs_client = _mock_aws_session(["gamma"])
+    session, lambda_client, ecs_client = _mock_aws_session(
+        ["gamma"],
+        service_arns=["arn:aws:ecs:us-east-1:901289084804:service/cogtainer/cogent-gamma-dashboard"],
+    )
     mock_get_session.return_value = (session, "901289084804")
 
     runner = CliRunner()
