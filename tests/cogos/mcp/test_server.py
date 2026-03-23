@@ -590,81 +590,27 @@ class TestChannelPollLoop:
 
         server.poll_channels_once = mock_poll_channels_once  # type: ignore[assignment]
 
-        mcp_srv = server.create_mcp_server()
-
         sent_notifications: list[dict] = []
 
         async def mock_send(session_msg):
             msg = session_msg.message.root
             sent_notifications.append({"method": msg.method, "params": msg.params})
 
-        mock_session = MagicMock()
-        mock_session._write_stream = MagicMock()
-        mock_session._write_stream.send = AsyncMock(side_effect=mock_send)
+        mock_write_stream = MagicMock()
+        mock_write_stream.send = AsyncMock(side_effect=mock_send)
 
-        mock_ctx = MagicMock()
-        mock_ctx.session = mock_session
-        with patch.object(type(mcp_srv), "request_context", new_callable=lambda: property(lambda self: mock_ctx)):
-            server.poll_ms = 50
-            task = asyncio.create_task(server.run_channel_poll_loop(mcp_srv))
-            await asyncio.sleep(0.15)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        server.poll_ms = 50
+        task = asyncio.create_task(server.run_channel_poll_loop(mock_write_stream))
+        await asyncio.sleep(0.15)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
         assert len(sent_notifications) >= 1
         assert sent_notifications[0]["method"] == "notifications/claude/channel"
         assert sent_notifications[0]["params"]["channel"] == "io:claude-code:requests"
-
-
-class TestWorkPollLoop:
-    @pytest.mark.anyio
-    async def test_work_poll_emits_on_assignment(self, server: CogosServer):
-        poll_count = 0
-
-        async def mock_poll_for_work():
-            nonlocal poll_count
-            poll_count += 1
-            if poll_count == 1:
-                server.current_run_id = "run-200"
-                return {"id": "run-200", "process": "proc-1", "status": "running"}
-            return None
-
-        async def mock_fetch_process(process_id: str):
-            return {"id": "proc-1", "name": "my-process", "system_prompt": "Be helpful"}
-
-        server.poll_for_work = mock_poll_for_work  # type: ignore[assignment]
-        server.fetch_process = mock_fetch_process  # type: ignore[assignment]
-
-        mcp_srv = server.create_mcp_server()
-
-        sent_notifications: list[dict] = []
-
-        async def mock_send(session_msg):
-            msg = session_msg.message.root
-            sent_notifications.append({"method": msg.method, "params": msg.params})
-
-        mock_session = MagicMock()
-        mock_session._write_stream = MagicMock()
-        mock_session._write_stream.send = AsyncMock(side_effect=mock_send)
-
-        mock_ctx = MagicMock()
-        mock_ctx.session = mock_session
-        with patch.object(type(mcp_srv), "request_context", new_callable=lambda: property(lambda self: mock_ctx)):
-            server.poll_ms = 50
-            task = asyncio.create_task(server.run_work_poll_loop(mcp_srv))
-            await asyncio.sleep(0.15)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        assert len(sent_notifications) >= 1
-        assert sent_notifications[0]["params"]["channel"] == "executor:work"
-        assert "run-200" in sent_notifications[0]["params"]["content"]
 
 
 # ── CLI entry point tests (Task 6) ─────────────────────────────
@@ -684,16 +630,13 @@ class TestEntryPoint:
 class TestEmitChannelNotification:
     @pytest.mark.anyio
     async def test_emit_success(self):
-        mcp_srv = MagicMock()
-        mock_session = MagicMock()
-        mock_session._write_stream = MagicMock()
-        mock_session._write_stream.send = AsyncMock()
-        mcp_srv.request_context.session = mock_session
+        mock_write_stream = MagicMock()
+        mock_write_stream.send = AsyncMock()
 
-        await _emit_channel_notification(mcp_srv, channel="test:ch", content="hello", meta={"key": "val"})
+        await _emit_channel_notification(mock_write_stream, channel="test:ch", content="hello", meta={"key": "val"})
 
-        mock_session._write_stream.send.assert_called_once()
-        sent = mock_session._write_stream.send.call_args[0][0]
+        mock_write_stream.send.assert_called_once()
+        sent = mock_write_stream.send.call_args[0][0]
         assert sent.message.root.method == "notifications/claude/channel"
         assert sent.message.root.params["channel"] == "test:ch"
 

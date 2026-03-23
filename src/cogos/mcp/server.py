@@ -496,14 +496,14 @@ class CogosServer:
                 logger.debug("heartbeat loop error", exc_info=True)
             await asyncio.sleep(self.heartbeat_s)
 
-    async def run_channel_poll_loop(self, mcp_server: Server) -> None:
+    async def run_channel_poll_loop(self, write_stream: Any) -> None:
         """Poll channels for new messages and emit MCP notifications."""
         while True:
             try:
                 new_messages = await self.poll_channels_once()
                 for msg in new_messages:
                     await _emit_channel_notification(
-                        mcp_server,
+                        write_stream,
                         channel=msg.get("channel_name", ""),
                         content=json.dumps(msg.get("payload", {}), indent=2),
                         meta={
@@ -551,14 +551,13 @@ class CogosServer:
 # ── Notification helper ─────────────────────────────────────────
 
 async def _emit_channel_notification(
-    mcp_server: Server,
+    write_stream: Any,
     channel: str,
     content: str,
     meta: dict[str, Any] | None = None,
 ) -> None:
-    """Send a custom notifications/claude/channel JSON-RPC notification via the MCP session."""
+    """Send a custom notifications/claude/channel JSON-RPC notification via the MCP write stream."""
     try:
-        session = mcp_server.request_context.session
         notification = JSONRPCNotification(
             jsonrpc="2.0",
             method="notifications/claude/channel",
@@ -568,11 +567,10 @@ async def _emit_channel_notification(
                 "meta": meta or {},
             },
         )
-        await session._write_stream.send(
+        await write_stream.send(
             SessionMessage(message=JSONRPCMessage(notification))
         )
     except Exception:
-        # Session may not be ready during startup
         logger.debug("failed to emit channel notification", exc_info=True)
 
 
@@ -616,7 +614,7 @@ async def amain() -> None:
         # Start background tasks
         tasks: list[asyncio.Task[None]] = []
         tasks.append(asyncio.create_task(cogos.run_heartbeat_loop()))
-        tasks.append(asyncio.create_task(cogos.run_channel_poll_loop(mcp_srv)))
+        tasks.append(asyncio.create_task(cogos.run_channel_poll_loop(write_stream)))
 
         try:
             await mcp_srv.run(read_stream, write_stream, mcp_srv.create_initialization_options())
