@@ -138,6 +138,26 @@ All of the following work with `COGENT=local`:
 
 Validation checklist with step-by-step commands: `tests/cogos/local_validation.md`
 
+## Local Logs
+
+All local logs live under `{data_dir}/{cogent_name}/logs/`:
+
+| Log file | Source |
+|----------|--------|
+| `dispatcher.log` | Background dispatcher daemon |
+| `executor.log` | Executor subprocess output |
+| `dashboard-backend.log` | Dashboard API server (uvicorn) |
+| `dashboard-frontend.log` | Dashboard Next.js dev server |
+
+`data_dir` comes from `CogtainerEntry.data_dir` in `~/.cogos/cogtainers.yml`. Default for local cogtainers created via CLI: `~/.cogos/cogtainers/{cogtainer_name}`. Fallback if unset: `~/.cogos/local`.
+
+To discover the exact paths for your current cogent/cogtainer:
+
+```bash
+cogent status        # shows data_dir and log_dir for the resolved cogent
+cogtainer status     # shows data_dir and log_dir template for the cogtainer
+```
+
 ## Dashboard Ports
 
 Dashboard ports can be pinned in the repo root `.env` file:
@@ -162,7 +182,7 @@ cogos dashboard stop              # stop both servers
 cogos dashboard reload            # restart (stop + start)
 ```
 
-`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. It sets critical env vars (`DASHBOARD_BE_PORT`, `COGTAINER`, `COGENT`, `USE_LOCAL_DB`, `NEXT_PUBLIC_COGENT`) from the cogtainer config. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.
+`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. It sets critical env vars (`DASHBOARD_BE_PORT`, `COGTAINER`, `COGENT`, `USE_LOCAL_DB`, `NEXT_PUBLIC_COGENT`) from the cogtainer config. Logs go to `{data_dir}/{cogent}/logs/` (see "Local Logs" below).
 
 **IMPORTANT: Always use `cogos dashboard start/stop/reload` to manage the dashboard.** Never start the backend (`uvicorn`) or frontend (`next dev`) manually — the dashboard requires env vars derived from `~/.cogos/cogtainers.yml` (ports, data directory) that differ per cogtainer. Starting components manually without these env vars will connect the frontend to the wrong backend port or the backend to the wrong database, causing silent data mismatches.
 
