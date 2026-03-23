@@ -590,27 +590,25 @@ class TestChannelPollLoop:
 
         server.poll_channels_once = mock_poll_channels_once  # type: ignore[assignment]
 
-        sent_notifications: list[dict] = []
-
-        async def mock_send(session_msg):
-            msg = session_msg.message.root
-            sent_notifications.append({"method": msg.method, "params": msg.params})
-
-        mock_write_stream = MagicMock()
-        mock_write_stream.send = AsyncMock(side_effect=mock_send)
+        import io
+        buf = io.BytesIO()
 
         server.poll_ms = 50
-        task = asyncio.create_task(server.run_channel_poll_loop(mock_write_stream))
-        await asyncio.sleep(0.15)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        with patch("sys.stdout", MagicMock(buffer=buf)):
+            task = asyncio.create_task(server.run_channel_poll_loop(None))
+            await asyncio.sleep(0.15)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
-        assert len(sent_notifications) >= 1
-        assert sent_notifications[0]["method"] == "notifications/claude/channel"
-        assert sent_notifications[0]["params"]["channel"] == "io:claude-code:requests"
+        import json as json_mod
+        output = buf.getvalue().decode("utf-8").strip()
+        assert output, "expected notification output"
+        data = json_mod.loads(output)
+        assert data["method"] == "notifications/claude/channel"
+        assert data["params"]["channel"] == "io:claude-code:requests"
 
 
 # ── CLI entry point tests (Task 6) ─────────────────────────────
@@ -629,20 +627,21 @@ class TestEntryPoint:
 
 class TestEmitChannelNotification:
     @pytest.mark.anyio
-    async def test_emit_success(self):
-        mock_write_stream = MagicMock()
-        mock_write_stream.send = AsyncMock()
+    async def test_emit_writes_to_stdout(self):
+        import io
+        buf = io.BytesIO()
 
-        await _emit_channel_notification(mock_write_stream, channel="test:ch", content="hello", meta={"key": "val"})
+        with patch("sys.stdout", MagicMock(buffer=buf)):
+            await _emit_channel_notification(None, channel="test:ch", content="hello", meta={"key": "val"})
 
-        mock_write_stream.send.assert_called_once()
-        sent = mock_write_stream.send.call_args[0][0]
-        assert sent.message.root.method == "notifications/claude/channel"
-        assert sent.message.root.params["channel"] == "test:ch"
+        import json
+        output = buf.getvalue().decode("utf-8").strip()
+        data = json.loads(output)
+        assert data["method"] == "notifications/claude/channel"
+        assert data["params"]["channel"] == "test:ch"
 
     @pytest.mark.anyio
     async def test_emit_swallows_errors(self):
-        mcp_srv = MagicMock()
-        mcp_srv.request_context = property(lambda self: (_ for _ in ()).throw(LookupError))
-        # Should not raise
-        await _emit_channel_notification(mcp_srv, channel="test:ch", content="hello")
+        with patch("sys.stdout", MagicMock(buffer=MagicMock(write=MagicMock(side_effect=RuntimeError("broken"))))):
+            # Should not raise
+            await _emit_channel_notification(None, channel="test:ch", content="hello")

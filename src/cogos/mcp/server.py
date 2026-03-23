@@ -361,7 +361,10 @@ class CogosServer:
 
     def create_mcp_server(self) -> Server:
         """Create an MCP Server with send, reply, list_channels, and complete_run tools."""
-        mcp_server = Server("cogos")
+        mcp_server = Server("cogos", instructions=(
+            "You are connected to CogOS. Messages from the cogent will arrive as "
+            "<channel> events on your executor channel. Use the reply tool to respond."
+        ))
         cogos = self
 
         @mcp_server.list_tools()
@@ -561,20 +564,25 @@ async def _emit_channel_notification(
     content: str,
     meta: dict[str, Any] | None = None,
 ) -> None:
-    """Send a custom notifications/claude/channel JSON-RPC notification via the MCP write stream."""
+    """Send a custom notifications/claude/channel JSON-RPC notification.
+
+    Writes directly to stdout as a JSON-RPC line, bypassing the MCP session's
+    write stream to avoid blocking on the zero-buffer memory channel.
+    """
+    import sys
     try:
-        notification = JSONRPCNotification(
-            jsonrpc="2.0",
-            method="notifications/claude/channel",
-            params={
+        notification = {
+            "jsonrpc": "2.0",
+            "method": "notifications/claude/channel",
+            "params": {
                 "channel": channel,
                 "content": content,
                 "meta": meta or {},
             },
-        )
-        await write_stream.send(
-            SessionMessage(message=JSONRPCMessage(notification))
-        )
+        }
+        line = json.dumps(notification) + "\n"
+        sys.stdout.buffer.write(line.encode("utf-8"))
+        sys.stdout.buffer.flush()
     except Exception:
         logger.debug("failed to emit channel notification", exc_info=True)
 
