@@ -130,7 +130,7 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
     if not messages:
         return 0
 
-    from cogos.capabilities.scheduler import SchedulerCapability
+    from cogos.capabilities.scheduler import SchedulerCapability, SchedulerError
     from cogos.db.models import ProcessStatus
 
     if hasattr(repo, "_load"):
@@ -151,7 +151,7 @@ def _dispatch_nudged_processes(repo: Any, runtime: Any, cogent_name: str) -> int
             if proc is None or proc.status != ProcessStatus.RUNNABLE:
                 continue
             dispatch_result = scheduler.dispatch_process(process_id=pid_str)
-            if hasattr(dispatch_result, "error"):
+            if isinstance(dispatch_result, SchedulerError):
                 logger.warning("Nudge dispatch failed for %s: %s", pid_str, dispatch_result.error)
                 continue
             runtime.spawn_executor(cogent_name, pid_str)
