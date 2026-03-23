@@ -103,7 +103,9 @@ class LocalRuntime(CogtainerRuntime):
             "LLM_PROVIDER": llm_provider,
             "AWS_REGION": self._entry.region or "us-east-1",
         }
-        log_path = self._data_dir / "executor.log"
+        log_dir = cogent_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "executor.log"
         log_fh = open(log_path, "a")  # noqa: SIM115
         proc = subprocess.Popen(
             [sys.executable, "-m", "cogos.executor", process_id],
