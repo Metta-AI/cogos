@@ -106,7 +106,7 @@ def _with_reply_meta(
 ) -> dict:
     meta = {
         "queued_at_ms": int(time.time() * 1000),
-        "trace_id": str(trace_id) if trace_id else str(uuid4()),
+        "trace_id": str(trace_id) if trace_id else None,
         "process_id": str(process_id),
         "cogent_name": cogent_name,
     }
