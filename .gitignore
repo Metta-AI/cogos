@@ -184,3 +184,4 @@ cdk.out.destroy/
 .worktrees/
 .claude/worktrees/
 .next/
+.cogos_executor

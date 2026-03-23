@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "cogos": {
-      "command": "python",
-      "args": ["-m", "cogos.mcp"],
+      "command": "bun",
+      "args": ["./channels/claude-code/server.ts"],
       "env": {
         "COGOS_CHANNELS": "io:claude-code:*,system:alerts"
       }

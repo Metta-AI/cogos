@@ -1,18 +1,23 @@
 /**
  * Claude Code channel server for CogOS.
  *
- * Bridges CogOS channels into a running Claude Code session:
+ * Bridges CogOS channels into a running Claude Code session and registers
+ * as a cogos executor:
+ *   - Registers as an executor and heartbeats to stay alive
+ *   - Creates a dedicated executor channel and subscribes to it
  *   - Polls the CogOS dashboard API for new messages on subscribed channels
  *   - Emits MCP channel notifications so Claude sees them as <channel> events
- *   - Exposes `send` and `reply` tools for writing back to CogOS channels
+ *   - Exposes send, reply, list_channels, and complete_run tools
  *
  * Environment variables:
  *   COGOS_API_URL      – Dashboard API base URL (e.g. http://localhost:8100)
  *   COGENT             – Cogent name for API path prefix
- *   COGOS_API_KEY      – Optional API key for authenticated access
+ *   COGOS_API_KEY      – API key for authenticated access (executor token)
  *   COGOS_CHANNELS     – Comma-separated channel name patterns to subscribe to
  *                        (default: "io:claude-code:*")
  *   COGOS_POLL_MS      – Poll interval in milliseconds (default: 3000)
+ *   COGOS_HEARTBEAT_S  – Heartbeat interval in seconds (default: 15)
+ *   COGOS_EXECUTOR_ID  – Custom executor ID (auto-generated if omitted)
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -21,6 +26,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { randomBytes } from "crypto";
+import { hostname } from "os";
+import { readFileSync, writeFileSync } from "fs";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -33,6 +41,24 @@ const CHANNEL_PATTERNS = (
   process.env.COGOS_CHANNELS || "io:claude-code:*"
 ).split(",").map((s) => s.trim());
 const POLL_MS = parseInt(process.env.COGOS_POLL_MS || "3000", 10);
+const HEARTBEAT_S = parseInt(process.env.COGOS_HEARTBEAT_S || "15", 10);
+const EXECUTOR_ID = (() => {
+  if (process.env.COGOS_EXECUTOR_ID) return process.env.COGOS_EXECUTOR_ID;
+  const cacheFile = ".cogos_executor";
+  try {
+    const cached = readFileSync(cacheFile, "utf-8").trim();
+    if (cached) return cached;
+  } catch {
+    // file doesn't exist yet
+  }
+  const id = `cc-${hostname()}-${randomBytes(4).toString("hex")}`;
+  try {
+    writeFileSync(cacheFile, id + "\n");
+  } catch {
+    // non-fatal
+  }
+  return id;
+})();
 
 function apiBase(): string {
   if (COGENT_NAME) {
@@ -41,10 +67,11 @@ function apiBase(): string {
   return API_URL;
 }
 
-function headers(): Record<string, string> {
+function hdrs(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (API_KEY) {
     h["x-api-key"] = API_KEY;
+    h["Authorization"] = `Bearer ${API_KEY}`;
   }
   return h;
 }
@@ -71,7 +98,7 @@ interface CogosMessage {
 
 async function fetchChannels(): Promise<CogosChannel[]> {
   try {
-    const resp = await fetch(`${apiBase()}/channels`, { headers: headers() });
+    const resp = await fetch(`${apiBase()}/channels`, { headers: hdrs() });
     if (!resp.ok) return [];
     const data = await resp.json();
     return data.channels || [];
@@ -87,7 +114,7 @@ async function fetchChannelMessages(
   try {
     const resp = await fetch(
       `${apiBase()}/channels/${channelId}?limit=${limit}`,
-      { headers: headers() },
+      { headers: hdrs() },
     );
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -104,7 +131,7 @@ async function sendChannelMessage(
   try {
     const resp = await fetch(`${apiBase()}/channels/${channelId}/messages`, {
       method: "POST",
-      headers: headers(),
+      headers: hdrs(),
       body: JSON.stringify({ payload }),
     });
     if (!resp.ok) {
@@ -119,11 +146,86 @@ async function sendChannelMessage(
 }
 
 // ---------------------------------------------------------------------------
+// Executor lifecycle
+// ---------------------------------------------------------------------------
+
+let currentRunId: string | null = null;
+
+async function registerExecutor(): Promise<string> {
+  try {
+    const resp = await fetch(`${apiBase()}/executors/register`, {
+      method: "POST",
+      headers: hdrs(),
+      body: JSON.stringify({
+        executor_id: EXECUTOR_ID,
+        channel_type: "claude-code",
+        capabilities: ["claude-code"],
+        metadata: { mcp: true, hostname: hostname() },
+      }),
+    });
+    if (!resp.ok) {
+      process.stderr.write(`[cogos] register failed: ${resp.status} ${resp.statusText}\n`);
+      return "";
+    }
+    const data = await resp.json();
+    const channel = data.channel || "";
+    if (channel) {
+      CHANNEL_PATTERNS.push(channel);
+      process.stderr.write(`[cogos] registered ${EXECUTOR_ID}, channel: ${channel}\n`);
+    }
+    return channel;
+  } catch (e) {
+    process.stderr.write(`[cogos] register error: ${e}\n`);
+    return "";
+  }
+}
+
+async function heartbeat(): Promise<void> {
+  try {
+    await fetch(`${apiBase()}/executors/${EXECUTOR_ID}/heartbeat`, {
+      method: "POST",
+      headers: hdrs(),
+      body: JSON.stringify({
+        status: currentRunId ? "busy" : "idle",
+        current_run_id: currentRunId,
+      }),
+    });
+  } catch {
+    // swallow
+  }
+}
+
+async function completeRun(
+  status: string,
+  output?: Record<string, unknown>,
+  error?: string,
+): Promise<Record<string, unknown>> {
+  if (!currentRunId) return { ok: false, error: "no active run" };
+  const runId = currentRunId;
+  try {
+    const resp = await fetch(`${apiBase()}/runs/${runId}/complete`, {
+      method: "POST",
+      headers: hdrs(),
+      body: JSON.stringify({
+        executor_id: EXECUTOR_ID,
+        status,
+        output: output || null,
+        error: error || null,
+      }),
+    });
+    if (!resp.ok) return { ok: false };
+    currentRunId = null;
+    return await resp.json();
+  } catch {
+    return { ok: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Channel name matching (fnmatch-style with * glob)
 // ---------------------------------------------------------------------------
 
 function matchesPattern(name: string, pattern: string): boolean {
-  // Convert fnmatch pattern to regex
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   const regex = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$");
   return regex.test(name);
@@ -138,12 +240,15 @@ function matchesAnyPattern(name: string): boolean {
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: "cogos-channels", version: "0.1.0" },
+  { name: "cogos", version: "0.1.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },
       tools: {},
     },
+    instructions:
+      "You are connected to CogOS. Messages from the cogent arrive as <channel> events. " +
+      "Use the reply tool to respond to channels. Use complete_run when you finish an assigned task.",
   },
 );
 
@@ -153,7 +258,7 @@ const seenMessages = new Set<string>();
 const channelIndex = new Map<string, string>();
 
 // ---------------------------------------------------------------------------
-// Tools: send to a CogOS channel, list channels
+// Tools
 // ---------------------------------------------------------------------------
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -213,6 +318,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "complete_run",
+      description:
+        "Signal that the current executor run is complete. Call this when you finish an assigned task.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          status: {
+            type: "string",
+            enum: ["completed", "failed"],
+            description: "Run completion status",
+          },
+          summary: {
+            type: "string",
+            description: "Optional summary of what was accomplished",
+          },
+          error: {
+            type: "string",
+            description: "Optional error message if status is failed",
+          },
+        },
+        required: ["status"],
+      },
+    },
   ],
 }));
 
@@ -223,10 +352,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const channelNameOrId = (args as Record<string, unknown>).channel as string;
     const payload = (args as Record<string, unknown>).payload as Record<string, unknown>;
 
-    // Resolve channel name to ID
     let channelId = channelIndex.get(channelNameOrId);
     if (!channelId) {
-      // Maybe it's already an ID, or refresh the index
       await refreshChannelIndex();
       channelId = channelIndex.get(channelNameOrId) || channelNameOrId;
     }
@@ -263,6 +390,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           text: lines.length > 0 ? lines.join("\n") : "No channels found",
         },
       ],
+    };
+  }
+
+  if (name === "complete_run") {
+    const status = (args as Record<string, unknown>).status as string;
+    const summary = (args as Record<string, unknown>).summary as string | undefined;
+    const error = (args as Record<string, unknown>).error as string | undefined;
+    const output = summary ? { summary } : undefined;
+    const result = await completeRun(status, output, error);
+    if (result.ok) {
+      return {
+        content: [{ type: "text" as const, text: `Run completed with status: ${status}` }],
+      };
+    }
+    return {
+      content: [{ type: "text" as const, text: `Error: ${result.error || "failed to complete run"}` }],
     };
   }
 
@@ -348,6 +491,15 @@ async function startPolling(): Promise<void> {
       // Swallow polling errors — will retry on next interval
     }
   }, POLL_MS);
+
+  // Heartbeat loop
+  setInterval(async () => {
+    try {
+      await heartbeat();
+    } catch {
+      // swallow
+    }
+  }, HEARTBEAT_S * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +510,8 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // Start polling after MCP connection is established
+  // Register executor and start polling after MCP connection is established
+  await registerExecutor();
   startPolling();
 }
 
