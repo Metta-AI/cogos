@@ -43,7 +43,7 @@ if not hasattr(sections, 'error'):
         target_section = sections[-1]
 print(f"Section: {target_section}")
 
-# ── 1b: Fetch threads with details ──
+# ── 1b: Fetch threads with details (skip completed, skip comments for speed) ──
 tasks = asana.list_tasks(PROJECT_ID, limit=100)
 threads = []
 if not hasattr(tasks, 'error'):
@@ -51,22 +51,20 @@ if not hasattr(tasks, 'error'):
         detail = asana.get_task(t.id)
         if hasattr(detail, 'error') or not detail.name.strip():
             continue
+        if detail.completed:
+            continue
         if target_section and detail.section and target_section["name"] not in detail.section:
             continue
-        # Get comments
-        stories = asana.get_stories_for_task(t.id)
-        comments = []
-        if not hasattr(stories, 'error'):
-            comments = [{"author": s.author, "text": s.text[:300], "date": s.created_at} for s in stories[-5:]]
         github_login = TEAM.get(detail.assignee, "")
         threads.append({
             "name": detail.name, "assignee": detail.assignee,
             "github": github_login, "notes": detail.notes[:400],
             "custom_fields": detail.custom_fields,
             "id": detail.id, "completed": detail.completed,
-            "comments": comments,
         })
 print(f"Threads: {len(threads)}")
+# NOTE: Comments are skipped for speed. If you need comment context for a
+# specific thread, fetch with asana.get_stories_for_task(thread_id) in Step 2.
 
 # ── 1c: Reporting window ──
 recent = google_docs.list_files(FOLDER_ID, order_by="createdTime desc", limit=1)
