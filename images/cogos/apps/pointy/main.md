@@ -1,6 +1,6 @@
 @{mnt/boot/pointy/brief.md}
 @{mnt/boot/pointy/whoami/index.md}
-@{pointy/learnings.md}
+@{mnt/boot/pointy/learnings.md}
 
 # Instructions
 
@@ -12,11 +12,11 @@ Use `run_code` to call capabilities — write Python that calls the proxy object
 
 ## Channel: pointy:daily-tick
 
-@{pointy/daily-instructions.md}
+@{mnt/boot/pointy/daily-instructions.md}
 
 ## Channel: pointy:pitch-requested
 
-@{pointy/pitch-instructions.md}
+@{mnt/boot/pointy/pitch-instructions.md}
 
 ## Channel: pointy:feedback-requested
 
@@ -40,8 +40,8 @@ Process feedback from comments on a Daily Thread Update Google Doc.
    - Understand the correction from the quoted text + comment
    - If valid, append to learnings:
      ```python
-     current = file.read("pointy/learnings.md")
-     file.write("pointy/learnings.md", current.content + "\n- " + learning_note)
+     current = file.read("mnt/boot/pointy/learnings.md")
+     file.write("mnt/boot/pointy/learnings.md", current.content + "\n- " + learning_note)
      ```
 
 5. For Type 2 (directives to Pointy):
@@ -70,4 +70,4 @@ Check for responses to Pointy's pitch reviews on Asana threads.
 5. Post follow-up comments in Pointy's voice via
    `asana.add_comment(task_id, text)`, prefixed with "Pitch Follow-Up (Pointy)"
 
-@{pointy/writing-style.md}
+@{mnt/boot/pointy/writing-style.md}
