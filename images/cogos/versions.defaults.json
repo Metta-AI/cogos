@@ -3,6 +3,6 @@
   "dashboard": "5d6e1f3",
   "dashboard_frontend": "5d6e1f34fd106d4b04f3e40a338429a9c79f8dc3",
   "discord_bridge": "local",
-  "lambda": "f4097e203e5f24a7c4156629206b9f73037b4b38",
+  "lambda": "5d6e1f34fd106d4b04f3e40a338429a9c79f8dc3",
   "cogos": "f4097e203e5f24a7c4156629206b9f73037b4b38"
 }
