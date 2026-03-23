@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from cogtainer.cogtainer_cli import _config_path
@@ -105,8 +107,15 @@ def status(name: str | None) -> None:
         cogents = runtime.list_cogents()
         name = resolve_cogent_name(cogents)
 
+    cfg = load_config(_config_path())
+    entry = cfg.cogtainers[cogtainer_name]
+    data_dir = entry.data_dir or str(Path.home() / ".cogos" / "local")
+    log_dir = Path(data_dir) / name / "logs"
+
     click.echo(f"Cogent: {name}")
     click.echo(f"  cogtainer: {cogtainer_name}")
+    click.echo(f"  data_dir: {Path(data_dir) / name}")
+    click.echo(f"  log_dir: {log_dir}")
 
 
 if __name__ == "__main__":

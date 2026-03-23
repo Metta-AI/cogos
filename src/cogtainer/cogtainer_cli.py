@@ -275,8 +275,9 @@ def status(name: str | None) -> None:
     click.echo(f"  type: {entry.type}")
     if entry.region:
         click.echo(f"  region: {entry.region}")
-    if entry.data_dir:
-        click.echo(f"  data_dir: {entry.data_dir}")
+    data_dir = entry.data_dir or str(Path.home() / ".cogos" / "local")
+    click.echo(f"  data_dir: {data_dir}")
+    click.echo(f"  log_dir: {data_dir}/{{cogent}}/logs")
     if entry.domain:
         click.echo(f"  domain: {entry.domain}")
     click.echo(f"  llm.provider: {entry.llm.provider}")
