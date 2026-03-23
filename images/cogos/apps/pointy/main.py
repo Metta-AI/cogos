@@ -2,7 +2,6 @@
 # Routes channel events, fetches data (no LLM), spawns LLM coglets for synthesis.
 
 import datetime
-import json
 
 channel = event.get("channel_name", "")
 payload = event.get("payload", {})
