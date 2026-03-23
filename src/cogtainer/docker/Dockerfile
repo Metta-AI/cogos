@@ -26,7 +26,7 @@ RUN curl -fsSL https://bun.sh/install -o /tmp/bun_install.sh \
 
 # Claude Code CLI (official installer) — download then execute
 RUN curl -fsSL https://claude.ai/install.sh -o /tmp/claude_install.sh \
-    && sh /tmp/claude_install.sh && rm /tmp/claude_install.sh
+    && bash /tmp/claude_install.sh && rm /tmp/claude_install.sh
 
 # uv (Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
