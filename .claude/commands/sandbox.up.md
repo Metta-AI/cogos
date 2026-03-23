@@ -32,14 +32,16 @@ If no cogent named `alpha` exists:
 uv run cogent create alpha
 ```
 
-### 4. Ensure selection is persisted
+### 4. Ensure selection is persisted to .env
 
-Check if `.env` already has `COGENT=alpha`:
+**IMPORTANT**: `cogos` commands require both `COGTAINER` and `COGENT` in the repo-local `.env` file. Without these, process runs will crash with `KeyError: 'COGTAINER'`.
+
+Check if `.env` has both:
 ```bash
-grep -q 'COGENT=alpha' .env 2>/dev/null
+grep -q 'COGTAINER=' .env 2>/dev/null && grep -q 'COGENT=' .env 2>/dev/null
 ```
 
-If not:
+If either is missing, run `cogent select` which writes both:
 ```bash
 uv run cogent select alpha
 ```

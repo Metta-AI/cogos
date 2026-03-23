@@ -22,12 +22,22 @@ If no local cogtainer exists:
 ```bash
 uv run cogtainer create dev --type local --llm-provider anthropic --llm-model claude-sonnet-4-20250514 --llm-api-key-env ANTHROPIC_API_KEY
 uv run cogent create alpha
+```
+
+### 3. Ensure selection is persisted to .env
+
+**IMPORTANT**: `cogos` commands require both `COGTAINER` and `COGENT` in the repo-local `.env` file. Without these, process runs will crash with `KeyError: 'COGTAINER'`. Always verify, even if the cogtainer/cogent already existed.
+
+```bash
+grep -q 'COGTAINER=' .env 2>/dev/null && grep -q 'COGENT=' .env 2>/dev/null
+```
+
+If either is missing, run `cogent select` which writes both:
+```bash
 uv run cogent select alpha
 ```
 
-The `select` writes `COGTAINER` and `COGENT` to a repo-local `.env` file, so all subsequent `cogos` commands resolve automatically.
-
-### 3. Boot the image and start dispatcher
+### 4. Boot the image and start dispatcher
 
 ```bash
 uv run cogos start
@@ -35,7 +45,7 @@ uv run cogos start
 
 This boots the image and starts the dispatcher, which automatically runs init. Expect: `Boot complete` followed by `Dispatcher started in background`.
 
-### 4. Run diagnostics
+### 5. Run diagnostics
 
 ```bash
 uv run cogos process run diagnostics --executor local --event '{"channel_name":"system:diagnostics"}'
@@ -45,7 +55,7 @@ The `--event` flag is required — diagnostics only runs when triggered via the 
 
 Expect: `Run completed` with pass/fail counts. External-service checks (asana, blob, web) will fail without API keys — that's normal.
 
-### 5. Start dashboard and verify
+### 6. Start dashboard and verify
 
 ```bash
 uv run cogos dashboard start
@@ -66,7 +76,7 @@ for cat in sorted(d['categories']):
 
 Print: `Dashboard running at http://localhost:5200 — diagnostics visible`
 
-### 6. Re-run after code changes
+### 7. Re-run after code changes
 
 If you changed image files (`images/**`), diagnostics code, or sandbox code:
 ```bash
@@ -97,7 +107,7 @@ All logs live under the cogent's log directory (shown by `uv run cogent status`)
 
 | Log file | Source |
 |----------|--------|
-| `dispatcher.log` | Dispatcher daemon (step 3) |
-| `executor.log` | Executor subprocess (step 4) |
-| `dashboard-backend.log` | Dashboard API server (step 5) |
-| `dashboard-frontend.log` | Dashboard Next.js dev server (step 5) |
+| `dispatcher.log` | Dispatcher daemon (step 4) |
+| `executor.log` | Executor subprocess (step 5) |
+| `dashboard-backend.log` | Dashboard API server (step 6) |
+| `dashboard-frontend.log` | Dashboard Next.js dev server (step 6) |
