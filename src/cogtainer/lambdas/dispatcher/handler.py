@@ -3,7 +3,8 @@
 EventBridge fires this every 60s. Each invocation:
 1. Generates virtual system:tick:minute (and system:tick:hour on the hour)
 2. Matches channel messages to handlers
-3. Selects any remaining runnable processes and dispatches executors
+3. Unblocks BLOCKED processes whose resources are now available
+4. Selects any remaining runnable processes and dispatches executors
 
 Virtual tick events are emitted as channel messages and wake handlers via deliveries.
 """
@@ -113,6 +114,11 @@ def handler(event: dict, context) -> dict:
             executor_fn,
             {UUID(info.process_id) for info in match_result.deliveries},
         )
+
+    # 2b. Unblock BLOCKED processes whose resources are now available
+    unblock_result = scheduler.unblock_processes()
+    if unblock_result.unblocked:
+        logger.info("Unblocked %s processes", len(unblock_result.unblocked))
 
     # 3. Select and dispatch ALL remaining runnable processes.
     #    Each executor runs in its own Lambda invocation so there is no
