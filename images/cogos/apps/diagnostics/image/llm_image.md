@@ -1,9 +1,9 @@
 # Image Capability Diagnostic
 
-You have access to the `image` capability. Perform the following check:
+You have access to the `image` capability. Perform the following checks:
 
 1. Verify the `image` capability is available (not None).
-2. Check what methods are available on it (e.g., `analyze`, `describe`).
+2. Check that all expected methods exist: resize, crop, rotate, convert, thumbnail, overlay_text, watermark, combine, describe, analyze, extract_text, generate, edit, variations.
 3. Report the available methods. Do NOT call any methods that would process actual images.
 
 Report what you found. If the capability is missing, describe the error.
@@ -19,13 +19,18 @@ try:
         ms = int((time.time() - t0) * 1000)
         checks.append({"name": "llm_image_verify", "status": "fail", "ms": ms, "error": "image is None"})
     else:
-        has_analyze = hasattr(image, "analyze")
-        has_describe = hasattr(image, "describe")
+        expected = [
+            "resize", "crop", "rotate", "convert", "thumbnail",
+            "overlay_text", "watermark", "combine",
+            "describe", "analyze", "extract_text",
+            "generate", "edit", "variations",
+        ]
+        missing = [m for m in expected if not hasattr(image, m)]
         ms = int((time.time() - t0) * 1000)
-        if has_analyze or has_describe:
+        if not missing:
             checks.append({"name": "llm_image_verify", "status": "pass", "ms": ms})
         else:
-            checks.append({"name": "llm_image_verify", "status": "fail", "ms": ms, "error": "no expected methods"})
+            checks.append({"name": "llm_image_verify", "status": "fail", "ms": ms, "error": "missing: " + ", ".join(missing)})
 except Exception as e:
     ms = int((time.time() - t0) * 1000)
     checks.append({"name": "llm_image_verify", "status": "fail", "ms": ms, "error": str(e)})

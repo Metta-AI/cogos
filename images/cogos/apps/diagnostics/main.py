@@ -226,12 +226,142 @@ def diag_blob():
     return checks
 
 def diag_image():
-    """Test image capability is wired."""
+    """Test image capability — manipulation, compositing, generation, analysis."""
+    import base64
     checks = []
+
     def test_wired():
         if image is None:
             raise Exception("image is None")
+        for method in ("resize", "crop", "rotate", "convert", "thumbnail",
+                        "overlay_text", "watermark", "combine",
+                        "describe", "analyze", "extract_text",
+                        "generate", "edit", "variations"):
+            if not hasattr(image, method):
+                raise Exception("missing method: " + method)
     checks.append(check("wired", test_wired))
+
+    # Minimal 2x2 PNG for manipulation/analysis tests
+    _TEST_PNG = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADklEQVQI12P4z8BQDwAEgAF/"
+        "QualzQAAAABJRU5ErkJggg=="
+    )
+
+    # Upload test image
+    test_key = [None]
+    def test_upload():
+        ref = blob.upload(_TEST_PNG, "_diag_image_test.png", content_type="image/png")
+        if hasattr(ref, "error") and ref.error:
+            raise Exception(str(ref.error))
+        test_key[0] = ref.key
+    checks.append(check("upload_test_image", test_upload))
+
+    # -- Manipulation --
+    def test_resize():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.resize(test_key[0], width=4)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("resize", test_resize))
+
+    def test_crop():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.crop(test_key[0], left=0, top=0, right=1, bottom=1)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("crop", test_crop))
+
+    def test_rotate():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.rotate(test_key[0], degrees=90)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("rotate", test_rotate))
+
+    def test_thumbnail():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.thumbnail(test_key[0], max_size=1)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("thumbnail", test_thumbnail))
+
+    def test_convert():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.convert(test_key[0], format="JPEG")
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("convert", test_convert))
+
+    # -- Compositing --
+    def test_overlay_text():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.overlay_text(test_key[0], text="hi", position="center", font_size=10)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("overlay_text", test_overlay_text))
+
+    def test_combine():
+        if test_key[0] is None:
+            raise Exception("skipped — no test image")
+        r = image.combine([test_key[0], test_key[0]], layout="horizontal")
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("combine", test_combine))
+
+    # -- Generation (Gemini) --
+    gen_key = [None]
+    def test_generate():
+        r = image.generate("a small red circle on white background")
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+        if not hasattr(r, "key") or not r.key:
+            raise Exception("no key in result")
+        gen_key[0] = r.key
+    checks.append(check("generate", test_generate))
+
+    def test_edit():
+        key = gen_key[0] or test_key[0]
+        if key is None:
+            raise Exception("skipped — no image to edit")
+        r = image.edit(key, "add a blue border")
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("edit", test_edit))
+
+    # -- Analysis (Gemini Vision) --
+    def test_describe():
+        key = gen_key[0] or test_key[0]
+        if key is None:
+            raise Exception("skipped — no image")
+        r = image.describe(key)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("describe", test_describe))
+
+    def test_analyze():
+        key = gen_key[0] or test_key[0]
+        if key is None:
+            raise Exception("skipped — no image")
+        r = image.analyze(key, "What color is this image?")
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("analyze", test_analyze))
+
+    def test_extract_text():
+        key = gen_key[0] or test_key[0]
+        if key is None:
+            raise Exception("skipped — no image")
+        r = image.extract_text(key)
+        if hasattr(r, "error") and r.error:
+            raise Exception(r.error)
+    checks.append(check("extract_text", test_extract_text))
+
     return checks
 
 def diag_email():
