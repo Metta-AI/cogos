@@ -40,12 +40,14 @@ The container serves everything on one port:
 ## Local Development
 
 ```bash
-COGENT=local cogos dashboard start       # Backend + Next.js dev server in background
-cogos dashboard stop                     # Stop both servers
-cogos dashboard reload                   # Restart (stop + start)
+cogos dashboard start       # Backend + Next.js dev server in background
+cogos dashboard stop        # Stop both servers
+cogos dashboard reload      # Restart (stop + start)
 ```
 
-In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`.
+**IMPORTANT: Always use `cogos dashboard start/stop/reload`.** Never start `uvicorn` or `next dev` manually — the dashboard requires env vars (`DASHBOARD_BE_PORT`, `COGOS_LOCAL_DATA`, `USE_LOCAL_DB`) derived from `~/.cogos/cogtainers.yml` that differ per cogtainer. Manual starts will connect to the wrong port or database.
+
+In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`, using `DASHBOARD_BE_PORT` to determine the backend port.
 
 ## Key Files
 

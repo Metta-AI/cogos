@@ -162,14 +162,9 @@ cogos dashboard stop              # stop both servers
 cogos dashboard reload            # restart (stop + start)
 ```
 
-`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. Logs go to `/tmp/cogos-backend.log` and `/tmp/cogos-frontend.log`.
+`cogos dashboard start` runs both backend and frontend in the background, tracking PIDs for clean stop/reload. It sets critical env vars (`DASHBOARD_BE_PORT`, `COGOS_LOCAL_DATA`, `USE_LOCAL_DB`, `NEXT_PUBLIC_COGENT`) from the cogtainer config. Logs go to `/tmp/cogent-backend.log` and `/tmp/cogent-frontend.log`.
 
-Manual (two terminals):
-```bash
-source dashboard/ports.sh
-USE_LOCAL_DB=1 uv run uvicorn cogos.api.app:app --host 0.0.0.0 --port "$DASHBOARD_BE_PORT"
-cd dashboard/frontend && npm run dev
-```
+**IMPORTANT: Always use `cogos dashboard start/stop/reload` to manage the dashboard.** Never start the backend (`uvicorn`) or frontend (`next dev`) manually — the dashboard requires env vars derived from `~/.cogos/cogtainers.yml` (ports, data directory) that differ per cogtainer. Starting components manually without these env vars will connect the frontend to the wrong backend port or the backend to the wrong database, causing silent data mismatches.
 
 ## Remote Deployment and Testing
 
