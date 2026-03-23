@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
 from cogos.capabilities.loader import build_capability_proxies
-from cogos.api.auth import TokenClaims, get_claims
+from cogos.api.auth import AuthContext, validate_token
 from cogos.api.db import get_repo
 
 logger = logging.getLogger(__name__)
@@ -61,10 +61,12 @@ class InvokeResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────
 
 
-def _get_proxies(claims: TokenClaims) -> dict[str, object]:
+def _get_proxies(auth: AuthContext) -> dict[str, object]:
     """Build capability proxies for the authenticated process."""
+    if not auth.process_id:
+        raise HTTPException(status_code=400, detail="X-Process-Id header required")
     repo = get_repo()
-    pid = UUID(claims.process_id)
+    pid = UUID(auth.process_id)
     return build_capability_proxies(repo, pid)
 
 
@@ -139,9 +141,9 @@ def _serialize_result(value: Any) -> Any:
 
 
 @router.get("/capabilities", response_model=CapabilitiesListResponse)
-def list_capabilities(claims: TokenClaims = Depends(get_claims)) -> CapabilitiesListResponse:
+def list_capabilities(auth: AuthContext = Depends(validate_token)) -> CapabilitiesListResponse:
     """List capabilities available to the authenticated process."""
-    proxies = _get_proxies(claims)
+    proxies = _get_proxies(auth)
     items = []
     for name, proxy in sorted(proxies.items()):
         if isinstance(proxy, Capability):
@@ -160,9 +162,9 @@ def list_capabilities(claims: TokenClaims = Depends(get_claims)) -> Capabilities
 
 
 @router.get("/capabilities/{cap_name}")
-def get_capability(cap_name: str, claims: TokenClaims = Depends(get_claims)) -> CapabilityInfo:
+def get_capability(cap_name: str, auth: AuthContext = Depends(validate_token)) -> CapabilityInfo:
     """Get details for a specific capability."""
-    proxies = _get_proxies(claims)
+    proxies = _get_proxies(auth)
     cap = _get_cap(proxies, cap_name)
     methods = _public_methods(cap)
     try:
@@ -178,18 +180,18 @@ def get_capability(cap_name: str, claims: TokenClaims = Depends(get_claims)) -> 
 
 
 @router.get("/capabilities/{cap_name}/methods")
-def list_methods(cap_name: str, claims: TokenClaims = Depends(get_claims)) -> list[MethodDetail]:
+def list_methods(cap_name: str, auth: AuthContext = Depends(validate_token)) -> list[MethodDetail]:
     """List methods with signatures for a capability."""
-    proxies = _get_proxies(claims)
+    proxies = _get_proxies(auth)
     cap = _get_cap(proxies, cap_name)
     method_names = _public_methods(cap)
     return [_introspect_method(cap, m) for m in method_names]
 
 
 @router.get("/capabilities/{cap_name}/methods/{method_name}")
-def get_method(cap_name: str, method_name: str, claims: TokenClaims = Depends(get_claims)) -> MethodDetail:
+def get_method(cap_name: str, method_name: str, auth: AuthContext = Depends(validate_token)) -> MethodDetail:
     """Get detailed signature for a specific method."""
-    proxies = _get_proxies(claims)
+    proxies = _get_proxies(auth)
     cap = _get_cap(proxies, cap_name)
     if method_name.startswith("_") or method_name in ("help", "scope"):
         raise HTTPException(status_code=404, detail=f"Method '{method_name}' not found")
@@ -201,14 +203,14 @@ def invoke_method(
     cap_name: str,
     method_name: str,
     body: InvokeRequest,
-    claims: TokenClaims = Depends(get_claims),
+    auth: AuthContext = Depends(validate_token),
 ) -> InvokeResponse:
     """Invoke a capability method with the provided arguments.
 
     The capability is instantiated with the session's process_id and
     scoped according to the process grant + optional request scope.
     """
-    proxies = _get_proxies(claims)
+    proxies = _get_proxies(auth)
     cap = _get_cap(proxies, cap_name)
 
     # Block private/internal methods

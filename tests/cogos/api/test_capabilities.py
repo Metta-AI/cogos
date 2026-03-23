@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -11,9 +12,8 @@ from pydantic import BaseModel
 
 from cogos.capabilities.base import Capability
 from cogos.api.app import create_app
-from cogos.api.auth import TokenClaims
-
-TEST_SECRET = "test-secret-key-for-unit-tests"
+from cogos.api.auth import AuthContext
+from cogos.db.models import ExecutorToken
 
 
 # ── Test capability ──────────────────────────────────────────
@@ -42,7 +42,9 @@ class DummyDataCapability(Capability):
 # ── Fixtures ─────────────────────────────────────────────────
 
 PROCESS_ID = str(uuid4())
-CLAIMS = TokenClaims(process_id=PROCESS_ID, cogent="test", issued_at=0, expires_at=9999999999)
+RAW_TOKEN = "test-token-for-caps"
+TOKEN_HASH = hashlib.sha256(RAW_TOKEN.encode()).hexdigest()
+AUTH = AuthContext(token_name="test-pool", process_id=PROCESS_ID)
 
 
 @pytest.fixture
@@ -59,21 +61,22 @@ def client(app):
 def _mock_deps():
     mock_repo = MagicMock()
     cap = DummyDataCapability(mock_repo, uuid4())
+    mock_repo.get_executor_token_by_hash.side_effect = (
+        lambda h: ExecutorToken(name="test-pool", token_hash=h) if h == TOKEN_HASH else None
+    )
 
     with (
-        patch("cogos.api.auth._get_signing_key", return_value=TEST_SECRET),
-        patch("cogos.api.auth._cached_signing_key", TEST_SECRET),
-        patch("cogos.api.routers.capabilities.get_claims", return_value=CLAIMS),
+        patch("cogos.api.auth.get_repo", return_value=mock_repo),
         patch("cogos.api.routers.capabilities._get_proxies", return_value={"data": cap}),
     ):
         yield
 
 
 def _auth_headers():
-    from cogos.api.auth import create_session_token
-
-    token = create_session_token(PROCESS_ID, "test")
-    return {"Authorization": f"Bearer {token}"}
+    return {
+        "Authorization": f"Bearer {RAW_TOKEN}",
+        "X-Process-Id": PROCESS_ID,
+    }
 
 
 # ── Tests ────────────────────────────────────────────────────
@@ -176,3 +179,16 @@ class TestInvokeWithScope:
         )
         assert resp.status_code == 200
         assert resp.json()["error"] is None
+
+
+class TestAuthRequired:
+    def test_missing_auth_returns_401(self, client):
+        resp = client.get("/api/v1/capabilities")
+        assert resp.status_code == 401
+
+    def test_invalid_token_returns_401(self, client):
+        resp = client.get(
+            "/api/v1/capabilities",
+            headers={"Authorization": "Bearer wrong-token", "X-Process-Id": PROCESS_ID},
+        )
+        assert resp.status_code == 401

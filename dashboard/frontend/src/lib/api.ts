@@ -736,3 +736,48 @@ export async function reboot(name: string): Promise<{ cleared: number }> {
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
   return resp.json();
 }
+
+// ── Executor Tokens ──────────────────────────────────────────────────────────
+
+export interface ExecutorTokenItem {
+  name: string;
+  scope: string;
+  created_at: string | null;
+  revoked: boolean;
+}
+
+export interface CreateTokenResult {
+  name: string;
+  token: string;
+  launch_command: string;
+}
+
+export async function createExecutorToken(
+  cogentName: string,
+  tokenName: string,
+): Promise<CreateTokenResult> {
+  const resp = await fetch(`/api/cogents/${cogentName}/executor-tokens`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ name: tokenName }),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function listExecutorTokens(
+  cogentName: string,
+): Promise<{ tokens: ExecutorTokenItem[] }> {
+  return fetchJSON(`/api/cogents/${cogentName}/executor-tokens`);
+}
+
+export async function revokeExecutorToken(
+  cogentName: string,
+  tokenName: string,
+): Promise<void> {
+  const resp = await fetch(
+    `/api/cogents/${cogentName}/executor-tokens/${encodeURIComponent(tokenName)}`,
+    { method: "DELETE", headers: headers() },
+  );
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+}

@@ -97,11 +97,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Executor proxy routers (JWT-authenticated) ─────────────
+    # ── Executor proxy routers ───────────────────────────────────
     from cogos.api.routers import capabilities as api_capabilities
-    from cogos.api.routers import sessions
 
-    app.include_router(sessions.router, prefix="/api/v1")
     app.include_router(api_capabilities.router, prefix="/api/v1")
 
     # ── Dashboard routers (API-key protected) ────────────────────

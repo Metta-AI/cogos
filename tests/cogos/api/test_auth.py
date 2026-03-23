@@ -1,71 +1,83 @@
-"""Tests for cogos.api.auth — JWT creation, verification, expiry."""
+"""Tests for cogos.api.auth -- ExecutorToken validation."""
 
 from __future__ import annotations
 
-import time
-from unittest.mock import patch
+import hashlib
+from unittest.mock import MagicMock, patch
 
-import jwt as pyjwt
 import pytest
+from fastapi import HTTPException
 
-from cogos.api.auth import TokenClaims, create_session_token, verify_token
-
-TEST_SECRET = "test-secret-key-for-unit-tests"
-
-
-@pytest.fixture(autouse=True)
-def _mock_signing_key():
-    with patch("cogos.api.auth._get_signing_key", return_value=TEST_SECRET):
-        # Reset cached key
-        import cogos.api.auth
-
-        cogos.api.auth._cached_signing_key = None
-        yield
-        cogos.api.auth._cached_signing_key = None
+from cogos.api.auth import AuthContext, validate_token
+from cogos.db.models import ExecutorToken
 
 
-class TestCreateSessionToken:
-    def test_returns_string(self):
-        token = create_session_token("proc-123", "alpha")
-        assert isinstance(token, str)
-
-    def test_contains_expected_claims(self):
-        token = create_session_token("proc-123", "alpha", ttl=600)
-        payload = pyjwt.decode(token, TEST_SECRET, algorithms=["HS256"])
-        assert payload["sub"] == "proc-123"
-        assert payload["cogent"] == "alpha"
-        assert "iat" in payload
-        assert "exp" in payload
-
-    def test_custom_ttl(self):
-        now = time.time()
-        token = create_session_token("proc-123", "alpha", ttl=120)
-        payload = pyjwt.decode(token, TEST_SECRET, algorithms=["HS256"])
-        assert payload["exp"] - payload["iat"] == 120
+def _make_request(headers: dict[str, str] | None = None) -> MagicMock:
+    """Build a fake FastAPI Request with the given headers."""
+    _headers = headers or {}
+    mock_headers = MagicMock()
+    mock_headers.get = lambda key, default="": _headers.get(key, default)
+    request = MagicMock()
+    request.headers = mock_headers
+    return request
 
 
-class TestVerifyToken:
-    def test_valid_token(self):
-        token = create_session_token("proc-123", "alpha")
-        claims = verify_token(token)
-        assert isinstance(claims, TokenClaims)
-        assert claims.process_id == "proc-123"
-        assert claims.cogent == "alpha"
+def _mock_repo(token_name: str = "test-pool", raw_token: str = "test-token-123"):
+    """Return a mock repo that recognises the given raw token."""
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    repo = MagicMock()
+    stored = ExecutorToken(name=token_name, token_hash=token_hash)
+    repo.get_executor_token_by_hash.side_effect = (
+        lambda h: stored if h == token_hash else None
+    )
+    return repo
 
-    def test_expired_token(self):
-        token = create_session_token("proc-123", "alpha", ttl=-1)
-        with pytest.raises(pyjwt.ExpiredSignatureError):
-            verify_token(token)
 
-    def test_invalid_signature(self):
-        token = pyjwt.encode(
-            {"sub": "proc-123", "cogent": "alpha", "iat": int(time.time()), "exp": int(time.time() + 600)},
-            "wrong-secret",
-            algorithm="HS256",
-        )
-        with pytest.raises(pyjwt.InvalidSignatureError):
-            verify_token(token)
+class TestValidateToken:
+    def test_valid_bearer_token(self):
+        repo = _mock_repo()
+        request = _make_request({"authorization": "Bearer test-token-123"})
+        with patch("cogos.api.auth.get_repo", return_value=repo):
+            ctx = validate_token(request)
+        assert isinstance(ctx, AuthContext)
+        assert ctx.token_name == "test-pool"
+        assert ctx.process_id == ""
 
-    def test_malformed_token(self):
-        with pytest.raises(pyjwt.PyJWTError):
-            verify_token("not-a-jwt")
+    def test_valid_bearer_with_process_id(self):
+        repo = _mock_repo()
+        request = _make_request({
+            "authorization": "Bearer test-token-123",
+            "x-process-id": "proc-abc",
+        })
+        with patch("cogos.api.auth.get_repo", return_value=repo):
+            ctx = validate_token(request)
+        assert ctx.process_id == "proc-abc"
+
+    def test_x_api_key_header(self):
+        repo = _mock_repo()
+        request = _make_request({"x-api-key": "test-token-123"})
+        with patch("cogos.api.auth.get_repo", return_value=repo):
+            ctx = validate_token(request)
+        assert ctx.token_name == "test-pool"
+
+    def test_missing_token_raises_401(self):
+        request = _make_request({})
+        with pytest.raises(HTTPException) as exc_info:
+            validate_token(request)
+        assert exc_info.value.status_code == 401
+        assert "Missing" in exc_info.value.detail
+
+    def test_invalid_token_raises_401(self):
+        repo = _mock_repo()
+        request = _make_request({"authorization": "Bearer wrong-token"})
+        with patch("cogos.api.auth.get_repo", return_value=repo):
+            with pytest.raises(HTTPException) as exc_info:
+                validate_token(request)
+        assert exc_info.value.status_code == 401
+        assert "Invalid" in exc_info.value.detail
+
+    def test_bearer_prefix_required(self):
+        request = _make_request({"authorization": "Basic abc123"})
+        with pytest.raises(HTTPException) as exc_info:
+            validate_token(request)
+        assert exc_info.value.status_code == 401

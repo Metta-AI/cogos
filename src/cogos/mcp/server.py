@@ -573,7 +573,7 @@ async def _emit_channel_notification(
 async def amain() -> None:
     """Async main: create CogOS server, register, seed, run MCP server with background loops."""
     api_url = os.environ.get("COGOS_API_URL", "http://localhost:8100")
-    cogent_name = os.environ.get("COGOS_COGENT_NAME", "")
+    cogent_name = os.environ.get("COGENT", "")
     api_key = os.environ.get("COGOS_API_KEY", "")
     channels = os.environ.get("COGOS_CHANNELS", "io:claude-code:*")
     poll_ms = int(os.environ.get("COGOS_POLL_MS", "3000"))

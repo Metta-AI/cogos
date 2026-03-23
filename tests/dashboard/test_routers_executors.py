@@ -88,9 +88,19 @@ def _client_and_repo():
     return client, repo
 
 
+def _patches(repo):
+    """Return a context manager that patches both dashboard and auth get_repo."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(patch("dashboard.routers.executors.get_repo", return_value=repo))
+    stack.enter_context(patch("cogos.api.auth.get_repo", return_value=repo))
+    return stack
+
+
 def test_list_executors():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.get("/api/cogents/test/executors")
     assert response.status_code == 200
     data = response.json()
@@ -100,7 +110,7 @@ def test_list_executors():
 
 def test_list_executors_filter_by_status():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.get("/api/cogents/test/executors?status=busy")
     assert response.status_code == 200
     assert response.json()["count"] == 0
@@ -108,7 +118,7 @@ def test_list_executors_filter_by_status():
 
 def test_get_executor():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.get("/api/cogents/test/executors/executor-test-abc123")
     assert response.status_code == 200
     assert response.json()["executor_id"] == "executor-test-abc123"
@@ -117,14 +127,14 @@ def test_get_executor():
 
 def test_get_executor_not_found():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.get("/api/cogents/test/executors/no-such")
     assert response.status_code == 404
 
 
 def test_register_executor_requires_auth():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/register",
             json={"executor_id": "exec-new"},
@@ -134,7 +144,7 @@ def test_register_executor_requires_auth():
 
 def test_register_executor_with_valid_token():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/register",
             json={
@@ -152,7 +162,7 @@ def test_register_executor_with_valid_token():
 
 def test_register_executor_with_bad_token():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/register",
             json={"executor_id": "exec-bad"},
@@ -163,7 +173,7 @@ def test_register_executor_with_bad_token():
 
 def test_heartbeat():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/executor-test-abc123/heartbeat",
             json={"status": "idle"},
@@ -175,7 +185,7 @@ def test_heartbeat():
 
 def test_heartbeat_requires_auth():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/executor-test-abc123/heartbeat",
             json={"status": "idle"},
@@ -186,7 +196,7 @@ def test_heartbeat_requires_auth():
 def test_heartbeat_not_found():
     client, repo = _client_and_repo()
     repo._executors.clear()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             "/api/cogents/test/executors/no-such/heartbeat",
             json={"status": "idle"},
@@ -197,7 +207,7 @@ def test_heartbeat_not_found():
 
 def test_drain_executor():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post("/api/cogents/test/executors/executor-test-abc123/drain")
     assert response.status_code == 200
     assert response.json()["status"] == "stale"
@@ -206,14 +216,14 @@ def test_drain_executor():
 
 def test_drain_not_found():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post("/api/cogents/test/executors/no-such/drain")
     assert response.status_code == 404
 
 
 def test_remove_executor():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.delete("/api/cogents/test/executors/executor-test-abc123")
     assert response.status_code == 200
     assert "executor-test-abc123" not in repo._executors
@@ -221,7 +231,7 @@ def test_remove_executor():
 
 def test_remove_not_found():
     client, repo = _client_and_repo()
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.delete("/api/cogents/test/executors/no-such")
     assert response.status_code == 404
 
@@ -229,7 +239,7 @@ def test_remove_not_found():
 def test_complete_run():
     client, repo = _client_and_repo()
     run_id = str(uuid4())
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             f"/api/cogents/test/runs/{run_id}/complete",
             json={
@@ -253,7 +263,7 @@ def test_complete_run():
 def test_complete_run_requires_auth():
     client, repo = _client_and_repo()
     run_id = str(uuid4())
-    with patch("dashboard.routers.executors.get_repo", return_value=repo):
+    with _patches(repo):
         response = client.post(
             f"/api/cogents/test/runs/{run_id}/complete",
             json={

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from cogos.api.auth import AuthContext, validate_token
 from dashboard.db import get_repo
 
 router = APIRouter(tags=["executors"])
@@ -67,19 +67,25 @@ class ExecutorsResponse(BaseModel):
     executors: list[ExecutorItem] = []
 
 
-# ── Token Validation ──────────────────────────────────────────
+class CreateTokenRequest(BaseModel):
+    name: str
 
 
-def _validate_executor_token(repo, authorization: str | None) -> bool:
-    """Validate a Bearer token against stored executor token hashes."""
-    if not authorization:
-        return False
-    parts = authorization.split(" ", 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return False
-    token = parts[1]
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    return repo.get_executor_token_by_hash(token_hash) is not None
+class CreateTokenResponse(BaseModel):
+    name: str
+    token: str  # raw token, shown once only
+    launch_command: str
+
+
+class TokenItem(BaseModel):
+    name: str
+    scope: str = "executor"
+    created_at: str | None = None
+    revoked: bool = False
+
+
+class TokensResponse(BaseModel):
+    tokens: list[TokenItem]
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -134,14 +140,12 @@ def get_executor(name: str, executor_id: str):
 def register_executor(
     name: str,
     body: RegisterRequest,
-    authorization: str | None = Header(None),
+    auth: AuthContext = Depends(validate_token),
 ):
     """Register a channel executor with the cogent."""
     from cogos.db.models import Executor
 
     repo = get_repo()
-    if not _validate_executor_token(repo, authorization):
-        raise HTTPException(status_code=401, detail="invalid or missing executor token")
 
     executor = Executor(
         executor_id=body.executor_id,
@@ -163,14 +167,12 @@ def heartbeat(
     name: str,
     executor_id: str,
     body: HeartbeatRequest,
-    authorization: str | None = Header(None),
+    auth: AuthContext = Depends(validate_token),
 ):
     """Send a heartbeat from an executor."""
     from cogos.db.models import ExecutorStatus
 
     repo = get_repo()
-    if not _validate_executor_token(repo, authorization):
-        raise HTTPException(status_code=401, detail="invalid or missing executor token")
 
     status = ExecutorStatus(body.status) if body.status in ("idle", "busy") else ExecutorStatus.IDLE
     run_id = UUID(body.current_run_id) if body.current_run_id else None
@@ -216,14 +218,12 @@ def complete_run(
     name: str,
     run_id: str,
     body: RunCompleteRequest,
-    authorization: str | None = Header(None),
+    auth: AuthContext = Depends(validate_token),
 ):
     """Report run completion from a channel executor."""
     from cogos.db.models import ExecutorStatus, RunStatus
 
     repo = get_repo()
-    if not _validate_executor_token(repo, authorization):
-        raise HTTPException(status_code=401, detail="invalid or missing executor token")
 
     run_uuid = UUID(run_id)
     status_map = {
@@ -249,3 +249,59 @@ def complete_run(
     repo.update_executor_status(body.executor_id, ExecutorStatus.IDLE)
 
     return {"ok": True, "run_id": run_id, "status": body.status}
+
+
+# ── Token Management ──────────────────────────────────────────
+
+
+@router.post("/executor-tokens", response_model=CreateTokenResponse)
+def create_token(name: str, body: CreateTokenRequest, request: Request):
+    """Create a new executor token. Returns the raw token once."""
+    import hashlib
+    import secrets
+
+    from cogos.db.models import ExecutorToken
+
+    repo = get_repo()
+    raw_token = secrets.token_urlsafe(32)
+    token = ExecutorToken(
+        name=body.name,
+        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+    )
+    repo.create_executor_token(token)
+
+    api_url = str(request.base_url).rstrip("/")
+    launch_cmd = f"COGOS_API_KEY={raw_token} COGOS_API_URL={api_url} COGOS_COGENT_NAME={name} claude"
+
+    return CreateTokenResponse(
+        name=body.name,
+        token=raw_token,
+        launch_command=launch_cmd,
+    )
+
+
+@router.get("/executor-tokens", response_model=TokensResponse)
+def list_tokens(name: str):
+    """List all executor tokens (without raw values)."""
+    repo = get_repo()
+    tokens = repo.list_executor_tokens()
+    items = [
+        TokenItem(
+            name=t.name,
+            scope=t.scope,
+            created_at=str(t.created_at) if t.created_at else None,
+            revoked=t.revoked_at is not None,
+        )
+        for t in tokens
+    ]
+    return TokensResponse(tokens=items)
+
+
+@router.delete("/executor-tokens/{token_name}")
+def revoke_token(name: str, token_name: str):
+    """Revoke an executor token by name."""
+    repo = get_repo()
+    revoked = repo.revoke_executor_token(token_name)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Token not found")
+    return {"ok": True, "name": token_name}
