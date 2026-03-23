@@ -2,139 +2,82 @@
 
 # Instructions
 
-You MUST execute the following code blocks in order using `run_code`. Do NOT
-skip any step. Do NOT use sample or fake data. Each block depends on the previous.
+Execute each step using `run_code`. Never skip steps. Never fabricate data.
 
-## Step 1: Get Asana sprint threads
+## Step 1: Find the current sprint section and list threads
 
-```python
-project_id = "1213471594342425"
-tasks = asana.list_tasks(project_id, limit=100)
-threads = []
-if hasattr(tasks, 'error'):
-    print("ERROR: " + str(tasks.error))
-else:
-    for t in tasks:
-        d = asana.get_task(t.id)
-        if not hasattr(d, 'error') and d.name.strip():
-            if d.section and "March" in d.section and "2026" in d.section:
-                threads.append({"name": d.name, "assignee": d.assignee})
-    print(f"Found {len(threads)} threads")
-    for t in threads:
-        print(f"  {t['name']} -> {t['assignee']}")
+Use `asana.list_sections(project_id)` to get all sections. Find the one whose
+name contains the current month name (e.g. "March") and year (e.g. "2026").
+Do NOT hardcode the month or year — derive them from `datetime.date.today()`.
+
+Then `asana.list_tasks(project_id)` and for each task, `asana.get_task(t.id)`.
+Keep tasks where `d.section` contains the sprint section name. Store them as
+`threads` — a list of `{"name": ..., "assignee": ...}`.
+
+If Asana fails, set `threads = []` and print the error.
+
+## Step 2: Get merged and open PRs
+
+For each repo in `[("metta-ai", "metta"), ("metta-ai", "cogos"), ("metta-ai", "cogents-v1")]`:
+
+1. `github.list_pull_requests(owner, repo, state="closed", sort="updated", limit=50)`
+   Filter to PRs where `pr.merged` is true and `pr.merged_at` is non-empty.
+   Store as `merged_prs[repo_name]` — list of dicts with number, title, author, merged_at.
+
+2. `github.list_pull_requests(owner, repo, state="open", limit=50)`
+   Store as `open_prs[repo_name]` — list of dicts with number, title, author.
+
+If GitHub fails, set empty lists and print the error.
+
+**Important**: The `merged` and `merged_at` fields are on the PR summary object
+directly — do NOT call `get_pull_request()` for each PR.
+
+## Step 3: Get commits (supplementary)
+
+For each repo: `github.list_commits(owner, repo, since=24h_ago, limit=100)`.
+Filter out merge commits (`message.startswith("Merge ")`) and CI commits
+(`message.startswith("ci: ")`). Store as `all_commits[repo_name]`.
+
+## Step 4: Match, build report, save, and post
+
+If both Asana and GitHub failed entirely, print an error summary and stop.
+Do NOT generate a fake report. You may post a brief error notice to Discord.
+
+Otherwise, in a SINGLE `run_code` call:
+
+**Matching**: For each merged PR and open PR, decide which Asana thread it best
+matches based on PR title vs thread name. Use the name_map from the brief to
+convert GitHub logins to display names. CI/bot PRs go to "Untracked".
+
+**Report format** (two views):
+
+```
+# Daily Standup — YYYY-MM-DD
+
+## By Thread
+
+### Thread Name
+Merged:
+- PR title (repo#number) — Author Name
+In progress:
+- PR title (repo#number) — Author Name
+
+### Untracked
+Merged:
+- ...
+
+## By Person
+
+### Author Name
+- merged PR title (repo#number) [Thread Name]
+- working on PR title (repo#number) [Thread Name]
+
+---
+N merged PRs, M open PRs across 3 repos
 ```
 
-## Step 2: Get GitHub commits from last 24 hours
+**Save**: `disk.get("reports/" + today + ".md").write(report)`
 
-```python
-import datetime
-since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
-repos = [("metta-ai", "metta"), ("metta-ai", "cogos"), ("metta-ai", "cogents-v1")]
-all_commits = {}
-for owner, name in repos:
-    result = github.list_commits(owner, name, since=since, limit=100)
-    if hasattr(result, 'error'):
-        print(f"{name}: {result.error}")
-        all_commits[name] = []
-    else:
-        all_commits[name] = [{"sha": c.sha, "msg": c.message, "author": c.author, "date": c.date} for c in result]
-        print(f"{name}: {len(all_commits[name])} commits")
-        for c in all_commits[name][:5]:
-            print(f"  {c['sha'][:7]} {c['author']}: {c['msg'][:60]}")
-```
-
-## Step 3: Match commits to threads, build report, save, and post
-
-For each commit, judge which Asana thread it relates to by comparing the commit
-message topic to thread names. Rules:
-- CI/merge commits ("ci: update", "Merge branch") go to "Untracked"
-- A commit can match at most one thread
-- If unclear, put in "Untracked"
-- Use the commit author field as the person name
-
-Build a dict: `matches[thread_name][person][repo_name] = count`
-
-Then render two views and save. You MUST do all of this in a SINGLE run_code call:
-
-```python
-import datetime
-from collections import defaultdict
-
-# -- Build matches dict --
-# YOU fill in the matching logic here. For each commit in all_commits,
-# decide which thread it belongs to based on message content vs thread names.
-# Store in: matches[thread_name][author][repo_name] += 1
-# Unmatched commits go under matches["Untracked"][author][repo_name] += 1
-
-matches = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-
-# ... your matching logic here ...
-
-# -- Render report --
-today = datetime.date.today().isoformat()
-lines = [f"# Daily Standup — {today}", ""]
-
-# View 1: By Thread
-lines.append("## By Thread")
-lines.append("")
-total_matched = 0
-total_untracked = 0
-for thread_name in sorted(matches.keys()):
-    if thread_name == "Untracked":
-        continue
-    people = matches[thread_name]
-    lines.append(f"### {thread_name}")
-    for person in sorted(people.keys()):
-        repos_str = ", ".join(f"{r} ({c})" for r, c in sorted(people[person].items()) if c > 0)
-        if repos_str:
-            lines.append(f"- {person}: {repos_str}")
-            total_matched += sum(people[person].values())
-    lines.append("")
-
-if "Untracked" in matches:
-    lines.append("### Untracked")
-    for person in sorted(matches["Untracked"].keys()):
-        repos_str = ", ".join(f"{r} ({c})" for r, c in sorted(matches["Untracked"][person].items()) if c > 0)
-        if repos_str:
-            lines.append(f"- {person}: {repos_str}")
-            total_untracked += sum(matches["Untracked"][person].values())
-    lines.append("")
-
-# View 2: By Person
-lines.append("## By Person")
-lines.append("")
-all_people = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-for thread_name, people in matches.items():
-    for person, repos in people.items():
-        for repo_name, count in repos.items():
-            all_people[person][thread_name][repo_name] += count
-
-for person in sorted(all_people.keys()):
-    lines.append(f"### {person}")
-    for thread_name in sorted(all_people[person].keys()):
-        repos_str = ", ".join(f"{r} ({c})" for r, c in sorted(all_people[person][thread_name].items()) if c > 0)
-        if repos_str:
-            lines.append(f"- {thread_name}: {repos_str}")
-    lines.append("")
-
-total = total_matched + total_untracked
-num_repos = len([r for r in all_commits if all_commits[r]])
-lines.append("---")
-lines.append(f"{total} commits across {num_repos} repos | {total_matched} matched, {total_untracked} untracked")
-
-report = "\n".join(lines)
-
-# -- Save --
-disk.get(f"reports/{today}.md").write(report)
-print("Saved report")
-print(report)
-
-# -- Post to Discord --
-channel_id = "1483962779336446114"
-thread = discord.create_thread(channel_id, f"Standup — {today}")
-if hasattr(thread, 'error'):
-    discord.send(channel_id, report)
-else:
-    discord.send(thread.id, report)
-print("Posted to Discord")
-```
+**Post**: `discord.create_thread(channel_id, "Standup — " + today, report)`.
+If that fails, fall back to `discord.send(channel_id, report)`.
+The channel_id is "1483962779336446114".

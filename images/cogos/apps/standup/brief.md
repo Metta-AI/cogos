@@ -5,8 +5,7 @@
 - **workspace_id**: 1209016784099267
 - **project_id**: 1213471594342425
 - **project_name**: Thread Roadmap
-- **sprint_section_id**: 1213471596632101
-- **sprint_section_name**: March 2026
+- **sprint_section**: Discover dynamically — list sections and find the one matching the current month/year
 
 ## GitHub Repos
 
@@ -40,49 +39,63 @@ NOTE: GitHub logins marked above are guesses except daveey and nishu-builder
 
 - **channel_id**: 1483962779336446114
 
+## Data Sources
+
+Primary: **Pull Requests** (merged = done, open = in progress).
+Secondary: **Commits** (supplementary context for non-PR work).
+
+Merged PRs are fetched via `github.list_pull_requests(state="closed")` then
+filtered by `detail.merged == True` and recency. Open PRs via `state="open"`.
+
 ## Output Format
 
-Post two views in each standup:
+### View 1: By Thread
 
-### View 1: Per-Thread
-
-For each thread (Asana task) in the sprint section, list contributors and their
-commit counts per repo. Omit any thread/person/repo combo with zero commits.
+For each Asana thread in the sprint section, list merged and in-progress PRs.
 
 ```
 ## By Thread
 
 ### Autocurricula
-- Axel Kerbec: metta (5), cogos (2)
-- Noah Farr: metta (3)
+Merged:
+- Fix training loop convergence (metta#123) — Axel Kerbec
+- Add reward shaping (metta#124) — Axel Kerbec
+In progress:
+- Implement new curriculum (metta#125) — Noah Farr
 
 ### LLMs play CvC
-- Richard Higgins: metta (8)
-
-### Cogent: V1 - First Contact
-- Nishad Singh: cogents-v1 (4), cogos (1)
+Merged:
+- Fix LLM player initialization (metta#200) — Richard Higgins
 ```
 
-### View 2: Per-Person
+### View 2: By Person
 
-Same data, regrouped by person first, then threads underneath.
+Same data, regrouped by person first.
 
 ```
 ## By Person
 
 ### Axel Kerbec
-- Autocurricula: metta (5), cogos (2)
+- merged Fix training loop convergence (metta#123) [Autocurricula]
+- merged Add reward shaping (metta#124) [Autocurricula]
+
+### Noah Farr
+- working on Implement new curriculum (metta#125) [Autocurricula]
 
 ### Richard Higgins
-- LLMs play CvC: metta (8)
-
-### Nishad Singh
-- Cogent: V1 - First Contact: cogents-v1 (4), cogos (1)
+- merged Fix LLM player initialization (metta#200) [LLMs play CvC]
 ```
 
-## Matching Commits to Threads
+## Matching PRs to Threads
 
-To associate a commit with a thread, use the LLM to judge whether the commit
-message (and optionally PR title/description) relates to the thread's topic.
-A commit can match multiple threads if the work spans them. If a commit doesn't
-clearly match any thread, group it under "Untracked" at the bottom.
+Use the LLM to judge whether a PR title relates to a thread's topic.
+A PR can match at most one thread. If unclear, group under "Untracked".
+CI/bot PRs (dependabot, "ci: update", etc.) always go to "Untracked".
+
+## Error Handling
+
+If a data source (Asana, GitHub) is unavailable:
+- Print the error clearly
+- Continue with whatever data you have
+- NEVER fabricate, mock, or invent data
+- If both Asana and GitHub fail, post nothing — just log the errors

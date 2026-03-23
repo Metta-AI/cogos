@@ -103,6 +103,8 @@ class PullRequestSummary(BaseModel):
     title: str
     state: str
     author: str = ""
+    merged: bool = False
+    merged_at: str = ""
     created_at: str = ""
     updated_at: str = ""
     url: str = ""
@@ -503,6 +505,8 @@ class GitHubCapability(Capability):
                     title=p.title,
                     state=p.state,
                     author=(p.user.login if p.user else ""),
+                    merged=bool(p.merged),
+                    merged_at=(p.merged_at.isoformat() if p.merged_at else ""),
                     created_at=(p.created_at.isoformat() if p.created_at else ""),
                     updated_at=(p.updated_at.isoformat() if p.updated_at else ""),
                     url=p.html_url,

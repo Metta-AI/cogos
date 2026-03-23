@@ -424,8 +424,12 @@ def process_run(name: str, run_local: bool, event: str | None):
         from cogos.executor.handler import get_config
         from cogos.runtime.local import run_and_complete
 
-        # Inject cogtainer LLM config into env so executor picks it up
+        # Inject cogtainer/cogent identity and LLM config into env so executor picks it up
         ctx = click.get_current_context()
+        if ctx.obj.get("cogtainer_name"):
+            os.environ.setdefault("COGTAINER", ctx.obj["cogtainer_name"])
+        if ctx.obj.get("cogent_name"):
+            os.environ.setdefault("COGENT", ctx.obj["cogent_name"])
         runtime = ctx.obj.get("runtime")
         if runtime and hasattr(runtime, "_entry") and runtime._entry.llm:
             llm = runtime._entry.llm
