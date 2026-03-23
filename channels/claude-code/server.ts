@@ -8,6 +8,7 @@
  *   - Polls the CogOS dashboard API for new messages on subscribed channels
  *   - Emits MCP channel notifications so Claude sees them as <channel> events
  *   - Exposes send, reply, list_channels, and complete_run tools
+ *   - Proxies process capabilities as dynamically registered MCP tools
  *
  * Environment variables:
  *   COGOS_API_URL      – Dashboard API base URL (e.g. http://localhost:8100)
@@ -146,6 +147,153 @@ async function sendChannelMessage(
 }
 
 // ---------------------------------------------------------------------------
+// Capability proxy API client
+// ---------------------------------------------------------------------------
+
+interface CapabilityInfo {
+  name: string;
+  class_name: string;
+  methods: string[];
+  help: string;
+}
+
+interface MethodParam {
+  name: string;
+  type: string;
+  default: string | null;
+  required: boolean;
+}
+
+interface MethodDetail {
+  name: string;
+  params: MethodParam[];
+  return_type: string;
+  docstring: string;
+}
+
+interface CapabilityTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+  capName: string;
+  methodName: string;
+}
+
+// Current process context for capability loading
+let currentProcessId: string | null = null;
+// Dynamically loaded capability tools
+let capabilityTools: CapabilityTool[] = [];
+
+function capHdrs(processId: string): Record<string, string> {
+  const h = hdrs();
+  h["X-Process-Id"] = processId;
+  return h;
+}
+
+function capApiBase(): string {
+  return `${API_URL}/api/v1`;
+}
+
+async function fetchCapabilities(processId: string): Promise<CapabilityInfo[]> {
+  try {
+    const resp = await fetch(`${capApiBase()}/capabilities`, {
+      headers: capHdrs(processId),
+    });
+    if (!resp.ok) {
+      process.stderr.write(`[cogos] fetch capabilities failed: ${resp.status}\n`);
+      return [];
+    }
+    const data = await resp.json();
+    return data.capabilities || [];
+  } catch (e) {
+    process.stderr.write(`[cogos] fetch capabilities error: ${e}\n`);
+    return [];
+  }
+}
+
+async function fetchMethods(capName: string, processId: string): Promise<MethodDetail[]> {
+  try {
+    const resp = await fetch(`${capApiBase()}/capabilities/${capName}/methods`, {
+      headers: capHdrs(processId),
+    });
+    if (!resp.ok) {
+      process.stderr.write(`[cogos] fetch methods for ${capName} failed: ${resp.status}\n`);
+      return [];
+    }
+    return await resp.json();
+  } catch (e) {
+    process.stderr.write(`[cogos] fetch methods error: ${e}\n`);
+    return [];
+  }
+}
+
+async function invokeCapability(
+  capName: string,
+  methodName: string,
+  args: Record<string, unknown>,
+  processId: string,
+): Promise<{ result?: unknown; error?: string }> {
+  try {
+    const resp = await fetch(`${capApiBase()}/capabilities/${capName}/${methodName}`, {
+      method: "POST",
+      headers: capHdrs(processId),
+      body: JSON.stringify({ args }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: (err as Record<string, string>).detail || resp.statusText };
+    }
+    return await resp.json();
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
+function pythonTypeToJsonSchema(pyType: string): string {
+  switch (pyType) {
+    case "str": return "string";
+    case "int": return "integer";
+    case "float": return "number";
+    case "bool": return "boolean";
+    default: return "string";
+  }
+}
+
+async function loadCapabilityTools(processId: string): Promise<CapabilityTool[]> {
+  const tools: CapabilityTool[] = [];
+  const capabilities = await fetchCapabilities(processId);
+
+  for (const cap of capabilities) {
+    const methods = await fetchMethods(cap.name, processId);
+    for (const method of methods) {
+      tools.push({
+        name: `cogos_${cap.name}_${method.name}`,
+        description: `${cap.name}.${method.name}: ${method.docstring}`,
+        inputSchema: {
+          type: "object" as const,
+          properties: Object.fromEntries(
+            method.params.map((p) => [
+              p.name,
+              { type: pythonTypeToJsonSchema(p.type) },
+            ]),
+          ),
+          required: method.params.filter((p) => p.required).map((p) => p.name),
+        },
+        capName: cap.name,
+        methodName: method.name,
+      });
+    }
+  }
+
+  process.stderr.write(`[cogos] loaded ${tools.length} capability tools for process ${processId}\n`);
+  return tools;
+}
+
+// ---------------------------------------------------------------------------
 // Executor lifecycle
 // ---------------------------------------------------------------------------
 
@@ -261,87 +409,110 @@ const channelIndex = new Map<string, string>();
 // Tools
 // ---------------------------------------------------------------------------
 
+const BASE_TOOLS = [
+  {
+    name: "reply",
+    description:
+      "Send a message back to a CogOS channel. Use this to respond to channel events.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel: {
+          type: "string",
+          description:
+            "Channel name (e.g. 'io:claude-code:responses') or channel ID",
+        },
+        payload: {
+          type: "object",
+          description: "Message payload (must match channel schema if defined)",
+          additionalProperties: true,
+        },
+      },
+      required: ["channel", "payload"],
+    },
+  },
+  {
+    name: "send",
+    description:
+      "Send a message to any CogOS channel by name. For writing to arbitrary channels.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel: {
+          type: "string",
+          description: "Channel name (e.g. 'system:alerts', 'io:discord:dm')",
+        },
+        payload: {
+          type: "object",
+          description: "Message payload",
+          additionalProperties: true,
+        },
+      },
+      required: ["channel", "payload"],
+    },
+  },
+  {
+    name: "list_channels",
+    description: "List available CogOS channels and their message counts.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        pattern: {
+          type: "string",
+          description:
+            "Optional glob pattern to filter channels (e.g. 'io:*', 'system:*')",
+        },
+      },
+    },
+  },
+  {
+    name: "complete_run",
+    description:
+      "Signal that the current executor run is complete. Call this when you finish an assigned task.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["completed", "failed"],
+          description: "Run completion status",
+        },
+        summary: {
+          type: "string",
+          description: "Optional summary of what was accomplished",
+        },
+        error: {
+          type: "string",
+          description: "Optional error message if status is failed",
+        },
+      },
+      required: ["status"],
+    },
+  },
+  {
+    name: "load_capabilities",
+    description:
+      "Load capability tools for a CogOS process. After loading, the process's capabilities become available as cogos_<cap>_<method> tools.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        process_id: {
+          type: "string",
+          description: "Process ID whose capabilities to load. Uses current process context if omitted.",
+        },
+      },
+    },
+  },
+];
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
-    {
-      name: "reply",
-      description:
-        "Send a message back to a CogOS channel. Use this to respond to channel events.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          channel: {
-            type: "string",
-            description:
-              "Channel name (e.g. 'io:claude-code:responses') or channel ID",
-          },
-          payload: {
-            type: "object",
-            description: "Message payload (must match channel schema if defined)",
-            additionalProperties: true,
-          },
-        },
-        required: ["channel", "payload"],
-      },
-    },
-    {
-      name: "send",
-      description:
-        "Send a message to any CogOS channel by name. For writing to arbitrary channels.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          channel: {
-            type: "string",
-            description: "Channel name (e.g. 'system:alerts', 'io:discord:dm')",
-          },
-          payload: {
-            type: "object",
-            description: "Message payload",
-            additionalProperties: true,
-          },
-        },
-        required: ["channel", "payload"],
-      },
-    },
-    {
-      name: "list_channels",
-      description: "List available CogOS channels and their message counts.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          pattern: {
-            type: "string",
-            description:
-              "Optional glob pattern to filter channels (e.g. 'io:*', 'system:*')",
-          },
-        },
-      },
-    },
-    {
-      name: "complete_run",
-      description:
-        "Signal that the current executor run is complete. Call this when you finish an assigned task.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          status: {
-            type: "string",
-            enum: ["completed", "failed"],
-            description: "Run completion status",
-          },
-          summary: {
-            type: "string",
-            description: "Optional summary of what was accomplished",
-          },
-          error: {
-            type: "string",
-            description: "Optional error message if status is failed",
-          },
-        },
-        required: ["status"],
-      },
-    },
+    ...BASE_TOOLS,
+    ...capabilityTools.map((ct) => ({
+      name: ct.name,
+      description: ct.description,
+      inputSchema: ct.inputSchema,
+    })),
   ],
 }));
 
@@ -409,6 +580,68 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     };
   }
 
+  if (name === "load_capabilities") {
+    const processId = ((args as Record<string, unknown>)?.process_id as string) || currentProcessId;
+    if (!processId) {
+      return {
+        content: [{ type: "text" as const, text: "Error: no process_id provided and no current process context" }],
+      };
+    }
+    capabilityTools = await loadCapabilityTools(processId);
+    currentProcessId = processId;
+    if (capabilityTools.length === 0) {
+      return {
+        content: [{ type: "text" as const, text: `No capabilities found for process ${processId}` }],
+      };
+    }
+    const toolNames = capabilityTools.map((t) => t.name).join("\n  ");
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Loaded ${capabilityTools.length} capability tools for process ${processId}:\n  ${toolNames}`,
+        },
+      ],
+    };
+  }
+
+  // Handle dynamic capability tool calls (cogos_<cap>_<method>)
+  if (name.startsWith("cogos_")) {
+    const tool = capabilityTools.find((t) => t.name === name);
+    if (!tool) {
+      return {
+        content: [{ type: "text" as const, text: `Unknown capability tool: ${name}` }],
+      };
+    }
+    const processId = currentProcessId;
+    if (!processId) {
+      return {
+        content: [{ type: "text" as const, text: "Error: no current process context for capability invocation" }],
+      };
+    }
+    const result = await invokeCapability(
+      tool.capName,
+      tool.methodName,
+      (args as Record<string, unknown>) || {},
+      processId,
+    );
+    if (result.error) {
+      return {
+        content: [{ type: "text" as const, text: `Error invoking ${tool.capName}.${tool.methodName}: ${result.error}` }],
+      };
+    }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: typeof result.result === "string"
+            ? result.result
+            : JSON.stringify(result.result, null, 2),
+        },
+      ],
+    };
+  }
+
   return {
     content: [{ type: "text" as const, text: `Unknown tool: ${name}` }],
   };
@@ -437,6 +670,25 @@ async function pollOnce(): Promise<void> {
     for (const msg of messages) {
       if (seenMessages.has(msg.id)) continue;
       seenMessages.add(msg.id);
+
+      // Track process context from work assignments
+      const payloadProcessId = msg.payload?.process_id as string | undefined;
+      if (payloadProcessId && payloadProcessId !== currentProcessId) {
+        currentProcessId = payloadProcessId;
+        process.stderr.write(`[cogos] process context set to ${payloadProcessId}\n`);
+        // Auto-load capabilities for the new process
+        try {
+          capabilityTools = await loadCapabilityTools(payloadProcessId);
+        } catch (e) {
+          process.stderr.write(`[cogos] auto-load capabilities error: ${e}\n`);
+        }
+      }
+
+      // Track run_id from work assignments
+      const payloadRunId = msg.payload?.run_id as string | undefined;
+      if (payloadRunId) {
+        currentRunId = payloadRunId;
+      }
 
       // Emit channel notification to Claude Code
       try {
