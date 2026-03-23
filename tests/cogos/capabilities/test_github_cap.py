@@ -348,6 +348,8 @@ class TestListPullRequests:
         mp.title = "Add feature"
         mp.state = "open"
         mp.user.login = "dev"
+        mp.merged = False
+        mp.merged_at = None
         mp.created_at.isoformat.return_value = "2026-03-01T00:00:00"
         mp.updated_at.isoformat.return_value = "2026-03-02T00:00:00"
         mp.html_url = "https://github.com/o/r/pull/42"
