@@ -30,7 +30,7 @@ def _patch_sp(provider):
 @pytest.fixture(autouse=True)
 def _patch_secrets(monkeypatch):
     """Patch secrets provider so tests don't need AWS."""
-    monkeypatch.setenv("COGTAINER", "test-agora")
+    monkeypatch.setenv("COGTAINER", "test-cogtainer")
     mock_sp = MagicMock()
     mock_sp.get_secret.side_effect = KeyError("not mocked")
     with patch("dashboard.routers.setup._get_secrets_provider", return_value=mock_sp), \
@@ -59,7 +59,7 @@ class TestGeminiSecretStatus:
         from dashboard.routers.setup import _gemini_secret_status
 
         provider = _make_secrets_provider({
-            "cogent/all/gemini": json.dumps({"api_key": "shared-key"}),
+            "cogtainer/test-cogtainer/gemini": json.dumps({"api_key": "shared-key"}),
         })
 
         with _patch_sp(provider):
@@ -67,14 +67,14 @@ class TestGeminiSecretStatus:
 
         assert configured is True
         assert error is None
-        assert source == "cogent/all/gemini"
+        assert source == "cogtainer/test-cogtainer/gemini"
 
     def test_cogent_specific_takes_precedence_over_all(self):
         from dashboard.routers.setup import _gemini_secret_status
 
         provider = _make_secrets_provider({
             "cogent/alpha/gemini": json.dumps({"api_key": "alpha-key"}),
-            "cogent/all/gemini": json.dumps({"api_key": "shared-key"}),
+            "cogtainer/test-cogtainer/gemini": json.dumps({"api_key": "shared-key"}),
         })
 
         with _patch_sp(provider):
@@ -101,7 +101,7 @@ class TestGeminiSecretStatus:
 
         provider = _make_secrets_provider({
             "cogent/alpha/gemini": json.dumps({"api_key": ""}),
-            "cogent/all/gemini": json.dumps({"api_key": ""}),
+            "cogtainer/test-cogtainer/gemini": json.dumps({"api_key": ""}),
         })
 
         with _patch_sp(provider):
@@ -144,7 +144,7 @@ class TestEmailIntegrationAutoConfig:
         from cogos.io.integration import EmailIntegration
 
         integration = EmailIntegration()
-        provider = _make_secrets_provider({"cogtainer/test-agora/email/domain": "example.com"})
+        provider = _make_secrets_provider({"cogtainer/test-cogtainer/email/domain": "example.com"})
 
         with _patch_sp(provider):
             status = integration.status("alpha", secrets_provider=provider)
@@ -215,7 +215,7 @@ class TestBuildEmailSetup:
         cap.enabled = True
         mock_repo.list_capabilities.return_value = [cap]
 
-        provider = _make_secrets_provider({"cogtainer/test-agora/email/domain": "example.com"})
+        provider = _make_secrets_provider({"cogtainer/test-cogtainer/email/domain": "example.com"})
         with patch("dashboard.routers.setup.get_repo", return_value=mock_repo), \
              _patch_email_ses(True), _patch_sp(provider):
             setup = _build_email_setup("alpha")
@@ -233,7 +233,7 @@ class TestBuildEmailSetup:
         cap.enabled = True
         mock_repo.list_capabilities.return_value = [cap]
 
-        provider = _make_secrets_provider({"cogtainer/test-agora/email/domain": "example.com"})
+        provider = _make_secrets_provider({"cogtainer/test-cogtainer/email/domain": "example.com"})
         with patch("dashboard.routers.setup.get_repo", return_value=mock_repo), \
              _patch_email_ses(False), _patch_sp(provider):
             setup = _build_email_setup("alpha")
@@ -247,7 +247,7 @@ class TestBuildEmailSetup:
         mock_repo = MagicMock()
         mock_repo.list_capabilities.return_value = []
 
-        provider = _make_secrets_provider({"cogtainer/test-agora/email/domain": "example.com"})
+        provider = _make_secrets_provider({"cogtainer/test-cogtainer/email/domain": "example.com"})
         with patch("dashboard.routers.setup.get_repo", return_value=mock_repo), \
              _patch_email_ses(False), _patch_sp(provider):
             setup = _build_email_setup("alpha")
@@ -266,7 +266,7 @@ class TestBuildGeminiSetup:
         from dashboard.routers.setup import _build_gemini_setup
 
         provider = _make_secrets_provider({
-            "cogent/all/gemini": json.dumps({"api_key": "shared-key"}),
+            "cogtainer/test-cogtainer/gemini": json.dumps({"api_key": "shared-key"}),
         })
 
         with _patch_sp(provider):

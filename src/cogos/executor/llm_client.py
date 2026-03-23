@@ -130,9 +130,6 @@ def _anthropic_response_to_bedrock(response: Any) -> dict:
     }
 
 
-ANTHROPIC_SECRET_PATH = os.environ.get("ANTHROPIC_SECRET_PATH", "cogent/cogtainer/anthropic")
-
-
 def _resolve_anthropic_api_key(
     explicit_key: str | None = None,
     secrets_provider: Any = None,
@@ -146,8 +143,7 @@ def _resolve_anthropic_api_key(
     if secrets_provider is None:
         return None
     try:
-        from cogos.capabilities._secrets_helper import fetch_secret
-        return fetch_secret(ANTHROPIC_SECRET_PATH, field="api_key", secrets_provider=secrets_provider)
+        return secrets_provider.cogtainer_secret("anthropic", field="api_key")
     except Exception as exc:
         logger.debug("Could not fetch Anthropic key from secrets: %s", exc)
         return None

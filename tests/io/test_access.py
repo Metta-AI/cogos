@@ -18,8 +18,13 @@ def _mock_provider(secrets=None):
                 return parsed.get(field, val)
             return val
         provider.get_secret.side_effect = _get
+
+        def _cogent_secret(cogent_name, key, field=None):
+            return _get(f"cogent/{cogent_name}/{key}", field=field)
+        provider.cogent_secret.side_effect = _cogent_secret
     else:
         provider.get_secret.side_effect = KeyError("not found")
+        provider.cogent_secret.side_effect = KeyError("not found")
     return provider
 
 
@@ -40,7 +45,7 @@ class TestGetChannelToken:
 class TestGetChannelSecret:
     def test_returns_secret_dict(self):
         provider = _mock_provider({
-            "identity_service/test-cogent/discord": '{"type": "static", "access_token": "abc"}'
+            "cogent/test-cogent/discord": '{"type": "static", "access_token": "abc"}'
         })
         with patch.dict(os.environ, {"COGENT": "test-cogent"}):
             secret = get_io_secret("discord", secrets_provider=provider)

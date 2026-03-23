@@ -266,8 +266,9 @@ def _gemini_secret_status(
     region: str,
 ) -> tuple[bool | None, str | None, str | None]:
     """Return (configured, error, source_path) for the Gemini secret."""
+    from cogtainer.secrets import cogtainer_key
     sp = _get_secrets_provider()
-    for secret_id in (f"cogent/{name}/gemini", "cogent/all/gemini"):
+    for secret_id in (f"cogent/{name}/gemini", cogtainer_key("gemini")):
         try:
             raw = sp.get_secret(secret_id)
             data = json.loads(raw)
@@ -380,7 +381,7 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
         if any(s.status == SetupStatus.UNKNOWN for s in (get_key_step, store_key_step))
         else SetupStatus.NEEDS_ACTION
     )
-    is_shared = secret_source == "cogent/all/gemini" if secret_source else False
+    is_shared = secret_source is not None and secret_source.startswith("cogtainer/") if secret_source else False
     summary = (
         f"Gemini API key is configured via {'shared' if is_shared else 'cogent-specific'} secret and ready for image generation."
         if ready

@@ -840,8 +840,10 @@ def update_dashboard(ctx: click.Context, docker: bool, skip_health: bool, sha: s
 
         # Load Cloudflare Access service token + dashboard API key
         sm = session.client("secretsmanager", region_name=DEFAULT_REGION)
-        cf_token = json.loads(sm.get_secret_value(SecretId="cogent/cogtainer/cloudflare-service-token")["SecretString"])
-        api_key = json.loads(sm.get_secret_value(SecretId=f"cogent/{name}/dashboard-api-key")["SecretString"])[
+        from cogtainer.secrets import cogtainer_key
+        cf_token = json.loads(sm.get_secret_value(SecretId=cogtainer_key("cloudflare-service-token"))["SecretString"])
+        from cogtainer.secrets import cogent_key
+        api_key = json.loads(sm.get_secret_value(SecretId=cogent_key(name, "dashboard-api-key"))["SecretString"])[
             "api_key"
         ]
 

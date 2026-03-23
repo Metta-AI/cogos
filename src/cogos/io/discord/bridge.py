@@ -109,16 +109,16 @@ def _reply_queue_latency_ms(body: dict) -> int | None:
 
 
 def _fetch_bot_token_from_secrets(secrets_provider) -> str:
-    """Fetch the Discord bot token from agora/discord via secrets provider."""
+    """Fetch the Discord bot token from cogtainer-level secret."""
     try:
-        raw = secrets_provider.get_secret("agora/discord")
+        raw = secrets_provider.cogtainer_secret("discord")
         secret = json.loads(raw)
         token = secret.get("bot_token") or secret.get("access_token", "")
         if token:
-            logger.info("Loaded Discord bot token from agora/discord")
+            logger.info("Loaded Discord bot token from cogtainer secret")
             return token
     except Exception:
-        logger.debug("Could not fetch bot token from agora/discord", exc_info=True)
+        logger.debug("Could not fetch bot token from cogtainer secret", exc_info=True)
     return ""
 
 

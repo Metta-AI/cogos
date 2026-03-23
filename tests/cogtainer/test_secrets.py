@@ -12,6 +12,8 @@ from cogtainer.secrets import (
     AwsSecretsProvider,
     LocalSecretsProvider,
     SecretsProvider,
+    cogtainer_key,
+    cogent_key,
     create_secrets_provider,
     _extract_field,
 )
@@ -80,6 +82,49 @@ def test_local_set_preserves_existing(tmp_path: Path, local_provider: LocalSecre
     local_provider.set_secret("b", "2")
     assert local_provider.get_secret("a") == "1"
     assert local_provider.get_secret("b") == "2"
+
+
+# ── Key helpers ──────────────────────────────────────────────
+
+
+def test_cogtainer_key(monkeypatch):
+    monkeypatch.setenv("COGTAINER", "agora")
+    assert cogtainer_key("discord") == "cogtainer/agora/discord"
+
+
+def test_cogtainer_key_raises_without_env():
+    with patch.dict("os.environ", {}, clear=True):
+        with pytest.raises(RuntimeError, match="COGTAINER env var not set"):
+            cogtainer_key("discord")
+
+
+def test_cogent_key():
+    assert cogent_key("alpha", "discord") == "cogent/alpha/discord"
+
+
+# ── cogtainer_secret / cogent_secret on LocalSecretsProvider ─
+
+
+def test_local_cogtainer_secret(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("COGTAINER", "agora")
+    provider = LocalSecretsProvider(data_dir=str(tmp_path))
+    provider.set_secret("cogtainer/agora/discord", json.dumps({"bot_token": "tok"}))
+    raw = provider.cogtainer_secret("discord")
+    assert json.loads(raw)["bot_token"] == "tok"
+
+
+def test_local_cogtainer_secret_with_field(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("COGTAINER", "agora")
+    provider = LocalSecretsProvider(data_dir=str(tmp_path))
+    provider.set_secret("cogtainer/agora/discord", json.dumps({"bot_token": "tok"}))
+    assert provider.cogtainer_secret("discord", field="bot_token") == "tok"
+
+
+def test_local_cogent_secret(tmp_path: Path):
+    provider = LocalSecretsProvider(data_dir=str(tmp_path))
+    provider.set_secret("cogent/alpha/github", json.dumps({"app_id": "123"}))
+    raw = provider.cogent_secret("alpha", "github")
+    assert json.loads(raw)["app_id"] == "123"
 
 
 # ── Factory ──────────────────────────────────────────────────

@@ -44,7 +44,7 @@ def list_cmd(profile: str | None, cogent_name: str):
     """List provisioned IO integrations for a cogent."""
     from cogtainer.secrets import create_secrets_provider
 
-    prefix = f"identity_service/{cogent_name}/"
+    prefix = f"cogent/{cogent_name}/"
 
     try:
         provider = create_secrets_provider(provider_type="aws")
@@ -133,7 +133,7 @@ def destroy(io_name: str, cogent_name: str, yes: bool):
     if not yes:
         click.confirm(f"Delete {io_name} IO integration for {cogent_name}?", abort=True)
 
-    secret_id = f"identity_service/{cogent_name}/{io_name}"
+    secret_id = f"cogent/{cogent_name}/{io_name}"
 
     try:
         provider = create_secrets_provider(provider_type="aws")
@@ -151,7 +151,7 @@ def status(cogent_name: str):
     from cogos.capabilities._secrets_helper import fetch_secret
     from cogtainer.secrets import create_secrets_provider
 
-    prefix = f"identity_service/{cogent_name}/"
+    prefix = f"cogent/{cogent_name}/"
 
     try:
         provider = create_secrets_provider(provider_type="aws")

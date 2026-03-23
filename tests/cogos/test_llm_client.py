@@ -234,8 +234,9 @@ def test_resolve_env_var(monkeypatch):
 
 def test_resolve_from_secrets(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("COGTAINER", "test")
     provider = MagicMock()
-    provider.get_secret.return_value = "sk-secret"
+    provider.cogtainer_secret.return_value = "sk-secret"
     assert _resolve_anthropic_api_key(secrets_provider=provider) == "sk-secret"
 
 

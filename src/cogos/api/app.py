@@ -44,8 +44,8 @@ def _get_admin_key() -> str:
 
             region = os.environ.get("AWS_REGION", "us-east-1")
             sm = boto3.client("secretsmanager", region_name=region)
-            secret_id = f"cogent/{cogent_name}/dashboard-api-key"
-            resp = sm.get_secret_value(SecretId=secret_id)
+            from cogtainer.secrets import cogent_key
+            resp = sm.get_secret_value(SecretId=cogent_key(cogent_name, "dashboard-api-key"))
             data = json.loads(resp["SecretString"])
             return data.get("api_key", "")
         except Exception:

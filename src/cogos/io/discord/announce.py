@@ -45,16 +45,16 @@ def _get_bot_token(secrets_provider=None) -> str:
         secrets_provider = create_executor_runtime().get_secrets_provider()
 
     try:
-        token = secrets_provider.get_secret("agora/discord", field="bot_token")
+        token = secrets_provider.cogtainer_secret("discord", field="bot_token")
     except (KeyError, Exception):
         try:
-            token = secrets_provider.get_secret("agora/discord", field="access_token")
+            token = secrets_provider.cogtainer_secret("discord", field="access_token")
         except (KeyError, Exception):
             token = ""
     if token:
         return token
     raise RuntimeError(
-        "No bot token found. Set COGOS_DISCORD_TOKEN or store in agora/discord secret."
+        "No bot token found. Set COGOS_DISCORD_TOKEN or store in cogtainer discord secret."
     )
 
 

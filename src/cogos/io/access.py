@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any
 
-from cogos.capabilities._secrets_helper import fetch_secret
+from cogtainer.secrets import cogent_key
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +29,7 @@ def get_io_token(channel: str, *, secrets_provider: object) -> str | None:
         return None
 
     try:
-        secret_id = f"identity_service/{cogent_name}/{channel}"
-        raw = fetch_secret(secret_id, field="access_token", secrets_provider=secrets_provider)
-        return raw
+        return secrets_provider.cogent_secret(cogent_name, channel, field="access_token")  # type: ignore[union-attr]
     except Exception:
         logger.exception("Failed to fetch %s token from secrets provider", channel)
         return None
@@ -45,8 +43,7 @@ def get_io_secret(channel: str, *, secrets_provider: object) -> dict[str, Any] |
         return None
 
     try:
-        secret_id = f"identity_service/{cogent_name}/{channel}"
-        raw = fetch_secret(secret_id, secrets_provider=secrets_provider)
+        raw = secrets_provider.cogent_secret(cogent_name, channel)  # type: ignore[union-attr]
         return json.loads(raw)
     except Exception:
         logger.exception("Failed to fetch %s secret from secrets provider", channel)

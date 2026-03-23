@@ -66,34 +66,34 @@ class TestCogentPlaceholder:
                 fetch_secret("cogent/{cogent}/github", secrets_provider=provider)
 
 
-class TestAllFallback:
-    @patch.dict("os.environ", {"COGENT": "agora"})
-    def test_falls_back_to_all(self):
-        """When cogent-specific secret missing, falls back to cogent/all/..."""
+class TestCogtainerFallback:
+    @patch.dict("os.environ", {"COGENT": "alpha", "COGTAINER": "agora"})
+    def test_falls_back_to_cogtainer(self):
+        """When cogent-specific secret missing, falls back to cogtainer/{COGTAINER}/..."""
         provider = _mock_provider(
-            secrets={"cogent/all/gemini": "shared-key"},
-            raise_on={"cogent/agora/gemini"},
+            secrets={"cogtainer/agora/gemini": "shared-key"},
+            raise_on={"cogent/alpha/gemini"},
         )
         result = fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)
         assert result == "shared-key"
 
-    @patch.dict("os.environ", {"COGENT": "agora"})
+    @patch.dict("os.environ", {"COGENT": "alpha", "COGTAINER": "agora"})
     def test_cogent_specific_takes_precedence(self):
-        """Cogent-specific secret is preferred over cogent/all."""
+        """Cogent-specific secret is preferred over cogtainer-level."""
         provider = _mock_provider(
             secrets={
-                "cogent/agora/gemini": "agora-key",
-                "cogent/all/gemini": "shared-key",
+                "cogent/alpha/gemini": "alpha-key",
+                "cogtainer/agora/gemini": "shared-key",
             },
         )
         result = fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)
-        assert result == "agora-key"
+        assert result == "alpha-key"
 
-    @patch.dict("os.environ", {"COGENT": "agora"})
+    @patch.dict("os.environ", {"COGENT": "alpha", "COGTAINER": "agora"})
     def test_raises_when_both_missing(self):
-        """Raises RuntimeError when neither cogent-specific nor all exists."""
+        """Raises RuntimeError when neither cogent-specific nor cogtainer exists."""
         provider = _mock_provider(
-            raise_on={"cogent/agora/gemini", "cogent/all/gemini"},
+            raise_on={"cogent/alpha/gemini", "cogtainer/agora/gemini"},
         )
         with pytest.raises(RuntimeError, match="Could not fetch secret"):
             fetch_secret("cogent/{cogent}/gemini", secrets_provider=provider)

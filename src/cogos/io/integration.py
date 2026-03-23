@@ -13,6 +13,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from cogtainer.secrets import cogtainer_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -198,7 +200,7 @@ class DiscordIntegration(Integration):
         # Check shared bot token
         bot_configured = False
         try:
-            raw = secrets_provider.get_secret("agora/discord")  # type: ignore[union-attr]
+            raw = secrets_provider.cogtainer_secret("discord")  # type: ignore[union-attr]
             data = json.loads(raw)
             bot_configured = bool(data.get("access_token") or data.get("bot_token"))
         except Exception:
@@ -300,7 +302,7 @@ class EmailIntegration(Integration):
         return f"{cogent_name}@{domain}"
 
     def _secret_key(self, cogent_name: str) -> str:
-        return f"identity_service/{cogent_name}/{self.name}"
+        return f"cogent/{cogent_name}/{self.name}"
 
     def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
         """Email is configured when the cogtainer email domain secret is set."""
@@ -339,7 +341,10 @@ class AnthropicIntegration(Integration):
         ]
 
     def _fallback_keys(self) -> list[str]:
-        return ["cogent/all/anthropic"]
+        try:
+            return [cogtainer_key("anthropic")]
+        except RuntimeError:
+            return []
 
 
 class GeminiIntegration(Integration):
@@ -361,7 +366,10 @@ class GeminiIntegration(Integration):
         ]
 
     def _fallback_keys(self) -> list[str]:
-        return ["cogent/all/gemini"]
+        try:
+            return [cogtainer_key("gemini")]
+        except RuntimeError:
+            return []
 
 
 class WebIntegration(Integration):

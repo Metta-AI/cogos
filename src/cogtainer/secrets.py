@@ -7,6 +7,7 @@ depend directly on AWS SDK calls.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -55,6 +56,30 @@ class SecretsProvider(Protocol):
         """Delete the secret identified by *key*."""
         ...
 
+    def cogtainer_secret(self, key: str, field: str | None = None) -> str:
+        """Read ``cogtainer/{COGTAINER}/{key}``."""
+        ...
+
+    def cogent_secret(self, cogent_name: str, key: str, field: str | None = None) -> str:
+        """Read ``cogent/{cogent_name}/{key}``."""
+        ...
+
+
+# ── Key helpers ─────────────────────────────────────────────
+
+
+def cogtainer_key(key: str) -> str:
+    """Return ``cogtainer/{COGTAINER}/{key}``."""
+    cogtainer = os.environ.get("COGTAINER", "")
+    if not cogtainer:
+        raise RuntimeError("COGTAINER env var not set")
+    return f"cogtainer/{cogtainer}/{key}"
+
+
+def cogent_key(cogent_name: str, key: str) -> str:
+    """Return ``cogent/{cogent_name}/{key}``."""
+    return f"cogent/{cogent_name}/{key}"
+
 
 # ── Local implementation ─────────────────────────────────────
 
@@ -90,6 +115,12 @@ class LocalSecretsProvider:
         secrets = self._load()
         secrets.pop(key, None)
         self._path.write_text(json.dumps(secrets, indent=2))
+
+    def cogtainer_secret(self, key: str, field: str | None = None) -> str:
+        return self.get_secret(cogtainer_key(key), field=field)
+
+    def cogent_secret(self, cogent_name: str, key: str, field: str | None = None) -> str:
+        return self.get_secret(cogent_key(cogent_name, key), field=field)
 
     # -- private --
 
@@ -168,6 +199,12 @@ class AwsSecretsProvider:
         self._sm_client.delete_secret(SecretId=key, ForceDeleteWithoutRecovery=True)
         self._cache.pop(key, None)
         self._negative_cache.add(key)
+
+    def cogtainer_secret(self, key: str, field: str | None = None) -> str:
+        return self.get_secret(cogtainer_key(key), field=field)
+
+    def cogent_secret(self, cogent_name: str, key: str, field: str | None = None) -> str:
+        return self.get_secret(cogent_key(cogent_name, key), field=field)
 
     # -- private --
 

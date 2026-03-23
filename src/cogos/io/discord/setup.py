@@ -21,7 +21,7 @@ def discord_secret_status(
 ) -> tuple[bool | None, str | None]:
     """Return whether the shared cogtainer Discord token exists."""
     try:
-        raw = fetch_secret("agora/discord", secrets_provider=secrets_provider)
+        raw = secrets_provider.cogtainer_secret("discord")  # type: ignore[union-attr]
         data = json.loads(raw)
         return bool(data.get("access_token")), None
     except (RuntimeError, KeyError):
