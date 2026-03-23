@@ -111,6 +111,7 @@ def create_app() -> FastAPI:
         capabilities,
         channels,
         chat,
+        cogtainer,
         cogos_status,
         cron,
         diagnostics,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(diagnostics.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
     app.include_router(integrations.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
     app.include_router(executors.router, prefix="/api/cogents/{name}", dependencies=dash_deps)
+    app.include_router(cogtainer.router, dependencies=dash_deps)
 
     # ── Common endpoints ───────────────────────────────────────
 

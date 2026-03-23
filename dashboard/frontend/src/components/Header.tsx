@@ -75,6 +75,126 @@ function ageColor(iso: string | null | undefined): string {
   return "var(--error)";
 }
 
+function CogentSwitcher({ cogentName }: { cogentName: string }) {
+  const [open, setOpen] = useState(false);
+  const [cogents, setCogents] = useState<string[] | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleOpen = useCallback(() => {
+    setOpen((v) => !v);
+    if (cogents === null) {
+      api.listCogents().then((r) => setCogents(r.cogents)).catch(() => setCogents([]));
+    }
+  }, [cogents]);
+
+  const navigate = useCallback((name: string) => {
+    setOpen(false);
+    const hostname = window.location.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      // Local dev: reload with different NEXT_PUBLIC_COGENT isn't possible,
+      // so just navigate with a query param hint
+      window.location.href = `${window.location.origin}?cogent=${name}`;
+    } else {
+      // Production: swap the subdomain
+      const parts = hostname.split(".");
+      parts[0] = name.replace(/\./g, "-");
+      window.location.href = `${window.location.protocol}//${parts.join(".")}`;
+    }
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={handleOpen}
+        className="border-0 bg-transparent cursor-pointer flex items-center gap-1 p-0"
+        style={{
+          color: "var(--accent)",
+          fontSize: "15px",
+          fontWeight: 700,
+        }}
+      >
+        {cogentName}
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 150ms",
+            opacity: 0.6,
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 z-50"
+          style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            minWidth: "180px",
+            maxHeight: "300px",
+            overflowY: "auto",
+            padding: "4px 0",
+          }}
+        >
+          {cogents === null ? (
+            <div className="px-3 py-2" style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              loading...
+            </div>
+          ) : cogents.length === 0 ? (
+            <div className="px-3 py-2" style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              no cogents found
+            </div>
+          ) : (
+            cogents.map((name) => (
+              <button
+                key={name}
+                onClick={() => navigate(name)}
+                className="w-full text-left border-0 cursor-pointer block transition-colors duration-100"
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "13px",
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: name === cogentName ? 700 : 400,
+                  color: name === cogentName ? "var(--accent)" : "var(--text-primary)",
+                  background: name === cogentName ? "rgba(59,130,246,0.1)" : "transparent",
+                }}
+                onMouseEnter={(e) => {
+                  if (name !== cogentName) e.currentTarget.style.background = "var(--bg-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  if (name !== cogentName) e.currentTarget.style.background = "transparent";
+                }}
+              >
+                {name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RebootButton({ cogentName, onRefresh }: { cogentName: string; onRefresh: () => void }) {
   const [state, setState] = useState<"idle" | "confirm" | "rebooting">("idle");
 
@@ -344,16 +464,7 @@ export function Header({
     >
       {/* Left: cogent name + status badges + tick */}
       <div className="flex items-center gap-3">
-        <span
-          style={{
-            color: "var(--accent)",
-            fontSize: "15px",
-            fontWeight: 700,
-            cursor: "default",
-          }}
-        >
-          {cogentName}
-        </span>
+        <CogentSwitcher cogentName={cogentName} />
 
         {/* API badge with tooltip */}
         <div className="relative group/api">

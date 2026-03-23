@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Sidebar, type TabId, VALID_TABS } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { useCogentData } from "@/hooks/useCogentData";
+import * as api from "@/lib/api";
 import { OverviewPanel } from "@/components/overview/OverviewPanel";
 import { ProcessesView } from "@/components/processes/ProcessesView";
 import { FilesPanel } from "@/components/files/FilesPanel";
@@ -36,7 +37,21 @@ function useCogentName(): string | null {
   useEffect(() => {
     const hostname = window.location.hostname;
     if (hostname === "localhost" || hostname === "127.0.0.1") {
-      setName(process.env.NEXT_PUBLIC_COGENT || "localhost");
+      // Check query param first (for cogent switching in local dev)
+      const params = new URLSearchParams(window.location.search);
+      const fromParam = params.get("cogent");
+      if (fromParam) {
+        setName(fromParam);
+        return;
+      }
+      if (process.env.NEXT_PUBLIC_COGENT) {
+        setName(process.env.NEXT_PUBLIC_COGENT);
+        return;
+      }
+      // Resolve from API
+      api.listCogents().then((r) => {
+        setName(r.current || r.cogents[0] || "localhost");
+      }).catch(() => setName("localhost"));
     } else {
       setName(hostname.split(".")[0].replace(/-/g, "."));
     }

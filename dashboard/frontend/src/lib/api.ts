@@ -51,6 +51,12 @@ async function fetchJSON<T>(path: string): Promise<T> {
   return resp.json();
 }
 
+// ── Cogtainer ────────────────────────────────────────────────────────────────
+
+export async function listCogents(): Promise<{ cogents: string[]; current: string }> {
+  return fetchJSON("/api/cogtainer/cogents");
+}
+
 // ── Message Traces ──────────────────────────────────────────────────────────
 
 export async function getMessageTraces(
