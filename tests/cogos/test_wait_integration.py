@@ -38,6 +38,12 @@ def _setup_parent_child(repo, *, num_children=1, with_handlers=False):
     return parent, run, children
 
 
+def _get(repo: LocalRepository, pid) -> Process:
+    p = repo.get_process(pid)
+    assert p is not None
+    return p
+
+
 def test_wait_all_blocks_until_all_children_exit():
     repo = _fresh_repo()
     parent, run, children = _setup_parent_child(repo, num_children=2, with_handlers=True)
@@ -54,13 +60,13 @@ def test_wait_all_blocks_until_all_children_exit():
         channel=ch_a.id, sender_process=child_a.id,
         payload={"type": "child:exited", "exit_code": 0, "process_id": str(child_a.id)},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.WAITING
+    assert _get(repo, parent.id).status == ProcessStatus.WAITING
 
     repo.append_channel_message(ChannelMessage(
         channel=ch_b.id, sender_process=child_b.id,
         payload={"type": "child:exited", "exit_code": 0, "process_id": str(child_b.id)},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.RUNNABLE
+    assert _get(repo, parent.id).status == ProcessStatus.RUNNABLE
     assert repo.get_pending_wait_condition_for_process(parent.id) is None
 
 
@@ -79,7 +85,7 @@ def test_wait_any_wakes_on_first_child():
         channel=ch_a.id, sender_process=child_a.id,
         payload={"type": "child:exited", "exit_code": 0, "process_id": str(child_a.id)},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.RUNNABLE
+    assert _get(repo, parent.id).status == ProcessStatus.RUNNABLE
 
 
 def test_no_handler_no_wake():
@@ -92,7 +98,7 @@ def test_no_handler_no_wake():
         channel=ch.id, sender_process=child.id,
         payload={"type": "child:exited", "exit_code": 0, "process_id": str(child.id)},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.WAITING
+    assert _get(repo, parent.id).status == ProcessStatus.WAITING
 
 
 def test_handler_without_wait_condition_wakes():
@@ -105,7 +111,7 @@ def test_handler_without_wait_condition_wakes():
         channel=ch.id, sender_process=child.id,
         payload={"type": "child:exited", "exit_code": 0, "process_id": str(child.id)},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.RUNNABLE
+    assert _get(repo, parent.id).status == ProcessStatus.RUNNABLE
 
 
 def test_non_exit_message_does_not_resolve_wait():
@@ -124,7 +130,7 @@ def test_non_exit_message_does_not_resolve_wait():
         channel=ch.id, sender_process=child.id,
         payload={"type": "data", "result": 42},
     ))
-    assert repo.get_process(parent.id).status == ProcessStatus.WAITING
+    assert _get(repo, parent.id).status == ProcessStatus.WAITING
     assert repo.get_pending_wait_condition_for_process(parent.id) is not None
 
 
