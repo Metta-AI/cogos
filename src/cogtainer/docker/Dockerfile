@@ -25,7 +25,7 @@ RUN curl -fsSL https://bun.sh/install -o /tmp/bun_install.sh \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 # Claude Code CLI (official installer) — download then execute
-RUN curl -fsSL https://cli.claude.ai/install.sh -o /tmp/claude_install.sh \
+RUN curl -fsSL https://claude.ai/install.sh -o /tmp/claude_install.sh \
     && sh /tmp/claude_install.sh && rm /tmp/claude_install.sh
 
 # uv (Python package manager)
