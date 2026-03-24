@@ -143,6 +143,7 @@ class ProcessHandle:
         ))
 
     def wait(self) -> None:
+        """Suspend until this process exits."""
         self._check_not_python()
         if self._child_already_exited(self._process.id):
             return
@@ -158,6 +159,7 @@ class ProcessHandle:
 
     @staticmethod
     def wait_any(handles: list[ProcessHandle]) -> None:
+        """Suspend until any of the given processes exits."""
         handles[0]._check_not_python()
         if any(h._child_already_exited(h._process.id) for h in handles):
             return
@@ -176,6 +178,7 @@ class ProcessHandle:
 
     @staticmethod
     def wait_all(handles: list[ProcessHandle]) -> None:
+        """Suspend until all of the given processes exit."""
         handles[0]._check_not_python()
         still_pending = [h.id for h in handles if not h._child_already_exited(h._process.id)]
         if not still_pending:

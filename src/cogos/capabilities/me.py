@@ -152,11 +152,13 @@ class MeCapability(Capability):
         self._store = FileStore(repo)
 
     def run(self) -> RunScope:
+        """Access the current run's scratch/tmp/log files."""
         if self.run_id is None:
             raise RuntimeError("No active run — me.run() requires a run context")
         return RunScope(self.process_id, self.run_id, self._store, self.repo)
 
     def process(self) -> ProcessScope:
+        """Access the current process's scratch/tmp/log files."""
         return ProcessScope(self.process_id, self._store, self.repo, run_id=self.run_id)
 
     def _process_name(self) -> str:

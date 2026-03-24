@@ -77,6 +77,7 @@ class FileCapability(Capability):
         offset: int | None = None,
         limit: int | None = None,
     ) -> FileContent | FileError:
+        """Read file content. Supports offset/limit for partial reads."""
         k = self._resolve_key(key)
         self._check("read", key=k)
 
@@ -121,6 +122,7 @@ class FileCapability(Capability):
     def write(
         self, content: str, key: str | None = None, source: str = "agent"
     ) -> FileWriteResult | FileError:
+        """Overwrite the file with new content."""
         k = self._resolve_key(key)
         self._check("write", key=k)
         return self._do_write(k, content, source)
@@ -262,11 +264,13 @@ class FileVersionCapability(Capability):
                 )
 
     def add(self, key: str, content: str, source: str = "agent"):
+        """Create a new version of a file."""
         self._check("add", key=key)
         store = FileStore(self.repo)
         return store.upsert(key, content, source=source, run_id=self.run_id)
 
     def list(self, key: str, limit: int = 50):
+        """List versions of a file."""
         self._check("list", key=key)
         f = FileStore(self.repo).get(key)
         if f is None:
@@ -322,6 +326,7 @@ class DirCapability(Capability):
     def list(
         self, prefix: str | None = None, limit: int = 50
     ) -> list[FileSearchResult]:
+        """List files under this directory."""
         effective_prefix = self._full_key(prefix) if prefix else self._scope.get("prefix")
 
         store = FileStore(self.repo)

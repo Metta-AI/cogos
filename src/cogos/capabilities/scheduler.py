@@ -151,6 +151,7 @@ class SchedulerCapability(Capability):
         return MatchResult(deliveries_created=len(created), deliveries=created)
 
     def select_processes(self, slots: int = 1) -> SelectResult:
+        """Select runnable processes for dispatch using priority-weighted sampling."""
         now_ts = time.time()
 
         runnable = self.repo.get_runnable_processes(limit=200)
@@ -193,6 +194,7 @@ class SchedulerCapability(Capability):
         ])
 
     def dispatch_process(self, process_id: str) -> DispatchResult | SchedulerError:
+        """Create a run for a runnable process and transition it to running."""
         if not process_id:
             return SchedulerError(error="process_id is required")
 
@@ -230,6 +232,7 @@ class SchedulerCapability(Capability):
         )
 
     def unblock_processes(self) -> UnblockResult:
+        """Move blocked processes to runnable if their resources are available."""
         blocked = self.repo.list_processes(status=ProcessStatus.BLOCKED)
         unblocked = []
 
@@ -267,6 +270,7 @@ class SchedulerCapability(Capability):
         return UnblockResult(unblocked_count=len(unblocked), unblocked=unblocked)
 
     def kill_process(self, process_id: str) -> KillResult | SchedulerError:
+        """Disable a process and fail its active run."""
         if not process_id:
             return SchedulerError(error="process_id is required")
 

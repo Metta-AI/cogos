@@ -156,6 +156,7 @@ class EmailCapability(Capability):
                 )
 
     def send(self, to: str, subject: str, body: str, reply_to: str | None = None) -> SendResult | EmailError:
+        """Send an email."""
         to = to.strip()
         subject = subject.strip()
         if not to or not subject:
@@ -176,6 +177,7 @@ class EmailCapability(Capability):
             return EmailError(error=str(exc))
 
     def receive(self, limit: int = 10) -> list[EmailMessage]:
+        """Read recent inbound emails."""
         self._check("receive")
         ch = self.repo.get_channel_by_name("io:email:inbound")
         if ch is None:

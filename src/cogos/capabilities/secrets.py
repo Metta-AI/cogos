@@ -65,6 +65,7 @@ class SecretsCapability(Capability):
         )
 
     def get(self, key: str) -> SecretValue | SecretError:
+        """Retrieve a secret by key."""
         self._check("get", key=key)
         try:
             value = self._secrets_provider.get_secret(key)

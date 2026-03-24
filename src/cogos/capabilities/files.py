@@ -100,6 +100,7 @@ class FilesCapability(Capability):
                 )
 
     def read(self, key: str) -> FileContent | FileError:
+        """Read a file by key."""
         if not key:
             return FileError(error="key is required")
         self._check("read", key=key)
@@ -129,6 +130,7 @@ class FilesCapability(Capability):
         source: str = "agent",
         read_only: bool = False,
     ) -> FileWriteResult | FileError:
+        """Create or update a file. Every write creates a new version."""
         if not key:
             return FileError(error="key is required")
         self._check("write", key=key)
@@ -147,6 +149,7 @@ class FilesCapability(Capability):
         return FileWriteResult(id=str(result.file_id), key=key, version=result.version, created=False)
 
     def search(self, prefix: str | None = None, limit: int = 50) -> list[FileSearchResult]:
+        """Search files by key prefix."""
         self._check("search", key=prefix or "")
         store = FileStore(self.repo)
         files = store.list_files(prefix=prefix, limit=limit)

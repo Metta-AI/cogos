@@ -175,6 +175,12 @@ async def _execute_agent_sdk_process(
     if not system_prompt:
         system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
 
+    # Inject capability help text into system prompt
+    from cogos.executor.handler import _build_capability_help_text
+    cap_help = _build_capability_help_text(capabilities)
+    if cap_help:
+        system_prompt += "\n\n--- Capabilities ---\n\n" + cap_help
+
     user_text = _build_user_message(process, event_data, repo)
 
     model = to_sdk_model(process.model or config.default_model)

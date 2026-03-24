@@ -2,13 +2,6 @@
 
 @{mnt/boot/whoami/index.md}
 @{mnt/boot/cogos/includes/code_mode.md}
-@{mnt/boot/cogos/includes/files.md}
-@{mnt/boot/cogos/includes/channels.md}
-@{mnt/boot/cogos/includes/procs.md}
-@{mnt/boot/cogos/includes/discord.md}
-@{mnt/boot/cogos/includes/email.md}
-@{mnt/boot/cogos/includes/image.md}
-@{mnt/boot/cogos/includes/asana.md}
 @{mnt/boot/cogos/includes/memory/knowledge.md}
 @{mnt/boot/cogos/includes/memory/ledger.md}
 
