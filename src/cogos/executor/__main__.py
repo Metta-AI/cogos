@@ -67,6 +67,12 @@ def main() -> None:
     except Exception:
         logger.exception("Executor failed for process %s", process.name)
         sys.exit(1)
+    finally:
+        from cogos.db.models import ExecutorStatus
+        try:
+            repo.update_executor_status("local-daemon", ExecutorStatus.IDLE)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
