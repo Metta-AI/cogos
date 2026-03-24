@@ -22,12 +22,10 @@ from cogtainer.db.models import (
     Trigger,
     TriggerConfig,
 )
-from cogtainer.db.protocol import RepositoryInterface
-from cogtainer.db.repository import Repository
+from cogtainer.db.repository import AwsCogtainerRepository
 
 __all__ = [
-    "Repository",
-    "RepositoryInterface",
+    "AwsCogtainerRepository",
     "Alert",
     "AlertSeverity",
     "Budget",

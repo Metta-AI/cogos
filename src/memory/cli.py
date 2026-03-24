@@ -9,10 +9,10 @@ import click
 
 def _get_store():
     """Lazy import to avoid heavy imports at CLI load time."""
-    from cogtainer.db.repository import Repository
+    from cogtainer.db.repository import AwsCogtainerRepository
     from memory.store import MemoryStore
 
-    repo = Repository.create()
+    repo = AwsCogtainerRepository.create()
     return MemoryStore(repo)
 
 

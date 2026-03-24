@@ -8,7 +8,7 @@ import pytest
 
 
 def test_get_repo_passes_region_to_repository_create(monkeypatch):
-    """get_repo should pass config.region to Repository.create."""
+    """get_repo should pass config.region to AwsCogtainerRepository.create."""
     # Reset the cached singleton
     import cogtainer.lambdas.shared.db as db_mod
     db_mod._repo = None
@@ -24,7 +24,7 @@ def test_get_repo_passes_region_to_repository_create(monkeypatch):
     cfg_mod._config = None
 
     mock_repo = MagicMock()
-    with patch("cogtainer.lambdas.shared.db.Repository") as MockRepo:
+    with patch("cogtainer.lambdas.shared.db.AwsCogtainerRepository") as MockRepo:
         MockRepo.create.return_value = mock_repo
         result = db_mod.get_repo()
 
@@ -42,7 +42,7 @@ def test_get_repo_passes_region_to_repository_create(monkeypatch):
 
 
 def test_get_repo_no_boto3_import():
-    """get_repo should not directly import boto3 (uses Repository.create with region)."""
+    """get_repo should not directly import boto3 (uses AwsCogtainerRepository.create with region)."""
     import inspect
     import cogtainer.lambdas.shared.db as db_mod
 

@@ -30,7 +30,7 @@ from cogtainer.db.models import (
 
 
 @runtime_checkable
-class RepositoryInterface(Protocol):
+class CogtainerRepositoryInterface(Protocol):
     # ── Raw query ────────────────────────────────────────────
 
     def query(self, sql: str, params: dict[str, Any] | None = None) -> list[dict]: ...

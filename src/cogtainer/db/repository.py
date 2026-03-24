@@ -41,7 +41,7 @@ from cogtainer.db.models import (
 logger = logging.getLogger(__name__)
 
 
-class Repository:
+class AwsCogtainerRepository:
     """Synchronous database repository using RDS Data API."""
 
     def __init__(
@@ -63,7 +63,7 @@ class Repository:
         secret_arn: str | None = None,
         database: str | None = None,
         region: str | None = None,
-    ) -> Repository:
+    ) -> AwsCogtainerRepository:
         """Create repository from arguments or environment variables.
 
         Callers must ensure AWS credentials are set for the cogtainer account
@@ -86,7 +86,7 @@ class Repository:
         client = boto3.client("rds-data", region_name=region)
         return cls(client, resource_arn, secret_arn, database)
 
-    def __enter__(self) -> Repository:
+    def __enter__(self) -> AwsCogtainerRepository:
         return self
 
     def __exit__(self, *exc: object) -> None:

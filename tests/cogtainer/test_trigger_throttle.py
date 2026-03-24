@@ -1,15 +1,15 @@
-"""Tests for trigger throttle_check on LocalRepository."""
+"""Tests for trigger throttle_check on LocalCogtainerRepository."""
 
 from __future__ import annotations
 
 import time
 
-from cogtainer.db.local_repository import LocalRepository
+from cogtainer.db.local_repository import LocalCogtainerRepository
 from cogtainer.db.models import Trigger, TriggerConfig
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(data_dir=str(tmp_path))
+def _repo(tmp_path) -> LocalCogtainerRepository:
+    return LocalCogtainerRepository(data_dir=str(tmp_path))
 
 
 def _make_trigger(max_events: int = 3, window: int = 60) -> Trigger:

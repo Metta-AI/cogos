@@ -36,14 +36,14 @@ The database schema DDL lives in `src/cogos/db/schema.sql`.
 ## Quick Start
 
 ```python
-from cogtainer.db import Repository
+from cogtainer.db import AwsCogtainerRepository
 
 # Create repository (RDS Data API)
-repo = Repository(cluster_arn=..., secret_arn=..., database=...)
+repo = AwsCogtainerRepository(cluster_arn=..., secret_arn=..., database=...)
 
-# Or use LocalRepository for local dev (JSON file)
-from cogtainer.db.local_repository import LocalRepository
-repo = LocalRepository()
+# Or use LocalCogtainerRepository for local dev (JSON file)
+from cogtainer.db.local_repository import LocalCogtainerRepository
+repo = LocalCogtainerRepository()
 ```
 
 ## Tables

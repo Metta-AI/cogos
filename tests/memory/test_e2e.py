@@ -1,6 +1,6 @@
 """End-to-end tests for the versioned memory system.
 
-Exercises the full stack: MemoryStore + LocalRepository + persistence,
+Exercises the full stack: MemoryStore + LocalCogtainerRepository + persistence,
 including cogtainer sync logic, read-only enforcement, version management,
 hierarchical key resolution, and CLI commands.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from click.testing import CliRunner
 
-from cogtainer.db.local_repository import LocalRepository
+from cogtainer.db.local_repository import LocalCogtainerRepository
 from cogtainer.db.models import Memory, MemoryVersion
 from memory.errors import MemoryReadOnlyError
 from memory.store import MemoryStore
@@ -18,7 +18,7 @@ from memory.store import MemoryStore
 
 @pytest.fixture
 def store(tmp_path) -> MemoryStore:
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = LocalCogtainerRepository(data_dir=str(tmp_path))
     return MemoryStore(repo)
 
 
@@ -218,13 +218,13 @@ class TestRename:
         assert len(history) == 2
 
 
-# ── 5. Persistence across LocalRepository instances ──────────────
+# ── 5. Persistence across LocalCogtainerRepository instances ──────────────
 
 
 class TestPersistence:
     def test_full_state_survives_reload(self, tmp_path):
         # Create with one instance
-        repo1 = LocalRepository(data_dir=str(tmp_path))
+        repo1 = LocalCogtainerRepository(data_dir=str(tmp_path))
         store1 = MemoryStore(repo1)
 
         store1.create("/persist/a", "content a", source="cogtainer", read_only=True)
@@ -233,7 +233,7 @@ class TestPersistence:
         store1.set_read_only("/persist/b", True, version=1)
 
         # Read with a new instance
-        repo2 = LocalRepository(data_dir=str(tmp_path))
+        repo2 = LocalCogtainerRepository(data_dir=str(tmp_path))
         store2 = MemoryStore(repo2)
 
         # Memory a
@@ -330,8 +330,8 @@ class TestCLI:
 
     @pytest.fixture(autouse=True)
     def patch_store(self, tmp_path, monkeypatch):
-        """Patch _get_store to use a LocalRepository backed by tmp_path."""
-        repo = LocalRepository(data_dir=str(tmp_path))
+        """Patch _get_store to use a LocalCogtainerRepository backed by tmp_path."""
+        repo = LocalCogtainerRepository(data_dir=str(tmp_path))
         s = MemoryStore(repo)
         self._store = s
         self._tmp_path = tmp_path

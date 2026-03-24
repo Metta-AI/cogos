@@ -1,4 +1,4 @@
-"""Tests for versioned memory methods on LocalRepository."""
+"""Tests for versioned memory methods on LocalCogtainerRepository."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from cogtainer.db.local_repository import LocalRepository
+from cogtainer.db.local_repository import LocalCogtainerRepository
 from cogtainer.db.models import Memory, MemoryVersion
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(data_dir=str(tmp_path))
+def _repo(tmp_path) -> LocalCogtainerRepository:
+    return LocalCogtainerRepository(data_dir=str(tmp_path))
 
 
 # ── helpers ──────────────────────────────────────────────────

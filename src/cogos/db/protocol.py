@@ -35,7 +35,7 @@ from cogos.db.models.wait_condition import WaitCondition
 
 
 @runtime_checkable
-class RepositoryProtocol(Protocol):
+class CogosRepositoryInterface(Protocol):
 
     # ── Epoch ────────────────────────────────────────────────
 

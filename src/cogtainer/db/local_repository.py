@@ -33,7 +33,6 @@ from cogtainer.db.models import (
     Trace,
     Trigger,
 )
-from cogtainer.db.repository import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ def _json_serial(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-class LocalRepository(Repository):
+class LocalCogtainerRepository:
     """In-memory repository backed by a JSON file for persistence."""
 
     def __init__(self, data_dir: str | None = None) -> None:

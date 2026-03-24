@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from cogos.db.protocol import RepositoryProtocol
+from cogos.db.protocol import CogosRepositoryInterface
 from cogtainer.runtime.base import CogtainerRuntime
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ _NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 def _dispatch_to_matched_executor(
-    repo: RepositoryProtocol, scheduler: Any, runtime: CogtainerRuntime, cogent_name: str,
+    repo: CogosRepositoryInterface, scheduler: Any, runtime: CogtainerRuntime, cogent_name: str,
     process_id: str, process_name: str,
 ) -> bool:
     """Dispatch a process to a tag-matched executor.
@@ -74,7 +74,7 @@ def _dispatch_to_matched_executor(
     return True
 
 
-def _emit_missing_tags_alert(repo: RepositoryProtocol, process_id: str, process_name: str, error: str) -> None:
+def _emit_missing_tags_alert(repo: CogosRepositoryInterface, process_id: str, process_name: str, error: str) -> None:
     """Emit an alert when no executor matches required tags."""
     from cogos.db.models import Channel, ChannelMessage, ChannelType
 
@@ -93,7 +93,7 @@ def _emit_missing_tags_alert(repo: RepositoryProtocol, process_id: str, process_
     ))
 
 
-def _is_throttle_cooldown_active(repo: RepositoryProtocol) -> bool:
+def _is_throttle_cooldown_active(repo: CogosRepositoryInterface) -> bool:
     """Check if any recent run was throttled, indicating we should back off."""
     from cogos.db.models import RunStatus
 
@@ -101,7 +101,7 @@ def _is_throttle_cooldown_active(repo: RepositoryProtocol) -> bool:
     return any(r.status == RunStatus.THROTTLED for r in recent)
 
 
-def run_tick(repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str) -> dict:
+def run_tick(repo: CogosRepositoryInterface, runtime: CogtainerRuntime, cogent_name: str) -> dict:
     """Single scheduler tick. Returns {"dispatched": int}."""
     from cogos.capabilities.scheduler import SchedulerCapability
     from cogos.runtime.schedule import apply_scheduled_messages
@@ -188,7 +188,7 @@ def run_tick(repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: s
     return {"dispatched": dispatched}
 
 
-def _dispatch_nudged_processes(repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str) -> int:
+def _dispatch_nudged_processes(repo: CogosRepositoryInterface, runtime: CogtainerRuntime, cogent_name: str) -> int:
     """Drain the local ingress queue and dispatch any nudged processes.
 
     This mirrors the production ingress Lambda: explicitly nudged process IDs
@@ -246,7 +246,7 @@ def _dispatch_nudged_processes(repo: RepositoryProtocol, runtime: CogtainerRunti
 
 
 def _try_dispatch_blocked(
-    repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str,
+    repo: CogosRepositoryInterface, runtime: CogtainerRuntime, cogent_name: str,
 ) -> int:
     """Unblock processes and try to dispatch them. Runs between ticks."""
     from cogos.capabilities.scheduler import SchedulerCapability
@@ -276,7 +276,7 @@ def _try_dispatch_blocked(
 
 
 def run_loop(
-    repo: RepositoryProtocol, runtime: CogtainerRuntime, cogent_name: str,
+    repo: CogosRepositoryInterface, runtime: CogtainerRuntime, cogent_name: str,
     *, tick_interval: int = _DEFAULT_TICK_INTERVAL,
 ) -> None:
     """Tick every *tick_interval* seconds until SIGINT/SIGTERM.
