@@ -12,13 +12,13 @@ import logging
 import os
 from pathlib import Path
 
-from cogos.db.protocol import CogosRepositoryInterface
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=1)
-def get_repo() -> CogosRepositoryInterface:
+def get_repo() -> Any:
     if os.environ.get("USE_LOCAL_DB") == "1":
         try:
             from cogtainer.config import load_config, resolve_cogent_name, resolve_cogtainer_name
