@@ -21,16 +21,19 @@ Pick an incomplete task from the Cogents Asana project, work on it, comment with
    - From the shortlist of 3-5 candidates, pick one **at random** (not deterministically the "best" one). This prevents multiple concurrent agents from all choosing the same task.
    - If only 1 candidate exists, pick that one.
 
-4. **Claim the task via assignment** (optimistic lock):
-   - Use `asana_update_task` to assign the task to `me` immediately
-   - Then wait ~2 seconds (`sleep 2` via Bash) to allow other concurrent agents to also attempt assignment
-   - Re-read the task with `asana_get_task` (opt_fields: `assignee.name,assignee.gid`) to verify YOU are still the assignee
-   - Also check recent stories with `asana_get_stories_for_task` (limit 5) for other "picking up this task" comments in the last 2 minutes
-   - **If someone else is assigned or another agent already commented**: skip this task, go back to step 3 and pick a different candidate from the shortlist
-   - **If you are the assignee and no other agent claimed it**: proceed
+4. **Claim the task via comment-based lock** (handles same-user concurrency):
+   - Generate a unique claim ID by running `python3 -c "import uuid; print(uuid.uuid4())"` via Bash
+   - Post a claim comment on the task using `asana_create_task_story` with text: `CLAIM:<uuid> — agent claiming this task`
+   - Assign the task to `me` with `asana_update_task`
+   - Wait 5 seconds (`sleep 5` via Bash) — this window lets concurrent agents post their own claims
+   - Fetch recent stories with `asana_get_stories_for_task` (limit 10, opt_fields: `text,created_at,type`)
+   - Find ALL comments whose text starts with `CLAIM:` from the last 5 minutes
+   - **If your claim UUID appears in the chronologically EARLIEST claim comment**: you own the task, proceed
+   - **If a different CLAIM comment came first**: another agent got it. Remove this candidate from your shortlist, go back to step 3, and pick a different one. Do NOT unassign or delete comments — the winner handles the task.
+   - **IMPORTANT**: The old assignee-based check does NOT work because concurrent agents all run as the same Asana user (`me`). The comment-based lock is the source of truth.
 
 5. **Comment "starting work"** on the task:
-   - Use `asana_create_task_story` with a comment like: "Claude Code agent picking up this task. Will comment with results."
+   - Use `asana_create_task_story` with a comment like: "Claude Code agent starting work. Will comment with results."
 
 6. **Get full task details**:
    - Use `asana_get_task` with the chosen task_id and `opt_fields`: `name,notes,html_notes,assignee,due_on,dependencies,custom_fields`
