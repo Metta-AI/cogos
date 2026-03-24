@@ -44,8 +44,8 @@ def create(name: str) -> None:
     try:
         from cogos.io.google.provisioning import create_service_account
 
-        sa_email = create_service_account(name, runtime.get_secrets_provider())
-        click.echo(f"Google service account: {sa_email}")
+        group_email = create_service_account(name, runtime.get_secrets_provider())
+        click.echo(f"Google: share files with {group_email}")
     except Exception as e:
         click.echo(f"Warning: Google service account creation failed: {e}", err=True)
 

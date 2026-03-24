@@ -429,7 +429,7 @@ class GoogleIntegration(Integration):
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="service_account_email", label="Service Account Email", field_type="text", required=False, help_text="Auto-provisioned GCP service account email (read-only)."),
+            FieldSpec(name="share_email", label="Share With", field_type="text", required=False, help_text="Share files/calendars with this email (read-only)."),
             FieldSpec(name="drive_enabled", label="Google Drive", field_type="toggle", required=False, help_text="Enable access to Google Drive."),
             FieldSpec(name="docs_enabled", label="Google Docs", field_type="toggle", required=False, help_text="Enable access to Google Docs."),
             FieldSpec(name="sheets_enabled", label="Google Sheets", field_type="toggle", required=False, help_text="Enable access to Google Sheets."),
@@ -450,11 +450,12 @@ class GoogleIntegration(Integration):
             else self.load_config(cogent_name, secrets_provider=secrets_provider)
         )
         has_key = bool(config.get("private_key") or config.get("type") == "service_account")
+        group_email = config.get("group_email", "")
         sa_email = config.get("service_account_email", "")
         return {
             "configured": has_key,
             "missing_fields": [] if has_key else ["service_account_key"],
-            "service_account_email": sa_email,
+            "share_email": group_email or sa_email,
         }
 
 
