@@ -6,7 +6,7 @@ import tempfile
 from uuid import uuid4
 
 from cogos.capabilities.scheduler import SchedulerCapability, SchedulerError
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -20,7 +20,7 @@ from cogos.runtime.dispatch import build_dispatch_event
 
 
 def _fresh_repo():
-    return LocalRepository(data_dir=tempfile.mkdtemp())
+    return SqliteRepository(data_dir=tempfile.mkdtemp())
 
 
 def _setup_repo_with_traced_message():

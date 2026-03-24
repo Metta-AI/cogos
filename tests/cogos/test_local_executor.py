@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -17,8 +17,8 @@ from cogos.db.models import (
 from cogos.runtime.local import run_and_complete, run_local_tick
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
 def _make_process(repo, *, mode=ProcessMode.ONE_SHOT, max_retries=0) -> Process:

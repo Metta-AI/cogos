@@ -9,14 +9,14 @@ from typing import Any
 from uuid import UUID
 
 from cogos.capabilities.base import ScopedCapability
-from cogos.db.repository import Repository
+from cogos.db.protocol import CogosRepositoryInterface
 
 logger = logging.getLogger(__name__)
 
 
 def build_process_capabilities(
     process_id: UUID,
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     *,
     run_id: UUID | None = None,
     trace_id: UUID | None = None,

@@ -69,7 +69,7 @@ class AwsRuntime(CogtainerRuntime):
     # ── Repository ───────────────────────────────────────────
 
     def get_repository(self, cogent_name: str) -> Any:
-        from cogos.db.repository import Repository
+        from cogos.db.repository import RdsDataApiRepository
 
         db_info = self._get_db_info()
         cluster_arn = db_info.get("cluster_arn") or os.environ["DB_CLUSTER_ARN"]
@@ -88,7 +88,7 @@ class AwsRuntime(CogtainerRuntime):
                 MessageDeduplicationId=str(int(_time.time())),
             )
 
-        return Repository(
+        return RdsDataApiRepository(
             client=client,
             resource_arn=cluster_arn,
             secret_arn=secret_arn,

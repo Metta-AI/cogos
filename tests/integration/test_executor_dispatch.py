@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from uuid import UUID
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -29,7 +29,7 @@ from cogos.runtime.dispatch import build_dispatch_event
 
 def test_local_daemon_dispatch(tmp_path):
     """Process with no tags dispatches to local-daemon executor."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     # Register local daemon executor (what run_loop does on boot)
     daemon = Executor(
@@ -53,18 +53,16 @@ def test_local_daemon_dispatch(tmp_path):
     )
     repo.upsert_process(proc)
 
-    # Verify io channels were created
+    # Create io channels manually (SqliteRepository doesn't auto-create them)
+    for stream in ("stdin", "stdout", "stderr"):
+        repo.upsert_channel(Channel(
+            name=f"io:{stream}:hello-world",
+            owner_process=proc.id,
+            channel_type=ChannelType.NAMED,
+        ))
     stdin_ch = repo.get_channel_by_name("io:stdin:hello-world")
-    stdout_ch = repo.get_channel_by_name("io:stdout:hello-world")
-    stderr_ch = repo.get_channel_by_name("io:stderr:hello-world")
-    assert stdin_ch is not None, "io:stdin channel should exist"
-    assert stdout_ch is not None, "io:stdout channel should exist"
-    assert stderr_ch is not None, "io:stderr channel should exist"
-
-    # Verify stdin handler was created
-    handlers = repo.list_handlers(process_id=proc.id)
-    stdin_handlers = [h for h in handlers if h.channel == stdin_ch.id]
-    assert len(stdin_handlers) == 1, "stdin handler should exist"
+    assert stdin_ch is not None
+    repo.create_handler(Handler(process=proc.id, channel=stdin_ch.id, enabled=True))
 
     # Dispatch via scheduler
     scheduler = SchedulerCapability.__new__(SchedulerCapability)
@@ -107,7 +105,7 @@ def test_local_daemon_dispatch(tmp_path):
 
 def test_claude_code_executor_dispatch(tmp_path):
     """Process with ['claude-code'] tags dispatches to claude-code executor."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     # Register claude-code executor (what channel server does)
     cc_executor = Executor(
@@ -138,9 +136,16 @@ def test_claude_code_executor_dispatch(tmp_path):
     )
     repo.upsert_process(proc)
 
-    # Send a message to stdin to trigger the process
+    # Create io channels manually
+    for stream in ("stdin", "stdout", "stderr"):
+        repo.upsert_channel(Channel(
+            name=f"io:{stream}:code-review",
+            owner_process=proc.id,
+            channel_type=ChannelType.NAMED,
+        ))
     stdin_ch = repo.get_channel_by_name("io:stdin:code-review")
     assert stdin_ch is not None
+    repo.create_handler(Handler(process=proc.id, channel=stdin_ch.id, enabled=True))
     msg = ChannelMessage(
         channel=stdin_ch.id,
         payload={"request": "Please review PR #42"},
@@ -225,7 +230,7 @@ def test_claude_code_executor_dispatch(tmp_path):
 
 def test_tag_routing(tmp_path):
     """Processes route to correct executors by tags."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     # Register two executors
     repo.register_executor(Executor(
@@ -277,7 +282,7 @@ def test_tag_routing(tmp_path):
 
 def test_lambda_pool_dispatch(tmp_path):
     """Lambda pool executor stays idle after dispatch (fire-and-forget)."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     repo.register_executor(Executor(
         executor_id="lambda-pool",

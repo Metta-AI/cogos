@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 
 from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerCapability, SchedulerError
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -22,7 +22,7 @@ from cogos.db.models import (
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 @pytest.fixture
@@ -205,9 +205,13 @@ class TestDispatchToExecutor:
 class TestReapStaleExecutors:
     def test_reap_via_scheduler(self, repo, scheduler):
         _register_executor(repo, executor_id="exec-old")
-        from datetime import timedelta
-        e = repo.get_executor("exec-old")
-        e.last_heartbeat_at = e.last_heartbeat_at - timedelta(seconds=600)
+        from datetime import UTC, datetime, timedelta
+        old_time = (datetime.now(UTC) - timedelta(seconds=600)).isoformat()
+        repo._conn.execute(
+            "UPDATE cogos_executor SET last_heartbeat_at = ? WHERE executor_id = ?",
+            (old_time, "exec-old"),
+        )
+        repo._conn.commit()
 
         count = scheduler.reap_stale_executors(heartbeat_interval_s=30)
         assert count == 1

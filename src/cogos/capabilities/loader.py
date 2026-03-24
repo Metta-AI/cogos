@@ -12,13 +12,13 @@ from typing import Any
 from uuid import UUID
 
 from cogos.capabilities.base import ScopedCapability
-from cogos.db.repository import Repository
+from cogos.db.protocol import CogosRepositoryInterface
 
 logger = logging.getLogger(__name__)
 
 
 def build_capability_proxies(
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     process_id: UUID,
     *,
     run_id: UUID | None = None,

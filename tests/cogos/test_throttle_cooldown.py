@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Process,
     ProcessMode,
@@ -12,8 +12,8 @@ from cogos.db.models import (
 )
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
 def _daemon(name: str, *, status: ProcessStatus = ProcessStatus.WAITING) -> Process:
@@ -63,13 +63,14 @@ def test_is_throttle_cooldown_active_old_throttle(tmp_path):
 
     run = Run(process=proc.id, status=RunStatus.RUNNING)
     repo.create_run(run)
-    # Complete it as throttled, then backdate both timestamps
+    # Complete it as throttled, then backdate both timestamps in the DB
     repo.complete_run(run.id, status=RunStatus.THROTTLED, error="ThrottlingException")
-    old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
-    stored = repo.get_run(run.id)
-    assert stored is not None
-    stored.created_at = old_time
-    stored.completed_at = old_time
+    old_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    repo._conn.execute(
+        "UPDATE cogos_run SET created_at = ?, completed_at = ? WHERE id = ?",
+        (old_time, old_time, str(run.id)),
+    )
+    repo._conn.commit()
 
     assert _is_throttle_cooldown_active(repo) is False
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 
 
@@ -28,7 +28,7 @@ class TestAddCog:
         from cogos.image.apply import apply_image
         from cogos.image.spec import load_image
 
-        repo = LocalRepository(str(tmp_path))
+        repo = SqliteRepository(str(tmp_path))
         spec = load_image(Path("images/cogos"))
         apply_image(spec, repo)
 

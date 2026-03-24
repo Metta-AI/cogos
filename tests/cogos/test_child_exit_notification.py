@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from cogos.capabilities.procs import ProcessError, ProcsCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Process,
     ProcessMode,
@@ -18,7 +18,7 @@ from cogos.runtime.local import run_and_complete
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = ImageSpec(
         capabilities=[
             {

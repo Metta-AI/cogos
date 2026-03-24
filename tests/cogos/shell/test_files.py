@@ -1,13 +1,13 @@
 """Tests for shell file commands."""
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from cogos.shell.commands import CommandRegistry, ShellState
 from cogos.shell.commands.files import register
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     fs = FileStore(repo)
     fs.create("prompts/init.md", "init content")
     fs.create("prompts/scheduler.md", "scheduler content")

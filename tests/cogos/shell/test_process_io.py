@@ -3,7 +3,7 @@
 from cogos.capabilities.me import MeCapability
 from cogos.capabilities.process_handle import ProcessHandle
 from cogos.capabilities.procs import ProcessError, ProcsCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Channel,
@@ -25,7 +25,7 @@ def test_process_tty_defaults_false():
 
 
 def test_process_tty_persists(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     p = Process(name="test", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, tty=True)
     repo.upsert_process(p)
     got = repo.get_process_by_name("test")
@@ -37,7 +37,7 @@ def test_process_tty_persists(tmp_path):
 
 
 def _spawn_setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     cap = Capability(name="procs", handler="cogos.capabilities.procs.ProcsCapability", enabled=True)
     repo.upsert_capability(cap)
     parent = Process(name="parent", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE)
@@ -65,7 +65,7 @@ def test_spawn_with_tty(tmp_path):
 
 
 def _me_setup(tmp_path, *, tty=False):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     proc = Process(name="worker", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, tty=tty)
     repo.upsert_process(proc)
     for stream in ("stdin", "stdout", "stderr"):
@@ -74,6 +74,7 @@ def _me_setup(tmp_path, *, tty=False):
         )
     for stream in ("stdout", "stderr"):
         repo.upsert_channel(Channel(name=f"io:{stream}", channel_type=ChannelType.NAMED))
+    repo.upsert_channel(Channel(name=f"io:stdin:worker", owner_process=proc.id, channel_type=ChannelType.NAMED))
     return repo, proc, MeCapability(repo, proc.id)
 
 
@@ -128,7 +129,7 @@ def test_me_stdout_no_tty_no_forward(tmp_path):
 
 
 def _handle_setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     parent = Process(name="parent", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE)
     repo.upsert_process(parent)
     child = Process(name="child", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, parent_process=parent.id)
@@ -145,7 +146,7 @@ def _handle_setup(tmp_path):
 def test_handle_stdin_writes(tmp_path):
     repo, handle = _handle_setup(tmp_path)
     handle.stdin("hello child")
-    ch = repo.get_channel_by_name("io:stdin:child")
+    ch = repo.get_channel_by_name("process:child:stdin")
     assert ch is not None
     assert repo.list_channel_messages(ch.id)[0].payload["text"] == "hello child"
 
@@ -167,7 +168,7 @@ def test_handle_stdout_empty(tmp_path):
 
 
 def _pio_setup(tmp_path, *, tty=False):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     proc = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, tty=tty)
     repo.upsert_process(proc)
     for stream in ("stdout", "stderr"):

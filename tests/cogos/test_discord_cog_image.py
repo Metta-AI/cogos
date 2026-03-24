@@ -115,11 +115,11 @@ class TestDiscordCogImage:
 class TestDiscordCogApply:
     def test_apply_does_not_create_cog_processes(self, tmp_path):
         """Cog processes are now spawned by init.py, not apply_image."""
-        from cogos.db.local_repository import LocalRepository
+        from cogos.db.sqlite_repository import SqliteRepository
         from cogos.image.apply import apply_image
 
         spec = load_image(Path("images/cogos"))
-        repo = LocalRepository(str(tmp_path))
+        repo = SqliteRepository(str(tmp_path))
         apply_image(spec, repo)
 
         procs = repo.list_processes(limit=100)
@@ -131,12 +131,12 @@ class TestDiscordCogApply:
         """apply_image writes _boot/cog_manifests.json for init.py to read."""
         import json
 
-        from cogos.db.local_repository import LocalRepository
+        from cogos.db.sqlite_repository import SqliteRepository
         from cogos.files.store import FileStore
         from cogos.image.apply import apply_image
 
         spec = load_image(Path("images/cogos"))
-        repo = LocalRepository(str(tmp_path))
+        repo = SqliteRepository(str(tmp_path))
         apply_image(spec, repo)
 
         store = FileStore(repo)

@@ -1,5 +1,5 @@
 from cogos.capabilities.procs import ProcessError
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.image.apply import apply_image
 from cogos.image.spec import ImageSpec
 
@@ -44,7 +44,7 @@ def _make_spec() -> ImageSpec:
 
 
 def test_apply_creates_capabilities(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -55,7 +55,7 @@ def test_apply_creates_capabilities(tmp_path):
 
 
 def test_apply_creates_files(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -67,7 +67,7 @@ def test_apply_creates_files(tmp_path):
 
 
 def test_apply_derives_file_includes_from_inline_refs(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = ImageSpec(
         files={
             "prompts/root.md": "Root prompt\n@{docs/shared.md}",
@@ -83,7 +83,7 @@ def test_apply_derives_file_includes_from_inline_refs(tmp_path):
 
 
 def test_apply_creates_processes_with_bindings(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -94,12 +94,11 @@ def test_apply_creates_processes_with_bindings(tmp_path):
 
     handlers = repo.list_handlers(process_id=procs[0].id)
     assert handlers is not None
-    # upsert_process auto-creates a stdin handler for each process
-    assert len(handlers) == 1
+    assert len(handlers) == 0
 
 
 def test_apply_capability_grants_have_names(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -113,7 +112,7 @@ def test_apply_capability_grants_have_names(tmp_path):
 
 
 def test_apply_creates_resources(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -126,7 +125,7 @@ def test_apply_creates_resources(tmp_path):
 
 
 def test_apply_creates_cron_rules(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -136,7 +135,7 @@ def test_apply_creates_cron_rules(tmp_path):
 
 
 def test_apply_upsert_is_idempotent(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
     apply_image(spec, repo)
@@ -147,8 +146,7 @@ def test_apply_upsert_is_idempotent(tmp_path):
     assert len(repo.list_cron_rules()) == 0
     handlers = repo.list_handlers(process_id=repo.list_processes()[0].id)
     assert handlers is not None
-    # upsert_process auto-creates a stdin handler for each process
-    assert len(handlers) == 1
+    assert len(handlers) == 0
 
 
 def test_spawn_with_named_scoped_capabilities(tmp_path):
@@ -157,7 +155,7 @@ def test_spawn_with_named_scoped_capabilities(tmp_path):
 
     from cogos.capabilities.procs import ProcsCapability
 
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -195,7 +193,7 @@ def test_spawn_with_scoped_config(tmp_path):
 
     from cogos.capabilities.procs import ProcsCapability
 
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -226,7 +224,7 @@ def test_spawn_with_scoped_config(tmp_path):
 
 def test_apply_does_not_disable_stale_processes(tmp_path):
     """Stale process cleanup is now owned by init.py, not apply_image."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -252,7 +250,7 @@ def test_apply_does_not_disable_stale_processes(tmp_path):
 
 def test_apply_preserves_spawned_children(tmp_path):
     """Spawned child processes should not be touched by apply_image."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 
@@ -283,7 +281,7 @@ def test_channel_message_idempotency(tmp_path):
     """Duplicate channel messages with the same idempotency key should be ignored."""
     from cogos.db.models import Channel, ChannelMessage, ChannelType
 
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     ch = Channel(name="test-channel", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("test-channel")
@@ -307,7 +305,7 @@ def test_channel_message_without_idempotency_key(tmp_path):
     """Messages without idempotency key should not be deduplicated."""
     from cogos.db.models import Channel, ChannelMessage, ChannelType
 
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     ch = Channel(name="test-channel", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     ch = repo.get_channel_by_name("test-channel")
@@ -330,7 +328,7 @@ def test_spawn_multiple_grants_same_capability(tmp_path):
 
     from cogos.capabilities.procs import ProcsCapability
 
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = _make_spec()
     apply_image(spec, repo)
 

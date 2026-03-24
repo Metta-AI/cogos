@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cogos.db.models import Capability, Process, ProcessCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.context_engine import ContextEngine
 from cogos.files.references import extract_file_references
 from cogos.files.store import FileStore
@@ -31,7 +31,7 @@ def test_extract_file_references_filters_self_reference() -> None:
 
 
 def test_new_version_updates_includes(tmp_path: Path) -> None:
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = SqliteRepository(data_dir=str(tmp_path))
     store = FileStore(repo)
     created = store.create(
         "prompts/root",
@@ -50,7 +50,7 @@ def test_new_version_updates_includes(tmp_path: Path) -> None:
 
 
 def test_unchanged_write_resyncs_derived_includes(tmp_path: Path) -> None:
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = SqliteRepository(data_dir=str(tmp_path))
     store = FileStore(repo)
     created = store.create("prompts/root", "hello @{shared/base}")
 
@@ -65,7 +65,7 @@ def test_unchanged_write_resyncs_derived_includes(tmp_path: Path) -> None:
 
 
 def test_process_prompt_references_include_readable_files(tmp_path: Path) -> None:
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = SqliteRepository(data_dir=str(tmp_path))
     store = FileStore(repo)
     store.create("secrets/reference", "classified")
     store.create("private/blocked", "blocked")
@@ -94,7 +94,7 @@ def test_process_prompt_references_include_readable_files(tmp_path: Path) -> Non
 
 
 def test_process_prompt_references_ignore_non_readable_grants(tmp_path: Path) -> None:
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = SqliteRepository(data_dir=str(tmp_path))
     store = FileStore(repo)
     store.create("secrets/reference", "classified")
 

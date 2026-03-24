@@ -24,7 +24,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from cogos.capabilities.loader import build_capability_proxies
-from cogos.db.repository import Repository
+from cogos.db.protocol import CogosRepositoryInterface
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def create_server(process_id: UUID, repo: Repository) -> Server:
+def create_server(process_id: UUID, repo: CogosRepositoryInterface) -> Server:
     """Create an MCP server with the run_code tool for *process_id*."""
     from cogos.capabilities.base import Capability
     from cogos.capabilities.directory import CapabilitiesDirectory

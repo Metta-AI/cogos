@@ -1,10 +1,10 @@
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Process, ProcessCapability
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore
 
 
-def _grant_read_all(repo: LocalRepository, process: Process) -> None:
+def _grant_read_all(repo: SqliteRepository, process: Process) -> None:
     repo.upsert_process(process)
     dir_cap = Capability(name="dir")
     repo.upsert_capability(dir_cap)
@@ -19,7 +19,7 @@ def _grant_read_all(repo: LocalRepository, process: Process) -> None:
 
 
 def test_generate_full_prompt_expands_inline_refs_recursively(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     store = FileStore(repo)
 
     store.upsert("docs/shared.md", "Shared context", source="test")
@@ -44,7 +44,7 @@ def test_generate_full_prompt_expands_inline_refs_recursively(tmp_path):
 
 
 def test_resolve_prompt_tree_marks_direct_refs_from_process_content(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     store = FileStore(repo)
 
     store.upsert("docs/shared.md", "Shared context", source="test")

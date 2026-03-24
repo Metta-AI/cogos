@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -21,8 +21,8 @@ from cogos.runtime.schedule import apply_scheduled_messages
 from cogtainer.lambdas.dispatcher.handler import _apply_system_ticks
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
 def _daemon(name: str, *, status: ProcessStatus = ProcessStatus.WAITING) -> Process:
@@ -124,7 +124,9 @@ def test_match_and_dispatch(tmp_path):
     _tmp_get_process = repo.get_process(proc.id)
     assert _tmp_get_process is not None
     assert _tmp_get_process.status == ProcessStatus.WAITING
-    delivery = next(iter(repo._deliveries.values()))
+    all_deliveries = repo.list_deliveries()
+    assert len(all_deliveries) >= 1
+    delivery = all_deliveries[0]
     assert delivery.status == DeliveryStatus.QUEUED
 
 
@@ -160,7 +162,9 @@ def test_dispatch_rolls_back_failed_invoke(tmp_path):
     assert runs is not None
     assert len(runs) == 1
     assert runs[0].status == RunStatus.FAILED
-    delivery = next(iter(repo._deliveries.values()))
+    all_deliveries = repo.list_deliveries()
+    assert len(all_deliveries) >= 1
+    delivery = all_deliveries[0]
     assert delivery.status == DeliveryStatus.PENDING
     assert delivery.run is None
 

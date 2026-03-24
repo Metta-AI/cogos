@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Process,
@@ -31,7 +31,7 @@ from cogos.image.spec import load_image
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_boot_image_init_uses_capability_profiles(tmp_path):
     image_dir = repo_root / "images" / "cogos"
     assert image_dir.is_dir()
 
-    repo = LocalRepository(str(tmp_path / "db"))
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(image_dir)
     apply_image(spec, repo)
 
@@ -120,7 +120,7 @@ def test_handler_prompt_has_identity_filtering_instructions(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     image_dir = repo_root / "images" / "cogos"
 
-    repo = LocalRepository(str(tmp_path / "db"))
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(image_dir)
     apply_image(spec, repo)
 
@@ -143,7 +143,7 @@ def test_handler_prompt_expansion_includes_full_identity(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     image_dir = repo_root / "images" / "cogos"
 
-    repo = LocalRepository(str(tmp_path / "db"))
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(image_dir)
     apply_image(spec, repo)
 

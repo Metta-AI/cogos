@@ -7,7 +7,7 @@ from uuid import uuid4
 import discord
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType
 from cogos.io.discord.bridge import DiscordBridge
 

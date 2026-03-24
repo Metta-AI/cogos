@@ -1,6 +1,6 @@
 """E2E test: supervisor proposal flow — propose, react, execute/reject.
 
-Tests the full approval flow using LocalRepository with custom execute_fn.
+Tests the full approval flow using SqliteRepository with custom execute_fn.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.procs import ProcsCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -27,7 +27,7 @@ from cogos.runtime.local import run_and_complete, run_local_tick
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 def _setup_supervisor(repo):

@@ -1,6 +1,6 @@
 """Tests for shell llm command — uses a mock executor."""
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability
 from cogos.files.store import FileStore
 from cogos.shell.commands import CommandRegistry, ShellState
@@ -8,7 +8,7 @@ from cogos.shell.commands.llm import register
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     repo.upsert_capability(Capability(name="files", description="File store", enabled=True))
     fs = FileStore(repo)
     fs.create("prompts/hello.md", "Say hello world")

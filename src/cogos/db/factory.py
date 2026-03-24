@@ -8,6 +8,7 @@ from typing import Any
 
 def create_repository(
     *,
+    data_dir: str | None = None,
     resource_arn: str | None = None,
     secret_arn: str | None = None,
     database: str | None = None,
@@ -17,13 +18,15 @@ def create_repository(
 ) -> Any:
     """Create the active repository implementation for the current environment."""
     if os.environ.get("USE_LOCAL_DB") == "1":
-        from cogos.db.local_repository import LocalRepository
+        from cogos.db.sqlite_repository import SqliteRepository
 
-        return LocalRepository()
+        if data_dir is None:
+            raise ValueError("data_dir is required for local SQLite repository")
+        return SqliteRepository(data_dir, nudge_callback=nudge_callback)
 
-    from cogos.db.repository import Repository
+    from cogos.db.repository import RdsDataApiRepository
 
-    return Repository.create(
+    return RdsDataApiRepository.create(
         resource_arn=resource_arn,
         secret_arn=secret_arn,
         database=database,

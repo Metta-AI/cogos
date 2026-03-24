@@ -11,7 +11,7 @@ from uuid import UUID
 
 from cogos.capabilities.procs import ProcsCapability
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -24,8 +24,8 @@ from cogos.db.models import (
 from cogos.runtime.local import run_local_tick
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path / "db"))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path / "db"))
 
 
 def _dm_payload(author_id: str = "42", content: str = "hello") -> dict:
@@ -42,7 +42,7 @@ def _dm_payload(author_id: str = "42", content: str = "hello") -> dict:
     }
 
 
-def _simulate_bridge_dm(repo: LocalRepository, payload: dict) -> None:
+def _simulate_bridge_dm(repo: SqliteRepository, payload: dict) -> None:
     """Simulate what the bridge does: write to catch-all + fine-grained channel."""
     author_id = payload["author_id"]
 

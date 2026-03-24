@@ -69,7 +69,7 @@ def test_update_rds_runs_brain_and_cogos_migrations(monkeypatch):
     monkeypatch.setenv("DB_NAME", "cogent")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setattr(
-        "cogos.db.repository.Repository.create",
+        "cogos.db.repository.RdsDataApiRepository.create",
         lambda **kwargs: calls.__setitem__("repo_create", kwargs) or fake_repo,
     )
 

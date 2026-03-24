@@ -1,12 +1,12 @@
 """Tests for alerts -> channel pipeline."""
 
 from cogos.capabilities.alerts import AlertError, AlertsCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     proc = Process(name="test-proc", status=ProcessStatus.RUNNABLE, required_tags=["local"])
     proc_id = repo.upsert_process(proc)
 
@@ -59,7 +59,7 @@ def test_error_publishes_to_channel(tmp_path):
 
 def test_alert_without_channel_still_works(tmp_path):
     """If system:alerts channel doesn't exist, alert still goes to DB."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     proc = Process(name="test-proc", status=ProcessStatus.RUNNABLE, required_tags=["local"])
     proc_id = repo.upsert_process(proc)
 

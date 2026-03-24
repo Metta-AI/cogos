@@ -742,18 +742,18 @@ class SqliteRepository:
             created_at=self._parse_dt(row.get("created_at")),
         )
 
-    def _row_to_alert(self, row: dict) -> dict:
-        return {
-            "id": UUID(row["id"]),
-            "severity": row["severity"],
-            "alert_type": row["alert_type"],
-            "source": row["source"],
-            "message": row["message"],
-            "metadata": self._json_loads(row["metadata"]) or {},
-            "acknowledged_at": self._parse_dt(row.get("acknowledged_at")),
-            "resolved_at": self._parse_dt(row.get("resolved_at")),
-            "created_at": self._parse_dt(row.get("created_at")),
-        }
+    def _row_to_alert(self, row: dict) -> Alert:
+        return Alert(
+            id=UUID(row["id"]),
+            severity=row["severity"],
+            alert_type=row["alert_type"],
+            source=row["source"],
+            message=row["message"],
+            metadata=self._json_loads(row["metadata"]) or {},
+            acknowledged_at=self._parse_dt(row.get("acknowledged_at")),
+            resolved_at=self._parse_dt(row.get("resolved_at")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
 
     # ── Epoch ─────────────────────────────────────────────────
 
@@ -857,7 +857,7 @@ class SqliteRepository:
         now = self._now()
         epoch = self.reboot_epoch
         self._execute(
-            """INSERT OR REPLACE INTO cogos_process
+            """INSERT INTO cogos_process
                (id, name, mode, content, priority, resources, required_tags,
                 status, runnable_since, parent_process, preemptible, model,
                 model_constraints, return_schema, idle_timeout_ms, max_duration_ms,
@@ -870,7 +870,20 @@ class SqliteRepository:
                 :model_constraints, :return_schema, :idle_timeout_ms, :max_duration_ms,
                 :max_retries, :retry_count, :retry_backoff_ms, :clear_context,
                 :metadata, :output_events, :epoch, :tty, :executor, :schema_id,
-                :created_at, :updated_at)""",
+                :created_at, :updated_at)
+               ON CONFLICT(name, epoch) DO UPDATE SET
+                mode=excluded.mode, content=excluded.content, priority=excluded.priority,
+                resources=excluded.resources, required_tags=excluded.required_tags,
+                status=excluded.status, runnable_since=excluded.runnable_since,
+                parent_process=excluded.parent_process, preemptible=excluded.preemptible,
+                model=excluded.model, model_constraints=excluded.model_constraints,
+                return_schema=excluded.return_schema, idle_timeout_ms=excluded.idle_timeout_ms,
+                max_duration_ms=excluded.max_duration_ms, max_retries=excluded.max_retries,
+                retry_count=excluded.retry_count, retry_backoff_ms=excluded.retry_backoff_ms,
+                clear_context=excluded.clear_context, metadata=excluded.metadata,
+                output_events=excluded.output_events, tty=excluded.tty,
+                executor=excluded.executor, schema_id=excluded.schema_id,
+                updated_at=excluded.updated_at""",
             {
                 "id": str(p.id),
                 "name": p.name,
@@ -902,7 +915,8 @@ class SqliteRepository:
                 "updated_at": now,
             },
         )
-        return p.id
+        existing = self.get_process_by_name(p.name)
+        return existing.id if existing else p.id
 
     def get_process(self, process_id: UUID) -> Process | None:
         row = self._query_one(
@@ -920,12 +934,14 @@ class SqliteRepository:
     def list_processes(
         self, *, status: ProcessStatus | None = None, limit: int = 200, epoch: int | None = None,
     ) -> list[Process]:
+        if epoch is None:
+            epoch = self.reboot_epoch
         sql = "SELECT * FROM cogos_process WHERE 1=1"
         params: dict[str, Any] = {}
         if status is not None:
             sql += " AND status = :status"
             params["status"] = status.value
-        if epoch is not None and epoch != ALL_EPOCHS:
+        if epoch != ALL_EPOCHS:
             sql += " AND epoch = :epoch"
             params["epoch"] = epoch
         sql += " ORDER BY name LIMIT :limit"
@@ -1410,14 +1426,7 @@ class SqliteRepository:
         sql += " ORDER BY f.key LIMIT :limit"
         params["limit"] = limit
         rows = self._query(sql, params)
-        results: list[tuple[str, str]] = []
-        compiled = re.compile(pattern)
-        for row in rows:
-            for line in (row["content"] or "").splitlines():
-                if compiled.search(line):
-                    results.append((row["key"], line))
-                    break
-        return results
+        return [(row["key"], row["content"] or "") for row in rows]
 
     def glob_files(
         self, pattern: str, *, prefix: str | None = None, limit: int = 200,

@@ -135,7 +135,7 @@ from uuid import UUID
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from cogos.db.models import Process, Run
-from cogos.db.repository import Repository
+from cogos.db.protocol import CogosRepositoryInterface
 from cogos.executor.capabilities import build_process_capabilities
 
 
@@ -144,7 +144,7 @@ def execute_agent_sdk_process(
     event_data: dict,
     run: Run,
     config: Any,
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     *,
     trace_id: UUID | None = None,
 ) -> Run:
@@ -156,7 +156,7 @@ async def _execute_agent_sdk_process(
     event_data: dict,
     run: Run,
     config: Any,
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     *,
     trace_id: UUID | None = None,
 ) -> Run:
@@ -209,7 +209,7 @@ async def _execute_agent_sdk_process(
     return run
 
 
-def _build_user_message(process: Process, event_data: dict, repo: Repository) -> str:
+def _build_user_message(process: Process, event_data: dict, repo: CogosRepositoryInterface) -> str:
     user_text = ""
     web_request = event_data.get("web_request")
     if web_request:

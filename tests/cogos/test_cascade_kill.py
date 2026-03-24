@@ -1,9 +1,9 @@
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus
 
 
 def test_cascade_kill_disables_children(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     parent = Process(name="parent", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
     parent_id = repo.upsert_process(parent)
     child = Process(name="child", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, parent_process=parent_id)
@@ -20,7 +20,7 @@ def test_cascade_kill_disables_children(tmp_path):
 
 
 def test_cascade_kill_recursive(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     root = Process(name="root", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
     root_id = repo.upsert_process(root)
     mid = Process(name="mid", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE, parent_process=root_id)
@@ -42,7 +42,7 @@ def test_cascade_kill_recursive(tmp_path):
 
 
 def test_cascade_kill_does_not_affect_unrelated(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     parent = Process(name="parent", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
     parent_id = repo.upsert_process(parent)
     child = Process(name="child", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, parent_process=parent_id)
@@ -58,7 +58,7 @@ def test_cascade_kill_does_not_affect_unrelated(tmp_path):
 
 
 def test_already_disabled_child_not_touched(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     parent = Process(name="parent", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)
     parent_id = repo.upsert_process(parent)
     child = Process(name="child", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.DISABLED, parent_process=parent_id)
@@ -79,7 +79,7 @@ from cogos.image.spec import ImageSpec
 
 
 def _setup_with_procs(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = ImageSpec(
         capabilities=[
             {
@@ -156,7 +156,7 @@ def test_init_spawn_detached_does_not_crash(tmp_path):
     The handler registration for parent wakeup must be skipped (not attempted
     with process=None which violates NOT NULL).
     """
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     spec = ImageSpec(capabilities=[
         {"name": "procs", "handler": "cogos.capabilities.procs:ProcsCapability",
          "description": "", "instructions": "", "schema": None, "iam_role_arn": None, "metadata": None},

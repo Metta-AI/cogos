@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 
 from cogos.capabilities.alert_monitor import AlertMonitorCapability
 from cogos.capabilities.alerts import AlertsCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     emitter = Process(name="noisy-proc", status=ProcessStatus.RUNNABLE, required_tags=["local"])
     emitter_id = repo.upsert_process(emitter)
     monitor_proc = Process(name="alert-monitor", status=ProcessStatus.RUNNABLE, required_tags=["local"])
@@ -23,11 +23,8 @@ def _setup(tmp_path):
 
 
 def _stamp_alerts(repo):
-    """Ensure all alerts have created_at set (LocalRepository doesn't auto-set it)."""
-    now = datetime.now(timezone.utc)
-    for alert in repo._alerts.values():
-        if alert.created_at is None:
-            alert.created_at = now
+    """No-op: SqliteRepository.create_alert sets created_at automatically."""
+    pass
 
 
 def test_full_pipeline_spam(tmp_path):

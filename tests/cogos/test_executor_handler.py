@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Channel,
@@ -31,11 +31,11 @@ def _set_cogent_env(monkeypatch):
     monkeypatch.setenv("COGENT", "test")
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
-def _make_run(repo: LocalRepository, process: Process) -> Run:
+def _make_run(repo: SqliteRepository, process: Process) -> Run:
     run = Run(process=process.id, status=RunStatus.RUNNING)
     repo.create_run(run)
     return run
@@ -160,7 +160,10 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     _tmp_get_run = repo.get_run(run.id)
     assert _tmp_get_run is not None
     assert _tmp_get_run.status == RunStatus.COMPLETED
-    assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
+    deliveries = repo.list_deliveries(message_id=current_msg.id)
+    delivered = [d for d in deliveries if d.id == current_delivery_id]
+    assert len(delivered) == 1
+    assert delivered[0].status == DeliveryStatus.DELIVERED
 
 
 def test_daemon_failure_returns_to_waiting_without_pending_deliveries(monkeypatch, tmp_path):
@@ -244,8 +247,14 @@ def test_daemon_failure_returns_to_runnable_when_more_deliveries_wait(monkeypatc
     _tmp_get_run = repo.get_run(run.id)
     assert _tmp_get_run is not None
     assert _tmp_get_run.status == RunStatus.FAILED
-    assert repo._deliveries[current_delivery_id].status == DeliveryStatus.DELIVERED
-    assert repo._deliveries[queued_delivery_id].status == DeliveryStatus.PENDING
+    cur_deliveries = repo.list_deliveries(message_id=current_msg.id)
+    cur_delivered = [d for d in cur_deliveries if d.id == current_delivery_id]
+    assert len(cur_delivered) == 1
+    assert cur_delivered[0].status == DeliveryStatus.DELIVERED
+    queued_deliveries = repo.list_deliveries(message_id=queued_msg.id)
+    queued_found = [d for d in queued_deliveries if d.id == queued_delivery_id]
+    assert len(queued_found) == 1
+    assert queued_found[0].status == DeliveryStatus.PENDING
 
 
 def test_daemon_suspended_after_consecutive_failures(monkeypatch, tmp_path):

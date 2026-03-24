@@ -3,13 +3,13 @@
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus
 
 
 def test_reap_is_noop(tmp_path):
     """reap_idle_processes is a no-op — daemons stay alive until killed."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     scheduler = SchedulerCapability(repo, UUID(int=0))
 
     proc = Process(

@@ -1,6 +1,6 @@
 """End-to-end tests for fs-tools: grep, glob, tree, sliced read, edit.
 
-Uses LocalRepository with real file operations — no mocking.
+Uses SqliteRepository with real file operations — no mocking.
 """
 
 from __future__ import annotations
@@ -11,13 +11,13 @@ import pytest
 
 from cogos.capabilities.file_cap import DirCapability, FileCapability
 from cogos.capabilities.files import FileContent, FileError
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 @pytest.fixture

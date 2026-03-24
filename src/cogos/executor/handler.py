@@ -17,7 +17,7 @@ from uuid import UUID
 from cogos.capabilities.base import HelpCapability, PendingResponseCapability
 from cogos.db.models import Process, ProcessStatus, Run, RunStatus
 from cogos.db.models.channel_message import ChannelMessage
-from cogos.db.repository import Repository
+from cogos.db.protocol import CogosRepositoryInterface
 from cogos.executor.session_store import SessionStore, build_prompt_fingerprint
 from cogos.sandbox.executor import SandboxExecutor, VariableTable, WaitSuspend
 
@@ -95,7 +95,7 @@ def _get_runtime():
     return _RUNTIME
 
 
-def _get_repo(config: ExecutorConfig | None = None) -> Repository:
+def _get_repo(config: ExecutorConfig | None = None) -> CogosRepositoryInterface:
     """Get repo from CogtainerRuntime."""
     cogent_name = os.environ["COGENT"]
     return _get_runtime().get_repository(cogent_name)
@@ -543,7 +543,7 @@ def _execute_python_process(
     event_data: dict,
     run: Run,
     config: ExecutorConfig,
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     *,
     trace_id: UUID | None = None,
 ) -> Run:
@@ -643,7 +643,7 @@ def execute_process(
     event_data: dict,
     run: Run,
     config: ExecutorConfig,
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     *,
     trace_id: UUID | None = None,
 ) -> Run:
@@ -1112,7 +1112,7 @@ def _is_supported_tool_name(name: object) -> bool:
 _DAEMON_CONSECUTIVE_FAILURE_LIMIT = 3
 
 
-def _daemon_should_suspend(repo: Repository, process: Process) -> bool:
+def _daemon_should_suspend(repo: CogosRepositoryInterface, process: Process) -> bool:
     """Check if a daemon has hit the consecutive failure limit.
 
     Looks at the most recent runs for this process and returns True if
@@ -1142,7 +1142,7 @@ def _log_run_completion_latency(run: Run, process_name: str, duration_ms: int) -
 
 
 def _notify_parent_on_exit(
-    repo: Repository,
+    repo: CogosRepositoryInterface,
     process: Process,
     run: Run,
     *,
@@ -1182,7 +1182,7 @@ def _notify_parent_on_exit(
         )
 
 
-def _enrich_wait_results(repo: Repository, process: Process, event: dict) -> None:
+def _enrich_wait_results(repo: CogosRepositoryInterface, process: Process, event: dict) -> None:
     children_procs = [p for p in repo.list_processes() if p.parent_process == process.id]
     if not children_procs:
         return
@@ -1201,7 +1201,7 @@ def _enrich_wait_results(repo: Repository, process: Process, event: dict) -> Non
         event["wait_results"] = {"children": wait_results}
 
 
-def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -> None:
+def _emit_lifecycle_message(repo: CogosRepositoryInterface, process: Process, payload: dict) -> None:
     """Write a lifecycle event to the implicit process channel."""
     try:
         implicit_ch = repo.get_channel_by_name(f"process:{process.name}")
@@ -1215,7 +1215,7 @@ def _emit_lifecycle_message(repo: Repository, process: Process, payload: dict) -
         logger.warning("Failed to emit lifecycle message for process %s", process.name, exc_info=True)
 
 
-def _enrich_discord_context(repo: Repository, process: Process, event_data: dict) -> None:
+def _enrich_discord_context(repo: CogosRepositoryInterface, process: Process, event_data: dict) -> None:
     """Pre-fetch Discord conversation history from DB channels.
 
     For Discord handler processes, this replaces the slow discord.history()
@@ -1235,7 +1235,7 @@ def _enrich_discord_context(repo: Repository, process: Process, event_data: dict
         logger.debug("Discord context enrichment failed", exc_info=True)
 
 
-def _read_cog_from_messages(repo: Repository, process: Process) -> list:
+def _read_cog_from_messages(repo: CogosRepositoryInterface, process: Process) -> list:
     """Read pending messages from the cog:from channel for this process."""
     ch = repo.get_channel_by_name(f"cog:from:{process.name}")
     if ch is None:
@@ -1243,7 +1243,7 @@ def _read_cog_from_messages(repo: Repository, process: Process) -> list:
     return repo.list_channel_messages(ch.id, limit=50)
 
 
-def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:
+def _handle_search(tool_input: dict, process: Process, repo: CogosRepositoryInterface) -> str:
     """Search capabilities available to this process."""
     query = tool_input.get("query", "").lower().strip()
     if not query:
@@ -1321,7 +1321,7 @@ def _build_capability_help_text(caps: dict[str, object]) -> str:
 
 
 def _setup_capability_proxies(
-    vt: VariableTable, process: Process, repo: Repository,
+    vt: VariableTable, process: Process, repo: CogosRepositoryInterface,
     *, run_id: UUID | None = None, trace_id: UUID | None = None,
     caps: dict[str, object] | None = None,
 ) -> str:

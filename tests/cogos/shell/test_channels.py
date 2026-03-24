@@ -1,13 +1,13 @@
 """Tests for shell channel commands."""
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelMessage, ChannelType
 from cogos.shell.commands import CommandRegistry, ShellState
 from cogos.shell.commands.channels import register
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     ch = Channel(name="events", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)
     repo.append_channel_message(

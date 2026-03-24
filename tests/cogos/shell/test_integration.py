@@ -1,13 +1,13 @@
 """Integration test — full registry, realistic workflow."""
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Process, ProcessMode, ProcessStatus
 from cogos.files.store import FileStore
 from cogos.shell.commands import ShellState, build_registry
 
 
 def test_full_workflow(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     fs = FileStore(repo)
     fs.create("prompts/init.md", "You are a helpful assistant.")
     fs.create("config/system.yaml", "debug: true")

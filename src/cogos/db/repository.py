@@ -49,7 +49,7 @@ from cogos.db.models.wait_condition import WaitCondition, WaitConditionStatus, W
 logger = logging.getLogger(__name__)
 
 
-class Repository:
+class RdsDataApiRepository:
     """Synchronous CogOS repository using RDS Data API."""
 
     def __init__(
@@ -106,7 +106,7 @@ class Repository:
         region: str | None = None,
         client: Any | None = None,
         nudge_callback: Any | None = None,
-    ) -> Repository:
+    ) -> RdsDataApiRepository:
         resource_arn = resource_arn or os.environ.get("DB_RESOURCE_ARN", "") or os.environ.get("DB_CLUSTER_ARN", "")
         secret_arn = secret_arn or os.environ.get("DB_SECRET_ARN", "")
         database = database or os.environ.get("DB_NAME", "")

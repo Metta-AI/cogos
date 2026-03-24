@@ -1,6 +1,6 @@
 """E2E test: escalation → supervisor → worker coglet → completion.
 
-Tests the full flow using LocalRepository with real capabilities.
+Tests the full flow using SqliteRepository with real capabilities.
 The LLM is replaced by custom execute_fn that simulates what the LLM would do.
 """
 
@@ -15,7 +15,7 @@ from cogos.capabilities.coglet_runtime import CogletRuntimeCapability
 from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.cog.cog import CogConfig
 from cogos.cog.runtime import CogletManifest
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -34,7 +34,7 @@ from cogos.runtime.local import run_local_tick
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 @pytest.fixture

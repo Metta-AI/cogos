@@ -56,11 +56,11 @@ def test_full_local_flow(tmp_path: Path, monkeypatch):
     cogents = runtime.list_cogents()
     assert "agent-alpha" in cogents
 
-    # 6. Get repository, verify it's a LocalRepository
+    # 6. Get repository, verify it's a SqliteRepository
     repo = runtime.get_repository("agent-alpha")
-    from cogos.db.local_repository import LocalRepository
+    from cogos.db.sqlite_repository import SqliteRepository
 
-    assert isinstance(repo, LocalRepository)
+    assert isinstance(repo, SqliteRepository)
 
     # 7. Put + get file roundtrip
     content = b"hello cogtainer world"

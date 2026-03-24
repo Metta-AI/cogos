@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -15,8 +15,8 @@ from cogos.db.models import (
 )
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
 def _daemon(name: str, *, status: ProcessStatus = ProcessStatus.WAITING) -> Process:

@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from cogos.db.repository import Repository
+from cogos.db.repository import RdsDataApiRepository
 
 
 def test_list_channel_messages_allows_null_sender_process():
-    repo = Repository.__new__(Repository)
+    repo = RdsDataApiRepository.__new__(RdsDataApiRepository)
     channel_id = uuid4()
     msg_id = uuid4()
     created_at = datetime.now(timezone.utc)
@@ -24,7 +24,7 @@ def test_list_channel_messages_allows_null_sender_process():
     repo._json_field = lambda row, key, default=None: row.get(key, default)
     repo._ts = lambda row, key: created_at
 
-    messages = Repository.list_channel_messages(repo, channel_id)
+    messages = RdsDataApiRepository.list_channel_messages(repo, channel_id)
 
     assert len(messages) == 1
     assert messages[0].id == msg_id

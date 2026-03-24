@@ -24,10 +24,10 @@ def local_runtime(tmp_path: Path) -> LocalRuntime:
 
 
 def test_local_runtime_get_repository(local_runtime: LocalRuntime, tmp_path: Path):
-    from cogos.db.local_repository import LocalRepository
+    from cogos.db.sqlite_repository import SqliteRepository
 
     repo = local_runtime.get_repository("alpha")
-    assert isinstance(repo, LocalRepository)
+    assert isinstance(repo, SqliteRepository)
     # Data dir should be under the cogent subdirectory
     assert (tmp_path / "alpha").is_dir()
 

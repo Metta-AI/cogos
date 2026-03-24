@@ -1,4 +1,4 @@
-"""Tests for LocalRepository executor and executor token CRUD."""
+"""Tests for SqliteRepository executor and executor token CRUD."""
 
 import hashlib
 from datetime import UTC, datetime, timedelta
@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Executor,
     ExecutorStatus,
@@ -16,7 +16,7 @@ from cogos.db.models import (
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 class TestExecutorCRUD:
@@ -148,9 +148,13 @@ class TestExecutorHeartbeat:
 class TestExecutorReaping:
     def test_reap_marks_dead(self, repo):
         repo.register_executor(Executor(executor_id="exec-old"))
-        e = repo.get_executor("exec-old")
-        # Manually set last_heartbeat far in the past
-        e.last_heartbeat_at = datetime.now(UTC) - timedelta(seconds=600)
+        # Set last_heartbeat far in the past via direct DB update
+        old_time = (datetime.now(UTC) - timedelta(seconds=600)).isoformat()
+        repo._conn.execute(
+            "UPDATE cogos_executor SET last_heartbeat_at = ? WHERE executor_id = ?",
+            (old_time, "exec-old"),
+        )
+        repo._conn.commit()
         dead_count = repo.reap_stale_executors(heartbeat_interval_s=30)
         assert dead_count == 1
         got = repo.get_executor("exec-old")
@@ -158,9 +162,13 @@ class TestExecutorReaping:
 
     def test_reap_marks_stale(self, repo):
         repo.register_executor(Executor(executor_id="exec-slow"))
-        e = repo.get_executor("exec-slow")
         # Stale threshold = 3 * 30 = 90s
-        e.last_heartbeat_at = datetime.now(UTC) - timedelta(seconds=100)
+        stale_time = (datetime.now(UTC) - timedelta(seconds=100)).isoformat()
+        repo._conn.execute(
+            "UPDATE cogos_executor SET last_heartbeat_at = ? WHERE executor_id = ?",
+            (stale_time, "exec-slow"),
+        )
+        repo._conn.commit()
         repo.reap_stale_executors(heartbeat_interval_s=30)
         got = repo.get_executor("exec-slow")
         assert got.status == ExecutorStatus.STALE

@@ -1,4 +1,4 @@
-"""Tests for LocalIngressQueue and its integration with LocalRepository + local_dispatcher."""
+"""Tests for LocalIngressQueue and its integration with SqliteRepository + local_dispatcher."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -66,14 +66,14 @@ def test_full_queue_drops_message():
 
 
 @pytest.fixture
-def repo(tmp_path) -> LocalRepository:
-    return LocalRepository(data_dir=str(tmp_path))
+def repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(data_dir=str(tmp_path))
 
 
 def test_channel_message_nudges_ingress(tmp_path):
     """When a channel message wakes a WAITING process, the local ingress queue gets nudged."""
     q = LocalIngressQueue()
-    repo = LocalRepository(
+    repo = SqliteRepository(
         data_dir=str(tmp_path),
         ingress_queue_url="local://ingress",
         nudge_callback=q.send,
@@ -108,7 +108,7 @@ def test_channel_message_nudges_ingress(tmp_path):
 def test_no_nudge_when_already_runnable(tmp_path):
     """A process already RUNNABLE should not be nudged again."""
     q = LocalIngressQueue()
-    repo = LocalRepository(
+    repo = SqliteRepository(
         data_dir=str(tmp_path),
         ingress_queue_url="local://ingress",
         nudge_callback=q.send,

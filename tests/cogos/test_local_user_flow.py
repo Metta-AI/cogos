@@ -7,7 +7,7 @@ fake executor (no Bedrock/AWS needed).
 
 from pathlib import Path
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -32,8 +32,8 @@ def _noop_execute(process, event_data, run, config, repo, **kwargs):
     return run
 
 
-def _boot(tmp_path) -> LocalRepository:
-    repo = LocalRepository(str(tmp_path / "db"))
+def _boot(tmp_path) -> SqliteRepository:
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(IMAGE_DIR)
     apply_image(spec, repo, clean=True)
     return repo

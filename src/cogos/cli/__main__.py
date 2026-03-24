@@ -1675,14 +1675,15 @@ def executor_daemon(ctx, executor_id: str | None, tags: str, poll_s: float, hear
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
-    # Try cogtainer runtime first, fall back to LocalRepository
+    # Try cogtainer runtime first, fall back to SqliteRepository
     runtime = (ctx.obj or {}).get("runtime")
     cogent_name = (ctx.obj or {}).get("cogent_name", "")
     if runtime:
         repo = runtime.get_repository(cogent_name)
     else:
-        from cogos.db.local_repository import LocalRepository
-        repo = LocalRepository()
+        from cogos.db.sqlite_repository import SqliteRepository
+        data_dir = str(Path.home() / ".cogos" / "local")
+        repo = SqliteRepository(data_dir)
 
     config = get_config()
 

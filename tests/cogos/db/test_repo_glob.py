@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cogos.db.repository import Repository
+from cogos.db.repository import RdsDataApiRepository
 
 
 @pytest.fixture
 def repo():
     """Create a Repository with mocked RDS client."""
-    with patch.object(Repository, "__init__", lambda self: None):
-        r = Repository.__new__(Repository)
+    with patch.object(RdsDataApiRepository, "__init__", lambda self: None):
+        r = RdsDataApiRepository.__new__(RdsDataApiRepository)
         r._client = MagicMock()
         r._resource_arn = "arn:test"
         r._secret_arn = "arn:secret"
@@ -38,13 +38,13 @@ class TestGlobFiles:
 
 class TestGlobToRegex:
     def test_star(self):
-        assert Repository._glob_to_regex("src/*.py") == "^src/[^/]*\\.py$"
+        assert RdsDataApiRepository._glob_to_regex("src/*.py") == "^src/[^/]*\\.py$"
 
     def test_double_star(self):
-        assert Repository._glob_to_regex("src/**/*.py") == "^src/.*[^/]*\\.py$"
+        assert RdsDataApiRepository._glob_to_regex("src/**/*.py") == "^src/.*[^/]*\\.py$"
 
     def test_question_mark(self):
-        assert Repository._glob_to_regex("file?.txt") == "^file[^/]\\.txt$"
+        assert RdsDataApiRepository._glob_to_regex("file?.txt") == "^file[^/]\\.txt$"
 
     def test_plain(self):
-        assert Repository._glob_to_regex("exact/path.md") == "^exact/path\\.md$"
+        assert RdsDataApiRepository._glob_to_regex("exact/path.md") == "^exact/path\\.md$"

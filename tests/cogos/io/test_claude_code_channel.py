@@ -1,12 +1,12 @@
 """Tests for Claude Code channel integration — system channels and IO registration."""
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import ChannelMessage, Process, ProcessStatus
 from cogos.lib.channels import SYSTEM_CHANNELS, ensure_system_channels
 
 
-def _repo(tmp_path) -> LocalRepository:
-    return LocalRepository(str(tmp_path))
+def _repo(tmp_path) -> SqliteRepository:
+    return SqliteRepository(str(tmp_path))
 
 
 def test_claude_code_system_channels_created(tmp_path):

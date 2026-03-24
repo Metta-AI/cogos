@@ -1,9 +1,9 @@
-"""Tests for LocalRepository channel and schema CRUD."""
+"""Tests for SqliteRepository channel and schema CRUD."""
 from uuid import uuid4
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -18,7 +18,7 @@ from cogos.db.models import (
 
 @pytest.fixture
 def repo(tmp_path):
-    return LocalRepository(str(tmp_path))
+    return SqliteRepository(str(tmp_path))
 
 
 @pytest.fixture

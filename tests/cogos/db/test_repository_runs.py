@@ -4,14 +4,14 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from cogos.db.models import RunStatus
-from cogos.db.repository import Repository
+from cogos.db.repository import RdsDataApiRepository
 
 
 def test_complete_run_updates_snapshot_when_provided():
-    repo = Repository.__new__(Repository)
+    repo = RdsDataApiRepository.__new__(RdsDataApiRepository)
     repo._execute = MagicMock(return_value={"numberOfRecordsUpdated": 1})
 
-    result = Repository.complete_run(
+    result = RdsDataApiRepository.complete_run(
         repo,
         uuid4(),
         status=RunStatus.COMPLETED,

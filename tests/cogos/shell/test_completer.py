@@ -3,7 +3,7 @@
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Channel, ChannelType, Process, ProcessMode, ProcessStatus
 from cogos.files.store import FileStore
 from cogos.shell.commands import ShellState, build_registry
@@ -11,7 +11,7 @@ from cogos.shell.completer import ShellCompleter
 
 
 def _setup(tmp_path):
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
     fs = FileStore(repo)
     fs.create("prompts/init.md", "x")
     fs.create("prompts/scheduler.md", "x")

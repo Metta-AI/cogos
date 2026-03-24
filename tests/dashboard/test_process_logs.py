@@ -5,14 +5,14 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelMessage, ChannelType, Process, ProcessMode, ProcessStatus
 from dashboard.app import create_app
 
 
 def test_get_process_logs_returns_stdout_stderr(tmp_path):
     """GET /processes/{id}/logs returns stdout and stderr entries."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     process = Process(
         id=uuid4(),
@@ -57,7 +57,7 @@ def test_get_process_logs_returns_stdout_stderr(tmp_path):
 
 def test_get_process_logs_404_for_missing_process(tmp_path):
     """GET /processes/{id}/logs returns 404 when process does not exist."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     app = create_app()
     client = TestClient(app)
@@ -70,7 +70,7 @@ def test_get_process_logs_404_for_missing_process(tmp_path):
 
 def test_get_process_logs_empty_when_no_channels(tmp_path):
     """GET /processes/{id}/logs returns empty entries when no IO channels exist."""
-    repo = LocalRepository(str(tmp_path))
+    repo = SqliteRepository(str(tmp_path))
 
     process = Process(
         id=uuid4(),

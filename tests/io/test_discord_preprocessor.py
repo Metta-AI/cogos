@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelMessage, Process, ProcessMode, ProcessStatus
 from cogos.db.models.channel import ChannelType
 from cogos.io.discord.preprocessor import enrich_discord_payload
@@ -13,7 +13,7 @@ from cogos.io.discord.preprocessor import enrich_discord_payload
 
 @pytest.fixture
 def repo(tmp_path):
-    repo = LocalRepository(data_dir=str(tmp_path))
+    repo = SqliteRepository(data_dir=str(tmp_path))
     return repo
 
 

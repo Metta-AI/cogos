@@ -1,18 +1,18 @@
 from pathlib import Path
 
-from cogos.db.local_repository import LocalRepository
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.image.apply import apply_image
 from cogos.image.snapshot import snapshot_image
 from cogos.image.spec import load_image
 
 
 def test_boot_cogent_v1(tmp_path):
-    """Boot from the real cogent-v1 image using LocalRepository."""
+    """Boot from the real cogent-v1 image using SqliteRepository."""
     repo_root = Path(__file__).resolve().parents[2]
     image_dir = repo_root / "images" / "cogos"
     assert image_dir.is_dir(), f"cogent-v1 image not found at {image_dir}"
 
-    repo = LocalRepository(str(tmp_path / "db"))
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(image_dir)
 
     assert len(spec.capabilities) >= 7
@@ -37,7 +37,7 @@ def test_boot_cogs_e2e(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     image_dir = repo_root / "images" / "cogos"
 
-    repo = LocalRepository(str(tmp_path / "db"))
+    repo = SqliteRepository(str(tmp_path / "db"))
     spec = load_image(image_dir)
     counts = apply_image(spec, repo)
 
@@ -110,7 +110,7 @@ def test_boot_then_snapshot_round_trip(tmp_path):
     image_dir = repo_root / "images" / "cogos"
 
     # Boot original
-    repo1 = LocalRepository(str(tmp_path / "db1"))
+    repo1 = SqliteRepository(str(tmp_path / "db1"))
     spec1 = load_image(image_dir)
     apply_image(spec1, repo1)
 
@@ -119,7 +119,7 @@ def test_boot_then_snapshot_round_trip(tmp_path):
     snapshot_image(repo1, snap_dir, cogent_name="test")
 
     # Boot from snapshot
-    repo2 = LocalRepository(str(tmp_path / "db2"))
+    repo2 = SqliteRepository(str(tmp_path / "db2"))
     spec2 = load_image(snap_dir)
     apply_image(spec2, repo2)
 

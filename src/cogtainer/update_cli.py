@@ -222,9 +222,9 @@ def _read_boot_versions(name: str) -> dict[str, str] | None:
         _ensure_db_env(name)
         import json as _json
 
-        from cogos.db.repository import Repository
+        from cogos.db.repository import RdsDataApiRepository
         from cogos.files.store import FileStore
-        repo = Repository.create()
+        repo = RdsDataApiRepository.create()
         fs = FileStore(repo)
         content = fs.get_content("mnt/boot/versions.json")
         if content:
@@ -309,9 +309,9 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
     # Record content deploy timestamp
     try:
         _ensure_db_env(name)
-        from cogos.db.repository import Repository
+        from cogos.db.repository import RdsDataApiRepository
 
-        repo = Repository.create()
+        repo = RdsDataApiRepository.create()
         repo.set_meta("content:deployed_at")
     except Exception:
         pass
@@ -545,14 +545,14 @@ def update_discord(ctx: click.Context, profile: str | None, skip_health: bool, t
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
     from cogos.db.migrations import apply_cogos_sql_migrations, apply_schema
-    from cogos.db.repository import Repository
+    from cogos.db.repository import RdsDataApiRepository
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
     _ensure_db_env(name, profile)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
     version = apply_schema()
-    repo = Repository.create(
+    repo = RdsDataApiRepository.create(
         resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
         secret_arn=os.environ.get("DB_SECRET_ARN"),
         database=os.environ.get("DB_NAME"),
@@ -800,9 +800,9 @@ def update_stack(ctx: click.Context, profile: str | None):
     # Record stack update timestamp
     try:
         _ensure_db_env(name)
-        from cogos.db.repository import Repository
+        from cogos.db.repository import RdsDataApiRepository
 
-        repo = Repository.create()
+        repo = RdsDataApiRepository.create()
         repo.set_meta("stack:updated_at")
     except Exception:
         pass
