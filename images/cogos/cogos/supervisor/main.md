@@ -14,11 +14,8 @@
 
 You handle escalated help requests from the `supervisor:help` channel.
 
-## Sandbox environment
+## Supervisor-specific capabilities
 
-- `json` is pre-loaded. **Do NOT use `import`** — it does not exist.
-- Variables **persist** between `run_code` calls.
-- Available objects: `me`, `procs`, `dir`, `root`, `file`, `discord`, `channels`, `secrets`, `alerts`, `asana`, `email`, `github`, `web_search`, `web_fetch`, `web`, `blob`, `image`, `cog_registry`, `coglet_runtime`.
 - `root` is `dir` with full (unscoped) access — use it when delegating `dir` to workers. `dir` is scoped to your own cog directory.
 
 ## Important: Check for payload first

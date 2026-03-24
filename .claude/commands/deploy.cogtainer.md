@@ -1,4 +1,4 @@
-Deploy cogtainer infrastructure changes (CDK stack, Lambda, ECS, RDS).
+Deploy cogtainer infrastructure changes (CDK stack, Lambda, ECS).
 
 Human-readable reference: [docs/deploy.md](../../docs/deploy.md)
 
@@ -8,60 +8,58 @@ This is the heaviest deploy — only use when actual infrastructure changes are 
 
 1. Ensure no uncommitted changes: `git status --porcelain` must be empty. If dirty, stop and ask.
 2. Pull latest: `git pull --ff-only`. If it fails (diverged), stop and ask.
-3. Identify the cogent name from context (default: `dr.alpha`).
+3. Ensure the right cogent is selected: check `.env` for COGTAINER/COGENT, or run `cogent select <name>` to set them. Verify with `cogos status`.
 
 ## Check: do you actually need a cogtainer deploy?
 
 Run `git diff HEAD~1 --name-only` and check:
 
-| Changed paths | Use instead |
+| Changed paths | Action |
 |---|---|
-| `dashboard/frontend/**` or `src/dashboard/**` only | `/deploy.dashboard` — no cogtainer deploy needed |
-| `images/**` only | `/deploy.cogos` — just reboot the image |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `/deploy.cogos` — Lambda update + image reboot |
-| `src/cogos/db/migrations/**` only | `/deploy.cogos` — RDS migration only |
-| `src/cogtainer/cdk/**` or CDK construct changes | **Yes, cogtainer deploy needed** — read on |
-| `DOCKER_VERSION` changed | **Yes, cogtainer deploy needed** — CDK stack references image tag |
-| IAM, VPC, ALB, or other infra changes | **Yes, cogtainer deploy needed** |
+| `src/cogtainer/cdk/**`, `DOCKER_VERSION`, IAM, VPC, ALB changes | **This skill** — read on |
+| `images/**`, `src/cogos/**` | **Wrong skill** — use `/deploy.cogos` |
+| `dashboard/**`, `src/dashboard/**` | **Wrong skill** — use `/deploy.dashboard` |
 
-If the change doesn't require a cogtainer deploy, tell the user and suggest the right skill.
+See [docs/deploy.md](../../docs/deploy.md) for the full decision tree. If the change doesn't require a cogtainer deploy, tell the user and suggest the right skill.
 
 ## Commands reference
 
 ```bash
-# Full CDK stack deploy (creates/updates all infra: Lambda, ECS, RDS, ALB, etc.)
+# Full CDK stack deploy (creates/updates all infra: Lambda, ECS, ALB, etc.)
 # This is slow (~3-5 min). Only use when infra definition changed.
-cogent <name> cogtainer create
-
-# Build and push executor Docker image to ECR (without CDK deploy)
-cogent <name> cogtainer build
+cogtainer update <cogtainer-name>
 
 # Update Lambda code only (fast, ~15s)
-cogent <name> cogtainer update lambda
+cogtainer update <cogtainer-name> --lambdas
 
-# Run RDS schema migrations only
-cogent <name> cogtainer update rds
+# Deploy Lambda from local source
+cogtainer update <cogtainer-name> --from-source
 
 # Force new ECS deployment (restart containers with current image)
-cogent <name> cogtainer update ecs
+cogtainer update <cogtainer-name> --services
 
-# Update Lambda + RDS migrations + cogtainer sync
-cogent <name> cogtainer update all
+# Deploy specific image to ECS
+cogtainer update <cogtainer-name> --services --image-tag <tag>
 
 # Check current infrastructure status
-cogent <name> cogtainer status
+cogtainer status <cogtainer-name>
+
+# CogOS commands (resolve cogent from .env)
+cogos status
+cogos restart
 ```
 
-## When to use `cogtainer create` vs `cogtainer update`
+## When to use what
 
-- **`cogtainer create`**: CDK stack changes — new resources, IAM policy changes, ALB rules, ECS task def changes, env var changes in CDK. This runs `cdk deploy`.
-- **`cogtainer update lambda`**: Only Python code in `src/cogos/` changed. Zips and uploads to existing Lambda.
-- **`cogtainer update ecs`**: Need to restart ECS tasks (e.g. after ECR image push). Does NOT rebuild image.
-- **`cogtainer build` + `cogtainer update ecs`**: Executor Docker image changed (new dependencies, Dockerfile changes).
+- **`cogtainer update <name>`** (no flags): CDK stack changes — new resources, IAM policy changes, ALB rules, ECS task def changes, env var changes in CDK. This is the full deploy.
+- **`cogtainer update <name> --lambdas`**: Only Python code in `src/cogos/` changed. Zips and uploads to existing Lambda.
+- **`cogtainer update <name> --services`**: Need to restart ECS tasks (e.g. after ECR image push).
+- **`cogtainer update <name> --services --image-tag <tag>`**: Deploy a specific Docker image to ECS.
+- **Migrations**: DB migrations run automatically during image boot (`cogos start`). There is no separate migration command.
 
 ## Post-deploy
 
 ```bash
-cogent <name> cogtainer status
-cogent <name> cogos status
+cogtainer status <cogtainer-name>
+cogos status
 ```

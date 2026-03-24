@@ -125,7 +125,7 @@ Three CLI tools:
 |-----|---------|---------|
 | `cogtainer` | Manage cogtainer lifecycle | `cogtainer create dev --type local` |
 | `cogent` | Manage cogents within a cogtainer | `cogent create alpha` |
-| `cogos` | Operate a specific cogent | `cogos image boot cogos` |
+| `cogos` | Operate a specific cogent | `cogos start` |
 
 ## Prerequisites
 
@@ -207,7 +207,7 @@ PYTHONPATH=src npx cdk deploy --app "python -m cogtainer.cdk.app" \
   -c lambda_s3_bucket=<bucket> -c lambda_s3_key=lambda/<sha>/lambda.zip
 
 # 5. Boot cogos
-COGTAINER=prod COGENT=alpha uv run cogos image boot cogos
+COGTAINER=prod COGENT=alpha uv run cogos start
 ```
 
 ### CI / CD
@@ -293,8 +293,9 @@ uv run cogent status [<name>]
 ### `cogos` — Cogent Operations
 
 ```bash
-uv run cogos image boot <name>          # load an image (default: cogos)
-uv run cogos image list                 # list available images
+uv run cogos start                      # boot default image + start dispatcher
+uv run cogos start <name>              # boot specific image
+uv run cogos start --clean             # wipe first
 uv run cogos status                     # show processes, files, capabilities
 uv run cogos process list               # list processes
 uv run cogos process run <name> --executor local  # run a process locally
@@ -304,7 +305,6 @@ uv run cogos file get <key>             # show file content
 uv run cogos channel send <name> --payload '{...}'
 uv run cogos dashboard start            # start local dashboard
 uv run cogos dashboard stop
-uv run cogos start                      # start local dispatcher (local/docker only)
 uv run cogos shell                      # interactive shell
 ```
 

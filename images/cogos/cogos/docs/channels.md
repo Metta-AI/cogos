@@ -111,26 +111,7 @@ print(s.definition)
 
 ## Integration with process handles
 
-The ProcessHandle returned by `procs.spawn()` and `procs.get()` provides a unified interface that wraps channel operations:
-
-```python
-child = procs.spawn("worker", content="do work",
-    schema={"result": "string"},
-    capabilities={"channels": channels.scope(names=["metrics*"])})
-
-child.send({"task": "go"})       # sends via spawn channel
-msgs = child.recv(limit=5)       # reads from spawn channel
-print(child.status())            # "running", "completed", etc.
-child.wait()                     # event-driven wait for completion
-child.kill()                     # terminate the child
-```
-
-Looking up existing processes returns the same interface:
-
-```python
-handle = procs.get(name="worker")
-print(handle.status())
-```
+The ProcessHandle returned by `procs.spawn()` and `procs.get()` wraps spawn channel operations (`send`, `recv`, `status`, `wait`, `kill`). See the procs API for process handle details.
 
 ## Human-in-the-loop
 
@@ -144,17 +125,7 @@ Channels enable human interaction without special mechanisms:
 
 ## Channel scoping
 
-The channels capability can be scoped by operations and channel names:
-
-```python
-# Read-only access
-channels.scope(ops=["read", "subscribe"])
-
-# Restrict to specific channel patterns
-channels.scope(names=["metrics*", "io:discord:*"])
-```
-
-Patterns use fnmatch syntax (`*` matches anything, `?` matches one char).
+The channels capability can be scoped by operations (`ops`) and channel name patterns (`names`). Patterns use fnmatch syntax (`*` matches anything, `?` matches one char). See the channels include for the scoping API.
 
 ## Immutability
 

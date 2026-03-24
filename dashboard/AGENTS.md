@@ -2,13 +2,19 @@
 
 Operational UI for each cogent. Runs as a single Docker container serving both the FastAPI backend and static Next.js frontend.
 
+See root [AGENTS.md](../AGENTS.md) for local development commands, database connection details, and general architecture.
+
 ## Architecture
 
-- **Backend**: FastAPI (Python), serves `/api/cogents/{name}/*` and `/ws/cogents/{name}`
-- **Frontend**: Next.js static export, served by FastAPI when `DASHBOARD_STATIC_DIR` is set
-- **Database**: RDS Data API (same Aurora cluster as the cogtainer)
-- **Hosting**: ECS Fargate in the cogtainer (`cogtainer` cluster), behind ALB with HTTPS
-- **Domain**: `{safe_name}.<your-domain>` (managed by cogtainer)
+Docker multi-stage build (`Dockerfile` at project root):
+
+1. **Stage 1 (Node)**: `NEXT_EXPORT=1` builds Next.js as static HTML to `/app/out`
+2. **Stage 2 (Python)**: Installs FastAPI/boto3/pydantic, copies `src/` + static files, runs uvicorn on port 8100
+
+In production, the container serves everything on a single port (8100):
+- `/api/*`, `/ws/*` — FastAPI API and WebSocket
+- `/healthz` — health check (used by ALB target group)
+- `/*` — static frontend (SPA fallback to `index.html`)
 
 ## Deployment
 
@@ -24,30 +30,6 @@ CI builds the dashboard Docker image automatically. Deploy via the `cogtainer` C
 cogent create <name>                    # Register identity (domain, cert, secrets)
 cogtainer update <name> --services      # Deploy the dashboard
 ```
-
-## Docker Image
-
-`Dockerfile` at project root, multi-stage build:
-
-1. **Stage 1 (Node)**: `NEXT_EXPORT=1` builds Next.js as static HTML to `/app/out`
-2. **Stage 2 (Python)**: Installs FastAPI/boto3/pydantic, copies `src/` + static files, runs uvicorn on port 8100
-
-The container serves everything on one port:
-- `/api/*`, `/ws/*` — FastAPI API and WebSocket
-- `/healthz` — health check (used by ALB target group)
-- `/*` — static frontend (SPA fallback to `index.html`)
-
-## Local Development
-
-```bash
-cogos dashboard start       # Backend + Next.js dev server in background
-cogos dashboard stop        # Stop both servers
-cogos dashboard reload      # Restart (stop + start)
-```
-
-**IMPORTANT: Always use `cogos dashboard start/stop/reload`.** Never start `uvicorn` or `next dev` manually — the dashboard requires env vars (`DASHBOARD_BE_PORT`, `COGTAINER`, `COGENT`, `USE_LOCAL_DB`) derived from `~/.cogos/cogtainers.yml` that differ per cogtainer. Manual starts will connect to the wrong port or database.
-
-In dev mode, Next.js proxies `/api/*` to the backend via `rewrites` in `next.config.ts`, using `DASHBOARD_BE_PORT` to determine the backend port.
 
 ## Key Files
 
@@ -75,9 +57,3 @@ src/cli/cogtainer.py                    # cogtainer dashboard deploy/destroy
 | `DB_SECRET_ARN` | Secrets Manager ARN for DB auth |
 | `DB_NAME` | Database name (`cogent`) |
 | `USE_LOCAL_DB` | Set to `1` to use LocalRepository instead of RDS Data API. The data directory is resolved from the cogtainer config. For local dev only. |
-
-## Database Connection
-
-The dashboard **requires** RDS Data API credentials (`DB_CLUSTER_ARN`, `DB_SECRET_ARN`, `DB_NAME`). If these are missing, the app will fail to start rather than silently returning empty data.
-
-For local development without AWS access, set `USE_LOCAL_DB=1` to use the LocalRepository. The data directory is resolved from the cogtainer config in `~/.cogos/cogtainers.yml`. Populate it with `cogos image boot cogos --clean`.
