@@ -1,7 +1,7 @@
 """Email ingest Lambda — receives parsed emails from Cloudflare Email Worker.
 
 Resolves the target cogent's DB name from DynamoDB,
-then inserts the event via RDS Data API using the shared Aurora cluster.
+then writes to the ``io:email:inbound`` channel via RDS Data API.
 """
 
 import base64
@@ -64,29 +64,83 @@ def _resolve_db_name(cogent_name: str) -> str:
     return db_name
 
 
-def _insert_event(cogent_name: str, event_type: str, source: str, payload: dict) -> str:
-    """Insert an event into the cogent's cogos_event table via Data API."""
+CHANNEL_NAME = "io:email:inbound"
+
+
+def _ensure_channel(db_name: str) -> str:
+    """Find or create the ``io:email:inbound`` channel. Returns the channel id."""
+    rds = _get_rds()
+    common = dict(resourceArn=DB_CLUSTER_ARN, secretArn=DB_SECRET_ARN, database=db_name)
+
+    resp = rds.execute_statement(
+        **common,
+        sql="SELECT id FROM cogos_channel WHERE name = :name",
+        parameters=[{"name": "name", "value": {"stringValue": CHANNEL_NAME}}],
+    )
+    if resp.get("records"):
+        return resp["records"][0][0]["stringValue"]
+
+    channel_id = str(uuid.uuid4())
+    rds.execute_statement(
+        **common,
+        sql="""
+            INSERT INTO cogos_channel (id, name, channel_type, owner_process)
+            VALUES (:id::uuid, :name, :channel_type, NULL)
+            ON CONFLICT (name) DO NOTHING
+        """,
+        parameters=[
+            {"name": "id", "value": {"stringValue": channel_id}},
+            {"name": "name", "value": {"stringValue": CHANNEL_NAME}},
+            {"name": "channel_type", "value": {"stringValue": "named"}},
+        ],
+    )
+
+    # Re-fetch in case of a race (ON CONFLICT DO NOTHING means our id may not have been used).
+    resp = rds.execute_statement(
+        **common,
+        sql="SELECT id FROM cogos_channel WHERE name = :name",
+        parameters=[{"name": "name", "value": {"stringValue": CHANNEL_NAME}}],
+    )
+    return resp["records"][0][0]["stringValue"]
+
+
+def _write_channel_message(cogent_name: str, payload: dict, message_id: str | None = None) -> str:
+    """Write a message to the ``io:email:inbound`` channel via Data API."""
     db_name = _resolve_db_name(cogent_name)
-    event_id = str(uuid.uuid4())
+    channel_id = _ensure_channel(db_name)
+    msg_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    idempotency_key = f"email:{message_id}" if message_id else None
+
+    params = [
+        {"name": "id", "value": {"stringValue": msg_id}},
+        {"name": "channel", "value": {"stringValue": channel_id}},
+        {"name": "payload", "value": {"stringValue": json.dumps(payload)}},
+        {"name": "created_at", "value": {"stringValue": now}},
+    ]
+
+    if idempotency_key:
+        sql = """
+            INSERT INTO cogos_channel_message (id, channel, payload, idempotency_key, created_at)
+            VALUES (:id::uuid, :channel::uuid, :payload::jsonb, :idempotency_key, :created_at::timestamptz)
+            ON CONFLICT (channel, idempotency_key)
+            WHERE idempotency_key IS NOT NULL DO NOTHING
+        """
+        params.append({"name": "idempotency_key", "value": {"stringValue": idempotency_key}})
+    else:
+        sql = """
+            INSERT INTO cogos_channel_message (id, channel, payload, created_at)
+            VALUES (:id::uuid, :channel::uuid, :payload::jsonb, :created_at::timestamptz)
+        """
 
     _get_rds().execute_statement(
         resourceArn=DB_CLUSTER_ARN,
         secretArn=DB_SECRET_ARN,
         database=db_name,
-        sql="""
-            INSERT INTO cogos_event (id, event_type, source, payload, created_at)
-            VALUES (:id::uuid, :event_type, :source, :payload::jsonb, :created_at::timestamptz)
-        """,
-        parameters=[
-            {"name": "id", "value": {"stringValue": event_id}},
-            {"name": "event_type", "value": {"stringValue": event_type}},
-            {"name": "source", "value": {"stringValue": source}},
-            {"name": "payload", "value": {"stringValue": json.dumps(payload)}},
-            {"name": "created_at", "value": {"stringValue": now}},
-        ],
+        sql=sql,
+        parameters=params,
     )
-    return event_id
+    return msg_id
 
 
 def _extract_asana_accept_link(html_body: str) -> str | None:
@@ -147,18 +201,17 @@ def handler(event, context):
     if not cogent_name:
         return {"statusCode": 400, "body": json.dumps({"detail": "Missing cogent in payload"})}
 
-    event_type = body.get("event_type", "email:received")
-    source = body.get("source", "cloudflare-email-worker")
+    message_id = payload.get("message_id")
 
     try:
-        event_id = _insert_event(cogent_name, event_type, source, payload)
+        msg_id = _write_channel_message(cogent_name, payload, message_id)
     except Exception:
-        logger.exception("Failed to insert event for cogent=%s", cogent_name)
-        return {"statusCode": 500, "body": json.dumps({"detail": "Failed to insert event"})}
+        logger.exception("Failed to write channel message for cogent=%s", cogent_name)
+        return {"statusCode": 500, "body": json.dumps({"detail": "Failed to write channel message"})}
 
     logger.info(
-        "Ingested email event %s cogent=%s from=%s subject=%s",
-        event_id, cogent_name, payload.get("from"), payload.get("subject"),
+        "Ingested email %s cogent=%s from=%s subject=%s",
+        msg_id, cogent_name, payload.get("from"), payload.get("subject"),
     )
 
     try:
@@ -166,4 +219,4 @@ def handler(event, context):
     except Exception:
         logger.exception("Asana auto-accept failed cogent=%s", cogent_name)
 
-    return {"statusCode": 200, "body": json.dumps({"event_id": event_id})}
+    return {"statusCode": 200, "body": json.dumps({"message_id": msg_id})}
