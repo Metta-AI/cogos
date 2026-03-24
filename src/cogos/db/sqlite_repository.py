@@ -17,6 +17,7 @@ from cogos.db.models import (
     Capability,
     Channel,
     ChannelMessage,
+    ChannelType,
     CogosOperation,
     Cron,
     Delivery,
@@ -439,6 +440,319 @@ class SqliteRepository:
             )
         except Exception:
             logger.debug("Failed to nudge ingress queue", exc_info=True)
+
+    # ── Row converters ───────────────────────────────────────
+
+    def _parse_uuid(self, val: str | None) -> UUID | None:
+        if val is None:
+            return None
+        return UUID(val)
+
+    def _parse_dt(self, val: str | None) -> datetime | None:
+        if val is None:
+            return None
+        return datetime.fromisoformat(val)
+
+    def _row_to_process(self, row: dict) -> Process:
+        return Process(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            name=row["name"],
+            mode=ProcessMode(row["mode"]),
+            content=row["content"],
+            priority=row["priority"],
+            resources=self._json_loads(row["resources"]) or [],
+            required_tags=self._json_loads(row["required_tags"]) or [],
+            executor=row["executor"],
+            status=ProcessStatus(row["status"]),
+            runnable_since=self._parse_dt(row.get("runnable_since")),
+            parent_process=self._parse_uuid(row.get("parent_process")),
+            preemptible=bool(row["preemptible"]),
+            model=row.get("model"),
+            model_constraints=self._json_loads(row["model_constraints"]) or {},
+            return_schema=self._json_loads(row.get("return_schema")),
+            idle_timeout_ms=row.get("idle_timeout_ms"),
+            max_duration_ms=row.get("max_duration_ms"),
+            max_retries=row["max_retries"],
+            retry_count=row["retry_count"],
+            retry_backoff_ms=row.get("retry_backoff_ms"),
+            clear_context=bool(row["clear_context"]),
+            tty=bool(row["tty"]),
+            metadata=self._json_loads(row["metadata"]) or {},
+            output_events=self._json_loads(row["output_events"]) or [],
+            schema_id=self._parse_uuid(row.get("schema_id")),
+            created_at=self._parse_dt(row.get("created_at")),
+            updated_at=self._parse_dt(row.get("updated_at")),
+        )
+
+    def _row_to_capability(self, row: dict) -> Capability:
+        return Capability(
+            id=UUID(row["id"]),
+            name=row["name"],
+            description=row["description"],
+            instructions=row["instructions"],
+            handler=row["handler"],
+            schema=self._json_loads(row["schema"]) or {},
+            iam_role_arn=row.get("iam_role_arn"),
+            enabled=bool(row["enabled"]),
+            metadata=self._json_loads(row["metadata"]) or {},
+            created_at=self._parse_dt(row.get("created_at")),
+            updated_at=self._parse_dt(row.get("updated_at")),
+        )
+
+    def _row_to_handler(self, row: dict) -> Handler:
+        return Handler(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            process=UUID(row["process"]),
+            channel=self._parse_uuid(row.get("channel")),
+            enabled=bool(row["enabled"]),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_process_capability(self, row: dict) -> ProcessCapability:
+        return ProcessCapability(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            process=UUID(row["process"]),
+            capability=UUID(row["capability"]),
+            name=row["name"],
+            config=self._json_loads(row.get("config")),
+        )
+
+    def _row_to_file(self, row: dict) -> File:
+        return File(
+            id=UUID(row["id"]),
+            key=row["key"],
+            includes=self._json_loads(row["includes"]) or [],
+            created_at=self._parse_dt(row.get("created_at")),
+            updated_at=self._parse_dt(row.get("updated_at")),
+        )
+
+    def _row_to_file_version(self, row: dict) -> FileVersion:
+        return FileVersion(
+            id=UUID(row["id"]),
+            file_id=UUID(row["file_id"]),
+            version=row["version"],
+            read_only=bool(row["read_only"]),
+            content=row["content"],
+            source=row["source"],
+            is_active=bool(row["is_active"]),
+            run_id=self._parse_uuid(row.get("run_id")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_resource(self, row: dict) -> Resource:
+        return Resource(
+            id=UUID(row["id"]),
+            name=row["name"],
+            resource_type=ResourceType(row["resource_type"]),
+            capacity=row["capacity"],
+            metadata=self._json_loads(row["metadata"]) or {},
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_cron(self, row: dict) -> Cron:
+        return Cron(
+            id=UUID(row["id"]),
+            expression=row["expression"],
+            channel_name=row["channel_name"],
+            payload=self._json_loads(row["payload"]) or {},
+            enabled=bool(row["enabled"]),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_delivery(self, row: dict) -> Delivery:
+        return Delivery(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            message=UUID(row["message"]),
+            handler=UUID(row["handler"]),
+            status=DeliveryStatus(row["status"]),
+            run=self._parse_uuid(row.get("run")),
+            trace_id=self._parse_uuid(row.get("trace_id")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_run(self, row: dict) -> Run:
+        return Run(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            process=UUID(row["process"]),
+            message=self._parse_uuid(row.get("message")),
+            conversation=self._parse_uuid(row.get("conversation")),
+            status=RunStatus(row["status"]),
+            tokens_in=row["tokens_in"],
+            tokens_out=row["tokens_out"],
+            cost_usd=Decimal(row["cost_usd"]),
+            duration_ms=row.get("duration_ms"),
+            error=row.get("error"),
+            model_version=row.get("model_version"),
+            result=self._json_loads(row.get("result")),
+            snapshot=self._json_loads(row.get("snapshot")),
+            scope_log=self._json_loads(row["scope_log"]) or [],
+            trace_id=self._parse_uuid(row.get("trace_id")),
+            parent_trace_id=self._parse_uuid(row.get("parent_trace_id")),
+            metadata=self._json_loads(row.get("metadata")),
+            created_at=self._parse_dt(row.get("created_at")),
+            completed_at=self._parse_dt(row.get("completed_at")),
+        )
+
+    def _row_to_schema(self, row: dict) -> Schema:
+        return Schema(
+            id=UUID(row["id"]),
+            name=row["name"],
+            definition=self._json_loads(row["definition"]) or {},
+            file_id=self._parse_uuid(row.get("file_id")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_channel(self, row: dict) -> Channel:
+        return Channel(
+            id=UUID(row["id"]),
+            name=row["name"],
+            owner_process=self._parse_uuid(row.get("owner_process")),
+            schema_id=self._parse_uuid(row.get("schema_id")),
+            inline_schema=self._json_loads(row.get("inline_schema")),
+            channel_type=ChannelType(row["channel_type"]),
+            auto_close=bool(row["auto_close"]),
+            closed_at=self._parse_dt(row.get("closed_at")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_channel_message(self, row: dict) -> ChannelMessage:
+        return ChannelMessage(
+            id=UUID(row["id"]),
+            channel=UUID(row["channel"]),
+            sender_process=self._parse_uuid(row.get("sender_process")),
+            payload=self._json_loads(row["payload"]) or {},
+            idempotency_key=row.get("idempotency_key"),
+            trace_id=self._parse_uuid(row.get("trace_id")),
+            trace_meta=self._json_loads(row.get("trace_meta")),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_discord_guild(self, row: dict) -> DiscordGuild:
+        return DiscordGuild(
+            guild_id=row["guild_id"],
+            cogent_name=row["cogent_name"],
+            name=row["name"],
+            icon_url=row.get("icon_url"),
+            member_count=row.get("member_count"),
+            synced_at=self._parse_dt(row.get("synced_at")),
+        )
+
+    def _row_to_discord_channel(self, row: dict) -> DiscordChannel:
+        return DiscordChannel(
+            channel_id=row["channel_id"],
+            guild_id=row["guild_id"],
+            name=row["name"],
+            topic=row.get("topic"),
+            category=row.get("category"),
+            channel_type=row["channel_type"],
+            position=row["position"],
+            synced_at=self._parse_dt(row.get("synced_at")),
+        )
+
+    def _row_to_operation(self, row: dict) -> CogosOperation:
+        return CogosOperation(
+            id=UUID(row["id"]),
+            epoch=row["epoch"],
+            type=row["type"],
+            metadata=self._json_loads(row["metadata"]) or {},
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_request_trace(self, row: dict) -> RequestTrace:
+        return RequestTrace(
+            id=UUID(row["id"]),
+            cogent_id=row["cogent_id"],
+            source=row["source"],
+            source_ref=row.get("source_ref"),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_span(self, row: dict) -> Span:
+        return Span(
+            id=UUID(row["id"]),
+            trace_id=UUID(row["trace_id"]),
+            parent_span_id=self._parse_uuid(row.get("parent_span_id")),
+            name=row["name"],
+            coglet=row.get("coglet"),
+            status=SpanStatus(row["status"]),
+            metadata=self._json_loads(row["metadata"]) or {},
+            started_at=self._parse_dt(row.get("started_at")),
+            ended_at=self._parse_dt(row.get("ended_at")),
+        )
+
+    def _row_to_span_event(self, row: dict) -> SpanEvent:
+        return SpanEvent(
+            id=UUID(row["id"]),
+            span_id=UUID(row["span_id"]),
+            event=row["event"],
+            message=row.get("message"),
+            timestamp=self._parse_dt(row.get("timestamp")),
+            metadata=self._json_loads(row["metadata"]) or {},
+        )
+
+    def _row_to_executor(self, row: dict) -> Executor:
+        return Executor(
+            id=UUID(row["id"]),
+            executor_id=row["executor_id"],
+            channel_type=row["channel_type"],
+            executor_tags=self._json_loads(row["executor_tags"]) or [],
+            dispatch_type=row["dispatch_type"],
+            metadata=self._json_loads(row["metadata"]) or {},
+            status=ExecutorStatus(row["status"]),
+            current_run_id=self._parse_uuid(row.get("current_run_id")),
+            last_heartbeat_at=self._parse_dt(row.get("last_heartbeat_at")),
+            registered_at=self._parse_dt(row.get("registered_at")),
+        )
+
+    def _row_to_executor_token(self, row: dict) -> ExecutorToken:
+        return ExecutorToken(
+            id=UUID(row["id"]),
+            name=row["name"],
+            token_hash=row["token_hash"],
+            token_raw=row["token_raw"],
+            scope=row["scope"],
+            created_at=self._parse_dt(row.get("created_at")),
+            revoked_at=self._parse_dt(row.get("revoked_at")),
+        )
+
+    def _row_to_wait_condition(self, row: dict) -> WaitCondition:
+        return WaitCondition(
+            id=UUID(row["id"]),
+            run=self._parse_uuid(row.get("run")),
+            process=self._parse_uuid(row.get("process")),
+            type=WaitConditionType(row["type"]),
+            status=WaitConditionStatus(row["status"]),
+            pending=self._json_loads(row["pending"]) or [],
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_trace(self, row: dict) -> Trace:
+        return Trace(
+            id=UUID(row["id"]),
+            run=UUID(row["run"]),
+            capability_calls=self._json_loads(row["capability_calls"]) or [],
+            file_ops=self._json_loads(row["file_ops"]) or [],
+            model_version=row.get("model_version"),
+            created_at=self._parse_dt(row.get("created_at")),
+        )
+
+    def _row_to_alert(self, row: dict) -> dict:
+        return {
+            "id": UUID(row["id"]),
+            "severity": row["severity"],
+            "alert_type": row["alert_type"],
+            "source": row["source"],
+            "message": row["message"],
+            "metadata": self._json_loads(row["metadata"]) or {},
+            "acknowledged_at": self._parse_dt(row.get("acknowledged_at")),
+            "resolved_at": self._parse_dt(row.get("resolved_at")),
+            "created_at": self._parse_dt(row.get("created_at")),
+        }
 
     # ── Epoch ─────────────────────────────────────────────────
 
