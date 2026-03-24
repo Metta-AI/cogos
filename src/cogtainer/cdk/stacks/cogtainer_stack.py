@@ -95,6 +95,21 @@ class CogtainerStack(cdk.Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        # Shared dashboard ECR repo (all cogents pull from this)
+        self.dashboard_ecr = ecr.Repository(
+            self, "DashboardEcr",
+            repository_name="cogent-dashboard",
+            image_tag_mutability=ecr.TagMutability.MUTABLE,
+            image_scan_on_push=True,
+            lifecycle_rules=[
+                ecr.LifecycleRule(
+                    description="Keep last 50 dashboard images",
+                    max_image_count=50,
+                ),
+            ],
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         # --- CI Artifacts Bucket ---
         ci_bucket_name = self.node.try_get_context("ci_artifacts_bucket") or "cogtainer-ci-artifacts"
         self.ci_artifacts_bucket = s3.Bucket(
@@ -213,6 +228,7 @@ class CogtainerStack(cdk.Stack):
         self.status_table.grant_read_write_data(self.ci_role)
         self.db_cluster.grant_data_api_access(self.ci_role)
         self.ecr_repo.grant_pull_push(self.ci_role)
+        self.dashboard_ecr.grant_pull_push(self.ci_role)
         # S3 for Lambda zips and frontend assets
         self.ci_artifacts_bucket.grant_read_write(self.ci_role)
         # Lambda update
@@ -244,6 +260,7 @@ class CogtainerStack(cdk.Stack):
             )
         CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
         CfnOutput(self, "ECRRepositoryUri", value=self.ecr_repo.repository_uri)
+        CfnOutput(self, "DashboardECRRepositoryUri", value=self.dashboard_ecr.repository_uri)
         CfnOutput(self, "CIArtifactsBucketName", value=self.ci_artifacts_bucket.bucket_name)
         CfnOutput(self, "EventBusArn", value=self.event_bus.event_bus_arn)
         CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)

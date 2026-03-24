@@ -9,7 +9,6 @@ CDK stack for a single cogent with cogtainer-scoped naming.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import aws_cdk as cdk
@@ -27,8 +26,6 @@ from aws_cdk import aws_sqs as sqs
 from constructs import Construct
 
 from cogtainer import naming
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent.parent.parent)
 
 
 def _lambda_name(cogtainer_name: str, cogent_name: str, fn_type: str) -> str:
@@ -396,7 +393,6 @@ class CogentStack(Stack):
                 event_bus_name=event_bus_name,
                 alb_listener_arn=alb_listener_arn,
                 alb_security_group_id=alb_security_group_id,
-                ecr_repo_uri=ecr_repo_uri,
             )
 
         # -----------------------------------------------------------------
@@ -446,7 +442,6 @@ class CogentStack(Stack):
         event_bus_name: str,
         alb_listener_arn: str,
         alb_security_group_id: str,
-        ecr_repo_uri: str = "",
     ) -> None:
         vpc = ec2.Vpc.from_lookup(self, "DashVpc", is_default=True)
 
@@ -524,12 +519,6 @@ class CogentStack(Stack):
             )
         )
 
-        docker_version = (
-            (Path(_PROJECT_ROOT) / "dashboard" / "DOCKER_VERSION")
-            .read_text()
-            .strip()
-        )
-
         db_env = {
             # HOSTNAME must be explicit — ECS overrides Dockerfile ENV with task hostname
             "HOSTNAME": "0.0.0.0",
@@ -544,21 +533,16 @@ class CogentStack(Stack):
             "EVENT_BUS_NAME": event_bus_name,
             "SESSIONS_BUCKET": bucket_name,
             "SESSIONS_PREFIX": safe_name,
-            "DASHBOARD_ASSETS_S3": f"s3://{bucket_name}/dashboard/frontend.tar.gz",
-            "DASHBOARD_DOCKER_VERSION": docker_version,
             "EXECUTOR_FUNCTION_NAME": _lambda_name(
                 cogtainer_name, safe_name, "executor"
             ),
         }
 
-        # Use CI-built dashboard image from cogtainer ECR
-        dash_image_tag = self.node.try_get_context("dashboard_image_tag") or "dashboard-latest"
-        if ecr_repo_uri:
-            dash_image = ecs.ContainerImage.from_registry(f"{ecr_repo_uri}:{dash_image_tag}")
-        else:
-            dash_image = ecs.ContainerImage.from_registry(
-                f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/cogtainer-{cogtainer_name}:{dash_image_tag}"
-            )
+        # Use shared cogent-dashboard ECR repo
+        dashboard_sha = self.node.try_get_context("dashboard_sha") or "latest"
+        dash_image = ecs.ContainerImage.from_registry(
+            f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/cogent-dashboard:{dashboard_sha}"
+        )
 
         task_def.add_container(
             "web",
@@ -649,13 +633,12 @@ class CogentStack(Stack):
             )
         )
 
-        # S3 — scoped to this cogent's prefix + shared dashboard/ prefix
+        # S3 — scoped to this cogent's prefix
         task_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
                 resources=[
                     f"arn:aws:s3:::{bucket_name}/{safe_name}/*",
-                    f"arn:aws:s3:::{bucket_name}/dashboard/*",
                 ],
             )
         )
@@ -663,7 +646,7 @@ class CogentStack(Stack):
             iam.PolicyStatement(
                 actions=["s3:ListBucket"],
                 resources=[f"arn:aws:s3:::{bucket_name}"],
-                conditions={"StringLike": {"s3:prefix": [f"{safe_name}/*", "dashboard/*"]}},
+                conditions={"StringLike": {"s3:prefix": [f"{safe_name}/*"]}},
             )
         )
 
