@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { getDiagnosticsHistory, rerunDiagnostics, type DiagnosticRun, type DiagnosticCheck } from "@/lib/api";
 import { fmtRelative } from "@/lib/format";
 import { ResizableBottomPanel } from "@/components/shared/ResizableBottomPanel";
@@ -175,9 +175,9 @@ export function DiagnosticsPanel({ cogentName }: DiagnosticsPanelProps) {
           </thead>
           <tbody>
             {categories.map((cat) => (
-              <>
+              <Fragment key={cat}>
                 {/* Category header row */}
-                <tr key={`cat-${cat}`} style={{ background: "var(--bg-deep)" }}>
+                <tr style={{ background: "var(--bg-deep)" }}>
                   <td
                     colSpan={runs.length + 1}
                     className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider sticky left-0"
@@ -223,7 +223,7 @@ export function DiagnosticsPanel({ cogentName }: DiagnosticsPanelProps) {
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
