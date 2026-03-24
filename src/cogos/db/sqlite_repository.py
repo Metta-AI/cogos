@@ -1014,16 +1014,58 @@ class SqliteRepository:
     # ── Wait Conditions ───────────────────────────────────────
 
     def create_wait_condition(self, wc: WaitCondition) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_wait_condition (id, run, process, type, status, pending, created_at)
+               VALUES (:id, :run, :process, :type, :status, :pending, :created_at)""",
+            {
+                "id": str(wc.id),
+                "run": str(wc.run) if wc.run else None,
+                "process": str(wc.process) if wc.process else None,
+                "type": wc.type.value,
+                "status": wc.status.value,
+                "pending": self._json_dumps(wc.pending),
+                "created_at": wc.created_at.isoformat() if wc.created_at else now,
+            },
+        )
+        return wc.id
 
     def get_pending_wait_condition_for_process(self, process_id: UUID) -> WaitCondition | None:
-        raise NotImplementedError
+        pid = str(process_id)
+        row = self._query_one(
+            "SELECT * FROM cogos_wait_condition WHERE status = 'pending' AND process = :pid",
+            {"pid": pid},
+        )
+        if row:
+            return self._row_to_wait_condition(row)
+        rows = self._query(
+            """SELECT wc.* FROM cogos_wait_condition wc
+               JOIN cogos_run r ON r.id = wc.run
+               WHERE wc.status = 'pending' AND r.process = :pid LIMIT 1""",
+            {"pid": pid},
+        )
+        return self._row_to_wait_condition(rows[0]) if rows else None
 
     def remove_from_pending(self, wc_id: UUID, child_pid: str) -> list[str]:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT pending FROM cogos_wait_condition WHERE id = :id",
+            {"id": str(wc_id)},
+        )
+        if not row:
+            return []
+        pending = self._json_loads(row["pending"]) or []
+        pending = [p for p in pending if p != child_pid]
+        self._execute(
+            "UPDATE cogos_wait_condition SET pending = :pending WHERE id = :id",
+            {"pending": self._json_dumps(pending), "id": str(wc_id)},
+        )
+        return pending
 
     def resolve_wait_condition(self, wc_id: UUID) -> None:
-        raise NotImplementedError
+        self._execute(
+            "UPDATE cogos_wait_condition SET status = 'resolved', resolved_at = :now WHERE id = :id",
+            {"now": self._now(), "id": str(wc_id)},
+        )
 
     def resolve_wait_conditions_for_process(self, process_id: UUID) -> None:
         now = self._now()
@@ -1045,43 +1087,153 @@ class SqliteRepository:
     # ── Process Capabilities ──────────────────────────────────
 
     def create_process_capability(self, pc: ProcessCapability) -> UUID:
-        raise NotImplementedError
+        epoch = self.reboot_epoch
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_process_capability
+               (id, process, capability, name, epoch, config)
+               VALUES (:id, :process, :capability, :name, :epoch, :config)""",
+            {
+                "id": str(pc.id),
+                "process": str(pc.process),
+                "capability": str(pc.capability),
+                "name": pc.name,
+                "epoch": pc.epoch or epoch,
+                "config": self._json_dumps(pc.config) if pc.config is not None else None,
+            },
+        )
+        return pc.id
 
     def list_process_capabilities(self, process_id: UUID) -> list[ProcessCapability]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_process_capability WHERE process = :pid",
+            {"pid": str(process_id)},
+        )
+        return [self._row_to_process_capability(r) for r in rows]
 
     def delete_process_capability(self, pc_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "DELETE FROM cogos_process_capability WHERE id = :id", {"id": str(pc_id)}
+        ) > 0
 
     def list_processes_for_capability(self, capability_id: UUID) -> list[dict]:
-        raise NotImplementedError
+        rows = self._query(
+            """SELECT p.id as process_id, p.name as process_name, p.status as process_status,
+                      pc.name as grant_name, pc.config
+               FROM cogos_process_capability pc
+               JOIN cogos_process p ON p.id = pc.process
+               WHERE pc.capability = :cid
+               ORDER BY p.name""",
+            {"cid": str(capability_id)},
+        )
+        return [
+            {
+                "process_id": r["process_id"],
+                "process_name": r["process_name"],
+                "process_status": r["process_status"],
+                "grant_name": r["grant_name"],
+                "config": self._json_loads(r["config"]),
+            }
+            for r in rows
+        ]
 
     # ── Handlers ──────────────────────────────────────────────
 
     def create_handler(self, h: Handler) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        epoch = self.reboot_epoch
+        if h.channel is not None:
+            existing = self._query_one(
+                "SELECT * FROM cogos_handler WHERE process = :pid AND channel = :cid",
+                {"pid": str(h.process), "cid": str(h.channel)},
+            )
+            if existing:
+                self._execute(
+                    "UPDATE cogos_handler SET enabled = :enabled WHERE id = :id",
+                    {"enabled": int(h.enabled), "id": existing["id"]},
+                )
+                return UUID(existing["id"])
+        self._execute(
+            """INSERT INTO cogos_handler (id, process, channel, enabled, epoch, created_at)
+               VALUES (:id, :process, :channel, :enabled, :epoch, :created_at)""",
+            {
+                "id": str(h.id),
+                "process": str(h.process),
+                "channel": str(h.channel) if h.channel else None,
+                "enabled": int(h.enabled),
+                "epoch": epoch,
+                "created_at": now,
+            },
+        )
+        return h.id
 
     def list_handlers(
         self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None,
     ) -> list[Handler]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_handler WHERE 1=1"
+        params: dict[str, Any] = {}
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
+        if effective_epoch != ALL_EPOCHS:
+            sql += " AND epoch = :epoch"
+            params["epoch"] = effective_epoch
+        if process_id:
+            sql += " AND process = :pid"
+            params["pid"] = str(process_id)
+        if enabled_only:
+            sql += " AND enabled = 1"
+        sql += " ORDER BY channel"
+        return [self._row_to_handler(r) for r in self._query(sql, params)]
 
     def delete_handler(self, handler_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "DELETE FROM cogos_handler WHERE id = :id", {"id": str(handler_id)}
+        ) > 0
 
     def match_handlers(self, event_type: str) -> list[Handler]:
-        raise NotImplementedError
+        return []
 
     def match_handlers_by_channel(self, channel_id: UUID) -> list[Handler]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_handler WHERE channel = :cid AND enabled = 1",
+            {"cid": str(channel_id)},
+        )
+        return [self._row_to_handler(r) for r in rows]
 
     # ── Deliveries ────────────────────────────────────────────
 
     def create_delivery(self, ed: Delivery) -> tuple[UUID, bool]:
-        raise NotImplementedError
+        existing = self._query_one(
+            "SELECT id FROM cogos_delivery WHERE message = :mid AND handler = :hid",
+            {"mid": str(ed.message), "hid": str(ed.handler)},
+        )
+        if existing:
+            return UUID(existing["id"]), False
+        now = self._now()
+        epoch = self.reboot_epoch
+        self._execute(
+            """INSERT INTO cogos_delivery (id, message, handler, trace_id, epoch, status, run, created_at)
+               VALUES (:id, :message, :handler, :trace_id, :epoch, :status, :run, :created_at)""",
+            {
+                "id": str(ed.id),
+                "message": str(ed.message),
+                "handler": str(ed.handler),
+                "trace_id": str(ed.trace_id) if ed.trace_id else None,
+                "epoch": epoch,
+                "status": ed.status.value,
+                "run": str(ed.run) if ed.run else None,
+                "created_at": now,
+            },
+        )
+        return ed.id, True
 
     def get_pending_deliveries(self, process_id: UUID) -> list[Delivery]:
-        raise NotImplementedError
+        rows = self._query(
+            """SELECT d.* FROM cogos_delivery d
+               JOIN cogos_handler h ON h.id = d.handler
+               WHERE d.status = 'pending' AND h.process = :pid
+               ORDER BY d.created_at""",
+            {"pid": str(process_id)},
+        )
+        return [self._row_to_delivery(r) for r in rows]
 
     def list_deliveries(
         self,
@@ -1092,22 +1244,61 @@ class SqliteRepository:
         limit: int = 500,
         epoch: int | None = None,
     ) -> list[Delivery]:
-        raise NotImplementedError
+        sql = "SELECT d.* FROM cogos_delivery d"
+        params: dict[str, Any] = {}
+        conditions = []
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("d.epoch = :epoch")
+            params["epoch"] = effective_epoch
+        if message_id is not None:
+            conditions.append("d.message = :mid")
+            params["mid"] = str(message_id)
+        if handler_id is not None:
+            conditions.append("d.handler = :hid")
+            params["hid"] = str(handler_id)
+        if run_id is not None:
+            conditions.append("d.run = :rid")
+            params["rid"] = str(run_id)
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY d.created_at DESC LIMIT :limit"
+        params["limit"] = limit
+        return [self._row_to_delivery(r) for r in self._query(sql, params)]
 
     def has_pending_deliveries(self, process_id: UUID) -> bool:
-        raise NotImplementedError
+        row = self._query_one(
+            """SELECT 1 FROM cogos_delivery d
+               JOIN cogos_handler h ON h.id = d.handler
+               WHERE d.status = 'pending' AND h.process = :pid LIMIT 1""",
+            {"pid": str(process_id)},
+        )
+        return row is not None
 
     def mark_delivered(self, delivery_id: UUID, run_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_delivery SET status = 'delivered', run = :rid WHERE id = :id",
+            {"rid": str(run_id), "id": str(delivery_id)},
+        ) > 0
 
     def mark_queued(self, delivery_id: UUID, run_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_delivery SET status = 'queued', run = :rid WHERE id = :id",
+            {"rid": str(run_id), "id": str(delivery_id)},
+        ) > 0
 
     def requeue_delivery(self, delivery_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_delivery SET status = 'pending', run = NULL WHERE id = :id",
+            {"id": str(delivery_id)},
+        ) > 0
 
     def mark_run_deliveries_delivered(self, run_id: UUID) -> int:
-        raise NotImplementedError
+        return self._execute(
+            """UPDATE cogos_delivery SET status = 'delivered'
+               WHERE run = :rid AND status IN ('pending', 'queued')""",
+            {"rid": str(run_id)},
+        )
 
     def rollback_dispatch(
         self,
@@ -1117,54 +1308,146 @@ class SqliteRepository:
         *,
         error: str | None = None,
     ) -> None:
-        raise NotImplementedError
+        if delivery_id is not None:
+            self.requeue_delivery(delivery_id)
+        self.complete_run(run_id, status=RunStatus.FAILED, error=(error or "executor invoke failed")[:4000])
+        proc = self.get_process(process_id)
+        if proc and proc.status not in (ProcessStatus.DISABLED, ProcessStatus.SUSPENDED):
+            self.update_process_status(process_id, ProcessStatus.RUNNABLE)
 
     def get_latest_delivery_time(self, handler_id: UUID) -> datetime | None:
-        raise NotImplementedError
+        row = self._query_one(
+            """SELECT MAX(cm.created_at) as latest FROM cogos_delivery d
+               JOIN cogos_channel_message cm ON cm.id = d.message
+               WHERE d.handler = :hid""",
+            {"hid": str(handler_id)},
+        )
+        return self._parse_dt(row["latest"]) if row and row["latest"] else None
 
     # ── Cron Rules ────────────────────────────────────────────
 
     def upsert_cron(self, c: Cron) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_cron
+               (id, expression, channel_name, payload, enabled, last_run, created_at)
+               VALUES (:id, :expression, :channel_name, :payload, :enabled, :last_run, :created_at)""",
+            {
+                "id": str(c.id),
+                "expression": c.expression,
+                "channel_name": c.channel_name,
+                "payload": self._json_dumps(c.payload),
+                "enabled": int(c.enabled),
+                "last_run": c.last_run.isoformat() if getattr(c, "last_run", None) else None,
+                "created_at": c.created_at.isoformat() if c.created_at else now,
+            },
+        )
+        return c.id
 
     def list_cron_rules(self, *, enabled_only: bool = False) -> list[Cron]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_cron"
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY expression"
+        return [self._row_to_cron(r) for r in self._query(sql)]
 
     def delete_cron(self, cron_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "DELETE FROM cogos_cron WHERE id = :id", {"id": str(cron_id)}
+        ) > 0
 
     def update_cron_enabled(self, cron_id: UUID, enabled: bool) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_cron SET enabled = :enabled WHERE id = :id",
+            {"enabled": int(enabled), "id": str(cron_id)},
+        ) > 0
 
     # ── Files ─────────────────────────────────────────────────
 
     def insert_file(self, f: File) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_file (id, key, includes, created_at, updated_at)
+               VALUES (:id, :key, :includes, :created_at, :updated_at)""",
+            {
+                "id": str(f.id),
+                "key": f.key,
+                "includes": self._json_dumps(f.includes),
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+        return f.id
 
     def get_file_by_key(self, key: str) -> File | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_file WHERE key = :key", {"key": key})
+        return self._row_to_file(row) if row else None
 
     def get_file_by_id(self, file_id: UUID) -> File | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_file WHERE id = :id", {"id": str(file_id)})
+        return self._row_to_file(row) if row else None
 
     def list_files(self, *, prefix: str | None = None, limit: int = 200) -> list[File]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_file"
+        params: dict[str, Any] = {}
+        if prefix:
+            sql += " WHERE key LIKE :prefix || '%'"
+            params["prefix"] = prefix
+        sql += " ORDER BY key LIMIT :limit"
+        params["limit"] = limit
+        return [self._row_to_file(r) for r in self._query(sql, params)]
 
     def grep_files(
         self, pattern: str, *, prefix: str | None = None, limit: int = 100,
     ) -> list[tuple[str, str]]:
-        raise NotImplementedError
+        sql = """SELECT f.key, fv.content FROM cogos_file f
+                 JOIN cogos_file_version fv ON fv.file_id = f.id
+                 WHERE fv.is_active = 1 AND fv.content REGEXP :pattern"""
+        params: dict[str, Any] = {"pattern": pattern}
+        if prefix:
+            sql += " AND f.key LIKE :prefix || '%'"
+            params["prefix"] = prefix
+        sql += " ORDER BY f.key LIMIT :limit"
+        params["limit"] = limit
+        rows = self._query(sql, params)
+        results: list[tuple[str, str]] = []
+        compiled = re.compile(pattern)
+        for row in rows:
+            for line in (row["content"] or "").splitlines():
+                if compiled.search(line):
+                    results.append((row["key"], line))
+                    break
+        return results
 
     def glob_files(
         self, pattern: str, *, prefix: str | None = None, limit: int = 200,
     ) -> list[str]:
-        raise NotImplementedError
+        import fnmatch
+        sql = "SELECT key FROM cogos_file"
+        params: dict[str, Any] = {}
+        if prefix:
+            sql += " WHERE key LIKE :prefix || '%'"
+            params["prefix"] = prefix
+        sql += " ORDER BY key"
+        rows = self._query(sql, params)
+        results: list[str] = []
+        for row in rows:
+            if fnmatch.fnmatch(row["key"], pattern):
+                results.append(row["key"])
+                if len(results) >= limit:
+                    break
+        return results
 
     def update_file_includes(self, file_id: UUID, includes: list[str]) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_file SET includes = :includes, updated_at = :now WHERE id = :id",
+            {"includes": self._json_dumps(includes), "now": self._now(), "id": str(file_id)},
+        ) > 0
 
     def delete_file(self, file_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "DELETE FROM cogos_file WHERE id = :id", {"id": str(file_id)}
+        ) > 0
 
     def bulk_upsert_files(
         self,
@@ -1172,63 +1455,226 @@ class SqliteRepository:
         *,
         batch_size: int = 100,
     ) -> int:
-        raise NotImplementedError
+        with self.batch():
+            for key, content, source, includes in files:
+                f = self.get_file_by_key(key)
+                if f is None:
+                    f = File(key=key, includes=includes)
+                    self.insert_file(f)
+                else:
+                    self.update_file_includes(f.id, includes)
+                max_v = self.get_max_file_version(f.id)
+                self._execute(
+                    """UPDATE cogos_file_version SET is_active = 0
+                       WHERE file_id = :fid AND is_active = 1""",
+                    {"fid": str(f.id)},
+                )
+                fv = FileVersion(
+                    file_id=f.id, version=max_v + 1, content=content,
+                    source=source, is_active=True,
+                )
+                self.insert_file_version(fv)
+        return len(files)
 
     # ── File Versions ─────────────────────────────────────────
 
     def insert_file_version(self, fv: FileVersion) -> None:
-        raise NotImplementedError
+        now = self._now()
+        if fv.is_active:
+            self._execute(
+                "UPDATE cogos_file_version SET is_active = 0 WHERE file_id = :fid AND is_active = 1",
+                {"fid": str(fv.file_id)},
+            )
+        self._execute(
+            """INSERT INTO cogos_file_version
+               (id, file_id, version, read_only, content, source, is_active, run_id, created_at)
+               VALUES (:id, :file_id, :version, :read_only, :content, :source, :is_active, :run_id, :created_at)""",
+            {
+                "id": str(fv.id),
+                "file_id": str(fv.file_id),
+                "version": fv.version,
+                "read_only": int(fv.read_only),
+                "content": fv.content,
+                "source": fv.source,
+                "is_active": int(fv.is_active),
+                "run_id": str(fv.run_id) if fv.run_id else None,
+                "created_at": now,
+            },
+        )
+        self._execute(
+            "UPDATE cogos_file SET updated_at = :now WHERE id = :fid",
+            {"now": now, "fid": str(fv.file_id)},
+        )
 
     def get_active_file_version(self, file_id: UUID) -> FileVersion | None:
-        raise NotImplementedError
+        row = self._query_one(
+            """SELECT * FROM cogos_file_version
+               WHERE file_id = :fid AND is_active = 1
+               ORDER BY version DESC LIMIT 1""",
+            {"fid": str(file_id)},
+        )
+        return self._row_to_file_version(row) if row else None
 
     def get_max_file_version(self, file_id: UUID) -> int:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT MAX(version) as max_v FROM cogos_file_version WHERE file_id = :fid",
+            {"fid": str(file_id)},
+        )
+        return row["max_v"] if row and row["max_v"] is not None else 0
 
     def list_file_versions(self, file_id: UUID) -> list[FileVersion]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_file_version WHERE file_id = :fid ORDER BY version",
+            {"fid": str(file_id)},
+        )
+        return [self._row_to_file_version(r) for r in rows]
 
     def set_active_file_version(self, file_id: UUID, version: int) -> None:
-        raise NotImplementedError
+        self._execute(
+            "UPDATE cogos_file_version SET is_active = 0 WHERE file_id = :fid",
+            {"fid": str(file_id)},
+        )
+        self._execute(
+            "UPDATE cogos_file_version SET is_active = 1 WHERE file_id = :fid AND version = :v",
+            {"fid": str(file_id), "v": version},
+        )
 
     def update_file_version_content(self, file_id: UUID, version: int, content: str) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_file_version SET content = :content WHERE file_id = :fid AND version = :v",
+            {"content": content, "fid": str(file_id), "v": version},
+        ) > 0
 
     def delete_file_version(self, file_id: UUID, version: int) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "DELETE FROM cogos_file_version WHERE file_id = :fid AND version = :v",
+            {"fid": str(file_id), "v": version},
+        ) > 0
 
     # ── Capabilities ──────────────────────────────────────────
 
     def upsert_capability(self, cap: Capability) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_capability
+               (id, name, description, instructions, handler, schema,
+                iam_role_arn, enabled, metadata, event_types, created_at, updated_at)
+               VALUES (:id, :name, :description, :instructions, :handler, :schema,
+                :iam_role_arn, :enabled, :metadata, :event_types, :created_at, :updated_at)""",
+            {
+                "id": str(cap.id),
+                "name": cap.name,
+                "description": cap.description,
+                "instructions": cap.instructions,
+                "handler": cap.handler,
+                "schema": self._json_dumps(cap.schema),
+                "iam_role_arn": cap.iam_role_arn,
+                "enabled": int(cap.enabled),
+                "metadata": self._json_dumps(cap.metadata),
+                "event_types": self._json_dumps(getattr(cap, "event_types", [])),
+                "created_at": cap.created_at.isoformat() if cap.created_at else now,
+                "updated_at": now,
+            },
+        )
+        return cap.id
 
     def get_capability(self, cap_id: UUID) -> Capability | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_capability WHERE id = :id", {"id": str(cap_id)})
+        return self._row_to_capability(row) if row else None
 
     def get_capability_by_name(self, name: str) -> Capability | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_capability WHERE name = :name", {"name": name})
+        return self._row_to_capability(row) if row else None
 
     def get_capability_by_handler(self, handler: str) -> Capability | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_capability WHERE handler = :handler", {"handler": handler}
+        )
+        return self._row_to_capability(row) if row else None
 
     def list_capabilities(self, *, enabled_only: bool = False) -> list[Capability]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_capability"
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY name"
+        return [self._row_to_capability(r) for r in self._query(sql)]
 
     def search_capabilities(self, query: str, *, process_id: UUID | None = None) -> list[Capability]:
-        raise NotImplementedError
+        if process_id:
+            sql = """SELECT c.* FROM cogos_capability c
+                     JOIN cogos_process_capability pc ON pc.capability = c.id
+                     WHERE c.enabled = 1 AND pc.process = :pid
+                     AND (c.name LIKE '%' || :q || '%' OR c.description LIKE '%' || :q || '%')
+                     ORDER BY c.name"""
+            rows = self._query(sql, {"pid": str(process_id), "q": query})
+        else:
+            sql = """SELECT * FROM cogos_capability
+                     WHERE enabled = 1
+                     AND (name LIKE '%' || :q || '%' OR description LIKE '%' || :q || '%')
+                     ORDER BY name"""
+            rows = self._query(sql, {"q": query})
+        return [self._row_to_capability(r) for r in rows]
 
     # ── Resources ─────────────────────────────────────────────
 
     def upsert_resource(self, resource: Resource) -> str:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_resource
+               (id, name, resource_type, capacity, metadata, created_at)
+               VALUES (:id, :name, :resource_type, :capacity, :metadata, :created_at)""",
+            {
+                "id": str(resource.id),
+                "name": resource.name,
+                "resource_type": resource.resource_type.value,
+                "capacity": resource.capacity,
+                "metadata": self._json_dumps(resource.metadata),
+                "created_at": resource.created_at.isoformat() if resource.created_at else now,
+            },
+        )
+        return resource.name
 
     def list_resources(self) -> list[Resource]:
-        raise NotImplementedError
+        return [self._row_to_resource(r) for r in self._query("SELECT * FROM cogos_resource ORDER BY name")]
 
     # ── Runs ──────────────────────────────────────────────────
 
     def create_run(self, run: Run) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        epoch = self.reboot_epoch
+        self._execute(
+            """INSERT INTO cogos_run
+               (id, process, message, conversation, status, tokens_in, tokens_out,
+                cost_usd, duration_ms, error, model_version, result, snapshot,
+                scope_log, epoch, trace_id, parent_trace_id, metadata, created_at, completed_at)
+               VALUES
+               (:id, :process, :message, :conversation, :status, :tokens_in, :tokens_out,
+                :cost_usd, :duration_ms, :error, :model_version, :result, :snapshot,
+                :scope_log, :epoch, :trace_id, :parent_trace_id, :metadata, :created_at, :completed_at)""",
+            {
+                "id": str(run.id),
+                "process": str(run.process),
+                "message": str(run.message) if run.message else None,
+                "conversation": str(run.conversation) if run.conversation else None,
+                "status": run.status.value,
+                "tokens_in": run.tokens_in,
+                "tokens_out": run.tokens_out,
+                "cost_usd": str(run.cost_usd),
+                "duration_ms": run.duration_ms,
+                "error": run.error,
+                "model_version": run.model_version,
+                "result": self._json_dumps(run.result) if run.result is not None else None,
+                "snapshot": self._json_dumps(run.snapshot) if run.snapshot is not None else None,
+                "scope_log": self._json_dumps(run.scope_log),
+                "epoch": epoch,
+                "trace_id": str(run.trace_id) if run.trace_id else None,
+                "parent_trace_id": str(run.parent_trace_id) if run.parent_trace_id else None,
+                "metadata": self._json_dumps(run.metadata) if run.metadata is not None else None,
+                "created_at": run.created_at.isoformat() if run.created_at else now,
+                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            },
+        )
+        return run.id
 
     def complete_run(
         self,
@@ -1245,19 +1691,76 @@ class SqliteRepository:
         snapshot: dict | None = None,
         scope_log: list[dict] | None = None,
     ) -> bool:
-        raise NotImplementedError
+        now = self._now()
+        sets = [
+            "status = :status", "tokens_in = :tokens_in", "tokens_out = :tokens_out",
+            "cost_usd = :cost_usd", "duration_ms = :duration_ms", "error = :error",
+            "completed_at = :completed_at",
+        ]
+        params: dict[str, Any] = {
+            "status": status.value,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cost_usd": str(cost_usd),
+            "duration_ms": duration_ms,
+            "error": error,
+            "completed_at": now,
+            "id": str(run_id),
+        }
+        if model_version is not None:
+            sets.append("model_version = :model_version")
+            params["model_version"] = model_version
+        if result is not None:
+            sets.append("result = :result")
+            params["result"] = self._json_dumps(result)
+        if snapshot is not None:
+            sets.append("snapshot = :snapshot")
+            params["snapshot"] = self._json_dumps(snapshot)
+        if scope_log is not None:
+            sets.append("scope_log = :scope_log")
+            params["scope_log"] = self._json_dumps(scope_log)
+        sql = f"UPDATE cogos_run SET {', '.join(sets)} WHERE id = :id"
+        return self._execute(sql, params) > 0
 
     def timeout_stale_runs(self, max_age_ms: int = 900_000) -> int:
-        raise NotImplementedError
+        from datetime import timedelta
+        threshold = (datetime.now(UTC) - timedelta(milliseconds=max_age_ms)).isoformat()
+        now = self._now()
+        return self._execute(
+            """UPDATE cogos_run SET status = 'timeout',
+               error = 'Run exceeded maximum duration and was reaped by dispatcher',
+               completed_at = :now
+               WHERE status = 'running' AND created_at < :threshold""",
+            {"now": now, "threshold": threshold},
+        )
 
     def get_run(self, run_id: UUID) -> Run | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_run WHERE id = :id", {"id": str(run_id)})
+        return self._row_to_run(row) if row else None
 
     def list_recent_failed_runs(self, max_age_ms: int = 120_000) -> list[Run]:
-        raise NotImplementedError
+        from datetime import timedelta
+        cutoff = (datetime.now(UTC) - timedelta(milliseconds=max_age_ms)).isoformat()
+        epoch = self.reboot_epoch
+        rows = self._query(
+            """SELECT * FROM cogos_run
+               WHERE epoch = :epoch
+               AND status IN ('failed', 'timeout', 'throttled')
+               AND (completed_at >= :cutoff OR created_at >= :cutoff)""",
+            {"epoch": epoch, "cutoff": cutoff},
+        )
+        return [self._row_to_run(r) for r in rows]
 
     def update_run_metadata(self, run_id: UUID, metadata: dict) -> None:
-        raise NotImplementedError
+        row = self._query_one("SELECT metadata FROM cogos_run WHERE id = :id", {"id": str(run_id)})
+        if row is None:
+            return
+        current = self._json_loads(row["metadata"]) or {}
+        current.update(metadata)
+        self._execute(
+            "UPDATE cogos_run SET metadata = :metadata WHERE id = :id",
+            {"metadata": self._json_dumps(current), "id": str(run_id)},
+        )
 
     def list_runs(
         self,
@@ -1270,10 +1773,53 @@ class SqliteRepository:
         epoch: int | None = None,
         slim: bool = False,
     ) -> list[Run]:
-        raise NotImplementedError
+        if slim:
+            cols = ("id, process, message, conversation, status, tokens_in, tokens_out, "
+                    "cost_usd, duration_ms, error, model_version, epoch, trace_id, "
+                    "parent_trace_id, metadata, created_at, completed_at, "
+                    "NULL as result, NULL as snapshot, '[]' as scope_log")
+        else:
+            cols = "*"
+        sql = f"SELECT {cols} FROM cogos_run"
+        params: dict[str, Any] = {}
+        conditions = []
+        effective_epoch = self.reboot_epoch if epoch is None else epoch
+        if effective_epoch != ALL_EPOCHS:
+            conditions.append("epoch = :epoch")
+            params["epoch"] = effective_epoch
+        if process_id is not None:
+            conditions.append("process = :pid")
+            params["pid"] = str(process_id)
+        if process_ids:
+            placeholders = ", ".join(f":pid_{i}" for i in range(len(process_ids)))
+            conditions.append(f"process IN ({placeholders})")
+            for i, pid in enumerate(process_ids):
+                params[f"pid_{i}"] = str(pid)
+        if status:
+            conditions.append("status = :status")
+            params["status"] = status
+        if since:
+            conditions.append("created_at >= :since")
+            params["since"] = since.replace("Z", "+00:00")
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY created_at DESC LIMIT :limit"
+        params["limit"] = limit
+        return [self._row_to_run(r) for r in self._query(sql, params)]
 
     def list_file_mutations(self, run_id: UUID) -> list[dict]:
-        raise NotImplementedError
+        rows = self._query(
+            """SELECT f.key, fv.version, fv.created_at
+               FROM cogos_file_version fv
+               JOIN cogos_file f ON f.id = fv.file_id
+               WHERE fv.run_id = :rid
+               ORDER BY fv.created_at""",
+            {"rid": str(run_id)},
+        )
+        return [
+            {"key": r["key"], "version": r["version"], "created_at": self._parse_dt(r["created_at"])}
+            for r in rows
+        ]
 
     def list_runs_by_process_glob(
         self,
@@ -1283,38 +1829,136 @@ class SqliteRepository:
         since: str | None = None,
         limit: int = 50,
     ) -> list[Run]:
-        raise NotImplementedError
+        sql = """SELECT r.* FROM cogos_run r
+                 JOIN cogos_process p ON p.id = r.process
+                 WHERE p.name GLOB :pattern"""
+        params: dict[str, Any] = {"pattern": name_pattern}
+        if status:
+            sql += " AND r.status = :status"
+            params["status"] = status
+        if since:
+            sql += " AND r.created_at >= :since"
+            params["since"] = since.replace("Z", "+00:00")
+        sql += " ORDER BY r.created_at DESC LIMIT :limit"
+        params["limit"] = limit
+        return [self._row_to_run(r) for r in self._query(sql, params)]
 
     # ── Traces ────────────────────────────────────────────────
 
     def create_trace(self, trace: Trace) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_trace (id, run, capability_calls, file_ops, model_version, created_at)
+               VALUES (:id, :run, :capability_calls, :file_ops, :model_version, :created_at)""",
+            {
+                "id": str(trace.id),
+                "run": str(trace.run),
+                "capability_calls": self._json_dumps(trace.capability_calls),
+                "file_ops": self._json_dumps(trace.file_ops),
+                "model_version": trace.model_version,
+                "created_at": trace.created_at.isoformat() if trace.created_at else now,
+            },
+        )
+        return trace.id
 
     # ── Request Traces & Spans ────────────────────────────────
 
     def create_request_trace(self, trace: RequestTrace) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_request_trace (id, cogent_id, source, source_ref, created_at)
+               VALUES (:id, :cogent_id, :source, :source_ref, :created_at)""",
+            {
+                "id": str(trace.id),
+                "cogent_id": trace.cogent_id,
+                "source": trace.source,
+                "source_ref": trace.source_ref,
+                "created_at": now,
+            },
+        )
+        return trace.id
 
     def get_request_trace(self, trace_id: UUID) -> RequestTrace | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_request_trace WHERE id = :id", {"id": str(trace_id)}
+        )
+        return self._row_to_request_trace(row) if row else None
 
     def create_span(self, span: Span) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_span
+               (id, trace_id, parent_span_id, name, coglet, status, metadata, started_at, ended_at)
+               VALUES (:id, :trace_id, :parent_span_id, :name, :coglet, :status, :metadata, :started_at, :ended_at)""",
+            {
+                "id": str(span.id),
+                "trace_id": str(span.trace_id),
+                "parent_span_id": str(span.parent_span_id) if span.parent_span_id else None,
+                "name": span.name,
+                "coglet": span.coglet,
+                "status": span.status.value,
+                "metadata": self._json_dumps(span.metadata),
+                "started_at": now,
+                "ended_at": None,
+            },
+        )
+        return span.id
 
     def complete_span(self, span_id: UUID, *, status: str = "completed", metadata: dict | None = None) -> bool:
-        raise NotImplementedError
+        now = self._now()
+        if metadata:
+            row = self._query_one("SELECT metadata FROM cogos_span WHERE id = :id", {"id": str(span_id)})
+            if row:
+                current = self._json_loads(row["metadata"]) or {}
+                current.update(metadata)
+                return self._execute(
+                    "UPDATE cogos_span SET status = :status, metadata = :metadata, ended_at = :now WHERE id = :id",
+                    {"status": status, "metadata": self._json_dumps(current), "now": now, "id": str(span_id)},
+                ) > 0
+            return False
+        return self._execute(
+            "UPDATE cogos_span SET status = :status, ended_at = :now WHERE id = :id",
+            {"status": status, "now": now, "id": str(span_id)},
+        ) > 0
 
     def list_spans(self, trace_id: UUID) -> list[Span]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_span WHERE trace_id = :tid ORDER BY started_at",
+            {"tid": str(trace_id)},
+        )
+        return [self._row_to_span(r) for r in rows]
 
     def create_span_event(self, event: SpanEvent) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_span_event (id, span_id, event, message, metadata, timestamp)
+               VALUES (:id, :span_id, :event, :message, :metadata, :timestamp)""",
+            {
+                "id": str(event.id),
+                "span_id": str(event.span_id),
+                "event": event.event,
+                "message": event.message,
+                "metadata": self._json_dumps(event.metadata),
+                "timestamp": now,
+            },
+        )
+        return event.id
 
     def list_span_events(self, span_id: UUID) -> list[SpanEvent]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_span_event WHERE span_id = :sid ORDER BY timestamp",
+            {"sid": str(span_id)},
+        )
+        return [self._row_to_span_event(r) for r in rows]
 
     def list_span_events_for_trace(self, trace_id: UUID) -> list[SpanEvent]:
-        raise NotImplementedError
+        rows = self._query(
+            """SELECT se.* FROM cogos_span_event se
+               JOIN cogos_span s ON s.id = se.span_id
+               WHERE s.trace_id = :tid ORDER BY se.timestamp""",
+            {"tid": str(trace_id)},
+        )
+        return [self._row_to_span_event(r) for r in rows]
 
     # ── Meta ──────────────────────────────────────────────────
 
@@ -1386,93 +2030,318 @@ class SqliteRepository:
     # ── Schemas ───────────────────────────────────────────────
 
     def upsert_schema(self, s: Schema) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_schema (id, name, definition, file_id, created_at)
+               VALUES (:id, :name, :definition, :file_id, :created_at)""",
+            {
+                "id": str(s.id),
+                "name": s.name,
+                "definition": self._json_dumps(s.definition),
+                "file_id": str(s.file_id) if s.file_id else None,
+                "created_at": s.created_at.isoformat() if s.created_at else now,
+            },
+        )
+        return s.id
 
     def get_schema(self, schema_id: UUID) -> Schema | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_schema WHERE id = :id", {"id": str(schema_id)})
+        return self._row_to_schema(row) if row else None
 
     def get_schema_by_name(self, name: str) -> Schema | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_schema WHERE name = :name", {"name": name})
+        return self._row_to_schema(row) if row else None
 
     def list_schemas(self) -> list[Schema]:
-        raise NotImplementedError
+        return [self._row_to_schema(r) for r in self._query("SELECT * FROM cogos_schema ORDER BY name")]
 
     # ── Channels ──────────────────────────────────────────────
 
     def upsert_channel(self, ch: Channel) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_channel
+               (id, name, channel_type, owner_process, schema_id, inline_schema, auto_close, closed_at, created_at)
+               VALUES (:id, :name, :channel_type, :owner_process, :schema_id, :inline_schema, :auto_close, :closed_at, :created_at)""",
+            {
+                "id": str(ch.id),
+                "name": ch.name,
+                "channel_type": ch.channel_type.value,
+                "owner_process": str(ch.owner_process) if ch.owner_process else None,
+                "schema_id": str(ch.schema_id) if ch.schema_id else None,
+                "inline_schema": self._json_dumps(ch.inline_schema) if ch.inline_schema else None,
+                "auto_close": int(ch.auto_close),
+                "closed_at": ch.closed_at.isoformat() if ch.closed_at else None,
+                "created_at": ch.created_at.isoformat() if ch.created_at else now,
+            },
+        )
+        return ch.id
 
     def get_channel(self, channel_id: UUID) -> Channel | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_channel WHERE id = :id", {"id": str(channel_id)})
+        return self._row_to_channel(row) if row else None
 
     def get_channel_by_name(self, name: str) -> Channel | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_channel WHERE name = :name", {"name": name})
+        return self._row_to_channel(row) if row else None
 
     def list_channels(self, *, owner_process: UUID | None = None, limit: int = 0) -> list[Channel]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_channel"
+        params: dict[str, Any] = {}
+        if owner_process is not None:
+            sql += " WHERE owner_process = :op"
+            params["op"] = str(owner_process)
+        sql += " ORDER BY name"
+        if limit > 0:
+            sql += " LIMIT :limit"
+            params["limit"] = limit
+        return [self._row_to_channel(r) for r in self._query(sql, params)]
 
     def close_channel(self, channel_id: UUID) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_channel SET closed_at = :now WHERE id = :id",
+            {"now": self._now(), "id": str(channel_id)},
+        ) > 0
 
     # ── Channel Messages ──────────────────────────────────────
 
     def append_channel_message(self, msg: ChannelMessage) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        if msg.created_at is None:
+            msg.created_at = datetime.now(UTC)
+
+        if msg.idempotency_key:
+            existing = self._query_one(
+                """SELECT id FROM cogos_channel_message
+                   WHERE channel = :cid AND idempotency_key = :key""",
+                {"cid": str(msg.channel), "key": msg.idempotency_key},
+            )
+            if existing:
+                return UUID(existing["id"])
+
+        self._execute(
+            """INSERT INTO cogos_channel_message
+               (id, channel, sender_process, payload, idempotency_key, trace_id, trace_meta, created_at)
+               VALUES (:id, :channel, :sender_process, :payload, :idempotency_key, :trace_id, :trace_meta, :created_at)""",
+            {
+                "id": str(msg.id),
+                "channel": str(msg.channel),
+                "sender_process": str(msg.sender_process) if msg.sender_process else None,
+                "payload": self._json_dumps(msg.payload),
+                "idempotency_key": msg.idempotency_key,
+                "trace_id": str(msg.trace_id) if msg.trace_id else None,
+                "trace_meta": self._json_dumps(msg.trace_meta) if msg.trace_meta else None,
+                "created_at": msg.created_at.isoformat(),
+            },
+        )
+
+        handlers = self.match_handlers_by_channel(msg.channel)
+        for handler in handlers:
+            delivery = Delivery(message=msg.id, handler=handler.id, trace_id=msg.trace_id)
+            _delivery_id, inserted = self.create_delivery(delivery)
+            if inserted:
+                proc = self.get_process(handler.process)
+                if proc and proc.status == ProcessStatus.WAITING:
+                    wc = self.get_pending_wait_condition_for_process(handler.process)
+                    if wc is None:
+                        self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+                        self._nudge_ingress(process_id=handler.process)
+                    else:
+                        payload = msg.payload if isinstance(msg.payload, dict) else {}
+                        if payload.get("type") == "child:exited":
+                            sender_pid = str(msg.sender_process)
+                            remaining = self.remove_from_pending(wc.id, sender_pid)
+                            should_wake = (
+                                wc.type.value in ("wait", "wait_any")
+                                or (wc.type.value == "wait_all" and len(remaining) == 0)
+                            )
+                            if should_wake:
+                                self.resolve_wait_condition(wc.id)
+                                self.update_process_status(handler.process, ProcessStatus.RUNNABLE)
+                                self._nudge_ingress(process_id=handler.process)
+
+        return msg.id
 
     def get_channel_message(self, message_id: UUID) -> ChannelMessage | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_channel_message WHERE id = :id", {"id": str(message_id)}
+        )
+        return self._row_to_channel_message(row) if row else None
 
     def list_channel_messages(
         self, channel_id: UUID | None = None, *, limit: int = 100, since: datetime | None = None,
     ) -> list[ChannelMessage]:
-        raise NotImplementedError
+        sql = "SELECT * FROM cogos_channel_message"
+        params: dict[str, Any] = {}
+        conditions = []
+        if channel_id is not None:
+            conditions.append("channel = :cid")
+            params["cid"] = str(channel_id)
+        if since is not None:
+            conditions.append("created_at > :since")
+            params["since"] = since.isoformat()
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        if channel_id is not None:
+            sql += " ORDER BY created_at ASC"
+        else:
+            sql += " ORDER BY created_at DESC"
+        sql += " LIMIT :limit"
+        params["limit"] = limit
+        return [self._row_to_channel_message(r) for r in self._query(sql, params)]
 
     # ── Discord Metadata ──────────────────────────────────────
 
     def upsert_discord_guild(self, guild: DiscordGuild) -> None:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_discord_guild
+               (guild_id, cogent_name, name, icon_url, member_count, synced_at)
+               VALUES (:guild_id, :cogent_name, :name, :icon_url, :member_count, :synced_at)""",
+            {
+                "guild_id": guild.guild_id,
+                "cogent_name": guild.cogent_name,
+                "name": guild.name,
+                "icon_url": guild.icon_url,
+                "member_count": guild.member_count,
+                "synced_at": now,
+            },
+        )
 
     def get_discord_guild(self, guild_id: str) -> DiscordGuild | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_discord_guild WHERE guild_id = :gid", {"gid": guild_id}
+        )
+        return self._row_to_discord_guild(row) if row else None
 
     def list_discord_guilds(self, cogent_name: str | None = None) -> list[DiscordGuild]:
-        raise NotImplementedError
+        if cogent_name:
+            rows = self._query(
+                "SELECT * FROM cogos_discord_guild WHERE cogent_name = :cn",
+                {"cn": cogent_name},
+            )
+        else:
+            rows = self._query("SELECT * FROM cogos_discord_guild")
+        return [self._row_to_discord_guild(r) for r in rows]
 
     def delete_discord_guild(self, guild_id: str) -> None:
-        raise NotImplementedError
+        self._execute(
+            "DELETE FROM cogos_discord_channel WHERE guild_id = :gid", {"gid": guild_id}
+        )
+        self._execute(
+            "DELETE FROM cogos_discord_guild WHERE guild_id = :gid", {"gid": guild_id}
+        )
 
     def upsert_discord_channel(self, channel: DiscordChannel) -> None:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_discord_channel
+               (channel_id, guild_id, name, topic, category, channel_type, position, synced_at)
+               VALUES (:channel_id, :guild_id, :name, :topic, :category, :channel_type, :position, :synced_at)""",
+            {
+                "channel_id": channel.channel_id,
+                "guild_id": channel.guild_id,
+                "name": channel.name,
+                "topic": channel.topic,
+                "category": channel.category,
+                "channel_type": channel.channel_type,
+                "position": channel.position,
+                "synced_at": now,
+            },
+        )
 
     def get_discord_channel(self, channel_id: str) -> DiscordChannel | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_discord_channel WHERE channel_id = :cid", {"cid": channel_id}
+        )
+        return self._row_to_discord_channel(row) if row else None
 
     def list_discord_channels(self, guild_id: str | None = None) -> list[DiscordChannel]:
-        raise NotImplementedError
+        if guild_id:
+            rows = self._query(
+                "SELECT * FROM cogos_discord_channel WHERE guild_id = :gid ORDER BY position",
+                {"gid": guild_id},
+            )
+        else:
+            rows = self._query("SELECT * FROM cogos_discord_channel ORDER BY position")
+        return [self._row_to_discord_channel(r) for r in rows]
 
     def delete_discord_channel(self, channel_id: str) -> None:
-        raise NotImplementedError
+        self._execute(
+            "DELETE FROM cogos_discord_channel WHERE channel_id = :cid", {"cid": channel_id}
+        )
 
     # ── Executors ─────────────────────────────────────────────
 
     def register_executor(self, executor: Executor) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        existing = self._query_one(
+            "SELECT id FROM cogos_executor WHERE executor_id = :eid",
+            {"eid": executor.executor_id},
+        )
+        if existing:
+            executor.id = UUID(existing["id"])
+        self._execute(
+            """INSERT OR REPLACE INTO cogos_executor
+               (id, executor_id, channel_type, executor_tags, status, current_run_id,
+                dispatch_type, metadata, last_heartbeat_at, registered_at)
+               VALUES (:id, :executor_id, :channel_type, :executor_tags, :status, :current_run_id,
+                :dispatch_type, :metadata, :last_heartbeat_at, :registered_at)""",
+            {
+                "id": str(executor.id),
+                "executor_id": executor.executor_id,
+                "channel_type": executor.channel_type,
+                "executor_tags": self._json_dumps(executor.executor_tags),
+                "status": ExecutorStatus.IDLE.value,
+                "current_run_id": None,
+                "dispatch_type": executor.dispatch_type,
+                "metadata": self._json_dumps(executor.metadata),
+                "last_heartbeat_at": now,
+                "registered_at": now,
+            },
+        )
+        return executor.id
 
     def get_executor(self, executor_id: str) -> Executor | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_executor WHERE executor_id = :eid", {"eid": executor_id}
+        )
+        return self._row_to_executor(row) if row else None
 
     def get_executor_by_id(self, id: UUID) -> Executor | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_executor WHERE id = :id", {"id": str(id)}
+        )
+        return self._row_to_executor(row) if row else None
 
     def list_executors(self, status: ExecutorStatus | None = None) -> list[Executor]:
-        raise NotImplementedError
+        if status:
+            rows = self._query(
+                "SELECT * FROM cogos_executor WHERE status = :status ORDER BY registered_at DESC",
+                {"status": status.value},
+            )
+        else:
+            rows = self._query("SELECT * FROM cogos_executor ORDER BY registered_at DESC")
+        return [self._row_to_executor(r) for r in rows]
 
     def select_executor(
         self,
         required_tags: list[str] | None = None,
         preferred_tags: list[str] | None = None,
     ) -> Executor | None:
-        raise NotImplementedError
+        idle = self.list_executors(status=ExecutorStatus.IDLE)
+        if not idle:
+            return None
+        candidates = idle
+        if required_tags:
+            req = set(required_tags)
+            candidates = [e for e in candidates if req.issubset(set(e.executor_tags))]
+        if not candidates:
+            return None
+        if preferred_tags:
+            pref = set(preferred_tags)
+            candidates.sort(key=lambda e: len(pref & set(e.executor_tags)), reverse=True)
+        return candidates[0]
 
     def heartbeat_executor(
         self,
@@ -1481,32 +2350,106 @@ class SqliteRepository:
         current_run_id: UUID | None = None,
         resource_usage: dict | None = None,
     ) -> bool:
-        raise NotImplementedError
+        now = self._now()
+        if resource_usage:
+            row = self._query_one(
+                "SELECT metadata FROM cogos_executor WHERE executor_id = :eid",
+                {"eid": executor_id},
+            )
+            if row:
+                meta = self._json_loads(row["metadata"]) or {}
+                meta["resource_usage"] = resource_usage
+                return self._execute(
+                    """UPDATE cogos_executor SET last_heartbeat_at = :now, status = :status,
+                       current_run_id = :rid, metadata = :metadata WHERE executor_id = :eid""",
+                    {
+                        "now": now, "status": status.value,
+                        "rid": str(current_run_id) if current_run_id else None,
+                        "metadata": self._json_dumps(meta), "eid": executor_id,
+                    },
+                ) > 0
+        return self._execute(
+            """UPDATE cogos_executor SET last_heartbeat_at = :now, status = :status,
+               current_run_id = :rid WHERE executor_id = :eid""",
+            {
+                "now": now, "status": status.value,
+                "rid": str(current_run_id) if current_run_id else None,
+                "eid": executor_id,
+            },
+        ) > 0
 
     def update_executor_status(
         self, executor_id: str, status: ExecutorStatus, current_run_id: UUID | None = None,
     ) -> None:
-        raise NotImplementedError
+        self._execute(
+            "UPDATE cogos_executor SET status = :status, current_run_id = :rid WHERE executor_id = :eid",
+            {
+                "status": status.value,
+                "rid": str(current_run_id) if current_run_id else None,
+                "eid": executor_id,
+            },
+        )
 
     def delete_executor(self, executor_id: str) -> None:
-        raise NotImplementedError
+        self._execute(
+            "DELETE FROM cogos_executor WHERE executor_id = :eid", {"eid": executor_id}
+        )
 
     def reap_stale_executors(self, heartbeat_interval_s: int = 30) -> int:
-        raise NotImplementedError
+        from datetime import timedelta
+        now = datetime.now(UTC)
+        dead_threshold = (now - timedelta(seconds=heartbeat_interval_s * 10)).isoformat()
+        stale_threshold = (now - timedelta(seconds=heartbeat_interval_s * 3)).isoformat()
+        dead_count = self._execute(
+            """UPDATE cogos_executor SET status = 'dead'
+               WHERE status != 'dead' AND last_heartbeat_at IS NOT NULL
+               AND last_heartbeat_at < :threshold""",
+            {"threshold": dead_threshold},
+        )
+        self._execute(
+            """UPDATE cogos_executor SET status = 'stale'
+               WHERE status = 'idle' AND last_heartbeat_at IS NOT NULL
+               AND last_heartbeat_at < :threshold AND last_heartbeat_at >= :dead""",
+            {"threshold": stale_threshold, "dead": dead_threshold},
+        )
+        return dead_count
 
     # ── Executor Tokens ───────────────────────────────────────
 
     def create_executor_token(self, token: ExecutorToken) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_executor_token
+               (id, name, token_hash, token_raw, scope, created_at, revoked_at)
+               VALUES (:id, :name, :token_hash, :token_raw, :scope, :created_at, :revoked_at)""",
+            {
+                "id": str(token.id),
+                "name": token.name,
+                "token_hash": token.token_hash,
+                "token_raw": token.token_raw,
+                "scope": token.scope,
+                "created_at": now,
+                "revoked_at": None,
+            },
+        )
+        return token.id
 
     def get_executor_token_by_hash(self, token_hash: str) -> ExecutorToken | None:
-        raise NotImplementedError
+        row = self._query_one(
+            "SELECT * FROM cogos_executor_token WHERE token_hash = :hash AND revoked_at IS NULL",
+            {"hash": token_hash},
+        )
+        return self._row_to_executor_token(row) if row else None
 
     def list_executor_tokens(self) -> list[ExecutorToken]:
-        raise NotImplementedError
+        rows = self._query("SELECT * FROM cogos_executor_token ORDER BY created_at DESC")
+        return [self._row_to_executor_token(r) for r in rows]
 
     def revoke_executor_token(self, name: str) -> bool:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_executor_token SET revoked_at = :now WHERE name = :name AND revoked_at IS NULL",
+            {"now": self._now(), "name": name},
+        ) > 0
 
     # ── Lifecycle ─────────────────────────────────────────────
 
