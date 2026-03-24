@@ -1,4 +1,5 @@
-# CogOS Diagnostics Runner — inline smoke tests for all capabilities.
+# CogOS Diagnostics Orchestrator — spawns child processes per test category.
+# Phase 1: spawn children and exit. Phase 2 (next run): collect results.
 # Runs in the Python sandbox. All capabilities injected as globals.
 
 import time
@@ -9,652 +10,219 @@ def _now():
             + str(t.tm_mday).zfill(2) + "T" + str(t.tm_hour).zfill(2)
             + ":" + str(t.tm_min).zfill(2) + ":" + str(t.tm_sec).zfill(2) + "Z")
 
-def check(name, fn):
-    """Run a check function, return result dict."""
-    try:
-        fn()
-        return {"name": name, "status": "pass", "ms": 0}
-    except Exception as e:
-        return {"name": name, "status": "fail", "ms": 0, "error": str(e)[:300]}
-
-# ═══════════════════════════════════════════════════════════
-# DIAGNOSTICS — each returns a list of check results
-# ═══════════════════════════════════════════════════════════
-
-def diag_files():
-    """Test file/dir read, write, edit, search."""
-    checks = []
-
-    def test_write_read():
-        disk.get("_diag/test.txt").write("hello diagnostics")
-        r = disk.get("_diag/test.txt").read()
-        if hasattr(r, "error"):
-            raise Exception(str(r.error))
-        if r.content != "hello diagnostics":
-            raise Exception("got " + repr(r.content))
-    checks.append(check("write_read", test_write_read))
-
-    def test_overwrite():
-        disk.get("_diag/test.txt").write("version 2")
-        r = disk.get("_diag/test.txt").read()
-        if r.content != "version 2":
-            raise Exception("got " + repr(r.content))
-    checks.append(check("overwrite", test_overwrite))
-
-    def test_edit():
-        disk.get("_diag/edit.txt").write("the quick brown fox")
-        disk.get("_diag/edit.txt").edit(old="brown", new="red")
-        r = disk.get("_diag/edit.txt").read()
-        if "red fox" not in r.content:
-            raise Exception("got " + repr(r.content))
-    checks.append(check("edit", test_edit))
-
-    def test_grep():
-        disk.get("_diag/grep.txt").write("MARKER_DIAG_TEST")
-        results = disk.grep("MARKER_DIAG_TEST")
-        if not isinstance(results, list) or len(results) == 0:
-            raise Exception("grep returned " + repr(results))
-    checks.append(check("grep", test_grep))
-
-    def test_glob():
-        results = disk.glob("_diag/*.txt")
-        if not isinstance(results, list):
-            raise Exception("glob returned " + repr(results))
-    checks.append(check("glob", test_glob))
-
-    return checks
-
-def diag_channels():
-    """Test channel create, send, read."""
-    checks = []
-
-    def test_create_send_read():
-        channels.create("_diag:ch:test")
-        channels.send("_diag:ch:test", {"seq": 1})
-        channels.send("_diag:ch:test", {"seq": 2})
-        msgs = channels.read("_diag:ch:test", limit=10)
-        if not isinstance(msgs, list) or len(msgs) < 2:
-            raise Exception("expected 2+ msgs, got " + str(len(msgs) if isinstance(msgs, list) else msgs))
-    checks.append(check("create_send_read", test_create_send_read))
-
-    def test_list():
-        ch_list = channels.list()
-        if not isinstance(ch_list, list):
-            raise Exception("list returned " + repr(ch_list))
-    checks.append(check("list", test_list))
-
-    return checks
-
-def diag_spawn_and_wait():
-    """Test spawn→wait→resume lifecycle end-to-end.
-
-    Spawns a single LLM child, calls wait() to suspend, child exits,
-    parent resumes with wait_results. Verifies the full lifecycle.
-    """
-    checks = []
-
-    def test_list():
-        result = procs.list()
-        if not isinstance(result, list):
-            raise Exception("list returned " + repr(result))
-    checks.append(check("list", test_list))
-
-    def test_spawn_and_get():
-        h = procs.spawn(
-            "_diag/spawn_wait/child",
-            content="Return exactly: {\"status\": \"done\"}",
-            executor="llm",
-            mode="one_shot",
-            capabilities={},
-        )
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-        h2 = procs.get(name="_diag/spawn_wait/child")
-        if hasattr(h2, "error"):
-            raise Exception(str(h2.error))
-    checks.append(check("spawn_and_get", test_spawn_and_get))
-
-    def test_handle_recv():
-        h = procs.get(name="_diag/spawn_wait/child")
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-        msgs = h.recv(limit=5)
-        if not isinstance(msgs, list):
-            raise Exception("recv returned " + str(type(msgs)))
-    checks.append(check("handle_recv", test_handle_recv))
-
-    def test_handle_runs():
-        h = procs.get(name="_diag/spawn_wait/child")
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-        runs = h.runs(limit=3)
-        if not isinstance(runs, list):
-            raise Exception("runs returned " + str(type(runs)))
-    checks.append(check("handle_runs", test_handle_runs))
-
-    def test_wait_suspends():
-        h = procs.spawn(
-            "_diag/spawn_wait/wait_target",
-            content="Return exactly: {\"status\": \"done\"}",
-            executor="llm",
-            mode="one_shot",
-            capabilities={},
-        )
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-        # wait() should raise WaitSuspend (caught by executor) — this
-        # diagnostic runs as LLM so it can session-resume.  If we get
-        # here on a fresh run, wait() correctly suspends.  On resume,
-        # wait_results will be in event — check that below.
-        if event and event.get("wait_results"):
-            return  # resumed after wait — success
-        h.wait()
-    checks.append(check("wait_suspends", test_wait_suspends))
-
-    def test_wait_results_on_resume():
-        if not event or not event.get("wait_results"):
-            # First run — wait hasn't happened yet, skip
-            return
-        wr = event["wait_results"]
-        if not isinstance(wr, list) or len(wr) == 0:
-            raise Exception("wait_results empty: " + repr(wr))
-    checks.append(check("wait_results_on_resume", test_wait_results_on_resume))
-
-    return checks
-
-def diag_me():
-    """Test me process scope scratch/log/tmp."""
-    checks = []
-
-    def test_process_scratch():
-        me.process().scratch().write("scratch data")
-        r = me.process().scratch().read()
-        if r is None:
-            raise Exception("scratch read returned None")
-        if r != "scratch data":
-            raise Exception("got " + repr(r))
-    checks.append(check("process_scratch", test_process_scratch))
-
-    def test_process_tmp():
-        me.process().tmp().write("tmp data")
-        r = me.process().tmp().read()
-        if r is None:
-            raise Exception("tmp read returned None")
-    checks.append(check("process_tmp", test_process_tmp))
-
-    def test_process_log():
-        me.process().log().write("log entry")
-        r = me.process().log().read()
-        if r is None:
-            raise Exception("log read returned None")
-    checks.append(check("process_log", test_process_log))
-
-    return checks
-
-def diag_stdlib():
-    """Test time, json roundtrip."""
-    checks = []
-
-    def test_time():
-        t = time.time()
-        if not isinstance(t, float) or t < 1000000000:
-            raise Exception("got " + repr(t))
-    checks.append(check("time", test_time))
-
-    def test_json():
-        d = {"key": "value", "num": 42}
-        rt = json.loads(json.dumps(d))
-        if rt != d:
-            raise Exception("roundtrip mismatch")
-    checks.append(check("json_roundtrip", test_json))
-
-    return checks
-
-def diag_discord():
-    """Test discord read-only ops."""
-    checks = []
-    def test_wired():
-        if discord is None:
-            raise Exception("discord is None")
-    checks.append(check("wired", test_wired))
-    return checks
-
-def diag_web():
-    """Test web_fetch and web_search."""
-    checks = []
-
-    def test_fetch():
-        r = web_fetch.fetch("https://httpbin.org/get")
-        if hasattr(r, "error") and r.error:
-            raise Exception(str(r.error))
-    checks.append(check("fetch", test_fetch))
-
-    def test_search():
-        if web_search is None:
-            raise Exception("web_search is None")
-    checks.append(check("search_wired", test_search))
-
-    return checks
-
-def diag_blob():
-    """Test blob upload/download."""
-    checks = []
-    def test_upload_download():
-        ref = blob.upload("test content", "_diag_blob")
-        if hasattr(ref, "error") and ref.error:
-            raise Exception(str(ref.error))
-        r = blob.download(ref.key)
-        if hasattr(r, "error") and r.error:
-            raise Exception(str(r.error))
-        content = r.data if hasattr(r, "data") else str(r)
-        if isinstance(content, bytes):
-            content = content.decode("utf-8", errors="replace")
-        if "test content" not in content:
-            raise Exception("mismatch: " + repr(content)[:100])
-    checks.append(check("upload_download", test_upload_download))
-    return checks
-
-def diag_image():
-    """Test image capability — manipulation, compositing, generation, analysis."""
-    import base64
-    checks = []
-
-    def test_wired():
-        if image is None:
-            raise Exception("image is None")
-        for method in ("resize", "crop", "rotate", "convert", "thumbnail",
-                        "overlay_text", "watermark", "combine",
-                        "describe", "analyze", "extract_text",
-                        "generate", "edit", "variations"):
-            if not hasattr(image, method):
-                raise Exception("missing method: " + method)
-    checks.append(check("wired", test_wired))
-
-    # Minimal 2x2 PNG for manipulation/analysis tests
-    _TEST_PNG = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADklEQVQI12P4z8BQDwAEgAF/"
-        "QualzQAAAABJRU5ErkJggg=="
-    )
-
-    # Upload test image
-    test_key = [None]
-    def test_upload():
-        ref = blob.upload(_TEST_PNG, "_diag_image_test.png", content_type="image/png")
-        if hasattr(ref, "error") and ref.error:
-            raise Exception(str(ref.error))
-        test_key[0] = ref.key
-    checks.append(check("upload_test_image", test_upload))
-
-    # -- Manipulation --
-    def test_resize():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.resize(test_key[0], width=4)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("resize", test_resize))
-
-    def test_crop():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.crop(test_key[0], left=0, top=0, right=1, bottom=1)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("crop", test_crop))
-
-    def test_rotate():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.rotate(test_key[0], degrees=90)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("rotate", test_rotate))
-
-    def test_thumbnail():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.thumbnail(test_key[0], max_size=1)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("thumbnail", test_thumbnail))
-
-    def test_convert():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.convert(test_key[0], format="JPEG")
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("convert", test_convert))
-
-    # -- Compositing --
-    def test_overlay_text():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.overlay_text(test_key[0], text="hi", position="center", font_size=10)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("overlay_text", test_overlay_text))
-
-    def test_combine():
-        if test_key[0] is None:
-            raise Exception("skipped — no test image")
-        r = image.combine([test_key[0], test_key[0]], layout="horizontal")
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("combine", test_combine))
-
-    # -- Generation (Gemini) --
-    gen_key = [None]
-    def test_generate():
-        r = image.generate("a small red circle on white background")
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-        if not hasattr(r, "key") or not r.key:
-            raise Exception("no key in result")
-        gen_key[0] = r.key
-    checks.append(check("generate", test_generate))
-
-    def test_edit():
-        key = gen_key[0] or test_key[0]
-        if key is None:
-            raise Exception("skipped — no image to edit")
-        r = image.edit(key, "add a blue border")
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("edit", test_edit))
-
-    # -- Analysis (Gemini Vision) --
-    def test_describe():
-        key = gen_key[0] or test_key[0]
-        if key is None:
-            raise Exception("skipped — no image")
-        r = image.describe(key)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("describe", test_describe))
-
-    def test_analyze():
-        key = gen_key[0] or test_key[0]
-        if key is None:
-            raise Exception("skipped — no image")
-        r = image.analyze(key, "What color is this image?")
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("analyze", test_analyze))
-
-    def test_extract_text():
-        key = gen_key[0] or test_key[0]
-        if key is None:
-            raise Exception("skipped — no image")
-        r = image.extract_text(key)
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-    checks.append(check("extract_text", test_extract_text))
-
-    return checks
-
-def diag_email():
-    checks = []
-    def test_wired():
-        if email is None:
-            raise Exception("email is None")
-    checks.append(check("wired", test_wired))
-
-    def test_address():
-        addr = email.addresses()
-        if not addr or "@" not in addr:
-            raise Exception("no valid address: " + repr(addr))
-    checks.append(check("address", test_address))
-
-    # Send a test email to the cogent's own address
-    send_result = [None]
-    def test_send():
-        addr = email.addresses()
-        if not addr:
-            raise Exception("no address configured")
-        r = email.send(
-            to=addr,
-            subject="[diagnostics] send test " + _now(),
-            body="Automated diagnostics send test.",
-        )
-        if hasattr(r, "error") and r.error:
-            raise Exception(r.error)
-        send_result[0] = r
-    checks.append(check("send", test_send))
-
-    def test_receive():
-        msgs = email.receive(limit=5)
-        if not isinstance(msgs, list):
-            raise Exception("receive returned " + str(type(msgs)))
-    checks.append(check("receive", test_receive))
-
-    return checks
-
-def diag_asana():
-    """Test Asana capability — read-only operations."""
-    checks = []
-
-    def test_wired():
-        if asana is None:
-            raise Exception("asana is None")
-    checks.append(check("wired", test_wired))
-
-    def test_list_workspaces():
-        ws = asana.list_workspaces()
-        if hasattr(ws, "error"):
-            raise Exception(str(ws.error))
-        if not isinstance(ws, list):
-            raise Exception("expected list, got " + str(type(ws)))
-        if len(ws) == 0:
-            raise Exception("no workspaces found")
-    checks.append(check("list_workspaces", test_list_workspaces))
-
-    def test_list_projects():
-        ws = asana.list_workspaces()
-        if hasattr(ws, "error") or not ws:
-            raise Exception("need workspaces first")
-        projects = asana.list_projects(workspace=ws[0]["id"], limit=5)
-        if hasattr(projects, "error"):
-            raise Exception(str(projects.error))
-        if not isinstance(projects, list):
-            raise Exception("expected list, got " + str(type(projects)))
-    checks.append(check("list_projects", test_list_projects))
-
-    def test_my_tasks():
-        tasks = asana.my_tasks(limit=5)
-        if hasattr(tasks, "error"):
-            raise Exception(str(tasks.error))
-        if not isinstance(tasks, list):
-            raise Exception("expected list, got " + str(type(tasks)))
-    checks.append(check("my_tasks", test_my_tasks))
-
-    def test_find_user():
-        ws = asana.list_workspaces()
-        if hasattr(ws, "error") or not ws:
-            raise Exception("need workspaces first")
-        users = asana.find_user(workspace=ws[0]["id"], query="a")
-        if hasattr(users, "error"):
-            raise Exception(str(users.error))
-        if not isinstance(users, list):
-            raise Exception("expected list, got " + str(type(users)))
-    checks.append(check("find_user", test_find_user))
-
-    def test_search_tasks():
-        ws = asana.list_workspaces()
-        if hasattr(ws, "error") or not ws:
-            raise Exception("need workspaces first")
-        results = asana.search_tasks(ws[0]["id"], "test", limit=5)
-        if hasattr(results, "error"):
-            raise Exception(str(results.error))
-        if not isinstance(results, list):
-            raise Exception("expected list, got " + str(type(results)))
-    checks.append(check("search_tasks", test_search_tasks))
-
-    return checks
-
-def diag_github():
-    checks = []
-    def test_wired():
-        if github is None:
-            raise Exception("github is None")
-    checks.append(check("wired", test_wired))
-    return checks
-
-def diag_alerts():
-    checks = []
-    def test_wired():
-        if alerts is None:
-            raise Exception("alerts is None")
-    checks.append(check("wired", test_wired))
-    return checks
-
-def diag_history():
-    """Test history capability — query, failed, process history."""
-    checks = []
-
-    def test_query():
-        results = history.query(limit=5)
-        if not isinstance(results, list):
-            raise Exception("query returned " + str(type(results)))
-    checks.append(check("query", test_query))
-
-    def test_failed():
-        results = history.failed(limit=5)
-        if not isinstance(results, list):
-            raise Exception("failed returned " + str(type(results)))
-    checks.append(check("failed", test_failed))
-
-    def test_process_history():
-        h = history.process("init")
-        if hasattr(h, "error"):
-            raise Exception(str(h.error))
-        runs = h.runs(limit=3)
-        if not isinstance(runs, list):
-            raise Exception("runs returned " + str(type(runs)))
-    checks.append(check("process_history", test_process_history))
-
-    return checks
-
-# ═══════════════════════════════════════════════════════════
-# RUNNER
-# ═══════════════════════════════════════════════════════════
-
-ALL_DIAGNOSTICS = {
-    "files": diag_files,
-    "channels": diag_channels,
-    "spawn_and_wait": diag_spawn_and_wait,
-    "me": diag_me,
-    "builtins": diag_stdlib,
-    "discord": diag_discord,
-    "web": diag_web,
-    "blob": diag_blob,
-    "image": diag_image,
-    "email": diag_email,
-    "asana": diag_asana,
-    "github": diag_github,
-    "alerts": diag_alerts,
-    "history": diag_history,
+CATEGORIES = {
+    "files":    ("files/diag.py",    "python", {"disk": disk}),
+    "channels": ("channels/diag.py", "python", {"channels": channels}),
+    "me":       ("me/diag.py",       "python", {"me": me}),
+    "builtins": ("stdlib/diag.py",   "python", {}),
+    "discord":  ("discord/diag.py",  "python", {"discord": discord}),
+    "web":      ("web/diag.py",      "python", {"web_fetch": web_fetch, "web_search": web_search}),
+    "blob":     ("blob/diag.py",     "python", {"blob": blob}),
+    "image":    ("image/diag.py",    "python", {"image": image, "blob": blob}),
+    "email":    ("email/diag.py",    "python", {"email": email}),
+    "asana":    ("asana/diag.py",    "python", {"asana": asana}),
+    "github":   ("github/diag.py",   "python", {"github": github}),
+    "alerts":   ("alerts/diag.py",   "python", {"alerts": alerts}),
+    "history":  ("history/diag.py",  "python", {"history": history}),
+    "spawn":    ("spawn/diag.md",    "llm",    {"procs": procs, "me": me, "disk": disk}),
 }
 
-# Only run when triggered via system:diagnostics channel
+TERMINAL_STATUSES = {"completed", "failed", "disabled", "timeout"}
+
 _channel = event.get("channel_name", "") if event else ""
 if _channel != "system:diagnostics":
-    print("Ignoring wakeup from " + _channel)
+    pass
+
 else:
-    timestamp = _now()
-    print("Diagnostics starting at " + timestamp)
-
-    total = 0
-    passed = 0
-    categories = {}
-
-    for cat in sorted(ALL_DIAGNOSTICS):
-        fn = ALL_DIAGNOSTICS[cat]
+    # Check if we already spawned children (phase 2: collect)
+    phase_raw = disk.get("_diag/phase.json").read()
+    phase_data = None
+    if not hasattr(phase_raw, "error"):
         try:
-            checks = fn()
-        except Exception as e:
-            checks = [{"name": "run", "status": "fail", "ms": 0, "error": str(e)[:300]}]
-
-        cat_pass = all(c.get("status") == "pass" for c in checks)
-        categories[cat] = {
-            "status": "pass" if cat_pass else "fail",
-            "diagnostics": [{"name": cat, "status": "pass" if cat_pass else "fail", "checks": checks}],
-        }
-        for c in checks:
-            total += 1
-            if c.get("status") == "pass":
-                passed += 1
-
-    results = {
-        "timestamp": timestamp,
-        "summary": {"total": total, "pass": passed, "fail": total - passed},
-        "categories": categories,
-    }
-
-    # Read previous results for diffing
-    prev = None
-    prev_raw = disk.get("current.json").read()
-    if not hasattr(prev_raw, "error"):
-        try:
-            prev = json.loads(prev_raw.content)
+            phase_data = json.loads(phase_raw.content)
         except (ValueError, TypeError):
             pass
 
-    # Diff
-    def _flat(r):
-        d = {}
-        for cat in r.get("categories", {}):
-            for diag in r["categories"][cat]["diagnostics"]:
-                for ck in diag.get("checks", []):
-                    d[cat + ":" + ck.get("name", "?")] = ck.get("status")
-        return d
+    if phase_data and phase_data.get("phase") == "collecting":
+        # Phase 2: collect results from children
+        timestamp = phase_data["timestamp"]
+        spawned_cats = phase_data.get("spawned", [])
+        print("Diagnostics phase 2: collecting results at " + timestamp)
 
-    changes = []
-    if prev:
-        p = _flat(prev)
-        c = _flat(results)
-        for k in sorted(set(list(p.keys()) + list(c.keys()))):
-            if k in c and k not in p:
-                changes.append("- ADDED: " + k)
-            elif k in p and k not in c:
-                changes.append("- REMOVED: " + k)
-            elif p.get(k) == "pass" and c.get(k) != "pass":
-                changes.append("- FAILING: " + k)
-            elif p.get(k) != "pass" and c.get(k) == "pass":
-                changes.append("- FIXED: " + k)
+        total = 0
+        passed = 0
+        categories = {}
 
-    # Write reports
-    disk.get("current.json").write(json.dumps(results))
+        for cat in sorted(CATEGORIES):
+            checks = []
+            if cat not in spawned_cats:
+                checks = [{"name": "spawn", "status": "fail", "ms": 0, "error": "child not spawned"}]
+            elif cat == "spawn":
+                r = disk.get("_diag/spawn/results.json").read()
+                if hasattr(r, "error"):
+                    h = procs.get(name="_diag/spawn")
+                    s = h.status() if not hasattr(h, "error") else "unknown"
+                    if s in TERMINAL_STATUSES:
+                        runs = h.runs(limit=1) if not hasattr(h, "error") else []
+                        err = runs[0].error if runs and runs[0].error else s
+                        checks = [{"name": "run", "status": "fail", "ms": 0, "error": str(err)[:300]}]
+                    else:
+                        checks = [{"name": "run", "status": "fail", "ms": 0, "error": "spawn child not done (status=" + s + ")"}]
+                else:
+                    try:
+                        checks = json.loads(r.content)
+                        if not isinstance(checks, list):
+                            checks = [{"name": "parse", "status": "fail", "ms": 0, "error": "results not a list"}]
+                    except (ValueError, TypeError) as e:
+                        checks = [{"name": "parse", "status": "fail", "ms": 0, "error": str(e)[:300]}]
+            else:
+                h = procs.get(name="_diag/" + cat)
+                if hasattr(h, "error"):
+                    checks = [{"name": "run", "status": "fail", "ms": 0, "error": "child not found: " + str(h.error)[:200]}]
+                else:
+                    s = h.status()
+                    if s not in TERMINAL_STATUSES:
+                        checks = [{"name": "run", "status": "fail", "ms": 0, "error": "timed out (status=" + s + ")"}]
+                    else:
+                        runs = h.runs(limit=1)
+                        if not runs:
+                            checks = [{"name": "run", "status": "fail", "ms": 0, "error": "no runs found"}]
+                        elif runs[0].error:
+                            checks = [{"name": "run", "status": "fail", "ms": 0, "error": str(runs[0].error)[:300]}]
+                        elif runs[0].result and isinstance(runs[0].result, dict):
+                            output = runs[0].result.get("output", "")
+                            if isinstance(output, list):
+                                checks = output
+                            elif isinstance(output, str):
+                                try:
+                                    parsed = json.loads(output)
+                                    if isinstance(parsed, list):
+                                        checks = parsed
+                                    else:
+                                        checks = [{"name": "run", "status": "fail", "ms": 0, "error": "output parsed but not a list: " + str(type(parsed))}]
+                                except (ValueError, TypeError):
+                                    checks = [{"name": "run", "status": "fail", "ms": 0, "error": "output not valid JSON: " + output[:200]}]
+                            else:
+                                checks = [{"name": "run", "status": "fail", "ms": 0, "error": "unexpected output type: " + str(type(output))}]
+                        else:
+                            checks = [{"name": "run", "status": "fail", "ms": 0, "error": "no result from child"}]
 
-    # current.md
-    md = ["# Diagnostics — " + timestamp, "**" + str(passed) + "/" + str(total) + " PASS**", ""]
-    for cat in sorted(categories):
-        c = categories[cat]
-        diags = c["diagnostics"]
-        p = sum(1 for d in diags if d["status"] == "pass")
-        md.append("## " + cat + " (" + str(p) + "/" + str(len(diags)) + " " + ("PASS" if c["status"] == "pass" else "FAIL") + ")")
-        for d in diags:
-            for ck in d.get("checks", []):
-                mark = "[x]" if ck.get("status") == "pass" else "[ ]"
-                line = "- " + mark + " " + ck.get("name", "?")
-                if ck.get("error"):
-                    line += " — " + str(ck["error"])[:150]
-                md.append(line)
-        md.append("")
-    disk.get("current.md").write("\n".join(md))
+            cat_pass = all(c.get("status") == "pass" for c in checks)
+            categories[cat] = {
+                "status": "pass" if cat_pass else "fail",
+                "diagnostics": [{"name": cat, "status": "pass" if cat_pass else "fail", "checks": checks}],
+            }
+            for c in checks:
+                total += 1
+                if c.get("status") == "pass":
+                    passed += 1
 
-    # log.md (prepend)
-    log_line = "## " + timestamp + " — " + str(passed) + "/" + str(total) + " PASS"
-    log_prev = disk.get("log.md").read()
-    log_content = log_prev.content if hasattr(log_prev, "content") else ""
-    disk.get("log.md").write(log_line + "\n" + log_content)
+        results = {
+            "timestamp": timestamp,
+            "summary": {"total": total, "pass": passed, "fail": total - passed},
+            "categories": categories,
+        }
 
-    # changelog
-    if changes:
-        cl_prev = disk.get("changelog.md").read()
-        cl_content = cl_prev.content if hasattr(cl_prev, "content") else ""
-        disk.get("changelog.md").write("## " + timestamp + "\n" + "\n".join(changes) + "\n\n" + cl_content)
+        # Diff against previous
+        prev = None
+        prev_raw = disk.get("current.json").read()
+        if not hasattr(prev_raw, "error"):
+            try:
+                prev = json.loads(prev_raw.content)
+            except (ValueError, TypeError):
+                pass
 
-    print(str(passed) + "/" + str(total) + " passed")
-    for c in changes:
-        print("  " + c)
+        def _flat(r):
+            d = {}
+            for cat in r.get("categories", {}):
+                for diag in r["categories"][cat]["diagnostics"]:
+                    for ck in diag.get("checks", []):
+                        d[cat + ":" + ck.get("name", "?")] = ck.get("status")
+            return d
+
+        changes = []
+        if prev:
+            p = _flat(prev)
+            c = _flat(results)
+            for k in sorted(set(list(p.keys()) + list(c.keys()))):
+                if k in c and k not in p:
+                    changes.append("- ADDED: " + k)
+                elif k in p and k not in c:
+                    changes.append("- REMOVED: " + k)
+                elif p.get(k) == "pass" and c.get(k) != "pass":
+                    changes.append("- FAILING: " + k)
+                elif p.get(k) != "pass" and c.get(k) == "pass":
+                    changes.append("- FIXED: " + k)
+
+        disk.get("current.json").write(json.dumps(results))
+
+        md = ["# Diagnostics -- " + timestamp, "**" + str(passed) + "/" + str(total) + " PASS**", ""]
+        for cat in sorted(categories):
+            c = categories[cat]
+            diags = c["diagnostics"]
+            p = sum(1 for d in diags if d["status"] == "pass")
+            md.append("## " + cat + " (" + str(p) + "/" + str(len(diags)) + " " + ("PASS" if c["status"] == "pass" else "FAIL") + ")")
+            for d in diags:
+                for ck in d.get("checks", []):
+                    mark = "[x]" if ck.get("status") == "pass" else "[ ]"
+                    line = "- " + mark + " " + ck.get("name", "?")
+                    if ck.get("error"):
+                        line += " -- " + str(ck["error"])[:150]
+                    md.append(line)
+            md.append("")
+        disk.get("current.md").write("\n".join(md))
+
+        log_line = "## " + timestamp + " -- " + str(passed) + "/" + str(total) + " PASS"
+        log_prev = disk.get("log.md").read()
+        log_content = log_prev.content if hasattr(log_prev, "content") else ""
+        disk.get("log.md").write(log_line + "\n" + log_content)
+
+        if changes:
+            cl_prev = disk.get("changelog.md").read()
+            cl_content = cl_prev.content if hasattr(cl_prev, "content") else ""
+            disk.get("changelog.md").write("## " + timestamp + "\n" + "\n".join(changes) + "\n\n" + cl_content)
+
+        # Clear phase marker
+        disk.get("_diag/phase.json").write("{}")
+
+        print(str(passed) + "/" + str(total) + " passed")
+        for c in changes:
+            print("  " + c)
+
+    else:
+        # Phase 1: spawn children, schedule collection, exit
+        timestamp = _now()
+        print("Diagnostics phase 1: spawning children at " + timestamp)
+
+        spawned = []
+        for cat, (file_key, executor, caps) in sorted(CATEGORIES.items()):
+            r = src.get(file_key).read()
+            if hasattr(r, "error"):
+                print("WARN: could not read " + file_key + ": " + str(r.error))
+                continue
+            content = r.content
+            h = procs.spawn(
+                "_diag/" + cat,
+                content=content,
+                executor=executor,
+                mode="one_shot",
+                capabilities=caps,
+            )
+            if hasattr(h, "error"):
+                print("WARN: spawn failed for " + cat + ": " + str(h.error))
+                continue
+            spawned.append(cat)
+
+        # Write phase marker so next run collects
+        disk.get("_diag/phase.json").write(json.dumps({
+            "phase": "collecting",
+            "timestamp": timestamp,
+            "spawned": spawned,
+        }))
+
+        # Send a delayed trigger to collect results after children finish.
+        # The children are one_shot and will complete quickly once dispatched.
+        # We send a message to our own channel to wake up for phase 2.
+        channels.send("system:diagnostics", {"trigger": "collect", "phase": 2})
+
+        print("Spawned " + str(len(spawned)) + " children, scheduled collection")

@@ -18,9 +18,9 @@ class TestDiagnosticsCog:
 
     def test_has_diagnostic_subdirs(self):
         expected_dirs = {
-            "files", "channels", "procs", "me", "scheduler",
+            "files", "channels", "spawn", "me", "scheduler",
             "discord", "web", "blob", "image", "email", "asana",
-            "github", "alerts", "includes",
+            "github", "alerts", "includes", "stdlib", "history",
         }
         actual_dirs = {
             d.name for d in DIAGNOSTICS_DIR.iterdir()
@@ -36,12 +36,15 @@ class TestDiagnosticsCog:
             files = list(subdir.rglob("*.py")) + list(subdir.rglob("*.md"))
             assert len(files) > 0, f"No diagnostics in {subdir.name}/"
 
-    def test_md_diagnostics_have_verify_block(self):
-        for md_file in DIAGNOSTICS_DIR.rglob("*.md"):
-            content = md_file.read_text()
-            assert "```python verify" in content, (
-                f"{md_file.relative_to(DIAGNOSTICS_DIR)} missing ```python verify block"
-            )
+    def test_diag_files_have_valid_syntax(self):
+        import ast
+        for py_file in DIAGNOSTICS_DIR.rglob("diag.py"):
+            try:
+                ast.parse(py_file.read_text())
+            except SyntaxError as e:
+                raise AssertionError(
+                    f"Syntax error in {py_file.relative_to(DIAGNOSTICS_DIR)}: {e}"
+                )
 
     def test_py_diagnostics_have_valid_syntax(self):
         import ast
@@ -60,11 +63,11 @@ class TestDiagnosticsCog:
         main = DIAGNOSTICS_DIR / "main.py"
         ast.parse(main.read_text())
 
-    def test_all_diagnostics_registered(self):
-        """Verify that ALL_DIAGNOSTICS dict covers key categories."""
+    def test_all_categories_in_main(self):
+        """Verify CATEGORIES dict covers key categories."""
         import re
         main_content = (DIAGNOSTICS_DIR / "main.py").read_text()
-        diag_keys = set(re.findall(r'"(\w+)":\s*diag_\w+', main_content))
-        expected = {"files", "channels", "spawn_and_wait", "me"}
-        missing = expected - diag_keys
-        assert not missing, f"Missing diagnostics: {missing}"
+        cat_keys = set(re.findall(r'"(\w+)":\s*\(', main_content))
+        expected = {"files", "channels", "spawn", "me", "builtins", "history"}
+        missing = expected - cat_keys
+        assert not missing, f"Missing categories: {missing}"
