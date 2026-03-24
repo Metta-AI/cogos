@@ -401,8 +401,6 @@ class GoogleIntegration(Integration):
     """Provide Google Drive, Docs, Sheets, and Calendar access via a per-cogent
     GCP service account whose JSON key is stored in Secrets Manager."""
 
-    GCP_PROJECT = "cogents-488906"
-
     @property
     def name(self) -> str:
         return "google"
@@ -424,11 +422,6 @@ class GoogleIntegration(Integration):
             FieldSpec(name="calendar_enabled", label="Google Calendar", field_type="toggle", required=False, help_text="Enable access to Google Calendar."),
         ]
 
-    @staticmethod
-    def service_account_email_for(cogent_name: str) -> str:
-        """Derive the GCP service account email for a cogent."""
-        return f"cogent-{cogent_name}@{GoogleIntegration.GCP_PROJECT}.iam.gserviceaccount.com"
-
     def status(
         self,
         cogent_name: str,
@@ -443,10 +436,11 @@ class GoogleIntegration(Integration):
             else self.load_config(cogent_name, secrets_provider=secrets_provider)
         )
         has_key = bool(config.get("private_key") or config.get("type") == "service_account")
+        sa_email = config.get("service_account_email", "")
         return {
             "configured": has_key,
             "missing_fields": [] if has_key else ["service_account_key"],
-            "service_account_email": self.service_account_email_for(cogent_name),
+            "service_account_email": sa_email,
         }
 
 

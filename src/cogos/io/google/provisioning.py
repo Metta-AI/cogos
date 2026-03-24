@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-GCP_PROJECT = "cogents-488906"  # GCP project ID
+
+def _get_project() -> str:
+    """Discover the GCP project from application default credentials."""
+    import google.auth
+
+    _credentials, project = google.auth.default()
+    if not project:
+        raise RuntimeError(
+            "Could not determine GCP project from application default credentials. "
+            "Set a quota project via `gcloud auth application-default set-quota-project <PROJECT>`."
+        )
+    return project
 
 
 def create_service_account(cogent_name: str, secrets_provider: object) -> str:
@@ -19,17 +30,20 @@ def create_service_account(cogent_name: str, secrets_provider: object) -> str:
     import google.auth
     from googleapiclient.discovery import build
 
-    credentials, _project = google.auth.default()
+    credentials, project = google.auth.default()
+    if not project:
+        raise RuntimeError("Could not determine GCP project from ADC.")
+
     iam = build("iam", "v1", credentials=credentials)
 
     # SA id must be 6-30 chars, lowercase letters/digits/hyphens
     sa_id = f"cogent-{cogent_name}"
-    sa_email = f"{sa_id}@{GCP_PROJECT}.iam.gserviceaccount.com"
+    sa_email = f"{sa_id}@{project}.iam.gserviceaccount.com"
 
     # Create the service account (idempotent)
     try:
         iam.projects().serviceAccounts().create(
-            name=f"projects/{GCP_PROJECT}",
+            name=f"projects/{project}",
             body={
                 "accountId": sa_id,
                 "serviceAccount": {
@@ -49,7 +63,7 @@ def create_service_account(cogent_name: str, secrets_provider: object) -> str:
         .serviceAccounts()
         .keys()
         .create(
-            name=f"projects/{GCP_PROJECT}/serviceAccounts/{sa_email}",
+            name=f"projects/{project}/serviceAccounts/{sa_email}",
             body={"keyAlgorithm": "KEY_ALG_RSA_2048"},
         )
         .execute()
@@ -68,17 +82,20 @@ def create_service_account(cogent_name: str, secrets_provider: object) -> str:
 
 def delete_service_account(cogent_name: str, secrets_provider: object) -> None:
     """Delete a GCP service account and remove its secret."""
-    import google.auth
-    from googleapiclient.discovery import build
-
-    sa_id = f"cogent-{cogent_name}"
-    sa_email = f"{sa_id}@{GCP_PROJECT}.iam.gserviceaccount.com"
-
     try:
-        credentials, _project = google.auth.default()
+        import google.auth
+        from googleapiclient.discovery import build
+
+        credentials, project = google.auth.default()
+        if not project:
+            return
+
+        sa_id = f"cogent-{cogent_name}"
+        sa_email = f"{sa_id}@{project}.iam.gserviceaccount.com"
+
         iam = build("iam", "v1", credentials=credentials)
         iam.projects().serviceAccounts().delete(
-            name=f"projects/{GCP_PROJECT}/serviceAccounts/{sa_email}",
+            name=f"projects/{project}/serviceAccounts/{sa_email}",
         ).execute()
     except Exception:
         pass  # best-effort cleanup
