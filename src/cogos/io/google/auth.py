@@ -75,6 +75,6 @@ def get_service(
             return svc
 
         creds = get_google_credentials(secrets_provider)
-        svc = build(service_name, version, credentials=creds)
+        svc = build(service_name, version, credentials=creds, static_discovery=False)
         _service_cache[cache_key] = svc
         return svc
