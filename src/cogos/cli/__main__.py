@@ -1137,6 +1137,7 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
         raise click.ClickException("No cogtainer runtime — configure cogtainers.yml first")
 
     cogent_name = ctx.obj["cogent_name"]
+    entry = ctx.obj.get("cogtainer_entry")
 
     if not skip_boot:
         _boot_image(ctx, image_name, clean,
@@ -1145,10 +1146,17 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
                     v_discord_bridge=v_discord_bridge,
                     v_lambda=v_lambda, v_cogos=v_cogos)
 
+    is_local = entry and entry.type in ("local", "docker")
+    if not is_local:
+        if skip_boot:
+            click.echo("Remote cogtainer — no local dispatcher needed (Lambda handles dispatch)")
+        else:
+            click.echo("Boot complete. Remote dispatcher (Lambda) handles scheduling.")
+        return
+
     from cogtainer.local_dispatcher import run_loop
     repo = runtime.get_repository(cogent_name)
     if foreground:
-        entry = ctx.obj.get("cogtainer_entry")
         tick_interval = entry.tick_interval if entry else 60
         run_loop(repo, runtime, cogent_name, tick_interval=tick_interval)
     else:
@@ -1156,7 +1164,6 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
         env = os.environ.copy()
         env["COGTAINER"] = ctx.obj["cogtainer_name"]
         env["COGENT"] = cogent_name
-        entry = ctx.obj.get("cogtainer_entry")
         fallback = os.path.join(os.path.expanduser("~"), ".cogos", "local")
         data_dir = entry.data_dir if entry and entry.data_dir else fallback
         log_dir = os.path.join(data_dir, cogent_name, "logs")
