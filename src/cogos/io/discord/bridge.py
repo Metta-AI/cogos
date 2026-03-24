@@ -839,7 +839,7 @@ class DiscordBridge:
     # SQS reply poller (shared queue, multi-tenant dispatch)
     # ------------------------------------------------------------------
 
-    async def _poll_replies(self):
+    async def _poll_replies(self, *, _max_iterations: int = 0):
         if not self.reply_queue_url:
             logger.warning("No REPLY_QUEUE_URL set, reply polling disabled")
             return
@@ -847,7 +847,11 @@ class DiscordBridge:
         logger.info("Starting SQS reply poller on %s", self.reply_queue_url)
         loop = asyncio.get_event_loop()
 
+        _iteration = 0
         while True:
+            if _max_iterations and _iteration >= _max_iterations:
+                break
+            _iteration += 1
             try:
                 response = await loop.run_in_executor(
                     None,

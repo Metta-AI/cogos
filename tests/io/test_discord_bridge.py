@@ -669,9 +669,9 @@ class TestAlertingAndTimeout:
         bridge._create_alert.assert_not_called()
 
     async def test_poll_replies_discards_on_forbidden(self):
-        """Forbidden errors (permanent) should discard the message and create warning alert."""
+        """Forbidden errors (permanent) should discard the message and alert."""
         bridge = _make_bridge()
-        bridge._create_alert = MagicMock()
+        bridge._alert_reply_failure = MagicMock()
 
         sqs_msg = {
             "MessageId": "sqs-1",
@@ -686,37 +686,23 @@ class TestAlertingAndTimeout:
             ),
         }
 
-        # _send_reply raises Forbidden (user has DMs disabled)
         resp = MagicMock()
         resp.status = 403
         bridge._send_reply = AsyncMock(side_effect=discord.errors.Forbidden(resp, "Cannot send messages to this user"))
+        bridge._sqs_client.receive_message.return_value = {"Messages": [sqs_msg]}
 
-        call_count = {"n": 0}
+        await bridge._poll_replies(_max_iterations=1)
 
-        def _receive(**kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return {"Messages": [sqs_msg]}
-            raise KeyboardInterrupt("stop")
-
-        bridge._sqs_client.receive_message.side_effect = _receive
-
-        with pytest.raises(KeyboardInterrupt):
-            await bridge._poll_replies()
-
-        # Alert should be created with warning severity (not critical)
-        bridge._create_alert.assert_called_once()
-        call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "test-bot"
-        assert call_args.args[1] == "warning"
-        assert call_args.args[2] == "discord:send_permanent_failure"
+        bridge._alert_reply_failure.assert_called_once()
+        call_kwargs = bridge._alert_reply_failure.call_args
+        assert call_kwargs.kwargs["permanent"] is True
         # SQS message SHOULD be deleted (permanent failure, no retry)
         bridge._sqs_client.delete_message.assert_called_once()
 
     async def test_poll_replies_discards_on_invalid_channel_id(self):
-        """ValueError from invalid channel IDs should discard the message."""
+        """ValueError from invalid channel IDs should discard the message and alert."""
         bridge = _make_bridge()
-        bridge._create_alert = MagicMock()
+        bridge._alert_reply_failure = MagicMock()
 
         sqs_msg = {
             "MessageId": "sqs-1",
@@ -731,74 +717,76 @@ class TestAlertingAndTimeout:
             ),
         }
 
-        # _send_reply raises ValueError from int("fake-dm-channel-999")
         bridge._send_reply = AsyncMock(
             side_effect=ValueError("invalid literal for int() with base 10: 'fake-dm-channel-999'")
         )
+        bridge._sqs_client.receive_message.return_value = {"Messages": [sqs_msg]}
 
-        call_count = {"n": 0}
+        await bridge._poll_replies(_max_iterations=1)
 
-        def _receive(**kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return {"Messages": [sqs_msg]}
-            raise KeyboardInterrupt("stop")
-
-        bridge._sqs_client.receive_message.side_effect = _receive
-
-        with pytest.raises(KeyboardInterrupt):
-            await bridge._poll_replies()
-
-        # Alert should be created with warning severity
-        bridge._create_alert.assert_called_once()
-        call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "test-bot"
-        assert call_args.args[1] == "warning"
-        assert call_args.args[2] == "discord:send_permanent_failure"
+        bridge._alert_reply_failure.assert_called_once()
+        call_kwargs = bridge._alert_reply_failure.call_args
+        assert call_kwargs.kwargs["permanent"] is True
         # SQS message SHOULD be deleted (permanent failure, no retry)
         bridge._sqs_client.delete_message.assert_called_once()
 
     async def test_poll_replies_alerts_on_send_failure(self):
-        """SQS reply send failure should create an alert."""
+        """SQS reply send failure should alert and leave message for retry."""
         bridge = _make_bridge()
-        bridge._create_alert = MagicMock()
+        bridge._alert_reply_failure = MagicMock()
 
-        sqs_body = {
-            "type": "dm",
-            "user_id": "777",
-            "content": "hi",
-            "_meta": {"process_id": "p1", "trace_id": "t1"},
-        }
         sqs_msg = {
             "MessageId": "sqs-1",
             "ReceiptHandle": "rh-1",
-            "Body": json.dumps(sqs_body),
+            "Body": json.dumps({
+                "type": "dm",
+                "user_id": "777",
+                "content": "hi",
+                "_meta": {"process_id": "p1", "trace_id": "t1"},
+            }),
         }
 
-        # _send_reply raises
         bridge._send_reply = AsyncMock(side_effect=RuntimeError("boom"))
+        bridge._sqs_client.receive_message.return_value = {"Messages": [sqs_msg]}
 
-        # Make receive_message return one message then stop the loop
-        call_count = {"n": 0}
+        await bridge._poll_replies(_max_iterations=1)
 
-        def _receive(**kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return {"Messages": [sqs_msg]}
-            raise KeyboardInterrupt("stop")
-
-        bridge._sqs_client.receive_message.side_effect = _receive
-
-        with pytest.raises(KeyboardInterrupt):
-            await bridge._poll_replies()
-
-        bridge._create_alert.assert_called_once()
-        call_args = bridge._create_alert.call_args
-        assert call_args.args[0] == "test-bot"
-        assert call_args.args[1] == "critical"
-        assert call_args.args[2] == "discord:send_failed"
+        bridge._alert_reply_failure.assert_called_once()
+        call_kwargs = bridge._alert_reply_failure.call_args
+        assert call_kwargs.kwargs["permanent"] is False
         # SQS message should NOT be deleted (for retry)
         bridge._sqs_client.delete_message.assert_not_called()
+
+    def test_alert_reply_failure_creates_alert(self, caplog):
+        """_alert_reply_failure should call _create_alert with correct severity."""
+        import logging
+        bridge = _make_bridge()
+        bridge._create_alert = MagicMock()
+        # Reset cooldowns between calls since they share the same bridge
+        object.__setattr__(bridge, "_ALERT_COOLDOWN_SECS", 0)
+
+        msg = {
+            "MessageId": "sqs-1",
+            "Body": json.dumps({
+                "type": "dm",
+                "_meta": {"process_id": "p1", "cogent_name": "test-bot"},
+            }),
+        }
+
+        with caplog.at_level(logging.DEBUG):
+            bridge._alert_reply_failure(msg, RuntimeError("boom"), permanent=False)
+
+        assert bridge._create_alert.call_count == 1, f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        assert bridge._create_alert.call_args.args[1] == "critical"
+        assert bridge._create_alert.call_args.args[2] == "discord:send_failed"
+
+        bridge._create_alert.reset_mock()
+        with caplog.at_level(logging.DEBUG):
+            bridge._alert_reply_failure(msg, discord.errors.Forbidden(MagicMock(status=403), "no"), permanent=True)
+
+        assert bridge._create_alert.call_count == 1, f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        assert bridge._create_alert.call_args.args[1] == "warning"
+        assert bridge._create_alert.call_args.args[2] == "discord:send_permanent_failure"
 
     async def test_poll_replies_deletes_on_success(self):
         """Successful send should delete the SQS message."""
@@ -811,19 +799,9 @@ class TestAlertingAndTimeout:
         }
 
         bridge._send_reply = AsyncMock()
+        bridge._sqs_client.receive_message.return_value = {"Messages": [sqs_msg]}
 
-        call_count = {"n": 0}
-
-        def _receive(**kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return {"Messages": [sqs_msg]}
-            raise KeyboardInterrupt("stop")
-
-        bridge._sqs_client.receive_message.side_effect = _receive
-
-        with pytest.raises(KeyboardInterrupt):
-            await bridge._poll_replies()
+        await bridge._poll_replies(_max_iterations=1)
 
         bridge._sqs_client.delete_message.assert_called_once()
 
