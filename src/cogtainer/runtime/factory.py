@@ -10,10 +10,18 @@ from cogtainer.runtime.base import CogtainerRuntime
 
 
 def _get_cogtainer_session(entry: CogtainerEntry) -> boto3.Session:
-    """Assume OrganizationAccountAccessRole into the cogtainer's account."""
+    """Get a boto3 session for the cogtainer's AWS account.
+
+    Uses the configured profile if set, otherwise assumes
+    OrganizationAccountAccessRole via the org management account.
+    """
+    region = entry.region or "us-east-1"
+
+    if entry.profile:
+        return boto3.Session(profile_name=entry.profile, region_name=region)
+
     from cogtainer.cogtainer_cli import resolve_org_profile
 
-    region = entry.region or "us-east-1"
     org_session = boto3.Session(
         profile_name=resolve_org_profile(),
         region_name=region,

@@ -25,6 +25,7 @@ class CogtainerEntry(BaseModel):
     type: str  # "aws" | "local" | "docker"
     region: str | None = None
     account_id: str | None = None
+    profile: str | None = None
     domain: str | None = None
     data_dir: str | None = None
     image: str | None = None
