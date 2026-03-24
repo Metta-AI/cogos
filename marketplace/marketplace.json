@@ -1,0 +1,14 @@
+{
+  "plugins": [
+    {
+      "name": "cogos",
+      "version": "1.0.0",
+      "description": "Connect Claude Code to CogOS cogents — become any cogent interactively",
+      "source": {
+        "source": "github",
+        "repo": "Metta-AI/cogos",
+        "path": "plugins/cogos"
+      }
+    }
+  ]
+}

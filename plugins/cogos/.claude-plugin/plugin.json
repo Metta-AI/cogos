@@ -1,0 +1,8 @@
+{
+  "name": "cogos",
+  "version": "1.0.0",
+  "description": "Connect Claude Code to CogOS cogents — become any cogent interactively",
+  "author": { "name": "Softmax" },
+  "repository": "https://github.com/softmax-ai/cogos-claude-code-plugin",
+  "keywords": ["cogos", "cogent", "agents"]
+}
