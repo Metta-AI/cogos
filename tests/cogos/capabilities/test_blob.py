@@ -1,23 +1,24 @@
 """Tests for BlobCapability."""
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 from cogos.capabilities.blob import BlobCapability, BlobRef, BlobContent, BlobError
 
 
-def _make_cap():
+def _make_cap() -> tuple[BlobCapability, MagicMock]:
     repo = MagicMock()
     runtime = MagicMock()
-    cap = BlobCapability(repo, uuid4(), runtime=runtime)
+    cap: Any = BlobCapability(repo, uuid4(), runtime=runtime)
     cap._cogent_name = "test-cogent"
-    return cap
+    return cap, runtime
 
 
 def test_upload_returns_blob_ref():
-    cap = _make_cap()
-    cap._runtime.get_file_url.return_value = "https://s3.../presigned"
+    cap, runtime = _make_cap()
+    runtime.get_file_url.return_value = "https://s3.../presigned"
     result = cap.upload(b"hello world", "test.txt", content_type="text/plain")
     assert isinstance(result, BlobRef)
     assert result.filename == "test.txt"
@@ -25,22 +26,22 @@ def test_upload_returns_blob_ref():
     assert result.url == "https://s3.../presigned"
     assert result.key.startswith("blobs/")
     assert result.key.endswith("/test.txt")
-    cap._runtime.put_file.assert_called_once()
-    call_args = cap._runtime.put_file.call_args
+    runtime.put_file.assert_called_once()
+    call_args = runtime.put_file.call_args
     assert call_args[0][0] == "test-cogent"
     assert call_args[0][2] == b"hello world"
 
 
 def test_upload_empty_data():
-    cap = _make_cap()
+    cap, _ = _make_cap()
     result = cap.upload(b"", "empty.txt")
     assert isinstance(result, BlobError)
     assert "empty" in result.error.lower()
 
 
 def test_download_returns_content():
-    cap = _make_cap()
-    cap._runtime.get_file.return_value = b"file data"
+    cap, runtime = _make_cap()
+    runtime.get_file.return_value = b"file data"
     result = cap.download("blobs/abc/test.txt")
     assert isinstance(result, BlobContent)
     assert result.data == b"file data"
@@ -48,13 +49,13 @@ def test_download_returns_content():
 
 
 def test_download_invalid_key():
-    cap = _make_cap()
+    cap, _ = _make_cap()
     result = cap.download("")
     assert isinstance(result, BlobError)
 
 
 def test_upload_scope_max_size():
-    cap = _make_cap()
+    cap, _ = _make_cap()
     scoped = cap.scope(max_size_bytes=10)
     result = scoped.upload(b"x" * 100, "big.bin")
     assert isinstance(result, BlobError)
@@ -62,25 +63,24 @@ def test_upload_scope_max_size():
 
 
 def test_upload_scope_ops_blocked():
-    cap = _make_cap()
+    cap, _ = _make_cap()
     scoped = cap.scope(ops=["download"])
     result = scoped.upload(b"data", "test.txt")
     assert isinstance(result, BlobError)
 
 
 def test_download_scope_ops_blocked():
-    cap = _make_cap()
+    cap, _ = _make_cap()
     scoped = cap.scope(ops=["upload"])
     result = scoped.download("blobs/abc/test.txt")
     assert isinstance(result, BlobError)
 
 
-def test_cogent_name_from_env(monkeypatch):
-    """When COGENT is set, use it."""
+def test_cogent_name_from_env(monkeypatch: Any) -> None:
     monkeypatch.setenv("COGENT", "dr.alpha")
     repo = MagicMock()
     runtime = MagicMock()
-    cap = BlobCapability(repo, uuid4(), runtime=runtime)
+    cap: Any = BlobCapability(repo, uuid4(), runtime=runtime)
     assert cap._cogent_name == "dr.alpha"
 
 
