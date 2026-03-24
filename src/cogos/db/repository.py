@@ -2342,12 +2342,22 @@ class Repository:
                     [self._param("channel", channel_id), self._param("limit", limit)],
                 )
         else:
-            response = self._execute(
-                """SELECT * FROM cogos_channel_message
-                   ORDER BY created_at DESC
-                   LIMIT :limit""",
-                [self._param("limit", limit)],
-            )
+            if since:
+                response = self._execute(
+                    """SELECT * FROM cogos_channel_message
+                       WHERE created_at > :since::timestamptz
+                       ORDER BY created_at DESC
+                       LIMIT :limit""",
+                    [self._param("since", since.isoformat()),
+                     self._param("limit", limit)],
+                )
+            else:
+                response = self._execute(
+                    """SELECT * FROM cogos_channel_message
+                       ORDER BY created_at DESC
+                       LIMIT :limit""",
+                    [self._param("limit", limit)],
+                )
         return [
             ChannelMessage(
                 id=UUID(r["id"]),
