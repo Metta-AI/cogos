@@ -123,6 +123,7 @@ export interface CogosRun {
   error: string | null;
   model_version: string | null;
   created_at: string | null;
+  completed_at: string | null;
 }
 
 export interface CogosRunLogEntry {

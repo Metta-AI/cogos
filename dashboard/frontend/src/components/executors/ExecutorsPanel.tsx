@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CogosExecutor, CogosRun } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
-import { fmtRelative, fmtTimestamp } from "@/lib/format";
+import { fmtRelative, fmtTimestamp, parseUtc } from "@/lib/format";
 
 interface ExecutorsPanelProps {
   executors: CogosExecutor[];
@@ -27,7 +27,7 @@ function statusVariant(status: string): StatusVariant {
 function HeartbeatIndicator({ lastHeartbeat }: { lastHeartbeat: string | null }) {
   if (!lastHeartbeat) return <span className="text-[var(--text-muted)]">--</span>;
 
-  const diffMs = Date.now() - new Date(lastHeartbeat.endsWith("Z") ? lastHeartbeat : lastHeartbeat + "Z").getTime();
+  const diffMs = Date.now() - parseUtc(lastHeartbeat).getTime();
   const isHealthy = diffMs < 90_000; // 3 * 30s
   const isStale = diffMs >= 90_000 && diffMs < 300_000;
 
@@ -82,19 +82,11 @@ function CapabilityTags({ tags }: { tags: string[] }) {
   );
 }
 
-function findRecentRuns(executorId: string, runs: CogosRun[], limit = 3): CogosRun[] {
-  // Find runs that were assigned to this executor (via metadata or just recent runs)
-  // Since runs don't track executor_id directly, show most recent runs for context
-  return runs
-    .filter((r) => r.status !== "running")
-    .slice(0, limit);
-}
-
 const INACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 function isHeartbeatStale(lastHeartbeat: string | null): boolean {
   if (!lastHeartbeat) return true;
-  const ts = new Date(lastHeartbeat.replace(" ", "T")).getTime();
+  const ts = parseUtc(lastHeartbeat).getTime();
   if (isNaN(ts)) return true;
   return Date.now() - ts > INACTIVE_THRESHOLD_MS;
 }
@@ -345,7 +337,7 @@ export function ExecutorsPanel({ executors = [], runs = [], cogentName }: Execut
                       : "--"}
                   </td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">
-                    {fmtRelative(r.created_at)}
+                    {fmtRelative(r.completed_at ?? r.created_at)}
                   </td>
                 </tr>
               ))}

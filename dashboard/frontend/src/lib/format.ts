@@ -3,7 +3,7 @@ import type { Timezone, TimeRange } from "./types";
 const TZ = "America/Los_Angeles";
 
 /** Parse an ISO/datetime string, treating bare timestamps (no Z or offset) as UTC. */
-function parseUtc(iso: string): Date {
+export function parseUtc(iso: string): Date {
   // If no timezone indicator, append Z to treat as UTC
   if (!iso.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(iso)) {
     return new Date(iso.replace(" ", "T") + "Z");

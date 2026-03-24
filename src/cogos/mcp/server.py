@@ -105,6 +105,9 @@ class CogosServer:
                 self.channel_patterns.append(executor_channel)
                 logger.info("Subscribed to executor channel %s", executor_channel)
 
+            masked_key = f"{self.api_key[:4]}...{self.api_key[-4:]}" if len(self.api_key) >= 8 else "***"
+            print(f"Cogos: registered {self.cogent_name} {self.executor_id} {masked_key}", flush=True)
+
             return data
         except Exception:
             logger.debug("register failed", exc_info=True)
