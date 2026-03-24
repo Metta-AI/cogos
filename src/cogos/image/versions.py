@@ -58,7 +58,7 @@ _ECR_COMPONENTS = {
 }
 
 _ECR_COMPONENTS_CUSTOM_REPO = {
-    "dashboard": ("cogent-dashboard", "{sha}"),
+    "dashboard": ("cogent-dashboard", "sha-{sha}"),
 }
 
 _S3_COMPONENTS = {
