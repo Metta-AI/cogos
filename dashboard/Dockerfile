@@ -28,7 +28,6 @@ RUN pip install --no-cache-dir .
 # Copy built frontend from stage 1
 COPY --from=frontend /build/.next/standalone /app/frontend/
 COPY --from=frontend /build/.next/static /app/frontend/.next/static
-COPY --from=frontend /build/public /app/frontend/public
 
 # Simple start script
 COPY dashboard/start.sh /app/start.sh
