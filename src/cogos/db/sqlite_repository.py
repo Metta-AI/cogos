@@ -806,14 +806,18 @@ class SqliteRepository:
 
     def clear_config(self) -> None:
         config_tables = [
-            "cogos_delivery", "cogos_handler",
-            "cogos_process_capability", "cogos_cron",
-            "cogos_channel_message", "cogos_channel",
-            "cogos_file_version", "cogos_file",
-            "cogos_process", "cogos_capability",
-            "cogos_resource", "cogos_schema",
+            "cogos_span_event", "cogos_span", "cogos_request_trace",
+            "cogos_trace", "cogos_delivery", "cogos_channel_message",
+            "cogos_run", "cogos_handler", "cogos_process_capability",
+            "cogos_cron",
         ]
         for t in config_tables:
+            self._conn.execute(f"DELETE FROM {t}")
+        self._conn.execute(
+            "UPDATE cogos_channel SET owner_process = NULL WHERE owner_process IS NOT NULL"
+        )
+        config_tables_final = ["cogos_process", "cogos_capability"]
+        for t in config_tables_final:
             self._conn.execute(f"DELETE FROM {t}")
         self._conn.commit()
 
