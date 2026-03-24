@@ -16,6 +16,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["channels"])
 
 
+def _count_channel_messages(repo, channel_id: UUID) -> int:
+    """Count messages in a channel without fetching them all."""
+    try:
+        response = repo._execute(
+            "SELECT COUNT(*) AS cnt FROM cogos_channel_message WHERE channel = :channel",
+            [repo._param("channel", channel_id)],
+        )
+        records = response.get("records", [])
+        if records and records[0]:
+            return records[0][0].get("longValue", 0)
+    except Exception:
+        pass
+    return 0
+
+
 class ChannelOut(BaseModel):
     id: str
     name: str
@@ -102,7 +117,6 @@ def list_channels(
 
     out = []
     for ch in channels:
-        msgs = repo.list_channel_messages(ch.id, limit=10000)
         handlers = repo.match_handlers_by_channel(ch.id)
         out.append(
             ChannelOut(
@@ -117,7 +131,7 @@ def list_channels(
                 inline_schema=ch.inline_schema,
                 auto_close=ch.auto_close,
                 closed_at=str(ch.closed_at) if ch.closed_at else None,
-                message_count=len(msgs),
+                message_count=_count_channel_messages(repo, ch.id),
                 subscriber_count=len(handlers),
                 created_at=str(ch.created_at) if ch.created_at else None,
             )
@@ -162,7 +176,7 @@ def get_channel(name: str, channel_id: str, limit: int = Query(50)) -> ChannelDe
         inline_schema=ch.inline_schema,
         auto_close=ch.auto_close,
         closed_at=str(ch.closed_at) if ch.closed_at else None,
-        message_count=len(repo.list_channel_messages(ch.id, limit=10000)),
+        message_count=_count_channel_messages(repo, ch.id),
         subscriber_count=len(handlers),
         created_at=str(ch.created_at) if ch.created_at else None,
     )
