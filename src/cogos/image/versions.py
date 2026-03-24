@@ -54,13 +54,15 @@ class ArtifactMissing(Exception):
 
 _ECR_COMPONENTS = {
     "executor": "executor-{sha}",
-    "dashboard": "dashboard-{sha}",
     "discord_bridge": "discord-bridge-{sha}",
+}
+
+_ECR_COMPONENTS_CUSTOM_REPO = {
+    "dashboard": ("cogent-dashboard", "{sha}"),
 }
 
 _S3_COMPONENTS = {
     "lambda": "lambda/{sha}/lambda.zip",
-    "dashboard_frontend": "dashboard/{sha}/frontend.tar.gz",
 }
 
 _SKIP_VERIFY = {"cogos"}
@@ -83,6 +85,13 @@ def verify_artifacts(
                 ecr_client.describe_images(repositoryName=ecr_repo, imageIds=[{"imageTag": tag}])
             except Exception as e:
                 raise ArtifactMissing(f"{name}: ECR image '{ecr_repo}:{tag}' not found") from e
+        if name in _ECR_COMPONENTS_CUSTOM_REPO:
+            repo, tag_fmt = _ECR_COMPONENTS_CUSTOM_REPO[name]
+            tag = tag_fmt.format(sha=sha)
+            try:
+                ecr_client.describe_images(repositoryName=repo, imageIds=[{"imageTag": tag}])
+            except Exception as e:
+                raise ArtifactMissing(f"{name}: ECR image '{repo}:{tag}' not found") from e
         if name in _S3_COMPONENTS:
             key = _S3_COMPONENTS[name].format(sha=sha)
             try:
