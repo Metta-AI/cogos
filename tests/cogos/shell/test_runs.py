@@ -8,7 +8,7 @@ from cogos.shell.commands.runs import register
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    p = Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING, runner="lambda")
+    p = Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING, required_tags=[])
     repo.upsert_process(p)
     r = Run(process=p.id, status=RunStatus.COMPLETED, tokens_in=100, tokens_out=50, duration_ms=1200)
     repo.create_run(r)

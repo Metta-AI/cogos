@@ -26,7 +26,7 @@ def _make_process(repo, *, mode=ProcessMode.ONE_SHOT, max_retries=0) -> Process:
         name="test-proc",
         mode=mode,
         status=ProcessStatus.RUNNING,
-        runner="local",
+        required_tags=["local"],
         max_retries=max_retries,
     )
     repo.upsert_process(p)
@@ -50,7 +50,7 @@ def _failing_execute(process, event_data, run, config, repo, **kwargs):
 
 
 def _process(name: str, *, mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING) -> Process:
-    return Process(name=name, mode=mode, status=status, runner="local")
+    return Process(name=name, mode=mode, status=status, required_tags=["local"])
 
 
 # ---- Tests ----
@@ -197,7 +197,7 @@ def test_run_local_tick_executes_runnable_process(tmp_path):
         name="tick-proc",
         mode=ProcessMode.ONE_SHOT,
         status=ProcessStatus.RUNNABLE,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(p)
 
@@ -225,7 +225,7 @@ def test_run_local_tick_matches_channel_messages(tmp_path):
         name="daemon-proc",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(p)
 
@@ -264,7 +264,7 @@ def test_run_local_tick_uses_prod_dispatch_envelope(tmp_path):
         name="daemon-proc",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 
@@ -302,7 +302,7 @@ def test_run_local_tick_applies_system_ticks(tmp_path):
         name="hourly-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(process)
 

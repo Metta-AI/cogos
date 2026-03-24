@@ -205,7 +205,7 @@ def run_local_tick(
     repo.register_executor(Executor(
         executor_id="local-daemon",
         channel_type="local",
-        executor_tags=["python"],
+        executor_tags=["python", "local"],
         dispatch_type="local",
         metadata={"local": True},
     ))

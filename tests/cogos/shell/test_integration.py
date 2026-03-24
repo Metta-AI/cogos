@@ -17,7 +17,7 @@ def test_full_workflow(tmp_path):
             name="init",
             mode=ProcessMode.DAEMON,
             status=ProcessStatus.WAITING,
-            runner="lambda",
+            required_tags=[],
         )
     )
 

@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from cogos.db.repository import Repository
+from cogos.db.protocol import RepositoryProtocol
 
 
 def _describe_type(tp: type | None) -> str:
@@ -155,7 +155,7 @@ class Capability:
 
     def __init__(
         self,
-        repo: Repository,
+        repo: RepositoryProtocol,
         process_id: UUID,
         run_id: UUID | None = None,
         trace_id: UUID | None = None,

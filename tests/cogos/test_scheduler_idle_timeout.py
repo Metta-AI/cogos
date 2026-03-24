@@ -16,7 +16,7 @@ def test_reap_is_noop(tmp_path):
         name="daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="lambda",
+        required_tags=[],
         idle_timeout_ms=1,  # would have been reaped instantly
     )
     repo.upsert_process(proc)

@@ -31,7 +31,7 @@ def _setup_repo_with_traced_message():
         name="test-proc",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(proc)
 
@@ -109,7 +109,7 @@ def test_message_without_trace_id_works():
         name="untraced-proc",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="lambda",
+        required_tags=[],
     )
     repo.upsert_process(proc)
 

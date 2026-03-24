@@ -8,12 +8,12 @@ from cogos.shell.commands.procs import register
 
 def _setup(tmp_path):
     repo = LocalRepository(str(tmp_path))
-    repo.upsert_process(Process(name="init", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING, runner="lambda"))
+    repo.upsert_process(Process(name="init", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING, required_tags=[]))
     repo.upsert_process(
-        Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING, runner="lambda")
+        Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNING, required_tags=[])
     )
     repo.upsert_process(
-        Process(name="done-job", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.COMPLETED, runner="lambda")
+        Process(name="done-job", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.COMPLETED, required_tags=[])
     )
     state = ShellState(cogent_name="test", repo=repo, cwd="")
     reg = CommandRegistry()

@@ -234,7 +234,7 @@ def test_apply_does_not_disable_stale_processes(tmp_path):
     from cogos.db.models import Process, ProcessMode, ProcessStatus
 
     stale = Process(
-        name="old-daemon", mode=ProcessMode.DAEMON, content="old", status=ProcessStatus.WAITING, runner="lambda"
+        name="old-daemon", mode=ProcessMode.DAEMON, content="old", status=ProcessStatus.WAITING, required_tags=[]
     )
     repo.upsert_process(stale)
     _tmp_get_process_by_name = repo.get_process_by_name("old-daemon")
@@ -266,7 +266,7 @@ def test_apply_preserves_spawned_children(tmp_path):
         mode=ProcessMode.ONE_SHOT,
         content="work",
         status=ProcessStatus.RUNNABLE,
-        runner="lambda",
+        required_tags=[],
         parent_process=parent.id,
     )
     repo.upsert_process(child)

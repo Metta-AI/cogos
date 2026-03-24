@@ -49,7 +49,7 @@ def _add_daemon_with_handler(repo) -> tuple[Process, Channel]:
         name="test-daemon",
         mode=ProcessMode.DAEMON,
         status=ProcessStatus.WAITING,
-        runner="local",
+        required_tags=["local"],
     )
     repo.upsert_process(p)
     repo.create_handler(Handler(process=p.id, channel=ch.id, enabled=True))

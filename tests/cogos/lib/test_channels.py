@@ -12,7 +12,7 @@ def _repo(tmp_path) -> LocalRepository:
 def test_ensure_system_channels_creates_all(tmp_path):
     """All channels in SYSTEM_CHANNELS are created."""
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)
@@ -25,7 +25,7 @@ def test_ensure_system_channels_creates_all(tmp_path):
 def test_ensure_system_channels_idempotent(tmp_path):
     """Calling twice doesn't error or duplicate."""
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)
@@ -39,7 +39,7 @@ def test_ensure_system_channels_idempotent(tmp_path):
 def test_system_alerts_channel_has_schema(tmp_path):
     """system:alerts channel has an inline schema."""
     repo = _repo(tmp_path)
-    init = Process(name="init", status=ProcessStatus.RUNNING, runner="local")
+    init = Process(name="init", status=ProcessStatus.RUNNING, required_tags=["local"])
     init_id = repo.upsert_process(init)
 
     ensure_system_channels(repo, init_id)

@@ -95,6 +95,7 @@ def test_channel_message_nudges_ingress(tmp_path):
 
     # Process should now be RUNNABLE
     updated = repo.get_process(proc.id)
+    assert updated is not None
     assert updated.status == ProcessStatus.RUNNABLE
 
     # Ingress queue should have exactly one nudge with the process ID
@@ -145,5 +146,6 @@ def test_no_nudge_without_callback(repo):
 
     # Process still wakes up, just no nudge
     updated = repo.get_process(proc.id)
+    assert updated is not None
     assert updated.status == ProcessStatus.RUNNABLE
     assert msg_id is not None

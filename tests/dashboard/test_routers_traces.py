@@ -33,7 +33,7 @@ class _TraceRepoStub:
             name="alpha.worker",
             mode=ProcessMode.DAEMON,
             status=ProcessStatus.WAITING,
-            runner="lambda",
+            required_tags=[],
         )
         self.inbound_channel = Channel(
             id=uuid4(),

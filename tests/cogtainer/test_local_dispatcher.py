@@ -42,7 +42,7 @@ def test_reap_dead_executors_fails_orphan_runs(local_runtime: LocalRuntime):
     local_runtime.create_cogent(cogent_name)
     repo = local_runtime.get_repository(cogent_name)
 
-    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, runner="local")
+    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, required_tags=["local"])
     repo.upsert_process(p)
     run = Run(process=p.id, status=RunStatus.RUNNING)
     repo.create_run(run)
@@ -85,7 +85,7 @@ def test_tick_reaps_dead_executors(local_runtime: LocalRuntime):
     local_runtime.create_cogent(cogent_name)
     repo = local_runtime.get_repository(cogent_name)
 
-    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, runner="local")
+    p = Process(name="test-proc", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNING, required_tags=["local"])
     repo.upsert_process(p)
     run = Run(process=p.id, status=RunStatus.RUNNING)
     repo.create_run(run)
