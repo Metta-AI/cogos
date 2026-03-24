@@ -1,6 +1,6 @@
 {
   "executor": "44825bb",
-  "dashboard": "9d6e713",
+  "dashboard": "44825bb",
   "discord_bridge": "local",
   "lambda": "44825bb9dee844142eb18fd751d8f5df9219db8b",
   "cogos": "44825bb9dee844142eb18fd751d8f5df9219db8b"
