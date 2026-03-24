@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createExecutorToken,
   listExecutorTokens,
@@ -13,6 +13,148 @@ import { fmtTimestamp } from "@/lib/format";
 
 interface TokenManagerProps {
   cogentName: string;
+}
+
+function CcDropdown({
+  cogentName,
+  copiedId,
+  onCopy,
+}: {
+  cogentName: string;
+  copiedId: string | null;
+  onCopy: (text: string, id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const host = typeof window !== "undefined" ? window.location.host : "";
+  const address = `${cogentName}.${host}`;
+  const ccCommand = `/cogos:cogent ${address}`;
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold font-mono bg-[var(--accent-glow-strong)] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer border-0"
+        title="Claude Code connect options"
+      >
+        cc
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md shadow-lg overflow-hidden"
+          style={{ minWidth: "220px" }}
+        >
+          <button
+            onClick={() => {
+              onCopy(ccCommand, `cc-${cogentName}`);
+              setOpen(false);
+            }}
+            className="w-full px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
+          >
+            <span className="text-[var(--text-muted)]">
+              {copiedId === `cc-${cogentName}` ? "Copied!" : "Copy Claude Code command"}
+            </span>
+          </button>
+          <div className="px-3 py-1.5 border-t border-[var(--border)]">
+            <code className="text-[10px] font-mono text-[var(--text-muted)] break-all">
+              {ccCommand}
+            </code>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TokenCcDropdown({
+  tokenName,
+  cogentName,
+  tokenRaw,
+  copiedId,
+  onCopy,
+}: {
+  tokenName: string;
+  cogentName: string;
+  tokenRaw: string;
+  copiedId: string | null;
+  onCopy: (text: string, id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const host = typeof window !== "undefined" ? window.location.host : "";
+  const address = `${cogentName}.${host}`;
+  const ccCommand = `/cogos:cogent ${address}`;
+
+  const buildLaunchCmd = () => {
+    const apiUrl = typeof window !== "undefined" ? window.location.origin : "";
+    return `COGOS_API_KEY=${tokenRaw} \\\nCOGOS_API_URL=${apiUrl} \\\nCOGENT=${cogentName} \\\nclaude --dangerously-load-development-channels server:cogos`;
+  };
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold font-mono bg-[var(--accent-glow-strong)] text-[var(--accent)] hover:opacity-80 transition-opacity cursor-pointer border-0"
+        title="Claude Code connect options"
+      >
+        cc
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md shadow-lg overflow-hidden"
+          style={{ minWidth: "240px" }}
+        >
+          <button
+            onClick={() => {
+              onCopy(ccCommand, `cc-cmd-${tokenName}`);
+              setOpen(false);
+            }}
+            className="w-full px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            {copiedId === `cc-cmd-${tokenName}` ? "Copied!" : "Copy Claude Code command"}
+          </button>
+          <button
+            onClick={() => {
+              onCopy(buildLaunchCmd(), `cc-launch-${tokenName}`);
+              setOpen(false);
+            }}
+            className="w-full px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors border-t border-[var(--border)]"
+          >
+            {copiedId === `cc-launch-${tokenName}` ? "Copied!" : "Copy launch command (env vars)"}
+          </button>
+          <div className="px-3 py-1.5 border-t border-[var(--border)]">
+            <code className="text-[10px] font-mono text-[var(--text-muted)] break-all">
+              {ccCommand}
+            </code>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TokenManager({ cogentName }: TokenManagerProps) {
@@ -69,9 +211,14 @@ export function TokenManager({ cogentName }: TokenManagerProps) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const buildLaunchCmd = (apiKey: string) => {
-    const apiUrl = window.location.origin;
+  const buildCreatedLaunchCmd = (apiKey: string) => {
+    const apiUrl = typeof window !== "undefined" ? window.location.origin : "";
     return `COGOS_API_KEY=${apiKey} \\\nCOGOS_API_URL=${apiUrl} \\\nCOGENT=${cogentName} \\\nclaude --dangerously-load-development-channels server:cogos`;
+  };
+
+  const buildCreatedCcCommand = () => {
+    const host = typeof window !== "undefined" ? window.location.host : "";
+    return `/cogos:cogent ${cogentName}.${host}`;
   };
 
   const activeTokens = tokens.filter((t) => !t.revoked);
@@ -79,13 +226,14 @@ export function TokenManager({ cogentName }: TokenManagerProps) {
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden">
       <div className="px-4 py-2.5 border-b border-[var(--border)] flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold text-[var(--text-primary)]">
             API Tokens
           </span>
-          <span className="text-[11px] text-[var(--text-muted)] ml-2">
+          <span className="text-[11px] text-[var(--text-muted)]">
             ({activeTokens.length} active)
           </span>
+          <CcDropdown cogentName={cogentName} copiedId={copiedId} onCopy={handleCopy} />
         </div>
       </div>
 
@@ -95,16 +243,33 @@ export function TokenManager({ cogentName }: TokenManagerProps) {
           <div className="text-[12px] font-medium text-[var(--text-primary)] mb-2">
             Token created — copy this now, it won't be shown again:
           </div>
-          <div className="relative">
-            <pre className="px-3 py-2 text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap break-all">
-              {buildLaunchCmd(createdToken.token)}
-            </pre>
-            <button
-              onClick={() => handleCopy(buildLaunchCmd(createdToken.token), "created")}
-              className="absolute top-1.5 right-1.5 px-2 py-1 text-[10px] font-medium bg-[var(--bg-surface)] border border-[var(--border)] rounded hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              {copiedId === "created" ? "Copied!" : "Copy"}
-            </button>
+          <div className="mb-2">
+            <div className="text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide font-medium">Claude Code command</div>
+            <div className="relative">
+              <pre className="px-3 py-2 text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap break-all">
+                {buildCreatedCcCommand()}
+              </pre>
+              <button
+                onClick={() => handleCopy(buildCreatedCcCommand(), "created-cc")}
+                className="absolute top-1.5 right-1.5 px-2 py-1 text-[10px] font-medium bg-[var(--bg-surface)] border border-[var(--border)] rounded hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                {copiedId === "created-cc" ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide font-medium">Launch command (env vars)</div>
+            <div className="relative">
+              <pre className="px-3 py-2 text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap break-all">
+                {buildCreatedLaunchCmd(createdToken.token)}
+              </pre>
+              <button
+                onClick={() => handleCopy(buildCreatedLaunchCmd(createdToken.token), "created-launch")}
+                className="absolute top-1.5 right-1.5 px-2 py-1 text-[10px] font-medium bg-[var(--bg-surface)] border border-[var(--border)] rounded hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                {copiedId === "created-launch" ? "Copied!" : "Copy"}
+              </button>
+            </div>
           </div>
           <button
             onClick={() => setCreatedToken(null)}
@@ -154,13 +319,13 @@ export function TokenManager({ cogentName }: TokenManagerProps) {
                 <td className="px-4 py-2 font-mono text-[var(--text-secondary)]">
                   <span className="inline-flex items-center gap-1.5">
                     {!t.revoked && (
-                      <button
-                        onClick={() => handleCopy(buildLaunchCmd(t.token_raw || "<YOUR_TOKEN>"), `cmd-${t.name}`)}
-                        className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
-                        title="Copy launch command"
-                      >
-                        {copiedId === `cmd-${t.name}` ? "✓" : "📋"}
-                      </button>
+                      <TokenCcDropdown
+                        tokenName={t.name}
+                        cogentName={cogentName}
+                        tokenRaw={t.token_raw || "<YOUR_TOKEN>"}
+                        copiedId={copiedId}
+                        onCopy={handleCopy}
+                      />
                     )}
                     {t.name}
                   </span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { TokenManager } from "@/components/executors/TokenManager";
 import { IntegrationsPanel } from "@/components/integrations/IntegrationsPanel";
 
 interface ConfigurePanelProps {
@@ -7,5 +8,10 @@ interface ConfigurePanelProps {
 }
 
 export function ConfigurePanel({ cogentName }: ConfigurePanelProps) {
-  return <IntegrationsPanel cogentName={cogentName} />;
+  return (
+    <div className="space-y-5">
+      <TokenManager cogentName={cogentName} />
+      <IntegrationsPanel cogentName={cogentName} />
+    </div>
+  );
 }

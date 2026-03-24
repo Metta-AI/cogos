@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { CogosExecutor, CogosRun } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
-import { TokenManager } from "@/components/executors/TokenManager";
 import { fmtRelative, fmtTimestamp } from "@/lib/format";
 
 interface ExecutorsPanelProps {
@@ -116,9 +115,6 @@ export function ExecutorsPanel({ executors = [], runs = [], cogentName }: Execut
 
   return (
     <div className="space-y-5">
-      {/* Token Management */}
-      <TokenManager cogentName={cogentName} />
-
       {/* Executors */}
       <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-md overflow-hidden">
         <div className="px-4 py-2.5 border-b border-[var(--border)]">
