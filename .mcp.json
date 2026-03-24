@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cogos-chat": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/claude_code/plugins/cogos/dist/server.cjs"],
+      "env": {}
+    }
+  }
+}

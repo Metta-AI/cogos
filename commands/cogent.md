@@ -2,7 +2,7 @@
 description: Connect to a CogOS cogent
 ---
 
-Connect to a CogOS cogent using the cogos MCP server. Call the `connect` tool with the cogent address provided as the argument to this command.
+Connect to a CogOS cogent using the cogos-chat MCP server. Call the `mcp__cogos-chat__connect` tool with the cogent address provided as the argument to this command.
 
 After connecting:
 1. Call `load_memory` to load the cogent's full instructions and context
