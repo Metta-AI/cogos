@@ -228,6 +228,9 @@ class GitHubIntegration(Integration):
     def description(self) -> str:
         return "Connect to GitHub to receive webhooks and interact with repositories."
 
+    def _fallback_keys(self) -> list[str]:
+        return ["cogent/all/github"]
+
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
             FieldSpec(name="org", label="GitHub Organization", required=False, help_text="GitHub org name (e.g. Metta-AI)."),
@@ -235,11 +238,22 @@ class GitHubIntegration(Integration):
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="app_id", label="App ID", help_text="GitHub App ID."),
-            FieldSpec(name="private_key", label="Private Key", field_type="secret", help_text="PEM-encoded private key for the GitHub App.", placeholder="-----BEGIN RSA PRIVATE KEY-----"),
+            FieldSpec(name="access_token", label="Personal Access Token", field_type="secret", required=False, help_text="GitHub PAT (ghp_...). Use this OR App credentials below."),
+            FieldSpec(name="app_id", label="App ID", required=False, help_text="GitHub App ID (alternative to PAT)."),
+            FieldSpec(name="private_key", label="Private Key", field_type="secret", required=False, help_text="PEM-encoded private key for the GitHub App."),
             FieldSpec(name="webhook_secret", label="Webhook Secret", field_type="secret", required=False, help_text="Shared secret for webhook signature verification."),
             FieldSpec(name="installation_id", label="Installation ID", required=False, help_text="Installation ID if pre-configured."),
         ]
+
+    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        has_pat = bool(config.get("access_token"))
+        has_app = bool(config.get("app_id") and config.get("private_key"))
+        configured = has_pat or has_app
+        missing: list[str] = []
+        if not configured:
+            missing.append("access_token or app_id+private_key")
+        return {"configured": configured, "missing_fields": missing}
 
 
 class AsanaIntegration(Integration):
