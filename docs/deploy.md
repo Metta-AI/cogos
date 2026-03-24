@@ -8,10 +8,10 @@ Four deployable components:
 
 | Component | Infrastructure | Deploy tool |
 |-----------|---------------|-------------|
-| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogtainer update lambda` |
-| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogtainer update dashboard` |
-| **Discord bridge** | ECS Fargate on cogtainer cluster | `cogtainer update discord` |
-| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer update stack` |
+| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogtainer update <name> --lambdas` |
+| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogtainer update <name> --services --image-tag dashboard-<sha>` |
+| **Discord bridge** | ECS Fargate on cogtainer cluster | `cogtainer update <name> --services --image-tag discord-<sha>` |
+| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer update <name>` |
 
 ## Decision Tree
 
@@ -20,24 +20,24 @@ What changed? Run `git diff HEAD~1 --name-only` and match:
 | Changed paths | Command |
 |---|---|
 | `images/**` | `cogos restart` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogtainer update lambda` |
-| `src/cogos/capabilities/**` | `cogtainer update lambda` + `cogos restart` |
-| `dashboard/frontend/**` | CI builds automatically; then `cogtainer update dashboard` |
-| `src/dashboard/**` | CI builds automatically; then `cogtainer update dashboard` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update stack` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogtainer update <name> --lambdas` |
+| `src/cogos/capabilities/**` | `cogtainer update <name> --lambdas` + `cogos restart` |
+| `dashboard/frontend/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-<sha>` |
+| `src/dashboard/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-<sha>` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update <name>` |
 
 ## Command Reference
 
 ### Update all components
 
 ```bash
-cogtainer update                             # Update all: Lambda + RDS + dashboard + discord bridge
-cogtainer update lambda                      # Update Lambda code only
-cogtainer update dashboard                   # Update dashboard (frontend + ECS)
-cogtainer update discord                     # Update discord bridge ECS service
-cogtainer update rds                         # Run DB migrations
-cogtainer update ecs --tag dashboard-<sha>   # Deploy specific ECS image
+cogtainer update <name>                                    # Update all (Lambdas + ECS services)
+cogtainer update <name> --lambdas                          # Lambda code only
+cogtainer update <name> --services                         # ECS services only
+cogtainer update <name> --services --image-tag <tag>       # Specific ECS image
 ```
+
+DB migrations run automatically during `cogos start` (image boot).
 
 ### Start / Stop / Restart
 
@@ -76,13 +76,13 @@ cogos restart
 
 **Executor code change** (`src/cogos/executor/`, `src/cogos/sandbox/`):
 ```bash
-cogtainer update lambda
+cogtainer update <name> --lambdas
 cogos restart    # if image also changed
 ```
 
 **Full infrastructure change** (CDK constructs, IAM, ALB):
 ```bash
-cogtainer update stack
+cogtainer update <name>
 cogos restart
 ```
 

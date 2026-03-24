@@ -2049,6 +2049,18 @@ class Repository:
             [self._param("id", alert_id)],
         )
 
+    def resolve_all_alerts(self) -> int:
+        response = self._execute(
+            "UPDATE alerts SET resolved_at = now() WHERE resolved_at IS NULL",
+        )
+        return response.get("numberOfRecordsUpdated", 0)
+
+    def delete_alert(self, alert_id: UUID) -> None:
+        self._execute(
+            "DELETE FROM alerts WHERE id = :id",
+            [self._param("id", alert_id)],
+        )
+
     # ═══════════════════════════════════════════════════════════
     # SCHEMAS
     # ═══════════════════════════════════════════════════════════

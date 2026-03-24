@@ -6,7 +6,7 @@ Human-readable reference: [docs/deploy.md](../../docs/deploy.md)
 
 1. Ensure no uncommitted changes: `git status --porcelain` must be empty. If dirty, stop and ask.
 2. Pull latest: `git pull --ff-only`. If it fails (diverged), stop and ask.
-3. Identify the cogent name from context (default: `dr.alpha`).
+3. Ensure the right cogent is selected: check `.env` for COGTAINER/COGENT, or run `cogent select <name>` to set them.
 
 ## Decide what to deploy
 
@@ -14,23 +14,21 @@ Run `git diff HEAD~1 --name-only` (or broader if multiple commits since last dep
 
 | Changed paths | What's needed |
 |---|---|
-| `dashboard/frontend/**` only | **S3 bundle** — fast path, ~30s. Run: `cogent <name> dashboard deploy` |
-| `src/dashboard/**` only (backend API) | **Docker image** — needs container rebuild. Run: `cogent <name> dashboard deploy --docker` |
-| Both frontend + backend | **Docker image** — covers both. Run: `cogent <name> dashboard deploy --docker` |
-| `DOCKER_VERSION` changed | **Docker image** — auto-detected, but use `--docker` to be explicit |
+| `dashboard/frontend/**` only | Deploy new dashboard image (CI builds on push to main) |
+| `src/dashboard/**` only (backend API) | Deploy new dashboard image (CI builds on push to main) |
+| Both frontend + backend | Deploy new dashboard image (CI builds on push to main) |
 | No dashboard changes | Nothing to deploy. Tell the user. |
 
-## Commands reference
+## Deploy
+
+CI (GitHub Actions) builds a new dashboard image on push to main. Once the image is available in ECR, deploy it:
 
 ```bash
-# Fast path: build Next.js -> tar.gz -> S3 -> restart ECS (~30s)
-cogent <name> dashboard deploy
+# Deploy a specific build (use the commit SHA from the merged PR)
+cogtainer update <cogtainer-name> --services --image-tag dashboard-<sha>
 
-# Full path: rebuild Docker image + push ECR + update task def + restart
-cogent <name> dashboard deploy --docker
-
-# Skip health check wait (if you want to move on)
-cogent <name> dashboard deploy --skip-health
+# Deploy the latest image
+cogtainer update <cogtainer-name> --services --image-tag dashboard-latest
 ```
 
 ## Post-deploy

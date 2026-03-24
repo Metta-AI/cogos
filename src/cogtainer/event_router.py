@@ -7,7 +7,9 @@ reusable module that works with any CogtainerRuntime.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from cogtainer.db.protocol import CogtainerRepositoryInterface
+from cogtainer.runtime.base import CogtainerRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ def match_pattern(pattern: str, event_type: str) -> bool:
 class EventRouter:
     """Match incoming events against triggers and plan dispatches."""
 
-    def __init__(self, repo: Any, runtime: Any) -> None:
+    def __init__(self, repo: CogtainerRepositoryInterface, runtime: CogtainerRuntime) -> None:
         self._repo = repo
         self._runtime = runtime
 

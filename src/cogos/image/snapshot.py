@@ -6,6 +6,8 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cogos.db.protocol import CogosRepositoryInterface
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,7 @@ def _repr_val(v) -> str:
     return repr(v)
 
 
-def snapshot_image(repo, output_dir: Path, *, cogent_name: str | None = None) -> None:
+def snapshot_image(repo: CogosRepositoryInterface, output_dir: Path, *, cogent_name: str | None = None) -> None:
     """Read DB state and generate an image directory."""
     init_dir = output_dir / "init"
     init_dir.mkdir(parents=True, exist_ok=True)

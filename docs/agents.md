@@ -114,10 +114,10 @@ print('All updated to epoch', epoch)
 git push
 
 # 2. Deploy Lambda (executor + event-router + dispatcher)
-cogtainer update $COGENT --lambdas
+cogtainer update <cogtainer-name> --lambdas
 
 # 3. Load image files into DB
-cogos image boot
+cogos start
 
 # 4. Reboot (creates fresh init, spawns all cogs)
 cogos reboot -y

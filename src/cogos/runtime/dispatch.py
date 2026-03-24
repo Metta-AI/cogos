@@ -7,17 +7,19 @@ import time
 from typing import Any
 from uuid import UUID
 
+from cogos.db.protocol import CogosRepositoryInterface
+
 logger = logging.getLogger(__name__)
 
 
-def _load_message_payload(repo, message_id: str | None) -> dict[str, Any]:
+def _load_message_payload(repo: CogosRepositoryInterface, message_id: str | None) -> dict[str, Any]:
     if not message_id:
         return {}
     msg = repo.get_channel_message(UUID(message_id))
     return msg.payload or {} if msg else {}
 
 
-def _resolve_channel_name(repo, message_id: str | None) -> str | None:
+def _resolve_channel_name(repo: CogosRepositoryInterface, message_id: str | None) -> str | None:
     if not message_id:
         return None
     msg = repo.get_channel_message(UUID(message_id))
@@ -27,7 +29,7 @@ def _resolve_channel_name(repo, message_id: str | None) -> str | None:
     return ch.name if ch else None
 
 
-def _extract_parent_span_id(repo, message_id: str | None) -> str | None:
+def _extract_parent_span_id(repo: CogosRepositoryInterface, message_id: str | None) -> str | None:
     if not message_id:
         return None
     try:
@@ -39,7 +41,7 @@ def _extract_parent_span_id(repo, message_id: str | None) -> str | None:
     return None
 
 
-def build_dispatch_event(repo, dispatch_result) -> dict[str, Any]:
+def build_dispatch_event(repo: CogosRepositoryInterface, dispatch_result: Any) -> dict[str, Any]:
     """Build the executor event envelope used by both local and prod dispatch."""
     from uuid import UUID as _UUID
 

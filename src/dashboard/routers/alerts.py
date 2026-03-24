@@ -81,10 +81,7 @@ def resolve_alert(name: str, alert_id: str) -> dict:
 @router.post("/alerts/resolve-all")
 def resolve_all_alerts(name: str) -> dict:
     repo = get_repo()
-    response = repo._execute(
-        "UPDATE alerts SET resolved_at = now() WHERE resolved_at IS NULL",
-    )
-    count = response.get("numberOfRecordsUpdated", 0)
+    count = repo.resolve_all_alerts()
     return {"ok": True, "resolved": count}
 
 
@@ -109,8 +106,5 @@ def create_alert_endpoint(name: str, body: AlertCreate) -> AlertItem:
 @router.delete("/alerts/{alert_id}")
 def delete_alert(name: str, alert_id: str) -> dict:
     repo = get_repo()
-    repo._execute(
-        "DELETE FROM alerts WHERE id = :id",
-        [repo._param("id", UUID(alert_id))],
-    )
+    repo.delete_alert(UUID(alert_id))
     return {"ok": True}

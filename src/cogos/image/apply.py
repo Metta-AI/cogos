@@ -19,19 +19,20 @@ from cogos.db.models import (
     ResourceType,
     Schema,
 )
+from cogos.db.protocol import CogosRepositoryInterface
 from cogos.files.references import extract_file_references
 from cogos.image.spec import ImageSpec
 
 logger = logging.getLogger(__name__)
 
 
-def apply_image(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]:
+def apply_image(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean: bool = False) -> dict[str, int]:
     """Apply an image spec to the database. Returns counts of entities created/updated."""
     with repo.batch():
         return _apply_image_inner(spec, repo, clean=clean)
 
 
-def _apply_image_inner(spec: ImageSpec, repo, *, clean: bool = False) -> dict[str, int]:
+def _apply_image_inner(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean: bool = False) -> dict[str, int]:
     counts = {
         "capabilities": 0, "resources": 0, "files": 0, "processes": 0,
         "cron": 0, "schemas": 0, "channels": 0,

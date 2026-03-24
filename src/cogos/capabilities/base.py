@@ -6,12 +6,16 @@ import copy
 import inspect
 import typing
 from collections.abc import Callable
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from cogos.db.protocol import CogosRepositoryInterface
+
+if TYPE_CHECKING:
+    from cogtainer.runtime.base import CogtainerRuntime
+    from cogtainer.secrets import SecretsProvider
 
 
 @runtime_checkable
@@ -174,8 +178,8 @@ class Capability:
         process_id: UUID,
         run_id: UUID | None = None,
         trace_id: UUID | None = None,
-        secrets_provider: typing.Any = None,
-        runtime: typing.Any = None,
+        secrets_provider: SecretsProvider | None = None,
+        runtime: CogtainerRuntime | None = None,
     ) -> None:
         self.repo = repo
         self.process_id = process_id

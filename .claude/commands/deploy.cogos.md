@@ -6,74 +6,72 @@ Human-readable reference: [docs/deploy.md](../../docs/deploy.md)
 
 1. Ensure no uncommitted changes: `git status --porcelain` must be empty. If dirty, stop and ask.
 2. Pull latest: `git pull --ff-only`. If it fails (diverged), stop and ask.
-3. Identify the cogent name from context (default: `dr.alpha`).
+3. Ensure the right cogent is selected: check `.env` for COGTAINER/COGENT, or run `cogent select <name>` to set them. Verify with `cogos status`.
 
-## Decide what to deploy
+## Check: is this the right skill?
 
-Run `git diff HEAD~1 --name-only` (or broader if needed) and categorize:
+Run `git diff HEAD~1 --name-only` (or broader if needed) and check:
 
-| Changed paths | What's needed |
+| Changed paths | Action |
 |---|---|
-| `images/**` only (files, init scripts) | **Image reboot** — just update DB state. No infra change. |
-| `src/cogos/db/migrations/**` | **RDS migration** — schema change needed first. |
-| `src/cogos/executor/**` or `src/cogos/sandbox/**` | **Lambda update** — executor code changed, redeploy Lambda. |
-| `src/cogos/capabilities/**` | **Lambda update + image reboot** — capability code in Lambda, definitions in image. |
-| `src/cogos/files/**` or `src/cogos/image/**` | **Lambda update** — these run inside Lambda. |
-| `src/dashboard/**` or `dashboard/frontend/**` | **Wrong skill!** Use `/deploy.dashboard` instead. |
+| `images/**`, `src/cogos/**`, `src/cogos/db/migrations/**` | **This skill** — read on |
+| `src/dashboard/**` or `dashboard/frontend/**` | **Wrong skill** — use `/deploy.dashboard` |
+| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | **Wrong skill** — use `/deploy.cogtainer` |
 | No cogos changes | Nothing to deploy. Tell the user. |
+
+See [docs/deploy.md](../../docs/deploy.md) for the full decision tree.
 
 ## Commands reference
 
 ```bash
-# Boot image and start dispatcher (upsert capabilities, files, processes into DB)
-cogent <name> cogos start
+# Boot image and start dispatcher (upsert capabilities, files, processes into DB; runs migrations)
+cogos start
 
 # Boot with clean slate (wipe all tables first)
-cogent <name> cogos start --clean
+cogos start --clean
 
 # Start without re-booting image
-cogent <name> cogos start --skip-boot
+cogos start --skip-boot
 
 # Stop the dispatcher
-cogent <name> cogos stop
+cogos stop
 
 # Restart (stop + boot + start)
-cogent <name> cogos restart
-
-# Run DB migrations only
-cogent <name> cogtainer update rds
+cogos restart
 
 # Update Lambda function code only
-cogent <name> cogtainer update lambda
+cogtainer update <cogtainer-name> --lambdas
 
-# Update all components (Lambda + RDS + dashboard + discord bridge)
-cogent <name> cogtainer update
+# Update ECS services only
+cogtainer update <cogtainer-name> --services
+
+# Update all components (default if no flags)
+cogtainer update <cogtainer-name>
 ```
 
 ## Typical sequences
 
 **Image-only change** (edited files in `images/`, e.g. prompt text, new capability definition):
 ```bash
-cogent <name> cogos restart
+cogos restart
 ```
 
 **Executor code change** (edited `src/cogos/executor/`, `src/cogos/sandbox/`, etc.):
 ```bash
-cogent <name> cogtainer update lambda
-cogent <name> cogos restart  # if image also changed
+cogtainer update <cogtainer-name> --lambdas
+cogos restart  # if image also changed
 ```
 
-**Schema migration + executor change**:
+**Schema migration + executor change** (migrations run during image boot):
 ```bash
-cogent <name> cogtainer update rds
-cogent <name> cogtainer update lambda
-cogent <name> cogos restart
+cogtainer update <cogtainer-name> --lambdas
+cogos restart
 ```
 
 ## Post-deploy
 
 Verify by running a quick process test:
 ```bash
-cogent <name> cogos process list
-cogent <name> cogos status
+cogos process list
+cogos status
 ```

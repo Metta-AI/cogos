@@ -1764,6 +1764,20 @@ class LocalRepository(Repository):
             if alert:
                 alert.resolved_at = datetime.now(UTC)
 
+    def resolve_all_alerts(self) -> int:
+        with self._writing():
+            count = 0
+            now = datetime.now(UTC)
+            for alert in self._alerts.values():
+                if alert.resolved_at is None:
+                    alert.resolved_at = now
+                    count += 1
+            return count
+
+    def delete_alert(self, alert_id: UUID) -> None:
+        with self._writing():
+            self._alerts.pop(alert_id, None)
+
     # ── Traces (gap-fill) ────────────────────────────────────
 
     def create_trace(self, trace: Trace) -> UUID:

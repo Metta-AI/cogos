@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from cogos.db.protocol import CogosRepositoryInterface
     from cogos.runtime.local_ingress_queue import LocalIngressQueue
     from cogtainer.secrets import SecretsProvider
 
@@ -14,7 +15,7 @@ class CogtainerRuntime(ABC):
     """Abstract base for cogtainer runtimes (local, AWS, Docker, etc.)."""
 
     @abstractmethod
-    def get_repository(self, cogent_name: str) -> Any:
+    def get_repository(self, cogent_name: str) -> CogosRepositoryInterface:
         """Return a database repository for the given cogent."""
 
     @abstractmethod
@@ -44,7 +45,7 @@ class CogtainerRuntime(ABC):
     def spawn_executor(self, cogent_name: str, process_id: str) -> None:
         """Launch an executor for the given process."""
 
-    def reap_dead_executors(self, repo: Any) -> int:
+    def reap_dead_executors(self, repo: CogosRepositoryInterface) -> int:
         """Check for dead executor subprocesses and fail their runs. Returns count of failures."""
         return 0
 

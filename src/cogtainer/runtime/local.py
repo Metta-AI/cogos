@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from cogos.db.protocol import CogosRepositoryInterface
     from cogos.runtime.local_ingress_queue import LocalIngressQueue
 
 from cogtainer.config import CogtainerEntry
@@ -119,7 +120,7 @@ class LocalRuntime(CogtainerRuntime):
         log_fh.close()
         self._child_procs.append((proc, process_id))
 
-    def reap_dead_executors(self, repo: Any) -> int:
+    def reap_dead_executors(self, repo: CogosRepositoryInterface) -> int:
         """Check for executor subprocesses that exited with errors and fail their runs."""
         from cogos.db.models import RunStatus
 

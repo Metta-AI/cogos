@@ -212,51 +212,25 @@ Docker images are built automatically by GitHub Actions on push to main when rel
 
 Workflows can also be triggered manually via `gh workflow run`.
 
-All `cogtainer update` commands check that a CI-built ECR image exists for the current commit and warn if it doesn't. Use `cogtainer await` to wait for CI before deploying.
+All `cogtainer update` commands check that a CI-built ECR image exists for the current commit and warn if it doesn't. Check CI image availability via `gh run list` or `gh run watch`.
 
-**Executor** images run as Lambda (not ECS). **Dashboard** images run as ECS. Don't mix them up — `update ecs --tag executor-*` is rejected with an error.
+**Executor** images run as Lambda (not ECS). **Dashboard** images run as ECS. Don't mix them up.
 
 ```bash
-# Wait for CI to finish building
-COGENT=<name> cogos cogtainer await                          # Wait for executor-<sha>
-COGENT=<name> cogos cogtainer await --prefix dashboard       # Wait for dashboard-<sha>
-COGENT=<name> cogos cogtainer await --tag dashboard-latest   # Wait for specific tag
+# Deploy executor code to Lambda
+cogtainer update <cogtainer-name> --lambdas
 
-# Deploy dashboard image to ECS
-COGENT=<name> cogos cogtainer update ecs --tag dashboard-latest
-COGENT=<name> cogos cogtainer update ecs --tag dashboard-abc1234
+# Deploy dashboard image to ECS (after CI builds it)
+cogtainer update <cogtainer-name> --services --image-tag dashboard-latest
+cogtainer update <cogtainer-name> --services --image-tag dashboard-abc1234
 
-# Deploy executor code to Lambda (no Docker needed)
-COGENT=<name> cogos cogtainer update lambda
+# Update all (Lambda + ECS services + CDK stacks)
+cogtainer update <cogtainer-name>
 ```
-
-Local builds (`cogtainer build`, `dashboard deploy --docker`) still work when needed.
 
 ### Deploying a cogent instance (decision tree)
 
-See [docs/deploy.md](docs/deploy.md) for the full reference. Match what changed to the right command:
-
-| What changed | Command |
-|---|---|
-| `images/**` only | `cogos restart` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**`, `src/cogos/capabilities/**` | `cogtainer update lambda` |
-| `dashboard/frontend/**` only | CI builds automatically; then `cogtainer update dashboard` |
-| `src/dashboard/**` (backend) | CI builds automatically; then `cogtainer update dashboard` |
-| `src/cogtainer/docker/**` (Dockerfile/deps) | CI builds automatically; executor runs as Lambda, no ECS deploy needed |
-| `dashboard/Dockerfile`, backend deps | CI builds automatically; then `cogtainer update dashboard` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update stack` |
-
-Common sequences:
-
-```bash
-# Executor code change
-cogtainer update lambda
-cogos restart    # if image also changed
-
-# Full infrastructure change (CDK constructs, IAM, ALB)
-cogtainer update stack
-cogos restart
-```
+Match what changed to the right deploy command. See [docs/deploy.md](docs/deploy.md) for the full decision tree, command reference, and typical sequences.
 
 ### Managing the Discord bridge (remote)
 
@@ -453,6 +427,8 @@ The backend serves REST API under `/api/cogents/{name}/`:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/healthz` | GET | Health check |
+| `/api/cogents/{name}/alerts` | - | Alerts |
+| `/api/cogents/{name}/chat` | - | Chat |
 | `/api/cogents/{name}/cogos-status` | GET | CogOS status overview |
 | `/api/cogents/{name}/processes` | GET | Process list |
 | `/api/cogents/{name}/processes/{id}` | GET | Process detail |
@@ -467,12 +443,17 @@ The backend serves REST API under `/api/cogents/{name}/`:
 | `/api/cogents/{name}/runs` | GET | Run history |
 | `/api/cogents/{name}/runs/{id}` | GET | Run detail |
 | `/api/cogents/{name}/runs/{id}/logs` | GET | Run CloudWatch logs |
-| `/api/cogents/{name}/events` | GET | Events log |
-| `/api/cogents/{name}/events/{id}/tree` | GET | Event causal tree |
+| `/api/cogents/{name}/traces` | - | Traces |
+| `/api/cogents/{name}/trace-viewer` | - | Trace viewer |
 | `/api/cogents/{name}/cron` | GET | Cron rules |
 | `/api/cogents/{name}/cron/toggle` | POST | Toggle cron rule |
 | `/api/cogents/{name}/resources` | GET | Active resources |
+| `/api/cogents/{name}/operations` | - | Operations |
 | `/api/cogents/{name}/setup` | GET | Channel setup wizard |
+| `/api/cogents/{name}/diagnostics` | - | Diagnostics |
+| `/api/cogents/{name}/integrations` | - | Integrations |
+| `/api/cogents/{name}/executors` | - | Executors |
+| `/api/cogtainer/...` | - | Cogtainer management (no cogent prefix) |
 | `/ws/cogents/{name}` | WS | Real-time updates |
 
 ### Architecture

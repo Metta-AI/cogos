@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from cogos.capabilities.scheduler import SchedulerCapability
 from cogos.db.protocol import CogosRepositoryInterface
 from cogtainer.runtime.base import CogtainerRuntime
 
@@ -28,7 +29,7 @@ _NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 def _dispatch_to_matched_executor(
-    repo: CogosRepositoryInterface, scheduler: Any, runtime: CogtainerRuntime, cogent_name: str,
+    repo: CogosRepositoryInterface, scheduler: SchedulerCapability, runtime: CogtainerRuntime, cogent_name: str,
     process_id: str, process_name: str,
 ) -> bool:
     """Dispatch a process to a tag-matched executor.
