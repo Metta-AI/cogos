@@ -56,7 +56,7 @@ When this file is used as a process prompt, the referenced files are expanded di
 
 ## Shared includes
 
-Files under `cogos/includes/` are shared API references and instructions. Each process includes what it needs via `@{mnt/boot/cogos/includes/code_mode.md}`, `@{mnt/boot/cogos/includes/files.md}`, etc. There is no auto-injection — all includes are explicit.
+Files under `cogos/includes/` are shared instructions (code_mode, escalate, shell, memory policies, etc.). Capability API documentation (files, channels, procs, discord, email, image, history, asana) is auto-injected into the system prompt from the capability classes themselves and does not need explicit includes.
 
 ## Read-only files
 

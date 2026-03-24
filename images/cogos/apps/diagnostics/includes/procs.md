@@ -1,5 +1,4 @@
 @{mnt/boot/cogos/includes/code_mode.md}
-@{mnt/boot/cogos/includes/procs.md}
 
 # Diagnostic: includes/procs
 

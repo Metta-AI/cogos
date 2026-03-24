@@ -2,9 +2,7 @@
 
 @{mnt/boot/whoami/index.md}
 @{mnt/boot/cogos/includes/code_mode.md}
-@{mnt/boot/cogos/includes/files.md}
 @{mnt/boot/cogos/includes/coglet/channels.md}
-@{mnt/boot/cogos/includes/image.md}
 @{mnt/boot/cogos/includes/memory/scratchpad.md}
 
 You are a worker process spawned to complete a specific task.

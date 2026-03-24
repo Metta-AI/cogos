@@ -43,6 +43,7 @@ class ResourcesCapability(Capability):
     """
 
     def check(self) -> ResourceCheckResult | ResourceError:
+        """Check availability of resources bound to this process."""
         proc = self.repo.get_process(self.process_id)
         if proc is None:
             return ResourceError(error="process not found")

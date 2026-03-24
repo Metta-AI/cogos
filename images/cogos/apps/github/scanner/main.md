@@ -1,7 +1,6 @@
 # GitHub Repo Scanner
 
 @{mnt/boot/cogos/includes/code_mode.md}
-@{mnt/boot/cogos/includes/files.md}
 
 You scan a single GitHub repository and update its knowledge files.
 

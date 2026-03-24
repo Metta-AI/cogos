@@ -9,13 +9,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "file",
         "description": "Single-file access — read, write, and search for a specific key.",
         "handler": "cogos.capabilities.files.FilesCapability",
-        "instructions": (
-            "Use file to access a single file by key.\n"
-            "- file.read(key) — read a file by key\n"
-            "- file.write(key, content) — create or update a file\n"
-            "- file.search(prefix) — search files by key prefix\n"
-            "Files are versioned. Every write creates a new version."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -97,18 +91,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "fs_dir",
         "description": "Directory access — list files and get file handles for read/write/append.",
         "handler": "cogos.capabilities.file_cap.DirCapability",
-        "instructions": (
-            "Directory access for files under a prefix.\n"
-            "- .list(prefix?) — list files\n"
-            "- f = .get(key) — get a file handle\n"
-            "- .grep(pattern, prefix?, limit=20, context=0) — regex search file contents\n"
-            "- .glob(pattern, limit=50) — match file keys by glob\n"
-            "- .tree(prefix?, depth=3) — compact directory tree\n"
-            "- f.read(offset?, limit?) — read file (line-sliced)\n"
-            "- f.write(content) — overwrite file\n"
-            "- f.append(content) — append to file\n"
-            "- f.edit(old, new, replace_all=False) — surgical string replacement"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -204,14 +187,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "procs",
         "description": "Process management — list, inspect, and spawn processes.",
         "handler": "cogos.capabilities.procs.ProcsCapability",
-        "instructions": (
-            "Use procs to manage CogOS processes.\n"
-            "- procs.list(status?) — list processes, optionally filtered by status\n"
-            "- procs.get(name) — get full details of a process by name or id\n"
-            "- procs.spawn(name, content, capabilities?) — create a new child process\n"
-            "Spawned processes start in 'runnable' status. You must explicitly pass\n"
-            "capability names via the capabilities parameter — they are NOT inherited."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -298,14 +274,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "history",
         "description": "Run history, file mutation tracking, and cross-process audit queries.",
         "handler": "cogos.capabilities.history.HistoryCapability",
-        "instructions": (
-            "Use history to query run history and file mutations.\n"
-            "- h = history.process(name) — get handle for one process\n"
-            "- h.runs(limit=10) — recent runs\n"
-            "- h.files(run_id) — files mutated by a run\n"
-            "- history.query(status?, process_name?, since?, limit=50) — cross-process query\n"
-            "- history.failed(since?, limit=20) — shorthand for failed runs"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -378,11 +347,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "resources",
         "description": "Resource pool management — check availability before resource-gated operations.",
         "handler": "cogos.capabilities.resources.ResourcesCapability",
-        "instructions": (
-            "Use resources to check whether your process's required resources are available.\n"
-            "- resources.check() — returns availability of all resources assigned to the current process\n"
-            "If resources are unavailable, your process may be blocked by the scheduler."
-        ),
+        "instructions": "",
         "schema": {
             "check": {
                 "input": {"type": "object", "properties": {}},
@@ -410,12 +375,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "secrets",
         "description": "Retrieve secrets from the runtime's secret store.",
         "handler": "cogos.capabilities.secrets.SecretsCapability",
-        "instructions": (
-            "Use secrets to retrieve API keys, tokens, and other sensitive values.\n"
-            "- secrets.get(key) — retrieve a secret by name\n"
-            "The secret store is provided by the cogtainer runtime.\n"
-            "JSON values are automatically parsed. Never log or emit secret values."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -446,12 +406,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "email",
         "description": "Send and receive emails via AWS SES.",
         "handler": "cogos.io.email.capability.EmailCapability",
-        "instructions": (
-            "Use email to send and receive emails.\n"
-            "- email.send(to, subject, body, reply_to?) — send an email\n"
-            "- email.receive(limit?) — read recent received emails\n"
-            "Always include a clear subject. Be professional in tone."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -503,15 +458,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "discord",
         "description": "Send and receive Discord messages, reactions, threads, and DMs.",
         "handler": "cogos.io.discord.capability.DiscordCapability",
-        "instructions": (
-            "Use discord to interact with Discord channels.\n"
-            "- discord.send(channel, content) — send a message to a channel\n"
-            "- discord.react(channel, message_id, emoji) — add a reaction\n"
-            "- discord.create_thread(channel, thread_name, content?) — create a thread\n"
-            "- discord.dm(user_id, content) — send a direct message\n"
-            "- discord.receive(limit?, channel?) — read recent Discord messages\n"
-            "Keep messages concise. Use threads for extended discussions."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -640,25 +587,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "me",
         "description": "Self-referential capability — scoped file/dir access for the current process and run.",
         "handler": "cogos.capabilities.me.MeCapability",
-        "instructions": (
-            "Use me to access scoped scratch/tmp/log storage for the current process and run.\n"
-            "- me.run() — returns a RunScope with scratch/tmp/log scoped to the current run\n"
-            "- me.process() — returns a ProcessScope with scratch/tmp/log scoped to the process\n"
-            "\n"
-            "Each scope provides:\n"
-            "- .tmp() — a FileHandle for a single tmp file\n"
-            "- .tmp_dir() — a DirHandle for tmp files (list/read/write by name)\n"
-            "- .log() — a FileHandle for a log file\n"
-            "- .scratch() — a FileHandle for a single scratch file\n"
-            "- .scratch_dir() — a DirHandle for scratch files (list/read/write by name)\n"
-            "\n"
-            "FileHandle: .read() -> str, .write(content) -> result, .key -> str\n"
-            "DirHandle: .list() -> [keys], .read(name) -> str, .write(name, content) -> result,"
-            " .file(name) -> FileHandle\n"
-            "\n"
-            "Run-scoped storage is ephemeral per run. Process-scoped storage persists across runs.\n"
-            "Paths: /proc/{process_id}/[tmp|scratch|log] and /proc/{process_id}/runs/{run_id}/[tmp|scratch|log]"
-        ),
+        "instructions": "",
         "schema": {
             "run": {
                 "input": {"type": "object", "properties": {}},
@@ -680,15 +609,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "scheduler",
         "description": "Process scheduling — message matching, process selection, and dispatch.",
         "handler": "cogos.capabilities.scheduler.SchedulerCapability",
-        "instructions": (
-            "The scheduler runs the CogOS tick loop. Only the scheduler daemon should use this.\n"
-            "- scheduler.match_messages() — match undelivered channel messages to handlers, create deliveries\n"
-            "- scheduler.unblock_processes() — move BLOCKED processes to RUNNABLE if resources free\n"
-            "- scheduler.select_processes(slots) — pick RUNNABLE processes by priority (softmax sampling)\n"
-            "- scheduler.dispatch_process(process_id) — transition to RUNNING, create a Run record\n"
-            "- scheduler.kill_process(process_id) — disable a process, fail its running run\n"
-            "Always run in order: match_messages -> unblock_processes -> select_processes -> dispatch."
-        ),
+        "instructions": "",
         "schema": {
             "match_messages": {
                 "input": {
@@ -776,18 +697,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "channels",
         "description": "Named topic channels for inter-process communication.",
         "handler": "cogos.capabilities.channels.ChannelsCapability",
-        "instructions": (
-            "Use channels to create and interact with typed message channels.\n"
-            "- channels.create(name, schema) — create a named channel with schema\n"
-            "- channels.send(name, payload) — send a message to a channel\n"
-            "- channels.read(name, limit?) — read messages from a channel\n"
-            "- channels.subscribe(name) — subscribe for push notifications\n"
-            "- channels.list() — list available channels\n"
-            "- channels.get(name) — get channel details\n"
-            "- channels.close(name) — close a channel you own\n"
-            "- channels.schema(name) — get channel schema\n"
-            "Messages are validated against the channel's schema on send."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -811,12 +721,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "schemas",
         "description": "Schema definitions for channel messages.",
         "handler": "cogos.capabilities.schemas.SchemasCapability",
-        "instructions": (
-            "Use schemas to discover message type definitions.\n"
-            "- schemas.get(name) — get a schema by name\n"
-            "- schemas.list() — list all available schemas\n"
-            "Schemas define the structure of channel messages."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -838,16 +743,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
             " GitHub (repos/issues/code), Twitter/X (tweets)."
         ),
         "handler": "cogos.capabilities.web_search.WebSearchCapability",
-        "instructions": (
-            "Use web_search to research topics across multiple sources.\n"
-            "- web_search.search(query, recency?, after_date?, before_date?)"
-            " — general web search via Tavily; recency: 'day'|'week'|'month'\n"
-            "- web_search.search_github(query, search_type?, after_date?, before_date?)"
-            " — GitHub search; search_type: 'repositories'|'issues'|'discussions'|'code'\n"
-            "- web_search.search_twitter(query, recency?, after_date?, before_date?)"
-            " — Twitter/X tweet search via X API v2\n"
-            "Use recency='day' for latest news. Use after_date/before_date (ISO date strings) for backfill."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -863,13 +759,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "web_fetch",
         "description": "Fetch and extract content from URLs.",
         "handler": "cogos.capabilities.web_fetch.WebFetchCapability",
-        "instructions": (
-            "Use web_fetch to fetch web pages and extract text.\n"
-            "- web_fetch.fetch(url) — fetch raw HTML from a URL\n"
-            "- web_fetch.extract_text(url) — fetch and extract clean text content\n"
-            "Returns PageContent/TextContent or FetchError.\n"
-            "Useful for reading GitHub profiles, blog posts, articles."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -916,15 +806,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "asana",
         "description": "Create and manage Asana tasks.",
         "handler": "cogos.capabilities.asana_cap.AsanaCapability",
-        "instructions": (
-            "Use asana to manage tasks in Asana.\n"
-            "- asana.create_task(project, name, notes?, assignee?, due_on?) — create a task\n"
-            "- asana.update_task(task_id, **fields) — update a task\n"
-            "- asana.list_tasks(project, limit=50) — list tasks in a project\n"
-            "- asana.my_tasks(workspace?, limit=50) — list all tasks assigned to me across all projects\n"
-            "- asana.add_comment(task_id, text) — add a comment to a task\n"
-            "API key is managed internally. Uses Asana PAT for authentication."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1033,14 +915,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "github",
         "description": "Read GitHub user profiles, repositories, and contributions.",
         "handler": "cogos.capabilities.github_cap.GitHubCapability",
-        "instructions": (
-            "Use github to read GitHub data (read-only).\n"
-            "- github.search_repos(query, limit=10) — search repositories\n"
-            "- github.get_user(username) — get a user profile\n"
-            "- github.list_contributions(username, limit=30) — list recent activity\n"
-            "- github.get_repo(owner, name) — get repo details with readme excerpt\n"
-            "API key is managed internally. All operations are read-only."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1149,15 +1024,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "google.drive",
         "description": "Search, read, upload, and share Google Drive files.",
         "handler": "cogos.io.google.drive.DriveCapability",
-        "instructions": (
-            "Use google.drive to access Google Drive files.\n"
-            "- google.drive.search(query, limit=20) — search for files matching a Drive query\n"
-            "- google.drive.list(folder_id?, limit=50) — list files in a folder\n"
-            "- google.drive.get(file_id) — get metadata for a single file\n"
-            "- google.drive.download(file_id) — download file content (Workspace files exported as text)\n"
-            "- google.drive.upload(name, content, folder_id?, mime_type='text/plain') — upload a new file\n"
-            "- google.drive.share(file_id, email, role='reader') — share a file with a user"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1287,12 +1154,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "google.docs",
         "description": "Create, read, and update Google Docs.",
         "handler": "cogos.io.google.docs.DocsCapability",
-        "instructions": (
-            "Use google.docs to work with Google Docs.\n"
-            "- google.docs.create(title, content='') — create a new document\n"
-            "- google.docs.read(doc_id) — read the plain-text content of a document\n"
-            "- google.docs.update(doc_id, content) — replace the entire document content"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1361,12 +1223,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "google.sheets",
         "description": "Create, read, and write Google Sheets.",
         "handler": "cogos.io.google.sheets.SheetsCapability",
-        "instructions": (
-            "Use google.sheets to work with Google Sheets spreadsheets.\n"
-            "- google.sheets.create(title) — create a new spreadsheet\n"
-            "- google.sheets.read(spreadsheet_id, range='Sheet1') — read values from a range\n"
-            "- google.sheets.write(spreadsheet_id, range, values) — write values to a range"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1440,13 +1297,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "google.calendar",
         "description": "Manage Google Calendar events.",
         "handler": "cogos.io.google.calendar.CalendarCapability",
-        "instructions": (
-            "Use google.calendar to manage Google Calendar events.\n"
-            "- google.calendar.list_events(start, end, calendar_id='primary', limit=50) — list events in a time range\n"
-            "- google.calendar.create_event(title, start, end, attendees?, description='', calendar_id='primary') — create an event\n"
-            "- google.calendar.update_event(event_id, calendar_id='primary', **fields) — update an event (title, start, end, description, attendees)\n"
-            "- google.calendar.delete_event(event_id, calendar_id='primary') — delete an event"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1549,11 +1400,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "cog_registry",
         "description": "Access to Cog objects for dynamic coglet creation.",
         "handler": "cogos.capabilities.cog_registry.CogRegistryCapability",
-        "instructions": (
-            "Use cog_registry to load cog objects and create dynamic coglets.\n"
-            "- cog = cog_registry.get_or_make_cog(path) — load a cog by path\n"
-            "- coglet, caps = cog.make_coglet(reason) — create a coglet for a task\n"
-        ),
+        "instructions": "",
         "schema": {
             "get_or_make_cog": {
                 "input": {
@@ -1573,11 +1420,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "coglet_runtime",
         "description": "Run coglets as CogOS processes.",
         "handler": "cogos.capabilities.coglet_runtime.CogletRuntimeCapability",
-        "instructions": (
-            "Use coglet_runtime to run coglets created by cog.make_coglet().\n"
-            "- result = coglet_runtime.run(coglet, procs, capabilities={...})\n"
-            "Returns a ProcessHandle for the spawned worker process."
-        ),
+        "instructions": "",
         "schema": {
             "run": {
                 "input": {
@@ -1599,24 +1442,14 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "alerts",
         "description": "Emit system alerts (warnings, errors) to the dashboard.",
         "handler": "cogos.capabilities.alerts.AlertsCapability",
-        "instructions": (
-            "alerts lets you emit alerts visible in the dashboard.\n"
-            "- alerts.warning(alert_type, message, **metadata) — emit a warning\n"
-            "- alerts.error(alert_type, message, **metadata) — emit a critical error\n"
-        ),
+        "instructions": "",
         "schema": {},
     },
     {
         "name": "blob",
         "description": "Upload and download files via S3 for cross-capability sharing.",
         "handler": "cogos.capabilities.blob.BlobCapability",
-        "instructions": (
-            "Use blob to share files between capabilities (discord, email, etc.).\n"
-            "- ref = blob.upload(data, filename, content_type?) — upload bytes, get BlobRef with key and URL\n"
-            "- content = blob.download(key) — download by key, get BlobContent with data\n"
-            "BlobRef.key is the durable identifier. BlobRef.url is a presigned URL (7 day expiry).\n"
-            "Blobs are stored in S3 and auto-deleted after 30 days."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1664,28 +1497,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "image",
         "description": "Manipulate, compose, analyze, and generate images. All operations are blob-key oriented.",
         "handler": "cogos.capabilities.image.ImageCapability",
-        "instructions": (
-            "Use image to work with images. All ops take/return blob keys.\n"
-            "Manipulation:\n"
-            "- image.resize(key, width?, height?) — resize (auto-aspect if one dim omitted)\n"
-            "- image.crop(key, left, top, right, bottom) — crop region\n"
-            "- image.rotate(key, degrees) — rotate\n"
-            "- image.convert(key, format) — convert format (PNG, JPEG, WEBP)\n"
-            "- image.thumbnail(key, max_size) — fit within box\n"
-            "Compositing:\n"
-            "- image.overlay_text(key, text, position?, font_size?, color?) — add text\n"
-            "- image.watermark(key, watermark_key, position?, opacity?) — add watermark\n"
-            "- image.combine(keys, layout?) — stitch images (horizontal/vertical/grid)\n"
-            "Analysis (Gemini Vision):\n"
-            "- image.describe(key, prompt?) — describe/caption image\n"
-            "- image.analyze(key, prompt) — answer questions about image\n"
-            "- image.extract_text(key) — OCR\n"
-            "Generation (Gemini):\n"
-            "- image.generate(prompt, size?, style?) — text-to-image\n"
-            "- image.edit(key, prompt) — edit image with prompt\n"
-            "- image.variations(key, count?) — generate variations\n"
-            "Pipeline: generate → resize → overlay_text → send via discord"
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1711,17 +1523,7 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "web",
         "description": "Publish web content and handle HTTP requests for the cogent's subdomain.",
         "handler": "cogos.io.web.capability.WebCapability",
-        "instructions": (
-            "Use web to publish static files and handle HTTP API requests.\n"
-            "- web.publish(path, content) — publish a file at web/{path}\n"
-            "- web.unpublish(path) — remove a published file\n"
-            "- web.url(path?) — return the exact public /web/static URL for a published file or directory\n"
-            "- web.respond(request_id, status, headers, body) — respond to an API request\n"
-            "- web.list(prefix) — list published files\n"
-            "Static files are served under the cogent's public /web/static/* URL.\n"
-            "Use web.url(path) instead of guessing the hostname or route.\n"
-            "API requests to /web/api/* are delivered via io:web:request channel."
-        ),
+        "instructions": "",
         "schema": {
             "scope": {
                 "properties": {
@@ -1742,20 +1544,13 @@ BUILTIN_CAPABILITIES: list[dict] = [
         "name": "cogent",
         "description": "Cogent identity — name and profile metadata.",
         "handler": "cogos.capabilities.cogent.CogentCapability",
-        "instructions": (
-            "Use cogent to access this cogent's identity.\n"
-            "- cogent.name — the cogent's name\n"
-            "- cogent.profile() — markdown string with identity fields\n"
-        ),
+        "instructions": "",
     },
     {
         "name": "monitor",
         "description": "Alert monitoring — run detection rules and dispatch actions.",
         "handler": "cogos.capabilities.alert_monitor.AlertMonitorCapability",
-        "instructions": (
-            "monitor runs alert detection rules and dispatches actions.\n"
-            "- monitor.check() — query recent alerts, run rules, dispatch actions\n"
-        ),
+        "instructions": "",
         "schema": {},
     },
 ]

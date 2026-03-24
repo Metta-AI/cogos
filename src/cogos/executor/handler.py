@@ -691,6 +691,14 @@ def execute_process(
             " and use capabilities to accomplish your task."
         )
 
+    # Build capabilities early so we can inject help text into the system prompt
+    # before computing the fingerprint (capability changes should invalidate sessions).
+    from cogos.executor.capabilities import build_process_capabilities
+    caps = build_process_capabilities(process.id, repo, run_id=run.id, trace_id=trace_id, get_runtime=_get_runtime)
+    cap_help = _build_capability_help_text(caps)
+    if cap_help:
+        system_prompt += "\n\n--- Capabilities ---\n\n" + cap_help
+
     system = [{"text": system_prompt}]
     model_id = process.model or config.default_model
     run.model_version = model_id
@@ -742,9 +750,9 @@ def execute_process(
     messages.append(user_message)
     session_store.write_trigger(session, event_data=event_data, user_message=user_message)
 
-    # Set up sandbox with capability proxies
+    # Set up sandbox with capability proxies (reuse pre-built caps)
     vt = VariableTable()
-    _setup_capability_proxies(vt, process, repo, run_id=run.id, trace_id=trace_id)
+    _setup_capability_proxies(vt, process, repo, run_id=run.id, trace_id=trace_id, caps=caps)
     sandbox = SandboxExecutor(vt)
 
     total_input_tokens = 0
@@ -1263,7 +1271,6 @@ def _handle_search(tool_input: dict, process: Process, repo: Repository) -> str:
         results.append({
             "name": cap.name,
             "description": cap.description,
-            "instructions": cap.instructions,
         })
     return json.dumps(results, indent=2) if results else "No capabilities found matching query."
 
@@ -1297,36 +1304,48 @@ def _wrap_capability_with_tracing(instance, namespace: str):
     return TracingProxy(instance, namespace)
 
 
+def _build_capability_help_text(caps: dict[str, object]) -> str:
+    """Generate capability help text from built capability instances.
+
+    Returns a string suitable for injection into the system prompt,
+    with method signatures, docstrings, and IO schemas for each capability.
+    """
+    entries = []
+    for name in sorted(caps):
+        instance = caps[name]
+        if isinstance(instance, HelpCapability):
+            entries.append(f"{name}: {instance.help()}")
+        else:
+            entries.append(name)
+    return "\n\n".join(entries)
+
+
 def _setup_capability_proxies(
     vt: VariableTable, process: Process, repo: Repository,
     *, run_id: UUID | None = None, trace_id: UUID | None = None,
-) -> None:
+    caps: dict[str, object] | None = None,
+) -> str:
     """Inject capability instances into the variable table.
 
     Only capabilities explicitly bound to the process via ProcessCapability
     are injected. Applies scope from ProcessCapability.config when present.
     No ambient/unconditional capabilities — if a process needs files, procs,
     or events, it must have a binding.
+
+    Returns the capability help text (same content injected into __capabilities__).
     """
     from cogos.executor.capabilities import build_process_capabilities
 
-    caps = build_process_capabilities(process.id, repo, run_id=run_id, trace_id=trace_id, get_runtime=_get_runtime)
+    if caps is None:
+        caps = build_process_capabilities(process.id, repo, run_id=run_id, trace_id=trace_id, get_runtime=_get_runtime)
 
     vt.set("print", print)
     for ns, instance in caps.items():
         instance = _wrap_capability_with_tracing(instance, ns)
         vt.set(ns, instance)
 
-    # Expose a summary of what's available with method signatures so the model
-    # doesn't waste turns probing with dir()/help()/search.
-    cap_entries = []
-    for name in sorted(k for k in vt.as_dict() if k != "print"):
-        obj = vt.get(name)
-        if isinstance(obj, HelpCapability):
-            cap_entries.append(f"{name}: {obj.help()}")
-        else:
-            cap_entries.append(name)
-    vt.set("__capabilities__", "\n\n".join(cap_entries))
+    help_text = _build_capability_help_text(caps)
+    vt.set("__capabilities__", help_text)
 
     # Create implicit process channel and per-process IO channels if they don't exist
     try:
@@ -1344,3 +1363,5 @@ def _setup_capability_proxies(
                     repo.upsert_channel(ch)
     except Exception as exc:
         logger.warning("Could not create implicit channels for process %s: %s", process.name, exc)
+
+    return help_text

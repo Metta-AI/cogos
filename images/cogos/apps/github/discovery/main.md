@@ -1,7 +1,6 @@
 # GitHub Repo Discovery
 
 @{mnt/boot/cogos/includes/code_mode.md}
-@{mnt/boot/cogos/includes/files.md}
 
 You scan an unfamiliar GitHub repository on-demand and register it for future monitoring.
 

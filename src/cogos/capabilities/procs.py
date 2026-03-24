@@ -77,6 +77,7 @@ class ProcsCapability(Capability):
             raise PermissionError(f"Operation '{op}' not allowed by scope (allowed: {sorted(allowed)})")
 
     def list(self, status: str | None = None, limit: int = 200) -> list[ProcessSummary]:
+        """List processes, optionally filtered by status."""
         self._check("list")
         ps = ProcessStatus(status) if status else None
         processes = self.repo.list_processes(status=ps, limit=limit)
@@ -94,6 +95,7 @@ class ProcsCapability(Capability):
         ]
 
     def get(self, name: str | None = None, id: str | None = None) -> ProcessHandle | ProcessError:
+        """Get a process handle by name or id."""
         self._check("get")
         if id:
             proc = self.repo.get_process(UUID(id))

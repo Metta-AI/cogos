@@ -407,6 +407,7 @@ class GitHubCapability(Capability):
         branch: str | None = None,
         limit: int = 30,
     ) -> list[CommitSummary] | GitHubError:
+        """List commits for a repository."""
         self._check("list_commits")
         try:
             gh = self._get_client()
@@ -435,6 +436,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def get_commit(self, owner: str, repo: str, sha: str) -> CommitDetail | GitHubError:
+        """Get detailed info for a single commit."""
         self._check("get_commit")
         try:
             gh = self._get_client()
@@ -454,6 +456,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def list_branches(self, owner: str, repo: str) -> list[BranchSummary] | GitHubError:
+        """List branches in a repository."""
         self._check("list_branches")
         try:
             gh = self._get_client()
@@ -466,6 +469,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def compare_commits(self, owner: str, repo: str, base: str, head: str) -> CommitComparison | GitHubError:
+        """Compare two commits or branches."""
         self._check("compare_commits")
         try:
             gh = self._get_client()
@@ -494,6 +498,7 @@ class GitHubCapability(Capability):
         sort: str = "created",
         limit: int = 30,
     ) -> list[PullRequestSummary] | GitHubError:
+        """List pull requests for a repository."""
         self._check("list_pull_requests")
         try:
             gh = self._get_client()
@@ -517,6 +522,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def get_pull_request(self, owner: str, repo: str, number: int) -> PullRequestDetail | GitHubError:
+        """Get detailed info for a pull request."""
         self._check("get_pull_request")
         try:
             gh = self._get_client()
@@ -557,6 +563,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def list_pr_reviews(self, owner: str, repo: str, number: int) -> list[ReviewSummary] | GitHubError:
+        """List reviews on a pull request."""
         self._check("list_pr_reviews")
         try:
             gh = self._get_client()
@@ -575,6 +582,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def list_pr_files(self, owner: str, repo: str, number: int) -> list[PRFileSummary] | GitHubError:
+        """List files changed in a pull request."""
         self._check("list_pr_files")
         try:
             gh = self._get_client()
@@ -604,6 +612,7 @@ class GitHubCapability(Capability):
         assignee: str | None = None,
         limit: int = 30,
     ) -> list[IssueSummary] | GitHubError:
+        """List issues for a repository."""
         self._check("list_issues")
         try:
             gh = self._get_client()
@@ -632,6 +641,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def get_issue(self, owner: str, repo: str, number: int) -> IssueDetail | GitHubError:
+        """Get detailed info for an issue."""
         self._check("get_issue")
         try:
             gh = self._get_client()
@@ -664,6 +674,7 @@ class GitHubCapability(Capability):
         status: str | None = None,
         limit: int = 10,
     ) -> list[WorkflowRunSummary] | GitHubError:
+        """List GitHub Actions workflow runs."""
         self._check("list_workflow_runs")
         try:
             gh = self._get_client()
@@ -691,6 +702,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def get_workflow_run(self, owner: str, repo: str, run_id: int) -> WorkflowRunDetail | GitHubError:
+        """Get detailed info for a workflow run including jobs."""
         self._check("get_workflow_run")
         try:
             gh = self._get_client()
@@ -724,6 +736,7 @@ class GitHubCapability(Capability):
     # ── Releases ─────────────────────────────────────────────
 
     def list_releases(self, owner: str, repo: str, *, limit: int = 10) -> list[ReleaseSummary] | GitHubError:
+        """List releases for a repository."""
         self._check("list_releases")
         try:
             gh = self._get_client()
@@ -744,6 +757,7 @@ class GitHubCapability(Capability):
             return GitHubError(error=str(exc))
 
     def get_latest_release(self, owner: str, repo: str) -> ReleaseSummary | GitHubError:
+        """Get the latest published release."""
         self._check("get_latest_release")
         try:
             gh = self._get_client()

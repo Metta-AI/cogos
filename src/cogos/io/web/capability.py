@@ -36,6 +36,8 @@ class WebError(BaseModel):
 
 
 class WebCapability(Capability):
+    """Publish static files to the web and respond to HTTP requests."""
+
     ALL_OPS = {"publish", "unpublish", "respond", "list", "url"}
 
     def __init__(self, repo, process_id, **kwargs):
@@ -85,6 +87,7 @@ class WebCapability(Capability):
         content: str,
         content_encoding: str | None = None,
     ) -> PublishResult | WebError:
+        """Publish a static file at the given path. Supports base64 encoding."""
         if not path:
             return WebError(error="'path' is required")
         if not content:
@@ -112,6 +115,7 @@ class WebCapability(Capability):
         return PublishResult(path=path, version=result.version, created=False)
 
     def unpublish(self, path: str) -> UnpublishResult | WebError:
+        """Remove a published file."""
         if not path:
             return WebError(error="'path' is required")
         self._check("unpublish", path=path)
@@ -131,6 +135,7 @@ class WebCapability(Capability):
         headers: dict[str, str] | None = None,
         body: str = "",
     ) -> WebResponse | WebError:
+        """Respond to an inbound HTTP request."""
         if not request_id:
             return WebError(error="'request_id' is required")
         self._check("respond")
@@ -146,9 +151,11 @@ class WebCapability(Capability):
         return WebResponse(request_id=request_id, status=self._pending_responses[request_id]["status"])
 
     def get_pending_response(self, request_id: str) -> dict | None:
+        """Retrieve and consume a pending HTTP response by request_id."""
         return self._pending_responses.pop(request_id, None)
 
     def list(self, prefix: str = "") -> ListResult | WebError:
+        """List published file paths."""
         self._check("list")
 
         store = FileStore(self.repo)

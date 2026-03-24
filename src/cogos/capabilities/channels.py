@@ -147,11 +147,13 @@ class ChannelsCapability(Capability):
         return self._channel_info(ch)
 
     def list(self) -> list[ChannelInfo]:
+        """List all channels."""
         self._check("list")
         channels = self.repo.list_channels()
         return [self._channel_info(ch) for ch in channels]
 
     def get(self, name: str) -> ChannelInfo | ChannelError:
+        """Get a channel by name."""
         self._check("get", name=name)
         ch = self.repo.get_channel_by_name(name)
         if ch is None:
@@ -188,6 +190,7 @@ class ChannelsCapability(Capability):
         return SendResult(id=str(msg_id), channel=name)
 
     def read(self, name: str, limit: int = 100) -> list[MessageInfo] | ChannelError:
+        """Read messages from a channel."""
         self._check("read", name=name)
         ch = self.repo.get_channel_by_name(name)
         if ch is None:
@@ -215,6 +218,7 @@ class ChannelsCapability(Capability):
         return SubscribeResult(handler_id=str(hid), channel=name)
 
     def close(self, name: str) -> ChannelInfo | ChannelError:
+        """Close a channel you own."""
         self._check("close", name=name)
         ch = self.repo.get_channel_by_name(name)
         if ch is None:
