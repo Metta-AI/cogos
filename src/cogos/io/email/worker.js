@@ -1,12 +1,12 @@
 /**
- * Cloudflare Email Worker — forwards inbound emails to the cogtainer ingest Lambda.
+ * Cloudflare Email Worker — forwards inbound emails to the cogent's dashboard API.
  *
  * Deployed once for the whole domain. Parses the email, extracts the cogent
- * name from the recipient local part, and POSTs to a single ingest endpoint.
+ * name from the recipient local part, and POSTs to the dashboard ingest endpoint.
  *
  * Bindings required:
- *   - INGEST_URL: string (Lambda Function URL)
- *   - INGEST_SECRET: secret (string)
+ *   - DASHBOARD_DOMAIN: string (e.g. "agora.softmax-cogents.com")
+ *   - DASHBOARD_API_KEY: secret (string)
  */
 
 /**
@@ -71,11 +71,15 @@ export default {
       },
     };
 
-    const resp = await fetch(env.INGEST_URL, {
+    // POST to the cogent's dashboard API
+    const domain = env.DASHBOARD_DOMAIN || "agora.softmax-cogents.com";
+    const url = `https://${localPart}.${domain}/api/cogents/${localPart}/ingest/email`;
+
+    const resp = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${env.INGEST_SECRET}`,
+        "x-api-key": env.DASHBOARD_API_KEY || "",
       },
       body: JSON.stringify(payload),
     });
