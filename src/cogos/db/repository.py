@@ -1692,18 +1692,33 @@ class Repository:
             ],
         )
 
-    def get_run(self, run_id: UUID) -> Run | None:
+    def get_run(self, run_id: UUID, *, slim: bool = False) -> Run | None:
+        columns = self._RUN_SLIM_COLUMNS if slim else "*"
         response = self._execute(
-            "SELECT * FROM cogos_run WHERE id = :id",
+            f"SELECT {columns} FROM cogos_run WHERE id = :id",
             [self._param("id", run_id)],
         )
         row = self._first_row(response)
         return self._run_from_row(row) if row else None
 
+    def get_run_results(self, run_ids: list[UUID]) -> dict[UUID, dict[str, Any] | None]:
+        if not run_ids:
+            return {}
+        placeholders = ", ".join(f":id_{i}" for i in range(len(run_ids)))
+        params = [self._param(f"id_{i}", rid) for i, rid in enumerate(run_ids)]
+        response = self._execute(
+            f"SELECT id, result FROM cogos_run WHERE id IN ({placeholders})",
+            params,
+        )
+        results: dict[UUID, dict[str, Any] | None] = {}
+        for r in self._rows_to_dicts(response):
+            results[UUID(r["id"])] = self._json_field(r, "result")
+        return results
+
     _RUN_SLIM_COLUMNS = (
         "id, epoch, process, message, conversation, status, tokens_in, tokens_out, "
-        "cost_usd, duration_ms, error, model_version, result, trace_id, parent_trace_id, "
-        "metadata, created_at, completed_at"
+        "cost_usd, duration_ms, error, model_version, trace_id, parent_trace_id, "
+        "created_at, completed_at"
     )
 
     def list_runs(

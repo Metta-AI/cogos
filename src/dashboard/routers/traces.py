@@ -296,7 +296,7 @@ def list_message_traces(
     category_filters = _normalize_type_filters(category)
     request_id_filters = _normalize_type_filters(request_id)
     has_filters = source_type_filters or emitted_type_filters or category_filters or request_id_filters
-    fetch_limit = max(limit * 10, 500) if has_filters else max(limit * 5, 250)
+    fetch_limit = max(limit * 5, 500) if has_filters else max(limit * 2, 200)
     if request_id_filters:
         fetch_limit = max(fetch_limit, 2000)
 
@@ -330,6 +330,14 @@ def list_message_traces(
     channel_names = {channel.id: channel.name for channel in channels}
     handlers_by_id = {handler.id: handler for handler in handlers}
     runs_by_id = {run.id: run for run in runs}
+
+    try:
+        run_results = repo.get_run_results(list(runs_by_id.keys()))
+        for rid, result in run_results.items():
+            if rid in runs_by_id:
+                runs_by_id[rid].result = result
+    except Exception:
+        pass
 
     deliveries_by_message: dict[UUID, list[Delivery]] = {}
     for delivery in deliveries:
