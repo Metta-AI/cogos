@@ -28147,6 +28147,11 @@ function cacheToken(address, token, cogentName) {
   };
   saveCache(cache);
 }
+function removeCachedToken(address) {
+  const cache = loadCache();
+  delete cache.tokens[address];
+  saveCache(cache);
+}
 
 // src/server.ts
 var state = {
@@ -28245,9 +28250,8 @@ function parseAddress(address) {
   const parts = address.split(".");
   if (parts.length >= 2) {
     const cogentName = parts[0];
-    const domain2 = parts.slice(1).join(".");
     return {
-      apiUrl: `https://${domain2}`,
+      apiUrl: `https://${address}`,
       cogentName
     };
   }
@@ -28269,7 +28273,16 @@ async function connect(address, token) {
       state.token = cached2;
       process.stderr.write(`[cogos] Using cached token for ${address}
 `);
-    } else {
+      try {
+        await apiGet(`${apiBase()}/channels`);
+      } catch (e) {
+        process.stderr.write(`[cogos] Cached token invalid, re-authenticating: ${e}
+`);
+        removeCachedToken(address);
+        state.token = "";
+      }
+    }
+    if (!state.token) {
       try {
         state.token = await browserAuthFlow(address);
         cacheToken(address, state.token, cogentName);
@@ -28284,6 +28297,8 @@ async function connect(address, token) {
     await apiGet(`${apiBase()}/channels`);
   } catch (e) {
     state.connected = false;
+    removeCachedToken(address);
+    state.token = "";
     return `Failed to connect to ${address}: ${e}`;
   }
   state.connected = true;

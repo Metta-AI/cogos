@@ -18,7 +18,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "http";
 import { exec } from "child_process";
-import { getCachedToken, cacheToken } from "./token-cache.js";
+import { getCachedToken, cacheToken, removeCachedToken } from "./token-cache.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -190,14 +190,12 @@ async function browserAuthFlow(address: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 function parseAddress(address: string): { apiUrl: string; cogentName: string } {
-  // Format: cogent-name.domain.com or https://domain.com/cogent-name
-  // Simple case: name.host — cogent is the first segment
+  // Format: cogent-name.domain.com — first segment is cogent name, full address is the host
   const parts = address.split(".");
   if (parts.length >= 2) {
     const cogentName = parts[0];
-    const domain = parts.slice(1).join(".");
     return {
-      apiUrl: `https://${domain}`,
+      apiUrl: `https://${address}`,
       cogentName,
     };
   }
@@ -225,7 +223,19 @@ async function connect(
     if (cached) {
       state.token = cached;
       process.stderr.write(`[cogos] Using cached token for ${address}\n`);
-    } else {
+
+      // Validate cached token — if it fails, clear and re-auth
+      try {
+        await apiGet(`${apiBase()}/channels`);
+      } catch (e) {
+        process.stderr.write(`[cogos] Cached token invalid, re-authenticating: ${e}\n`);
+        removeCachedToken(address);
+        state.token = "";
+        // Fall through to browser auth below
+      }
+    }
+
+    if (!state.token) {
       // Browser auth flow
       try {
         state.token = await browserAuthFlow(address);
@@ -242,6 +252,9 @@ async function connect(
     await apiGet(`${apiBase()}/channels`);
   } catch (e) {
     state.connected = false;
+    // Clear token if validation fails — it's likely invalid
+    removeCachedToken(address);
+    state.token = "";
     return `Failed to connect to ${address}: ${e}`;
   }
 
