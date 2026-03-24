@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import functools
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -26,38 +25,6 @@ from fastapi.staticfiles import StaticFiles
 from cogos.api.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-@functools.lru_cache(maxsize=1)
-def _get_admin_key() -> str:
-    """Load the dashboard admin API key (cached after first call)."""
-    env_key = os.environ.get("DASHBOARD_API_KEY")
-    if env_key:
-        return env_key
-
-    cogent_name = os.environ.get("COGENT", "")
-    if cogent_name:
-        try:
-            import json
-
-            import boto3
-
-            region = os.environ.get("AWS_REGION", "us-east-1")
-            sm = boto3.client("secretsmanager", region_name=region)
-            from cogtainer.secrets import cogent_key
-            resp = sm.get_secret_value(SecretId=cogent_key(cogent_name, "dashboard-api-key"))
-            data = json.loads(resp["SecretString"])
-            return data.get("api_key", "")
-        except Exception:
-            logger.warning("Could not load dashboard API key from Secrets Manager", exc_info=True)
-
-    return ""
-
-
-def _verify_admin_key(key: str) -> bool:
-    """Check key against the dashboard API key stored in Secrets Manager."""
-    expected = _get_admin_key()
-    return bool(expected) and key == expected
 
 
 @asynccontextmanager
@@ -165,24 +132,6 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict:
         return {"ok": True}
-
-    # ── Dashboard admin endpoint ───────────────────────────────
-
-    @app.post("/admin/reload-frontend", response_model=None)
-    async def reload_frontend(request: Request) -> dict | JSONResponse:
-        """Signal the entrypoint to re-download frontend assets from S3 and restart Node."""
-        import signal
-
-        api_key = request.headers.get("x-api-key", "")
-        if not api_key or not _verify_admin_key(api_key):
-            return JSONResponse(status_code=403, content={"detail": "forbidden"})
-
-        pid_file = Path("/tmp/entrypoint.pid")
-        if not pid_file.exists():
-            return JSONResponse(status_code=500, content={"ok": False, "error": "entrypoint PID file not found"})
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, signal.SIGUSR1)
-        return {"ok": True, "message": "reload signal sent"}
 
     # ── WebSocket ──────────────────────────────────────────────
 
