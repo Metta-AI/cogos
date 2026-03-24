@@ -70,6 +70,14 @@ class ProjectDetail(BaseModel):
     team: str = ""
 
 
+class StorySummary(BaseModel):
+    id: str
+    text: str = ""
+    author: str = ""
+    created_at: str = ""
+    resource_subtype: str = ""
+
+
 class AsanaError(BaseModel):
     error: str
 
@@ -105,6 +113,7 @@ class AsanaCapability(Capability):
         "set_parent",
         "find_user",
         "tasks_for_user",
+        "get_stories_for_task",
     }
 
     def __init__(self, repo, process_id, **kwargs) -> None:
@@ -717,10 +726,57 @@ class AsanaCapability(Capability):
         except Exception as exc:
             return AsanaError(error=str(exc))
 
+    def get_stories_for_task(
+        self, task_id: str, comments_only: bool = True,
+    ) -> list[StorySummary] | AsanaError:
+        """Get stories (comments/activity) for a task.
+
+        By default returns only comments. Set comments_only=False for all activity.
+        """
+        self._check("get_stories_for_task")
+        try:
+            client = self._get_client()
+            api = asana.StoriesApi(client)
+            opts = {"opt_fields": "text,created_by.name,created_at,resource_subtype"}
+            stories = api.get_stories_for_task(task_id, opts)
+            items = stories.get("data", stories) if isinstance(stories, dict) else stories
+            result = []
+            for s in items:
+                if isinstance(s, dict):
+                    subtype = s.get("resource_subtype", "")
+                    if comments_only and subtype != "comment_added":
+                        continue
+                    author_obj = s.get("created_by")
+                    author_name = author_obj.get("name", "") if isinstance(author_obj, dict) else ""
+                    result.append(StorySummary(
+                        id=s["gid"],
+                        text=s.get("text", ""),
+                        author=author_name,
+                        created_at=s.get("created_at", ""),
+                        resource_subtype=subtype,
+                    ))
+                else:
+                    subtype = getattr(s, "resource_subtype", "")
+                    if comments_only and subtype != "comment_added":
+                        continue
+                    author_obj = getattr(s, "created_by", None)
+                    author_name = getattr(author_obj, "name", "") if author_obj else ""
+                    result.append(StorySummary(
+                        id=str(s.gid),
+                        text=getattr(s, "text", ""),
+                        author=author_name,
+                        created_at=getattr(s, "created_at", ""),
+                        resource_subtype=subtype,
+                    ))
+            return result
+        except Exception as exc:
+            return AsanaError(error=str(exc))
+
     def __repr__(self) -> str:
         return (
             "<AsanaCapability create_task() update_task() list_tasks() "
             "get_task() delete_task() search_tasks() list_projects() "
             "get_project() list_workspaces() list_sections() "
-            "add_to_section() add_followers() set_parent() add_comment()>"
+            "add_to_section() add_followers() set_parent() add_comment() "
+            "get_stories_for_task()>"
         )

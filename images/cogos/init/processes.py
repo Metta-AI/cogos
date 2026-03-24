@@ -13,7 +13,7 @@ add_process(
         "secrets", "alerts", "cogent", "history",
         "blob", "image",
         # Delegatable to supervisor → helpers:
-        "asana", "email", "github", "web_search", "web_fetch", "web",
+        "asana", "email", "github", "google_docs", "web_search", "web_fetch", "web",
         "cog_registry", "coglet_runtime",
     ],
 )
