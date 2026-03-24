@@ -392,7 +392,8 @@ class SqliteRepository:
 
     def _execute(self, sql: str, params: dict[str, Any] | tuple | None = None) -> int:
         cur = self._conn.execute(sql, params or {})
-        self._conn.commit()
+        if self._batch_depth == 0:
+            self._conn.commit()
         return cur.rowcount
 
     def _query(self, sql: str, params: dict[str, Any] | tuple | None = None) -> list[dict]:
@@ -758,35 +759,97 @@ class SqliteRepository:
 
     @property
     def reboot_epoch(self) -> int:
-        raise NotImplementedError
+        row = self._query_one("SELECT epoch FROM cogos_epoch WHERE id = 1")
+        return row["epoch"] if row else 0
 
     def increment_epoch(self) -> int:
-        raise NotImplementedError
+        self._execute("UPDATE cogos_epoch SET epoch = epoch + 1 WHERE id = 1")
+        return self.reboot_epoch
 
     # ── Batch ─────────────────────────────────────────────────
 
     @contextmanager
     def batch(self) -> Iterator[None]:
-        raise NotImplementedError
+        self._batch_depth += 1
+        if self._batch_depth == 1:
+            self._conn.execute("BEGIN")
+        try:
+            yield
+            if self._batch_depth == 1:
+                self._conn.commit()
+        except Exception:
+            if self._batch_depth == 1:
+                self._conn.rollback()
+            raise
+        finally:
+            self._batch_depth -= 1
 
     # ── Bulk clear ────────────────────────────────────────────
 
     def clear_all(self) -> None:
-        raise NotImplementedError
+        tables = [
+            "cogos_span_event", "cogos_span", "cogos_request_trace",
+            "cogos_trace", "cogos_delivery", "cogos_handler",
+            "cogos_process_capability", "cogos_cron",
+            "cogos_channel_message", "cogos_channel",
+            "cogos_file_version", "cogos_file",
+            "cogos_run", "cogos_process",
+            "cogos_capability", "cogos_resource", "cogos_schema",
+            "cogos_operation", "cogos_alert", "cogos_meta",
+            "cogos_executor_token", "cogos_executor",
+            "cogos_discord_channel", "cogos_discord_guild",
+            "cogos_wait_condition",
+        ]
+        for t in tables:
+            self._conn.execute(f"DELETE FROM {t}")
+        self._conn.execute("UPDATE cogos_epoch SET epoch = 0 WHERE id = 1")
+        self._conn.commit()
 
     def clear_config(self) -> None:
-        raise NotImplementedError
+        config_tables = [
+            "cogos_delivery", "cogos_handler",
+            "cogos_process_capability", "cogos_cron",
+            "cogos_channel_message", "cogos_channel",
+            "cogos_file_version", "cogos_file",
+            "cogos_process", "cogos_capability",
+            "cogos_resource", "cogos_schema",
+        ]
+        for t in config_tables:
+            self._conn.execute(f"DELETE FROM {t}")
+        self._conn.commit()
 
     def delete_files_by_prefixes(self, prefixes: list[str]) -> int:
-        raise NotImplementedError
+        total = 0
+        for prefix in prefixes:
+            total += self._execute(
+                "DELETE FROM cogos_file WHERE key LIKE :prefix || '%'",
+                {"prefix": prefix},
+            )
+        return total
 
     # ── Operations ────────────────────────────────────────────
 
     def add_operation(self, op: CogosOperation) -> UUID:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_operation (id, epoch, type, metadata, created_at)
+               VALUES (:id, :epoch, :type, :metadata, :created_at)""",
+            {
+                "id": str(op.id),
+                "epoch": op.epoch,
+                "type": op.type,
+                "metadata": self._json_dumps(op.metadata),
+                "created_at": op.created_at.isoformat() if op.created_at else now,
+            },
+        )
+        return op.id
 
     def list_operations(self, limit: int = 50) -> list[CogosOperation]:
-        raise NotImplementedError
+        rows = self._query(
+            "SELECT * FROM cogos_operation ORDER BY created_at DESC LIMIT :limit",
+            {"limit": limit},
+        )
+        return [self._row_to_operation(r) for r in rows]
 
     # ── Processes ─────────────────────────────────────────────
 
@@ -1115,10 +1178,16 @@ class SqliteRepository:
     # ── Meta ──────────────────────────────────────────────────
 
     def set_meta(self, key: str, value: str = "") -> None:
-        raise NotImplementedError
+        self._execute(
+            "INSERT OR REPLACE INTO cogos_meta (key, value) VALUES (:key, :value)",
+            {"key": key, "value": value},
+        )
 
     def get_meta(self, key: str) -> dict[str, str] | None:
-        raise NotImplementedError
+        row = self._query_one("SELECT * FROM cogos_meta WHERE key = :key", {"key": key})
+        if row is None:
+            return None
+        return {"key": row["key"], "value": row["value"]}
 
     # ── Alerts ────────────────────────────────────────────────
 
@@ -1130,19 +1199,48 @@ class SqliteRepository:
         message: str,
         metadata: dict | None = None,
     ) -> None:
-        raise NotImplementedError
+        now = self._now()
+        self._execute(
+            """INSERT INTO cogos_alert (id, severity, alert_type, source, message, metadata, created_at)
+               VALUES (:id, :severity, :alert_type, :source, :message, :metadata, :created_at)""",
+            {
+                "id": str(uuid4()),
+                "severity": severity,
+                "alert_type": alert_type,
+                "source": source,
+                "message": message,
+                "metadata": self._json_dumps(metadata or {}),
+                "created_at": now,
+            },
+        )
 
     def list_alerts(self, *, resolved: bool = False, limit: int = 50) -> list:
-        raise NotImplementedError
+        if resolved:
+            rows = self._query(
+                "SELECT * FROM cogos_alert ORDER BY created_at DESC LIMIT :limit",
+                {"limit": limit},
+            )
+        else:
+            rows = self._query(
+                "SELECT * FROM cogos_alert WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT :limit",
+                {"limit": limit},
+            )
+        return [self._row_to_alert(r) for r in rows]
 
     def resolve_alert(self, alert_id: UUID) -> None:
-        raise NotImplementedError
+        self._execute(
+            "UPDATE cogos_alert SET resolved_at = :now WHERE id = :id",
+            {"now": self._now(), "id": str(alert_id)},
+        )
 
     def resolve_all_alerts(self) -> int:
-        raise NotImplementedError
+        return self._execute(
+            "UPDATE cogos_alert SET resolved_at = :now WHERE resolved_at IS NULL",
+            {"now": self._now()},
+        )
 
     def delete_alert(self, alert_id: UUID) -> None:
-        raise NotImplementedError
+        self._execute("DELETE FROM cogos_alert WHERE id = :id", {"id": str(alert_id)})
 
     # ── Schemas ───────────────────────────────────────────────
 
@@ -1272,4 +1370,4 @@ class SqliteRepository:
     # ── Lifecycle ─────────────────────────────────────────────
 
     def reload(self) -> None:
-        raise NotImplementedError
+        pass
