@@ -81,7 +81,9 @@ def test_process_cascade_disable(tmp_path):
     child = Process(name="child", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING, parent_process=parent.id)
     repo.upsert_process(child)
     repo.update_process_status(parent.id, ProcessStatus.DISABLED)
-    assert repo.get_process(child.id).status == ProcessStatus.DISABLED
+    child_result = repo.get_process(child.id)
+    assert child_result is not None
+    assert child_result.status == ProcessStatus.DISABLED
 
 
 def test_process_round_trip_json_fields(tmp_path):
@@ -91,6 +93,7 @@ def test_process_round_trip_json_fields(tmp_path):
                 metadata={"key": "val"}, required_tags=["gpu"])
     repo.upsert_process(p)
     got = repo.get_process(p.id)
+    assert got is not None
     assert got.metadata == {"key": "val"}
     assert got.required_tags == ["gpu"]
 
@@ -168,6 +171,7 @@ def test_channel_message_wakes_process(tmp_path):
     msg = ChannelMessage(channel=ch.id, payload={"data": 1})
     repo.append_channel_message(msg)
     proc = repo.get_process(p.id)
+    assert proc is not None
     assert proc.status == ProcessStatus.RUNNABLE
 
 
@@ -187,6 +191,7 @@ def test_run_create_and_complete(tmp_path):
     repo.complete_run(run.id, status=RunStatus.COMPLETED, tokens_in=10, tokens_out=5,
                       cost_usd=Decimal("0.01"), duration_ms=500)
     completed = repo.get_run(run.id)
+    assert completed is not None
     assert completed.status == RunStatus.COMPLETED
     assert completed.tokens_in == 10
     assert completed.completed_at is not None
