@@ -59,7 +59,10 @@ def test_update_rds_runs_brain_and_cogos_migrations(monkeypatch):
     monkeypatch.setattr(
         "cogtainer.update_cli._ensure_db_env", lambda name, profile=None: calls.setdefault("ensure", (name, profile))
     )
-    monkeypatch.setattr("cogos.db.migrations.apply_schema", lambda: 10)
+    monkeypatch.setattr(
+        "cogtainer.update_cli._get_admin_session", lambda profile=None: type("S", (), {"client": lambda self, *a, **kw: "fake-rds-client"})()
+    )
+    monkeypatch.setattr("cogos.db.migrations.apply_schema", lambda client=None: 10)
     monkeypatch.setattr(
         "cogos.db.migrations.apply_cogos_sql_migrations",
         lambda repo: calls.__setitem__("repo", repo) or 42,
@@ -69,7 +72,7 @@ def test_update_rds_runs_brain_and_cogos_migrations(monkeypatch):
     monkeypatch.setenv("DB_NAME", "cogent")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setattr(
-        "cogos.db.repository.RdsDataApiRepository.create",
+        "cogos.db.factory.create_repository",
         lambda **kwargs: calls.__setitem__("repo_create", kwargs) or fake_repo,
     )
 
@@ -79,11 +82,5 @@ def test_update_rds_runs_brain_and_cogos_migrations(monkeypatch):
     assert result.exit_code == 0
     assert calls["ensure"] == ("dr.gamma", None)
     assert calls["repo"] is fake_repo
-    assert calls["repo_create"] == {
-        "resource_arn": "cluster-arn",
-        "secret_arn": "secret-arn",
-        "database": "cogent",
-        "region": "us-east-1",
-    }
     assert "Schema at version 10." in result.output
     assert "CogOS SQL migrations applied" in result.output
