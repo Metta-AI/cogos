@@ -54,8 +54,12 @@ def get_rendered_memory(
         if not process:
             raise HTTPException(status_code=404, detail=f"Process not found: {process_name}")
 
-        full_prompt = ctx.generate_full_prompt(process)
-        tree = ctx.resolve_prompt_tree(process)
+        try:
+            full_prompt = ctx.generate_full_prompt(process)
+            tree = ctx.resolve_prompt_tree(process)
+        except Exception:
+            logger.exception("Failed to render prompt for process %s", process_name)
+            raise HTTPException(status_code=500, detail=f"Failed to render prompt for {process_name}")
 
         layers: list[PromptLayer] = []
         for i, node in enumerate(tree):
@@ -70,12 +74,21 @@ def get_rendered_memory(
         return RenderedPromptResponse(prompt=full_prompt, layers=layers)
 
     # No process specified — return all files with resolved includes.
-    files = file_store.list_files(limit=5000)
+    try:
+        files = file_store.list_files(limit=5000)
+    except Exception:
+        logger.exception("Failed to list files for memory/rendered")
+        raise HTTPException(status_code=500, detail="Failed to list files from store")
+
     layers = []
     sections: list[str] = []
 
     for idx, f in enumerate(sorted(files, key=lambda f: f.key)):
-        content = file_store.get_content(f.key) or ""
+        try:
+            content = file_store.get_content(f.key) or ""
+        except Exception:
+            logger.warning("Failed to read content for file %s", f.key)
+            content = f"(error reading {f.key})"
         layers.append(
             PromptLayer(
                 name=f.key,

@@ -112,6 +112,134 @@ async function apiPost(url: string, body: unknown): Promise<unknown> {
 }
 
 // ---------------------------------------------------------------------------
+// Memory & capability discovery
+// ---------------------------------------------------------------------------
+
+interface CapabilityInfo {
+  name: string;
+  description: string;
+  handler: string;
+}
+
+interface CapabilityMethodParam {
+  name: string;
+  type: string;
+  default: string | null;
+}
+
+interface CapabilityMethodInfo {
+  name: string;
+  params: CapabilityMethodParam[];
+  return_type: string;
+}
+
+interface CapabilityTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+  capName: string;
+  methodName: string;
+}
+
+let capabilityTools: CapabilityTool[] = [];
+
+function pythonTypeToJsonSchema(pyType: string): string {
+  switch (pyType) {
+    case "str": return "string";
+    case "int": return "integer";
+    case "float": return "number";
+    case "bool": return "boolean";
+    default: return "string";
+  }
+}
+
+async function loadMemory(): Promise<string> {
+  try {
+    const data = (await apiGet(`${apiBase()}/memory/rendered`)) as {
+      prompt?: string;
+    };
+    return data.prompt || "(no memory found)";
+  } catch (e) {
+    return `Error loading memory: ${e}`;
+  }
+}
+
+async function searchCapabilities(
+  query: string,
+): Promise<{ tools: CapabilityTool[]; summary: string }> {
+  const tools: CapabilityTool[] = [];
+  try {
+    // Use the dashboard capabilities endpoint (no X-Process-Id required)
+    const data = (await apiGet(`${apiBase()}/capabilities`)) as {
+      capabilities?: Array<{ name: string; description: string }>;
+    };
+    const capabilities = data.capabilities || [];
+
+    // Filter by query (case-insensitive substring match)
+    const q = query.toLowerCase();
+    const matched = capabilities.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q),
+    );
+
+    for (const cap of matched) {
+      try {
+        const methods = (await apiGet(
+          `${apiBase()}/capabilities/${cap.name}/methods`,
+        )) as CapabilityMethodInfo[];
+        for (const method of methods) {
+          tools.push({
+            name: `cogos_${cap.name}_${method.name}`,
+            description: `${cap.name}.${method.name}`,
+            inputSchema: {
+              type: "object" as const,
+              properties: Object.fromEntries(
+                method.params.map((p) => [
+                  p.name,
+                  { type: pythonTypeToJsonSchema(p.type) },
+                ]),
+              ),
+              required: method.params
+                .filter((p) => p.default === null)
+                .map((p) => p.name),
+            },
+            capName: cap.name,
+            methodName: method.name,
+          });
+        }
+      } catch {
+        // Skip capabilities that fail to load methods
+      }
+    }
+  } catch (e) {
+    return { tools: [], summary: `Error searching capabilities: ${e}` };
+  }
+
+  // Register discovered tools (deduplicate by name)
+  capabilityTools = [...capabilityTools, ...tools];
+  const seen = new Set<string>();
+  capabilityTools = capabilityTools.filter((t) => {
+    if (seen.has(t.name)) return false;
+    seen.add(t.name);
+    return true;
+  });
+
+  if (tools.length === 0) {
+    return { tools, summary: `No capabilities matched "${query}".` };
+  }
+  const toolNames = tools.map((t) => t.name).join("\n  ");
+  return {
+    tools,
+    summary: `Found ${tools.length} capability tools:\n  ${toolNames}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Token auth — browser-based flow
 // ---------------------------------------------------------------------------
 
@@ -610,7 +738,7 @@ const mcpServer = new Server(
     },
     instructions:
       "CogOS plugin. Use the `connect` tool to connect to a cogent (e.g. connect with address 'alpha.softmax-cogents.com'). " +
-      "After connecting, use `load_memory` (a remote tool) to get the cogent's full instructions. " +
+      "After connecting, use `load_memory` to get the cogent's full instructions. " +
       "Use `disconnect` to switch to a different cogent without restarting.",
   },
 );
@@ -720,6 +848,32 @@ const LIST_CHANNELS_TOOL = {
   },
 };
 
+const LOAD_MEMORY_TOOL = {
+  name: "load_memory",
+  description:
+    "Load the cogent's full memory/instructions. Call this after connecting to get the cogent's system prompt and context.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {},
+  },
+};
+
+const SEARCH_CAPABILITIES_TOOL = {
+  name: "search_capabilities",
+  description:
+    "Search for available cogent capabilities by keyword. Matched capabilities become available as individual tools (cogos_<cap>_<method>). Examples: 'file', 'discord', 'channels'.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      query: {
+        type: "string",
+        description: "Search keyword to filter capabilities",
+      },
+    },
+    required: ["query"],
+  },
+};
+
 // Set of local tool names for routing
 const LOCAL_TOOL_NAMES = new Set([
   "connect",
@@ -729,6 +883,8 @@ const LOCAL_TOOL_NAMES = new Set([
   "send",
   "reply",
   "list_channels",
+  "load_memory",
+  "search_capabilities",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -747,6 +903,8 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
 
   if (state.connected) {
     tools.push(DISCONNECT_TOOL);
+    tools.push(LOAD_MEMORY_TOOL);
+    tools.push(SEARCH_CAPABILITIES_TOOL);
     tools.push(LIST_CHANNELS_TOOL);
     tools.push(SEND_TOOL);
     // "reply" is an alias for send
@@ -763,10 +921,20 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
       tools.push(COMPLETE_RUN_TOOL);
     }
 
+    // Dynamic capability tools from search_capabilities
+    for (const ct of capabilityTools) {
+      tools.push({
+        name: ct.name,
+        description: ct.description,
+        inputSchema: ct.inputSchema,
+      });
+    }
+
     // Remote tools from fastapi-mcp
     for (const rt of remoteTools) {
       // Skip remote tools that collide with local tool names
       if (LOCAL_TOOL_NAMES.has(rt.name)) continue;
+      if (capabilityTools.some((ct) => ct.name === rt.name)) continue;
       tools.push({
         name: rt.name,
         description: rt.description,
@@ -807,6 +975,26 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
         },
       ],
     };
+  }
+
+  // --- load_memory ---
+  if (name === "load_memory") {
+    const memory = await loadMemory();
+    return { content: [{ type: "text" as const, text: memory }] };
+  }
+
+  // --- search_capabilities ---
+  if (name === "search_capabilities") {
+    const { summary } = await searchCapabilities(a.query as string);
+    // Notify tool list changed after capability discovery
+    try {
+      await mcpServer.notification({
+        method: "notifications/tools/list_changed",
+      });
+    } catch {
+      // May not be ready
+    }
+    return { content: [{ type: "text" as const, text: summary }] };
   }
 
   // --- register_executor ---
