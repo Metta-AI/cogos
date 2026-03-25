@@ -97,11 +97,15 @@ def get_chat_messages(
 
     messages: list[ChatMessageOut] = []
 
+    # Fetch more raw messages than the output limit since we filter by source
+    # and the channels contain non-dashboard messages too.
+    fetch_limit = max(limit * 10, 500)
+
     dm_ch = _resolve_channel(
         repo, f"io:discord:{cogent_name}:dm", "io:discord:dm",
     )
     if dm_ch:
-        for msg in repo.list_channel_messages(dm_ch.id, limit=limit):
+        for msg in repo.list_channel_messages(dm_ch.id, limit=fetch_limit):
             p = msg.payload
             if p.get("source") != "dashboard":
                 continue
@@ -123,7 +127,7 @@ def get_chat_messages(
         repo, f"io:discord:{cogent_name}:replies", "io:discord:replies",
     )
     if replies_ch:
-        for msg in repo.list_channel_messages(replies_ch.id, limit=limit):
+        for msg in repo.list_channel_messages(replies_ch.id, limit=fetch_limit):
             p = msg.payload
             content = p.get("content", "")
             if not content:
