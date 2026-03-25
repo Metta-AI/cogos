@@ -210,11 +210,16 @@ def dashboard_init(
         {
             "id": str(p.id),
             "name": p.name,
+            "mode": p.mode.value,
+            "executor": p.executor,
             "status": p.status.value,
-            "description": p.description or "",
+            "priority": p.priority,
+            "required_tags": p.required_tags,
+            "model": p.model,
+            "preemptible": p.preemptible,
+            "epoch": p.epoch,
             "updated_at": str(p.updated_at) if p.updated_at else None,
             "created_at": str(p.created_at) if p.created_at else None,
-            "epoch": p.epoch,
         }
         for p in all_procs
     ]
