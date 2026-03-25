@@ -293,6 +293,17 @@ def create_app() -> FastAPI:
             logger.exception("Executor invocation failed")
             return JSONResponse(status_code=502, content={"detail": "executor error"})
 
+    # ── MCP server — auto-expose all endpoints as tools ────────
+    # Must be mounted BEFORE the SPA catch-all route below.
+    try:
+        from fastapi_mcp import FastApiMCP
+
+        mcp = FastApiMCP(app, name="cogos")
+        mcp.mount_http()
+        logger.info("FastAPI-MCP mounted at /mcp")
+    except ImportError:
+        logger.warning("fastapi-mcp not installed, /mcp endpoint unavailable")
+
     # ── Static frontend files ──────────────────────────────────
 
     static_dir = os.environ.get("DASHBOARD_STATIC_DIR")
@@ -307,16 +318,6 @@ def create_app() -> FastAPI:
             if full_path and file_path.is_file():
                 return FileResponse(str(file_path))
             return FileResponse(str(index_html))
-
-    # ── MCP server — auto-expose all endpoints as tools ────────
-    try:
-        from fastapi_mcp import FastApiMCP
-
-        mcp = FastApiMCP(app, name="cogos")
-        mcp.mount_http()
-        logger.info("FastAPI-MCP mounted at /mcp")
-    except ImportError:
-        logger.warning("fastapi-mcp not installed, /mcp endpoint unavailable")
 
     return app
 
