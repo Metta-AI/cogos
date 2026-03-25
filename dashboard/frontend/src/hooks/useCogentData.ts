@@ -43,30 +43,23 @@ export function useCogentData(cogentName: string) {
 
   const { connected, lastMessage } = useWebSocket(cogentName);
 
-  // Core refresh: only fetch essential data for initial render
+  // Core refresh: single combined request for initial render
   const refresh = useCallback(async () => {
     if (!cogentName) return;
     const epochParam = showHistory ? "all" : undefined;
     setLoading(true);
-    const results = await Promise.allSettled([
-      api.getCogosStatus(cogentName, epochParam),
-      api.getProcesses(cogentName, epochParam),
-      api.getAlerts(cogentName),
-    ]);
-    const failCount = results.filter((r) => r.status === "rejected").length;
-    if (failCount === results.length) {
-      setError("All API requests failed — is the backend running?");
-    } else if (failCount > 0) {
-      setError(`${failCount} of ${results.length} API requests failed`);
-    } else {
+    try {
+      const init = await api.getDashboardInit(cogentName, epochParam);
+      setData((prev) => ({
+        ...prev,
+        cogosStatus: init.cogos_status,
+        processes: init.processes,
+        alerts: init.alerts,
+      }));
       setError(null);
+    } catch (e) {
+      setError(`Dashboard init failed: ${e}`);
     }
-    setData((prev) => ({
-      ...prev,
-      cogosStatus: results[0].status === "fulfilled" ? results[0].value : null,
-      processes: results[1].status === "fulfilled" ? results[1].value : [],
-      alerts: results[2].status === "fulfilled" ? results[2].value : [],
-    }));
     setLoaded((prev) => new Set([...prev, "cogosStatus", "processes", "alerts"]));
     setLoading(false);
   }, [cogentName, showHistory]);

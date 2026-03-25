@@ -192,6 +192,15 @@ export async function getCogosStatus(name: string, epoch?: string): Promise<Cogo
   return fetchJSON(`/api/cogents/${name}/cogos-status${params}`);
 }
 
+export async function getDashboardInit(name: string, epoch?: string): Promise<{
+  cogos_status: CogosStatus;
+  processes: CogosProcess[];
+  alerts: Alert[];
+}> {
+  const params = epoch ? `?epoch=${epoch}` : "";
+  return fetchJSON(`/api/cogents/${name}/dashboard-init${params}`);
+}
+
 export async function getSetup(name: string): Promise<SetupResponse> {
   return fetchJSON(`/api/cogents/${name}/setup`);
 }
