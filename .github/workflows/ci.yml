@@ -12,31 +12,25 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: "pip"
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: nix develop -c uv sync --frozen
 
       - name: Typecheck
-        run: pyright
+        run: nix develop -c pyright
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: "pip"
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: nix develop -c uv sync --frozen
 
       - name: Run tests
-        run: pytest tests/ -q
+        run: nix develop -c pytest tests/ -q
