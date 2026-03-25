@@ -16,12 +16,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createServer } from "http";
-import { exec } from "child_process";
 import {
   getCachedToken,
   cacheToken,
   removeCachedToken,
+  getCachedDashboardKey,
+  cacheDashboardKey,
 } from "./token-cache.js";
 
 // ---------------------------------------------------------------------------
@@ -243,61 +243,80 @@ async function searchCapabilities(
 }
 
 // ---------------------------------------------------------------------------
-// Token auth — browser-based flow
+// Token auth — direct API token creation (no browser)
 // ---------------------------------------------------------------------------
 
-function openBrowser(url: string): void {
-  const cmd =
-    process.platform === "darwin"
-      ? `open "${url}"`
-      : process.platform === "win32"
-        ? `start "${url}"`
-        : `xdg-open "${url}"`;
-  exec(cmd, (err) => {
-    if (err) process.stderr.write(`[cogos] failed to open browser: ${err}\n`);
-  });
+import { execSync } from "child_process";
+
+async function fetchDashboardApiKey(
+  cogentName: string,
+  host: string,
+): Promise<string | null> {
+  // Check cache first
+  const cached = getCachedDashboardKey(host);
+  if (cached) return cached;
+
+  // Try AWS Secrets Manager
+  try {
+    const secretId = `cogent/${cogentName}/dashboard-api-key`;
+    const cmd = `aws secretsmanager get-secret-value --secret-id '${secretId}' --query SecretString --output text --profile softmax-org 2>/dev/null`;
+    const raw = execSync(cmd, { timeout: 10_000, encoding: "utf-8" }).trim();
+    const data = JSON.parse(raw);
+    const key = data.api_key || "";
+    if (key) {
+      cacheDashboardKey(host, key);
+      process.stderr.write(`[cogos] Dashboard API key loaded from Secrets Manager\n`);
+      return key;
+    }
+  } catch {
+    // AWS not available or secret not found — expected for local dev
+  }
+  return null;
 }
 
-async function browserAuthFlow(address: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const httpServer = createServer((req, res) => {
-      const url = new URL(req.url || "/", `http://localhost`);
-      if (url.pathname === "/callback") {
-        const token = url.searchParams.get("token");
-        if (token) {
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end(
-            "<html><body><h2>Token received! You can close this tab.</h2></body></html>",
-          );
-          httpServer.close();
-          resolve(token);
-        } else {
-          res.writeHead(400, { "Content-Type": "text/plain" });
-          res.end("Missing token parameter");
-        }
-      } else {
-        res.writeHead(404);
-        res.end();
-      }
-    });
+async function apiCreateToken(
+  apiUrl: string,
+  cogentName: string,
+  host: string,
+): Promise<string> {
+  const tokenName = `claude-code-${Date.now()}`;
+  const url = `${apiUrl}/api/cogents/${cogentName}/executor-tokens`;
 
-    httpServer.listen(0, "127.0.0.1", () => {
-      const addr = httpServer.address();
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Failed to start callback server"));
-        return;
-      }
-      const callbackUrl = `http://127.0.0.1:${addr.port}/callback`;
-      const authUrl = `https://${address}/token-auth?callback=${encodeURIComponent(callbackUrl)}`;
-      process.stderr.write(`[cogos] Opening browser for auth: ${authUrl}\n`);
-      openBrowser(authUrl);
-    });
+  // First attempt — no dashboard key (works for local dev)
+  let dashKey = getCachedDashboardKey(host);
+  const makeHeaders = (key: string | null): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (key) h["x-api-key"] = key;
+    return h;
+  };
 
-    setTimeout(() => {
-      httpServer.close();
-      reject(new Error("Auth flow timed out after 5 minutes"));
-    }, 5 * 60 * 1000);
+  let resp = await fetch(url, {
+    method: "POST",
+    headers: makeHeaders(dashKey),
+    body: JSON.stringify({ name: tokenName }),
   });
+
+  // If 401, try fetching the dashboard API key and retry
+  if (resp.status === 401 && !dashKey) {
+    dashKey = await fetchDashboardApiKey(cogentName, host);
+    if (dashKey) {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: makeHeaders(dashKey),
+        body: JSON.stringify({ name: tokenName }),
+      });
+    }
+  }
+
+  if (!resp.ok) {
+    throw new Error(
+      `Failed to create executor token: ${resp.status} ${resp.statusText}`,
+    );
+  }
+
+  const data = (await resp.json()) as { token: string };
+  process.stderr.write(`[cogos] Created executor token "${tokenName}" via API\n`);
+  return data.token;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +433,7 @@ async function connect(address: string, token?: string): Promise<string> {
 
     if (!state.token) {
       try {
-        state.token = await browserAuthFlow(host);
+        state.token = await apiCreateToken(apiUrl, cogentName, host);
         cacheToken(tokenKey, state.token, cogentName);
         process.stderr.write(
           `[cogos] Token acquired and cached for ${tokenKey}\n`,

@@ -15,6 +15,7 @@ interface TokenEntry {
 
 interface TokenCache {
   tokens: Record<string, TokenEntry>;
+  dashboard_keys?: Record<string, string>;
 }
 
 const CACHE_DIR = join(homedir(), ".cogos");
@@ -58,5 +59,17 @@ export function cacheToken(
 export function removeCachedToken(address: string): void {
   const cache = loadCache();
   delete cache.tokens[address];
+  saveCache(cache);
+}
+
+export function getCachedDashboardKey(host: string): string | null {
+  const cache = loadCache();
+  return cache.dashboard_keys?.[host] ?? null;
+}
+
+export function cacheDashboardKey(host: string, key: string): void {
+  const cache = loadCache();
+  if (!cache.dashboard_keys) cache.dashboard_keys = {};
+  cache.dashboard_keys[host] = key;
   saveCache(cache);
 }
