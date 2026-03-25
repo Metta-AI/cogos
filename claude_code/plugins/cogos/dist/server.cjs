@@ -28324,7 +28324,7 @@ async function loadMemory() {
 async function searchCapabilities(query) {
   const tools = [];
   try {
-    const data = await apiGet(`${capApiBase()}/capabilities`);
+    const data = await apiGet(`${apiBase()}/capabilities`);
     const capabilities = data.capabilities || [];
     const q = query.toLowerCase();
     const matched = capabilities.filter(
@@ -28333,7 +28333,7 @@ async function searchCapabilities(query) {
     for (const cap of matched) {
       try {
         const methods = await apiGet(
-          `${capApiBase()}/capabilities/${cap.name}/methods`
+          `${apiBase()}/capabilities/${cap.name}/methods`
         );
         for (const method of methods) {
           tools.push({
@@ -28376,7 +28376,7 @@ async function searchCapabilities(query) {
 async function invokeCapability(capName, methodName, args) {
   try {
     const resp = await fetch(
-      `${capApiBase()}/capabilities/${capName}/${methodName}`,
+      `${apiBase()}/capabilities/${capName}/${methodName}`,
       {
         method: "POST",
         headers: capHeaders(),
