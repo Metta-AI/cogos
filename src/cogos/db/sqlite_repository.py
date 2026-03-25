@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS cogos_process_capability (
     capability  TEXT NOT NULL REFERENCES cogos_capability(id) ON DELETE CASCADE,
     name        TEXT NOT NULL DEFAULT '',
     epoch       INTEGER NOT NULL DEFAULT 0,
-    config      TEXT,
+    config      TEXT NOT NULL DEFAULT '{}',
     UNIQUE (process, name)
 );
 
@@ -1136,7 +1136,7 @@ class SqliteRepository:
                 "capability": str(pc.capability),
                 "name": pc.name,
                 "epoch": pc.epoch or epoch,
-                "config": self._json_dumps(pc.config) if pc.config is not None else None,
+                "config": self._json_dumps(pc.config),
             },
         )
         return pc.id

@@ -65,4 +65,4 @@ def test_spawn_with_scoped_capabilities():
     # Find the channels grant — unscoped should have None or empty config
     channels_call = [c for c in calls if c[0][0].name == "channels"][0]
     pc_channels = channels_call[0][0]
-    assert pc_channels.config is None  # empty _scope → stored as None
+    assert pc_channels.config == {}  # empty _scope → stored as empty dict
