@@ -2388,7 +2388,7 @@ class RdsDataApiRepository:
                 response = self._execute(
                     """SELECT * FROM cogos_channel_message
                        WHERE channel = :channel
-                       ORDER BY created_at ASC
+                       ORDER BY created_at DESC
                        LIMIT :limit""",
                     [self._param("channel", channel_id), self._param("limit", limit)],
                 )
