@@ -48,7 +48,7 @@ This boots the image and starts the dispatcher, which automatically runs init. E
 ### 5. Run diagnostics
 
 ```bash
-uv run cogos process run diagnostics --executor local --event '{"channel_name":"system:diagnostics"}'
+uv run cogos process run diagnostics --local --event '{"channel_name":"system:diagnostics"}'
 ```
 
 The `--event` flag is required — diagnostics only runs when triggered via the `system:diagnostics` channel.
@@ -81,7 +81,7 @@ Print: `Dashboard running at http://localhost:5200 — diagnostics visible`
 If you changed image files (`images/**`), diagnostics code, or sandbox code:
 ```bash
 uv run cogos restart
-uv run cogos process run diagnostics --executor local --event '{"channel_name":"system:diagnostics"}'
+uv run cogos process run diagnostics --local --event '{"channel_name":"system:diagnostics"}'
 ```
 
 If you only changed dashboard code:
