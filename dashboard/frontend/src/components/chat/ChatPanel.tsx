@@ -17,24 +17,49 @@ export function ChatPanel({ cogentName }: ChatPanelProps) {
   const [activeTraceId, setActiveTraceId] = useState<string | null>(null);
   const [traceData, setTraceData] = useState<TraceData | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const lastTimestampRef = useRef<number>(0);
 
-  const fetchMessages = useCallback(async () => {
-    try {
-      const msgs = await getChatMessages(cogentName);
-      setMessages(msgs);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load messages");
-    }
+  // Initial load: fetch last 20 messages
+  useEffect(() => {
+    (async () => {
+      try {
+        const msgs = await getChatMessages(cogentName, 20);
+        setMessages(msgs);
+        if (msgs.length > 0) {
+          lastTimestampRef.current = Math.max(...msgs.map((m) => m.timestamp));
+        }
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load messages");
+      }
+      setInitialLoaded(true);
+    })();
   }, [cogentName]);
 
+  // Poll for new messages only (using after= timestamp)
   useEffect(() => {
-    fetchMessages();
-    pollRef.current = setInterval(fetchMessages, 3000);
+    if (!initialLoaded) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const newMsgs = await getChatMessages(cogentName, 20, lastTimestampRef.current);
+        if (newMsgs.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const unique = newMsgs.filter((m) => !existingIds.has(m.id));
+            if (unique.length === 0) return prev;
+            const updated = [...prev, ...unique];
+            lastTimestampRef.current = Math.max(...updated.map((m) => m.timestamp));
+            return updated;
+          });
+        }
+        setError(null);
+      } catch { /* ignore poll errors */ }
+    }, 3000);
     return () => clearInterval(pollRef.current);
-  }, [fetchMessages]);
+  }, [cogentName, initialLoaded]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -47,7 +72,7 @@ export function ChatPanel({ cogentName }: ChatPanelProps) {
     setInput("");
     try {
       await sendChatMessage(cogentName, text);
-      await fetchMessages();
+      // Optimistic: poll will pick up the response
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
