@@ -236,10 +236,10 @@ def _sync_capabilities_from_grants(
         c = caps_by_name.get(g.capability_name)
         if not c:
             continue
-        cfg = g.config or None
+        cfg = g.config or {}
         if g.grant_name in existing_by_name:
             pc = existing_by_name[g.grant_name]
-            if (cfg or None) != pc.config or pc.capability != c.id:
+            if cfg != pc.config or pc.capability != c.id:
                 pc.config = cfg
                 pc.capability = c.id
                 repo.create_process_capability(pc)

@@ -179,7 +179,6 @@ class ContextEngine:
             if not capability:
                 continue
 
-            assert isinstance(grant.config, dict), "grant.config must be a dict"
             cfg = grant.config
             ops = cfg.get("ops")
             if isinstance(ops, list) and "read" not in ops:

@@ -108,7 +108,7 @@ def test_apply_capability_grants_have_names(tmp_path):
     assert pcs is not None
     assert len(pcs) == 1
     assert pcs[0].name == "dir"
-    assert pcs[0].config is None
+    assert pcs[0].config == {}
 
 
 def test_apply_creates_resources(tmp_path):
@@ -183,7 +183,7 @@ def test_spawn_with_named_scoped_capabilities(tmp_path):
     assert pcs is not None
     assert len(pcs) == 1
     assert pcs[0].name == "dir"
-    assert pcs[0].config is None
+    assert pcs[0].config == {}
 
 
 def test_spawn_with_scoped_config(tmp_path):
