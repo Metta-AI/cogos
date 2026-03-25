@@ -308,8 +308,10 @@ function parseAddress(address: string): {
   apiUrl: string;
   cogentName: string;
   processName: string;
+  host: string;
 } {
-  // Support process@address syntax (e.g. "supervisor@alpha.softmax-cogents.com")
+  // Support process@address syntax (e.g. "standup@alpha.softmax-cogents.com")
+  // Default process is "supervisor" when not specified.
   let processName = "supervisor";
   let host = address;
   const atIdx = address.indexOf("@");
@@ -321,9 +323,9 @@ function parseAddress(address: string): {
   const parts = host.split(".");
   if (parts.length >= 2) {
     const cogentName = parts[0];
-    return { apiUrl: `https://${host}`, cogentName, processName };
+    return { apiUrl: `https://${host}`, cogentName, processName, host };
   }
-  return { apiUrl: `http://localhost:8100`, cogentName: host, processName };
+  return { apiUrl: `http://localhost:8100`, cogentName: host, processName, host };
 }
 
 // ---------------------------------------------------------------------------
@@ -384,35 +386,38 @@ async function connect(address: string, token?: string): Promise<string> {
   // Disconnect existing connection first
   await disconnect();
 
-  const { apiUrl, cogentName, processName } = parseAddress(address);
+  const { apiUrl, cogentName, processName, host } = parseAddress(address);
   state.address = address;
   state.apiUrl = apiUrl;
   state.cogentName = cogentName;
   state.processName = processName;
 
+  // Use host (without process@ prefix) for token cache and auth
+  const tokenKey = host;
+
   // Resolve token
   if (token) {
     state.token = token;
   } else {
-    const cached = getCachedToken(address);
+    const cached = getCachedToken(tokenKey);
     if (cached) {
       state.token = cached;
-      process.stderr.write(`[cogos] Using cached token for ${address}\n`);
+      process.stderr.write(`[cogos] Using cached token for ${tokenKey}\n`);
       try {
         await apiGet(`${apiBase()}/cogos-status`);
       } catch (e) {
         process.stderr.write(`[cogos] Cached token invalid, re-authenticating: ${e}\n`);
-        removeCachedToken(address);
+        removeCachedToken(tokenKey);
         state.token = "";
       }
     }
 
     if (!state.token) {
       try {
-        state.token = await browserAuthFlow(address);
-        cacheToken(address, state.token, cogentName);
+        state.token = await browserAuthFlow(host);
+        cacheToken(tokenKey, state.token, cogentName);
         process.stderr.write(
-          `[cogos] Token acquired and cached for ${address}\n`,
+          `[cogos] Token acquired and cached for ${tokenKey}\n`,
         );
       } catch (e) {
         return `Auth failed: ${e}. You can retry with a token: connect("${address}", "your-token")`;
@@ -425,14 +430,28 @@ async function connect(address: string, token?: string): Promise<string> {
     await apiGet(`${apiBase()}/cogos-status`);
   } catch (e) {
     state.connected = false;
-    removeCachedToken(address);
+    removeCachedToken(tokenKey);
     state.token = "";
     return `Failed to connect to ${address}: ${e}`;
   }
 
   // Cache token if provided directly
   if (token) {
-    cacheToken(address, token, cogentName);
+    cacheToken(tokenKey, token, cogentName);
+  }
+
+  // If a non-default process was requested, check it exists; fall back to supervisor
+  if (processName !== "supervisor") {
+    try {
+      const memUrl = `${apiBase()}/memory/rendered?process_name=${encodeURIComponent(processName)}`;
+      await apiGet(memUrl);
+      process.stderr.write(`[cogos] Process "${processName}" found on cogent "${cogentName}"\n`);
+    } catch {
+      process.stderr.write(
+        `[cogos] Process "${processName}" not found, falling back to "supervisor"\n`,
+      );
+      state.processName = "supervisor";
+    }
   }
 
   // Connect to remote MCP
@@ -458,7 +477,7 @@ async function connect(address: string, token?: string): Promise<string> {
     // May not be ready
   }
 
-  return `Connected to cogent "${cogentName}" (process: ${processName}) at ${apiUrl}. Use load_memory to get the cogent's instructions.`;
+  return `Connected to cogent "${cogentName}" (process: ${state.processName}) at ${apiUrl}. Use load_memory to get the cogent's instructions.`;
 }
 
 async function disconnect(): Promise<string> {
