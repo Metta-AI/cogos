@@ -7,13 +7,14 @@ os.environ["COGENT_ID"] = "local"
 os.environ["USE_LOCAL_DB"] = "1"
 
 from cli.local_dev import apply_local_checkout_env
+
 apply_local_checkout_env()
 
-from cogos.shell.commands.llm import _execute_prompt
-from cogos.shell.commands import ShellState
-from cogos.db.factory import create_repository
-from cogtainer.config import load_config
-from cogtainer.runtime.factory import create_runtime
+from cogos.db.factory import create_repository  # noqa: E402
+from cogos.shell.commands import ShellState  # noqa: E402
+from cogos.shell.commands.llm import _execute_prompt  # noqa: E402
+from cogtainer.config import load_config  # noqa: E402
+from cogtainer.runtime.factory import create_runtime  # noqa: E402
 
 repo = create_repository()
 cogtainer_name = os.environ.get("COGTAINER", "dev")

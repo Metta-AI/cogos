@@ -5,7 +5,6 @@ from uuid import UUID
 import pytest
 
 from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerCapability, SchedulerError
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -18,6 +17,7 @@ from cogos.db.models import (
     ProcessStatus,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 @pytest.fixture

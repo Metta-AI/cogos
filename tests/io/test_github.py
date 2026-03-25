@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 
-from cogos.io.base import IOMode, InboundEvent
+from cogos.io.base import InboundEvent, IOMode
 from cogos.io.github import GitHubIO
 from cogos.io.github.webhook import verify_signature
 

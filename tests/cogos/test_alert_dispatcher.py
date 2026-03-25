@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 from cogos.capabilities.alerts import AlertsCapability
 from cogos.capabilities.channels import ChannelsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
 from cogos.db.models.alert import Alert, AlertSeverity
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.lib.alert_dispatcher import dispatch_actions
 from cogos.lib.alert_rules import Action
 

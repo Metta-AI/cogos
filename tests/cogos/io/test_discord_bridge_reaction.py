@@ -1,13 +1,11 @@
 """Tests for Discord bridge reaction relay."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType
 from cogos.io.discord.bridge import DiscordBridge
 

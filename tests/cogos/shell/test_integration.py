@@ -1,7 +1,7 @@
 """Integration test — full registry, realistic workflow."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from cogos.shell.commands import ShellState, build_registry
 

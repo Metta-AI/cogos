@@ -2,7 +2,7 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
-from cogos.io.access import get_io_token, get_io_secret
+from cogos.io.access import get_io_secret, get_io_token
 
 
 def _mock_provider(secrets=None):

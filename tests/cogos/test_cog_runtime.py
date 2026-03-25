@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from cogos.capabilities.base import Capability
-from cogos.cog.cog import Cog, CogConfig
-from cogos.cog.runtime import CogManifest, CogletManifest, CogletRuntime
-
+from cogos.cog.cog import Cog
+from cogos.cog.runtime import CogletRuntime, CogManifest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,8 +83,8 @@ class TestCogManifest:
 
         # Simulate FileStore reads
         files = {
-            f"apps/mycog/main.md": "You are the main coglet.",
-            f"apps/mycog/worker/main.md": "I work.",
+            "apps/mycog/main.md": "You are the main coglet.",
+            "apps/mycog/worker/main.md": "I work.",
         }
         m2 = CogManifest.from_dict(data, lambda k: files[k])
         assert m2.name == "mycog"
@@ -233,7 +231,7 @@ class TestRunCoglet:
         cog = _make_cog(tmp_path, coglets={"handler": {"content": "I handle things."}})
         procs = _mock_procs()
         rt = _make_runtime(cog)
-        handle = rt.run_coglet("handler", procs)
+        _handle = rt.run_coglet("handler", procs)
 
         procs.spawn.assert_called_once()
         kw = procs.spawn.call_args.kwargs

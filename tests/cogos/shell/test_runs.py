@@ -1,7 +1,7 @@
 """Tests for shell run commands."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.shell.commands import CommandRegistry, ShellState
 from cogos.shell.commands.runs import register
 

@@ -1,7 +1,6 @@
 """Tests for DiscordGuild and DiscordChannel models."""
-from datetime import datetime, timezone
 
-from cogos.db.models.discord_metadata import DiscordGuild, DiscordChannel
+from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 
 
 def test_discord_guild_basic():

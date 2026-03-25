@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cogos.db.models import Process, ProcessMode, ProcessStatus
 from cogtainer.config import CogtainerEntry, LLMConfig
 from cogtainer.runtime.local import LocalRuntime
-from cogos.db.models import Process, ProcessMode, ProcessStatus
 
 
 @pytest.fixture()

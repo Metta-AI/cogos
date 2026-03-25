@@ -65,7 +65,10 @@ def test_generate_docker_compose_multiple_cogents():
 
 
 def test_generate_docker_compose_default_llm():
-    entry = CogtainerEntry(type="docker", data_dir="/data/dev", llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""))
+    entry = CogtainerEntry(
+        type="docker", data_dir="/data/dev",
+        llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
+    )
     result = generate_compose(entry, "dev", ["bot"])
     parsed = yaml.safe_load(result)
 

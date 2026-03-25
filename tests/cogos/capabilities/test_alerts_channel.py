@@ -1,8 +1,8 @@
 """Tests for alerts -> channel pipeline."""
 
 from cogos.capabilities.alerts import AlertError, AlertsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def _setup(tmp_path):

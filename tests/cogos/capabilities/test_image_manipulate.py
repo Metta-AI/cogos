@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from PIL import Image
 
-from cogos.capabilities.blob import BlobContent, BlobRef, BlobError
+from cogos.capabilities.blob import BlobContent, BlobRef
 from cogos.capabilities.image import ImageCapability, ImageError
 
 

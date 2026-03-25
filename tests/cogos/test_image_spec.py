@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from cogos.image.spec import ImageSpec, load_image
+from cogos.image.spec import load_image
 
 
 def _write_image(tmp: Path) -> Path:

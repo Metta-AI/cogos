@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
-from uuid import uuid4
 
 import pytest
 
 from cogtainer.db.models import Memory, MemoryVersion, Program
-from memory.context_engine import CHARS_PER_TOKEN, ContextEngine
+from memory.context_engine import ContextEngine
 
 
 @pytest.fixture

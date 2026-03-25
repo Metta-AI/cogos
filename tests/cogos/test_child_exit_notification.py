@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from cogos.capabilities.procs import ProcessError, ProcsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Process,
     ProcessMode,
@@ -11,6 +10,7 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.executor.handler import ExecutorConfig
 from cogos.image.apply import apply_image
 from cogos.image.spec import ImageSpec
@@ -53,7 +53,7 @@ def test_success_notification(tmp_path):
     repo, parent = _setup(tmp_path)
     procs = ProcsCapability(repo, parent.id)
 
-    handle = procs.spawn(name="child-ok", content="x", executor="python", capabilities={})
+    _handle = procs.spawn(name="child-ok", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-ok")
     assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
@@ -82,7 +82,7 @@ def test_failure_notification(tmp_path):
     repo, parent = _setup(tmp_path)
     procs = ProcsCapability(repo, parent.id)
 
-    handle = procs.spawn(name="child-fail", content="x", executor="python", capabilities={})
+    _handle = procs.spawn(name="child-fail", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-fail")
     assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)
@@ -114,7 +114,7 @@ def test_parent_handler_creates_delivery(tmp_path):
     repo, parent = _setup(tmp_path)
     procs = ProcsCapability(repo, parent.id)
 
-    handle = procs.spawn(name="child-delivery", content="x", executor="python", capabilities={})
+    _handle = procs.spawn(name="child-delivery", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-delivery")
     assert child is not None
 
@@ -141,7 +141,7 @@ def test_handle_runs_after_completion(tmp_path):
     repo, parent = _setup(tmp_path)
     procs_cap = ProcsCapability(repo, parent.id)
 
-    handle = procs_cap.spawn(name="child-runs", content="x", executor="python", capabilities={})
+    _handle = procs_cap.spawn(name="child-runs", content="x", executor="python", capabilities={})
     child = repo.get_process_by_name("child-runs")
     assert child is not None
     run = Run(process=child.id, status=RunStatus.RUNNING)

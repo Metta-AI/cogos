@@ -1,7 +1,6 @@
 """Tests for alert monitor detection rules."""
 
-from datetime import datetime, timezone, timedelta
-from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
 from cogos.db.models.alert import Alert, AlertSeverity
 
@@ -63,7 +62,13 @@ def test_spam_detection_groups_by_source_and_type():
 def test_spam_detection_skips_own_alerts():
     from cogos.lib.alert_rules import detect_spam
     now = _now()
-    alerts = [_alert(source="alert-monitor", alert_type="monitor:spam_detected", created_at=now - timedelta(seconds=i)) for i in range(20)]
+    alerts = [
+        _alert(
+            source="alert-monitor", alert_type="monitor:spam_detected",
+            created_at=now - timedelta(seconds=i),
+        )
+        for i in range(20)
+    ]
     actions = detect_spam(alerts, window_seconds=60, threshold=10)
     assert len(actions) == 0
 

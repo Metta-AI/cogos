@@ -2672,8 +2672,10 @@ class RdsDataApiRepository:
 
         self._execute(
             """INSERT INTO cogos_executor
-               (id, executor_id, channel_type, executor_tags, dispatch_type, metadata, status, last_heartbeat_at, registered_at)
-               VALUES (:id, :executor_id, :channel_type, :executor_tags::jsonb, :dispatch_type, :metadata::jsonb, 'idle', now(), now())""",
+               (id, executor_id, channel_type, executor_tags, dispatch_type,
+                metadata, status, last_heartbeat_at, registered_at)
+               VALUES (:id, :executor_id, :channel_type, :executor_tags::jsonb,
+                :dispatch_type, :metadata::jsonb, 'idle', now(), now())""",
             [
                 self._param("id", executor.id),
                 self._param("executor_id", executor.executor_id),
@@ -2753,7 +2755,10 @@ class RdsDataApiRepository:
             self._param("current_run_id", current_run_id),
         ]
         if resource_usage:
-            meta_update = ", metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{resource_usage}', :resource_usage::jsonb)"
+            meta_update = (
+                ", metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),"
+                " '{resource_usage}', :resource_usage::jsonb)"
+            )
             params.append(self._param("resource_usage", resource_usage))
 
         response = self._execute(

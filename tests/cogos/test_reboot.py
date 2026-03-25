@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.reboot import reboot
 
 
@@ -101,7 +101,7 @@ def test_reboot_preserves_files(tmp_path):
 
 def test_reboot_with_no_existing_processes(tmp_path):
     repo = SqliteRepository(str(tmp_path))
-    result = reboot(repo)
+    _result = reboot(repo)
     procs = repo.list_processes()
     assert procs is not None
     assert len(procs) == 1

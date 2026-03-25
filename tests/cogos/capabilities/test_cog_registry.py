@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.cog_registry import CogRegistryCapability, CogProxy
+from cogos.capabilities.cog_registry import CogProxy, CogRegistryCapability
 from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 

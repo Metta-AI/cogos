@@ -1,6 +1,5 @@
 """Tests for mount-based file prefix mapping."""
 import subprocess
-from pathlib import Path
 
 from cogos.image.spec import load_image
 

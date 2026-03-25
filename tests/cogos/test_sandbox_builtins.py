@@ -140,6 +140,7 @@ def test_safe_dir_lists_public_methods():
     """dir() on a capability object lists its public methods."""
     from unittest.mock import MagicMock
     from uuid import uuid4
+
     from cogos.capabilities.scheduler import SchedulerCapability
 
     repo = MagicMock()
@@ -165,6 +166,7 @@ def test_safe_help_on_capability():
     """help(obj) prints the capability help text."""
     from unittest.mock import MagicMock
     from uuid import uuid4
+
     from cogos.capabilities.scheduler import SchedulerCapability
 
     repo = MagicMock()
@@ -182,6 +184,7 @@ def test_scope_not_accessible_from_sandbox():
     """Sandbox code should not be able to read _scope from capability objects."""
     from unittest.mock import MagicMock
     from uuid import uuid4
+
     from cogos.capabilities.files import FilesCapability
 
     repo = MagicMock()

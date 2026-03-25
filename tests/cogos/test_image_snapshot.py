@@ -1,7 +1,7 @@
 from cogos.db.sqlite_repository import SqliteRepository
-from cogos.image.spec import ImageSpec, load_image
 from cogos.image.apply import apply_image
 from cogos.image.snapshot import snapshot_image
+from cogos.image.spec import ImageSpec, load_image
 
 
 def test_snapshot_round_trips(tmp_path):

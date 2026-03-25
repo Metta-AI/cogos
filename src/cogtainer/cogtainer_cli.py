@@ -948,12 +948,21 @@ def deploy_dashboard_cmd(
             for c in task_def["containerDefinitions"]:
                 if c.get("name") == "web":
                     c["image"] = image_uri
-                    c["environment"] = [e for e in c.get("environment", []) if e["name"] not in ("DASHBOARD_ASSETS_S3", "DASHBOARD_DOCKER_VERSION")]
-            reg_fields = ["family", "containerDefinitions", "taskRoleArn", "executionRoleArn", "networkMode", "requiresCompatibilities", "cpu", "memory"]
+                    c["environment"] = [
+                        e for e in c.get("environment", [])
+                        if e["name"] not in ("DASHBOARD_ASSETS_S3", "DASHBOARD_DOCKER_VERSION")
+                    ]
+            reg_fields = [
+                "family", "containerDefinitions", "taskRoleArn", "executionRoleArn",
+                "networkMode", "requiresCompatibilities", "cpu", "memory",
+            ]
             reg_kwargs = {k: task_def[k] for k in reg_fields if k in task_def}
             new_td = ecs_client.register_task_definition(**reg_kwargs)
             new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
-            ecs_client.update_service(cluster=cluster, service=svc_arn, taskDefinition=new_td_arn, forceNewDeployment=True)
+            ecs_client.update_service(
+                cluster=cluster, service=svc_arn,
+                taskDefinition=new_td_arn, forceNewDeployment=True,
+            )
             click.echo(f"  {svc_name}: updated to {image_tag}")
 
     click.echo(click.style("Dashboard deployed.", fg="green"))

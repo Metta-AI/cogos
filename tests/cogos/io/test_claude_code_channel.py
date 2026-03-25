@@ -1,7 +1,7 @@
 """Tests for Claude Code channel integration — system channels and IO registration."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import ChannelMessage, Process, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.lib.channels import SYSTEM_CHANNELS, ensure_system_channels
 
 

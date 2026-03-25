@@ -56,7 +56,8 @@ def _batch_count_handlers(repo, channel_ids: list[UUID]) -> dict[UUID, int]:
         return {}
     try:
         response = repo._execute(
-            "SELECT channel, COUNT(*) AS cnt FROM cogos_handler WHERE enabled = TRUE AND channel IS NOT NULL GROUP BY channel",
+            "SELECT channel, COUNT(*) AS cnt FROM cogos_handler"
+            " WHERE enabled = TRUE AND channel IS NOT NULL GROUP BY channel",
         )
         result: dict[UUID, int] = {}
         for row in response.get("records", []):

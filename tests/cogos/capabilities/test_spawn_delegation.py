@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from cogos.capabilities.files import FilesCapability
-from cogos.capabilities.procs import ProcsCapability, ProcessError
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_spawn_denied_when_child_widens_scope(repo, parent_pid):
     repo.list_process_capabilities.return_value = [parent_grant]
 
     procs = ProcsCapability(repo, parent_pid)
-    files = FilesCapability(repo, parent_pid)
+    _files = FilesCapability(repo, parent_pid)
 
     # Child passes unscoped capability (None value = unscoped)
     result = procs.spawn(

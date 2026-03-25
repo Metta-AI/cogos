@@ -612,7 +612,14 @@ class CogentStack(Stack):
             iam.PolicyStatement(
                 actions=["ecs:DescribeServices"],
                 resources=["*"],
-                conditions={"ArnEquals": {"ecs:cluster": f"arn:aws:ecs:{self.region}:{self.account}:cluster/cogtainer-{cogtainer_name}"}},
+                conditions={
+                    "ArnEquals": {
+                        "ecs:cluster": (
+                            f"arn:aws:ecs:{self.region}:{self.account}"
+                            f":cluster/cogtainer-{cogtainer_name}"
+                        ),
+                    },
+                },
             )
         )
 

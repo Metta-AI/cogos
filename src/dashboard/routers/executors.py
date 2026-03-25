@@ -301,7 +301,10 @@ def create_token(name: str, body: CreateTokenRequest, request: Request):
     repo.create_executor_token(token)
 
     api_url = str(request.base_url).rstrip("/")
-    launch_cmd = f"COGOS_API_KEY={raw_token} COGOS_API_URL={api_url} COGENT={name} claude --dangerously-load-development-channels server:cogos"
+    launch_cmd = (
+        f"COGOS_API_KEY={raw_token} COGOS_API_URL={api_url} COGENT={name}"
+        " claude --dangerously-load-development-channels server:cogos"
+    )
 
     return CreateTokenResponse(
         name=token_name,

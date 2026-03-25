@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta, timezone
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Process,
     ProcessMode,
@@ -10,6 +9,7 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def _repo(tmp_path) -> SqliteRepository:

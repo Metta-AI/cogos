@@ -57,9 +57,9 @@ def get_rendered_memory(
         try:
             full_prompt = ctx.generate_full_prompt(process)
             tree = ctx.resolve_prompt_tree(process)
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to render prompt for process %s", process_name)
-            raise HTTPException(status_code=500, detail=f"Failed to render prompt for {process_name}")
+            raise HTTPException(status_code=500, detail=f"Failed to render prompt for {process_name}") from exc
 
         layers: list[PromptLayer] = []
         for i, node in enumerate(tree):
@@ -85,7 +85,7 @@ def get_rendered_memory(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list files: {type(exc).__name__}: {exc}",
-        )
+        ) from exc
 
     layers = []
     sections: list[str] = []

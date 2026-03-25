@@ -1,7 +1,8 @@
 """Tests for Cog.make_coglet() interface."""
-from pathlib import Path
 import pytest
+
 from cogos.cog.cog import Cog
+
 
 def _create_cog_with_make_coglet(tmp_path):
     cog_dir = tmp_path / "worker"

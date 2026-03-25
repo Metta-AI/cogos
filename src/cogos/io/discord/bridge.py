@@ -870,7 +870,10 @@ class DiscordBridge:
                             or (hasattr(exc, "status") and 400 <= exc.status < 500 and exc.status != 429)
                         )
                         if is_permanent:
-                            logger.error("Permanent Discord failure for reply %s (discarding): %s", msg.get("MessageId"), exc)
+                            logger.error(
+                                "Permanent Discord failure for reply %s (discarding): %s",
+                                msg.get("MessageId"), exc,
+                            )
                         else:
                             logger.exception("Transient Discord failure for reply %s: %s", msg.get("MessageId"), exc)
                         self._alert_reply_failure(msg, exc, permanent=is_permanent)

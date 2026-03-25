@@ -31,7 +31,6 @@ from cogos.db.models import (
 from cogos.db.models.process_capability import ProcessCapability
 from dashboard.app import create_app
 
-
 # ---------------------------------------------------------------------------
 # Counting repo stub base
 # ---------------------------------------------------------------------------

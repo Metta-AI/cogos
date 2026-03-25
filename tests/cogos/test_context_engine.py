@@ -1,5 +1,5 @@
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Process, ProcessCapability
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore
 

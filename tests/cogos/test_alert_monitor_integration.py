@@ -1,11 +1,10 @@
 """Integration test: full alert pipeline from emit to monitor action."""
 
-from datetime import datetime, timezone
 
 from cogos.capabilities.alert_monitor import AlertMonitorCapability
 from cogos.capabilities.alerts import AlertsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelType, Process, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def _setup(tmp_path):

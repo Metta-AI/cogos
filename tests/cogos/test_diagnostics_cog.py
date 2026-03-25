@@ -4,7 +4,6 @@ from pathlib import Path
 
 from cogos.cog.cog import Cog
 
-
 DIAGNOSTICS_DIR = Path(__file__).parent.parent.parent / "images" / "cogos" / "apps" / "diagnostics"
 
 
@@ -44,7 +43,7 @@ class TestDiagnosticsCog:
             except SyntaxError as e:
                 raise AssertionError(
                     f"Syntax error in {py_file.relative_to(DIAGNOSTICS_DIR)}: {e}"
-                )
+                ) from e
 
     def test_py_diagnostics_have_valid_syntax(self):
         import ast
@@ -56,7 +55,7 @@ class TestDiagnosticsCog:
             except SyntaxError as e:
                 raise AssertionError(
                     f"Syntax error in {py_file.relative_to(DIAGNOSTICS_DIR)}: {e}"
-                )
+                ) from e
 
     def test_main_py_has_valid_syntax(self):
         import ast

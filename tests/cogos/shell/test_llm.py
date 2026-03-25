@@ -1,7 +1,7 @@
 """Tests for shell llm command — uses a mock executor."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from cogos.shell.commands import CommandRegistry, ShellState
 from cogos.shell.commands.llm import register
@@ -32,7 +32,7 @@ def test_llm_creates_temp_process(tmp_path, monkeypatch):
     monkeypatch.setattr("cogos.shell.commands.llm.run_and_complete", fake_run_and_complete)
     monkeypatch.setattr("cogos.shell.commands.llm.get_config", lambda: None)
 
-    output = reg.dispatch(state, "llm say hi")
+    _output = reg.dispatch(state, "llm say hi")
     assert len(executed) == 1
     assert executed[0].startswith("shell-")
 

@@ -266,7 +266,7 @@ def _boot_image(ctx: click.Context, image_name: str, clean: bool,
                 )
                 click.echo("All artifacts verified.")
         except ArtifactMissing as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
 
     repo = _repo()
     _run_migrations(repo)
@@ -1734,7 +1734,7 @@ def executor_token_create(name: str, scope: str):
     repo.create_executor_token(token)
 
     click.echo(f"Token created: {name}")
-    click.echo(f"Bearer token (save this — shown only once):")
+    click.echo("Bearer token (save this — shown only once):")
     click.echo(f"  {raw_token}")
 
 

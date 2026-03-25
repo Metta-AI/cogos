@@ -102,7 +102,6 @@ class TestPublishBinary:
 
     def test_publish_base64_stores_with_prefix(self, cap, repo):
         """Verify base64 content is stored with the base64: prefix."""
-        from cogos.db.models import File
 
         repo.get_file_by_key.return_value = None
         repo.insert_file.return_value = None

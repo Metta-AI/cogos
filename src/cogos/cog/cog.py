@@ -69,7 +69,7 @@ def _load_config(path: Path) -> CogConfig:
     try:
         cog_py.resolve().relative_to(path.resolve())
     except ValueError:
-        raise ValueError(f"cog.py path escapes its cog directory: {cog_py}")
+        raise ValueError(f"cog.py path escapes its cog directory: {cog_py}") from None
 
     ns: dict[str, Any] = {}
     exec(compile(cog_py.read_text(), str(cog_py), "exec"), ns)  # noqa: S102

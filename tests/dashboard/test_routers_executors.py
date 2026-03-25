@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
-from uuid import uuid4
 from unittest.mock import patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from cogos.db.models import Executor, ExecutorStatus, ExecutorToken, RunStatus
+from cogos.db.models import Executor, ExecutorStatus, ExecutorToken
 from dashboard.app import create_app
 
 

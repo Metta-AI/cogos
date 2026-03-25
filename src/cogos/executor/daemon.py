@@ -7,7 +7,6 @@ import logging
 import secrets
 import signal
 import threading
-import time
 from uuid import UUID
 
 from cogos.db.models import ExecutorStatus, ExecutorToken, Run, RunStatus

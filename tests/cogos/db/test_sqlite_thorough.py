@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -18,7 +18,6 @@ from cogos.db.models import (
     CogosOperation,
     Cron,
     Delivery,
-    DeliveryStatus,
     Executor,
     ExecutorStatus,
     ExecutorToken,
@@ -38,10 +37,9 @@ from cogos.db.models import (
     SpanEvent,
     SpanStatus,
 )
-from cogos.db.models.alert import Alert
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
 from cogos.db.models.trace import RequestTrace, Trace
-from cogos.db.models.wait_condition import WaitCondition, WaitConditionStatus, WaitConditionType
+from cogos.db.models.wait_condition import WaitCondition, WaitConditionType
 from cogos.db.sqlite_repository import SqliteRepository
 
 
@@ -149,7 +147,10 @@ def test_cascade_disable_children(repo: SqliteRepository) -> None:
     repo.upsert_process(parent)
     child = Process(name="child", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, parent_process=parent.id)
     repo.upsert_process(child)
-    grandchild = Process(name="grandchild", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.RUNNABLE, parent_process=child.id)
+    grandchild = Process(
+        name="grandchild", mode=ProcessMode.ONE_SHOT,
+        status=ProcessStatus.RUNNABLE, parent_process=child.id,
+    )
     repo.upsert_process(grandchild)
 
     repo.update_process_status(parent.id, ProcessStatus.DISABLED)
@@ -484,7 +485,7 @@ def test_rollback_dispatch(repo: SqliteRepository) -> None:
     run = Run(process=p.id, status=RunStatus.RUNNING)
     repo.create_run(run)
 
-    d = Delivery(message=uuid4(), handler=uuid4())
+    _d = Delivery(message=uuid4(), handler=uuid4())
     # We can't create this delivery through create_delivery because handler doesn't exist
     # Test rollback_dispatch with delivery_id=None
     repo.rollback_dispatch(p.id, run.id, delivery_id=None, error="test error")

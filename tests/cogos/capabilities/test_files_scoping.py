@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.files import FileContent, FileError, FilesCapability
+from cogos.capabilities.files import FileError, FilesCapability
 
 
 @pytest.fixture

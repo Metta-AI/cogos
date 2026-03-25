@@ -109,7 +109,10 @@ class _TraceRepoStub:
             messages = [message for message in messages if message.channel == channel_id]
         return messages[:limit]
 
-    def list_deliveries(self, *, message_id=None, handler_id=None, run_id=None, limit: int = 500, epoch=None, since=None):
+    def list_deliveries(
+        self, *, message_id=None, handler_id=None, run_id=None,
+        limit: int = 500, epoch=None, since=None,
+    ):
         deliveries = [self.delivery]
         if message_id is not None:
             deliveries = [delivery for delivery in deliveries if delivery.message == message_id]

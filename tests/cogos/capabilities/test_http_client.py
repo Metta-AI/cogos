@@ -17,7 +17,7 @@ class TestHttpCapabilityProxy:
     def test_private_attr_raises(self):
         proxy = HttpCapabilityProxy("http://localhost:8200", "token", "data")
         with pytest.raises(AttributeError):
-            proxy._secret
+            proxy._secret  # noqa: B018
 
     @patch("cogos.capabilities.http_client.httpx.post")
     def test_method_call(self, mock_post):

@@ -1,7 +1,7 @@
 """Tests for the diagnostics router."""
 
-from uuid import uuid4
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 

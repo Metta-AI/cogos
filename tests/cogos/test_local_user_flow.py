@@ -7,7 +7,6 @@ fake executor (no Bedrock/AWS needed).
 
 from pathlib import Path
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -18,6 +17,7 @@ from cogos.db.models import (
     ProcessStatus,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.image.apply import apply_image
 from cogos.image.spec import load_image
 from cogos.runtime.local import run_local_tick

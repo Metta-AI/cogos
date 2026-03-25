@@ -6,10 +6,9 @@ Tests:
 """
 from __future__ import annotations
 
-import time
 from uuid import UUID
 
-from cogos.db.sqlite_repository import SqliteRepository
+from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerCapability
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -20,10 +19,9 @@ from cogos.db.models import (
     Process,
     ProcessMode,
     ProcessStatus,
-    Run,
     RunStatus,
 )
-from cogos.capabilities.scheduler import ExecutorDispatchResult, SchedulerCapability, SchedulerError
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.dispatch import build_dispatch_event
 
 
@@ -95,7 +93,7 @@ def test_local_daemon_dispatch(tmp_path):
     assert payload["run_id"] == result.run_id
 
     # Verify executor channel was created for sending work
-    exec_ch = repo.get_channel_by_name("system:executor:local-daemon")
+    _exec_ch = repo.get_channel_by_name("system:executor:local-daemon")
     # Note: in real flow, the dispatcher creates this channel on registration.
     # In this test we didn't go through the registration API, so it may not exist.
     # The actual message delivery is tested below.

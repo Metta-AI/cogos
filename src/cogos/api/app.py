@@ -42,7 +42,6 @@ async def lifespan(app: FastAPI):
     # (migrations run from the dispatcher Lambda on boot, not the API server)
     try:
         from cogos.api.db import get_repo
-        from cogos.db.migrations import apply_cogos_sql_migrations
 
         get_repo()
         logger.info("DB connection ready")

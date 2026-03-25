@@ -1,14 +1,15 @@
 """Tests that _setup_capability_proxies uses real capability classes, not inline proxies."""
 
-import pytest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
+
+import cogos.executor.handler as executor_handler
 from cogos.capabilities.files import FilesCapability
 from cogos.capabilities.me import MeCapability
 from cogos.capabilities.procs import ProcsCapability
 from cogos.db.models import Process, ProcessMode, ProcessStatus
-import cogos.executor.handler as executor_handler
 from cogos.executor.handler import _setup_capability_proxies
 from cogos.io.discord.capability import DiscordCapability
 from cogos.sandbox.executor import VariableTable

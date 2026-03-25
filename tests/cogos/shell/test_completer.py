@@ -3,8 +3,8 @@
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Capability, Channel, ChannelType, Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from cogos.shell.commands import ShellState, build_registry
 from cogos.shell.completer import ShellCompleter
@@ -17,7 +17,10 @@ def _setup(tmp_path):
     fs.create("prompts/scheduler.md", "x")
     fs.create("config/system.yaml", "x")
     repo.upsert_process(Process(name="init", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING, required_tags=[]))
-    repo.upsert_process(Process(name="scheduler", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE, required_tags=[]))
+    repo.upsert_process(Process(
+        name="scheduler", mode=ProcessMode.DAEMON,
+        status=ProcessStatus.RUNNABLE, required_tags=[],
+    ))
     repo.upsert_capability(Capability(name="files", description="File store", enabled=True))
     ch = Channel(name="events", channel_type=ChannelType.NAMED)
     repo.upsert_channel(ch)

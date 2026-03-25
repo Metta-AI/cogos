@@ -10,8 +10,8 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from cogtainer.secrets import cogtainer_key
 
@@ -104,9 +104,14 @@ class Integration(ABC):
         key = self._secret_key(cogent_name)
         secrets_provider.delete_secret(key)  # type: ignore[union-attr]
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return current status: configured fields + readiness."""
-        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        config = (
+            _config if _config is not None
+            else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        )
         configured = bool(config)
         required_fields = [f.name for f in self.fields() if f.required]
         missing = [f for f in required_fields if not config.get(f)]
@@ -150,16 +155,28 @@ class NotificationsIntegration(Integration):
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="discord_handle", label="Discord Handle", required=False, placeholder="username", help_text="Your Discord username for DM notifications."),
+            FieldSpec(
+                name="discord_handle", label="Discord Handle", required=False,
+                placeholder="username", help_text="Your Discord username for DM notifications.",
+            ),
             FieldSpec(name="discord_alerts", label="Alerts", field_type="toggle", required=False),
             FieldSpec(name="discord_requests", label="Requests", field_type="toggle", required=False),
-            FieldSpec(name="email_address", label="Email Address", field_type="email", required=False, placeholder="you@example.com", help_text="Email address for notifications."),
+            FieldSpec(
+                name="email_address", label="Email Address", field_type="email",
+                required=False, placeholder="you@example.com",
+                help_text="Email address for notifications.",
+            ),
             FieldSpec(name="email_alerts", label="Alerts", field_type="toggle", required=False),
             FieldSpec(name="email_requests", label="Requests", field_type="toggle", required=False),
         ]
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
-        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        config = (
+            _config if _config is not None
+            else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        )
         has_discord = bool(config.get("discord_handle"))
         has_email = bool(config.get("email_address"))
         configured = has_discord or has_email
@@ -184,19 +201,32 @@ class DiscordIntegration(Integration):
 
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="bot_token", label="Discord Bot Token", field_type="secret", required=False, help_text="Shared bot token for all cogents in this cogtainer."),
+            FieldSpec(
+                name="bot_token", label="Discord Bot Token", field_type="secret",
+                required=False, help_text="Shared bot token for all cogents in this cogtainer.",
+            ),
         ]
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="display_name", label="Display Name", required=False, help_text="Bot display name in Discord."),
-            FieldSpec(name="default_channels", label="Default Channels", required=False, help_text="Comma-separated list of default channel names."),
+            FieldSpec(
+                name="display_name", label="Display Name",
+                required=False, help_text="Bot display name in Discord.",
+            ),
+            FieldSpec(
+                name="default_channels", label="Default Channels",
+                required=False, help_text="Comma-separated list of default channel names.",
+            ),
         ]
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Check both shared bot token and per-cogent persona config."""
-        # Check per-cogent persona config
-        persona = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        persona = (
+            _config if _config is not None
+            else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        )
         # Check shared bot token
         bot_configured = False
         try:
@@ -233,20 +263,43 @@ class GitHubIntegration(Integration):
 
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="org", label="GitHub Organization", required=False, help_text="GitHub org name (e.g. Metta-AI)."),
+            FieldSpec(
+                name="org", label="GitHub Organization",
+                required=False, help_text="GitHub org name (e.g. Metta-AI).",
+            ),
         ]
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="access_token", label="Personal Access Token", field_type="secret", required=False, help_text="GitHub PAT (ghp_...). Use this OR App credentials below."),
-            FieldSpec(name="app_id", label="App ID", required=False, help_text="GitHub App ID (alternative to PAT)."),
-            FieldSpec(name="private_key", label="Private Key", field_type="secret", required=False, help_text="PEM-encoded private key for the GitHub App."),
-            FieldSpec(name="webhook_secret", label="Webhook Secret", field_type="secret", required=False, help_text="Shared secret for webhook signature verification."),
-            FieldSpec(name="installation_id", label="Installation ID", required=False, help_text="Installation ID if pre-configured."),
+            FieldSpec(
+                name="access_token", label="Personal Access Token", field_type="secret",
+                required=False, help_text="GitHub PAT (ghp_...). Use this OR App credentials below.",
+            ),
+            FieldSpec(
+                name="app_id", label="App ID",
+                required=False, help_text="GitHub App ID (alternative to PAT).",
+            ),
+            FieldSpec(
+                name="private_key", label="Private Key", field_type="secret",
+                required=False, help_text="PEM-encoded private key for the GitHub App.",
+            ),
+            FieldSpec(
+                name="webhook_secret", label="Webhook Secret", field_type="secret",
+                required=False, help_text="Shared secret for webhook signature verification.",
+            ),
+            FieldSpec(
+                name="installation_id", label="Installation ID",
+                required=False, help_text="Installation ID if pre-configured.",
+            ),
         ]
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
-        config = _config if _config is not None else self.load_config(cogent_name, secrets_provider=secrets_provider)
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        config = (
+            _config if _config is not None
+            else self.load_config(cogent_name, secrets_provider=secrets_provider)
+        )
         has_pat = bool(config.get("access_token"))
         has_app = bool(config.get("app_id") and config.get("private_key"))
         configured = has_pat or has_app
@@ -271,14 +324,26 @@ class AsanaIntegration(Integration):
 
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="domain", label="Asana Workspace Domain", required=False, help_text="Asana workspace domain (e.g. softmax)."),
+            FieldSpec(
+                name="domain", label="Asana Workspace Domain",
+                required=False, help_text="Asana workspace domain (e.g. softmax).",
+            ),
         ]
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="access_token", label="Personal Access Token", field_type="secret", help_text="Asana personal access token."),
-            FieldSpec(name="workspace_id", label="Workspace ID", required=False, help_text="Asana workspace GID."),
-            FieldSpec(name="project_id", label="Project ID", required=False, help_text="Default project GID for task operations."),
+            FieldSpec(
+                name="access_token", label="Personal Access Token",
+                field_type="secret", help_text="Asana personal access token.",
+            ),
+            FieldSpec(
+                name="workspace_id", label="Workspace ID",
+                required=False, help_text="Asana workspace GID.",
+            ),
+            FieldSpec(
+                name="project_id", label="Project ID",
+                required=False, help_text="Default project GID for task operations.",
+            ),
         ]
 
 
@@ -298,14 +363,26 @@ class EmailIntegration(Integration):
 
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="domain", label="Email Domain", required=False, help_text="Domain for cogent emails (e.g. example-cogents.com)."),
+            FieldSpec(
+                name="domain", label="Email Domain",
+                required=False, help_text="Domain for cogent emails (e.g. example-cogents.com).",
+            ),
         ]
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="address", label="Email Address", field_type="email", required=False, help_text="Auto-configured as cogent-name@<your-domain>."),
-            FieldSpec(name="ses_region", label="SES Region", required=False, placeholder="us-east-1", help_text="AWS region for SES."),
-            FieldSpec(name="ingest_url", label="Ingest URL", field_type="url", required=False, help_text="CloudFlare worker URL for inbound mail."),
+            FieldSpec(
+                name="address", label="Email Address", field_type="email",
+                required=False, help_text="Auto-configured as cogent-name@<your-domain>.",
+            ),
+            FieldSpec(
+                name="ses_region", label="SES Region", required=False,
+                placeholder="us-east-1", help_text="AWS region for SES.",
+            ),
+            FieldSpec(
+                name="ingest_url", label="Ingest URL", field_type="url",
+                required=False, help_text="CloudFlare worker URL for inbound mail.",
+            ),
         ]
 
     @staticmethod
@@ -318,11 +395,17 @@ class EmailIntegration(Integration):
     def _secret_key(self, cogent_name: str) -> str:
         return f"cogent/{cogent_name}/{self.name}"
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Email is configured when the cogtainer email domain secret is set."""
         domain = self._read_domain(secrets_provider)
         address = self.address_for(cogent_name, domain)
-        return {"configured": bool(address), "missing_fields": [] if address else ["domain"], "address": address}
+        return {
+            "configured": bool(address),
+            "missing_fields": [] if address else ["domain"],
+            "address": address,
+        }
 
     @staticmethod
     def _read_domain(secrets_provider: object) -> str:
@@ -351,7 +434,10 @@ class AnthropicIntegration(Integration):
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="api_key", label="API Key", field_type="secret", help_text="Anthropic API key (sk-ant-...)."),
+            FieldSpec(
+                name="api_key", label="API Key", field_type="secret",
+                help_text="Anthropic API key (sk-ant-...).",
+            ),
         ]
 
     def _fallback_keys(self) -> list[str]:
@@ -401,13 +487,18 @@ class WebIntegration(Integration):
 
     def cogtainer_fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="domain", label="Web Domain", required=False, help_text="Domain for cogent dashboards (e.g. example-cogents.com)."),
+            FieldSpec(
+                name="domain", label="Web Domain",
+                required=False, help_text="Domain for cogent dashboards (e.g. example-cogents.com).",
+            ),
         ]
 
     def fields(self) -> list[FieldSpec]:
         return []
 
-    def status(self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None) -> dict[str, Any]:
+    def status(
+        self, cogent_name: str, *, secrets_provider: object, _config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return {"configured": True, "missing_fields": []}
 
 
@@ -429,11 +520,26 @@ class GoogleIntegration(Integration):
 
     def fields(self) -> list[FieldSpec]:
         return [
-            FieldSpec(name="share_email", label="Share With", field_type="text", required=False, help_text="Share files/calendars with this email (read-only)."),
-            FieldSpec(name="drive_enabled", label="Google Drive", field_type="toggle", required=False, help_text="Enable access to Google Drive."),
-            FieldSpec(name="docs_enabled", label="Google Docs", field_type="toggle", required=False, help_text="Enable access to Google Docs."),
-            FieldSpec(name="sheets_enabled", label="Google Sheets", field_type="toggle", required=False, help_text="Enable access to Google Sheets."),
-            FieldSpec(name="calendar_enabled", label="Google Calendar", field_type="toggle", required=False, help_text="Enable access to Google Calendar."),
+            FieldSpec(
+                name="share_email", label="Share With", field_type="text",
+                required=False, help_text="Share files/calendars with this email (read-only).",
+            ),
+            FieldSpec(
+                name="drive_enabled", label="Google Drive", field_type="toggle",
+                required=False, help_text="Enable access to Google Drive.",
+            ),
+            FieldSpec(
+                name="docs_enabled", label="Google Docs", field_type="toggle",
+                required=False, help_text="Enable access to Google Docs.",
+            ),
+            FieldSpec(
+                name="sheets_enabled", label="Google Sheets", field_type="toggle",
+                required=False, help_text="Enable access to Google Sheets.",
+            ),
+            FieldSpec(
+                name="calendar_enabled", label="Google Calendar", field_type="toggle",
+                required=False, help_text="Enable access to Google Calendar.",
+            ),
         ]
 
     def status(

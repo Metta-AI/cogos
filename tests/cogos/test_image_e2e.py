@@ -88,7 +88,6 @@ def test_boot_cogs_e2e(tmp_path):
     assert expected_nff_handlers.issubset(set(nff_config["handlers"]))
 
     # -- Verify CogManifest round-trip works --
-    from cogos.cog.runtime import CogManifest
 
     for m_dict in manifests:
         prefix = m_dict.get("content_prefix", "mnt/boot")

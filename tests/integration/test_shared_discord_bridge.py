@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
+
 import discord
+import pytest
 
-from cogos.io.discord.lifecycle import CogentPersona, LifecycleManager, ROLE_PREFIX
+from cogos.io.discord.lifecycle import ROLE_PREFIX, CogentPersona, LifecycleManager
 from cogos.io.discord.router import MessageRouter
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -12,12 +12,11 @@ from cogtainer.secrets import (
     AwsSecretsProvider,
     LocalSecretsProvider,
     SecretsProvider,
-    cogtainer_key,
-    cogent_key,
-    create_secrets_provider,
     _extract_field,
+    cogent_key,
+    cogtainer_key,
+    create_secrets_provider,
 )
-
 
 # ── _extract_field helper ────────────────────────────────────
 

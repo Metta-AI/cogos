@@ -3,8 +3,8 @@
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def test_reap_is_noop(tmp_path):
