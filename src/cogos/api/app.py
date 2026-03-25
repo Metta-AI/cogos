@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
     # (migrations run from the dispatcher Lambda on boot, not the API server)
     try:
         from cogos.api.db import get_repo
+        from cogos.db.migrations import apply_cogos_sql_migrations
 
         get_repo()
         logger.info("DB connection ready")
@@ -81,8 +82,8 @@ def create_app() -> FastAPI:
         capabilities,
         channels,
         chat,
-        cogtainer,
         cogos_status,
+        cogtainer,
         cron,
         diagnostics,
         executors,
@@ -184,9 +185,9 @@ def create_app() -> FastAPI:
     # ── Web static content from FileStore (DB) ─────────────────
 
     def _serve_web_file(path: str) -> Response:
+        from cogos.api.db import get_repo
         from cogos.files.store import FileStore
         from cogos.io.web.serving import lookup_static_file
-        from cogos.api.db import get_repo
 
         store = FileStore(get_repo())
         web_file = lookup_static_file(store, path)
@@ -250,8 +251,8 @@ def create_app() -> FastAPI:
 
         import boto3
 
-        from cogos.db.models.channel_message import ChannelMessage
         from cogos.api.db import get_repo
+        from cogos.db.models.channel_message import ChannelMessage
 
         repo = get_repo()
         channel = repo.get_channel_by_name("io:web:request")

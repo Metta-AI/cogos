@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
-
-logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

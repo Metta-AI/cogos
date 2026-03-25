@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json as _json
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
@@ -7,9 +9,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-
-import json as _json
-import logging
 
 from cogos.db.models import ChannelMessage, Delivery, Run
 from dashboard.db import get_repo
@@ -317,7 +316,10 @@ def list_message_traces(
     try:
         messages = repo.list_channel_messages(limit=fetch_limit, since=cutoff)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"list_channel_messages(limit={fetch_limit}, since={cutoff}) failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"list_channel_messages(limit={fetch_limit}, since={cutoff}) failed: {exc}",
+        ) from exc
     try:
         deliveries = repo.list_deliveries(limit=min(fetch_limit * 2, 250), since=cutoff)
     except Exception as exc:
