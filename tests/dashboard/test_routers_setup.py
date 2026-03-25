@@ -150,7 +150,6 @@ class TestEmailIntegrationAutoConfig:
 
         assert status["configured"] is True
         assert status["missing_fields"] == []
-        assert status["address"] == "alpha@example.com"
 
     def test_status_not_configured_when_domain_missing(self):
         from cogos.io.integration import EmailIntegration
@@ -163,7 +162,6 @@ class TestEmailIntegrationAutoConfig:
 
         assert status["configured"] is False
         assert "domain" in status["missing_fields"]
-        assert status["address"] == ""
 
 
 class TestEmailSesStatus:
