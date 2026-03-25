@@ -139,6 +139,35 @@ export interface CogosRunLogsResponse {
   error: string | null;
 }
 
+export interface RunFileMutation {
+  key: string;
+  version: number;
+  diff: string | null;
+  created_at: string | null;
+}
+
+export interface RunSentMessage {
+  id: string;
+  channel_name: string;
+  payload: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface RunChildRun {
+  id: string;
+  process: string;
+  process_name: string | null;
+  status: string;
+  duration_ms: number | null;
+  created_at: string | null;
+}
+
+export interface RunOutputsResponse {
+  files: RunFileMutation[];
+  messages: RunSentMessage[];
+  children: RunChildRun[];
+}
+
 export interface CogosChannel {
   id: string;
   name: string;

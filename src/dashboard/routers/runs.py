@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -339,6 +340,94 @@ def get_run(name: str, run_id: str) -> RunDetail:
     if not r:
         raise HTTPException(status_code=404, detail="Run not found")
     return _detail(r)
+
+
+class FileMutation(BaseModel):
+    key: str
+    version: int
+    diff: str | None = None
+    created_at: str | None = None
+
+
+class SentMessage(BaseModel):
+    id: str
+    channel_name: str
+    payload: dict
+    created_at: str | None = None
+
+
+class ChildRun(BaseModel):
+    id: str
+    process: str
+    process_name: str | None = None
+    status: str
+    duration_ms: int | None = None
+    created_at: str | None = None
+
+
+class RunOutputsResponse(BaseModel):
+    files: list[FileMutation]
+    messages: list[SentMessage]
+    children: list[ChildRun]
+
+
+@router.get("/runs/{run_id}/outputs", response_model=RunOutputsResponse)
+def get_run_outputs(name: str, run_id: str) -> RunOutputsResponse:
+    repo = get_repo()
+    run = repo.get_run(UUID(run_id))
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    files: list[FileMutation] = []
+    for f in repo.list_file_mutations(run.id):
+        new_content = f["content"] or ""
+        old_content = ""
+        if f["version"] > 1:
+            prev = repo.get_file_version_content(UUID(f["file_id"]), f["version"] - 1)
+            if prev is not None:
+                old_content = prev
+        diff = "".join(difflib.unified_diff(
+            old_content.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile=f"v{f['version'] - 1}" if f["version"] > 1 else "/dev/null",
+            tofile=f"v{f['version']}",
+        ))
+        files.append(FileMutation(
+            key=f["key"],
+            version=f["version"],
+            diff=diff or None,
+            created_at=_iso(f["created_at"]),
+        ))
+
+    messages = [
+        SentMessage(
+            id=m["id"],
+            channel_name=m["channel_name"],
+            payload=m["payload"],
+            created_at=_iso(m["created_at"]),
+        )
+        for m in repo.list_messages_sent_by_run(run.id)
+    ]
+
+    process_names: dict[UUID, str] = {}
+    child_runs = repo.list_child_runs(run.process)
+    if child_runs:
+        pids = {r.process for r in child_runs}
+        processes = repo.list_processes(limit=500)
+        process_names = {p.id: p.name for p in processes if p.id in pids}
+    children = [
+        ChildRun(
+            id=str(r.id),
+            process=str(r.process),
+            process_name=process_names.get(r.process),
+            status=r.status.value,
+            duration_ms=r.duration_ms,
+            created_at=_iso(r.created_at),
+        )
+        for r in child_runs
+    ]
+
+    return RunOutputsResponse(files=files, messages=messages, children=children)
 
 
 @router.get("/runs/{run_id}/logs", response_model=RunLogsResponse)
