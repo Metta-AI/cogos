@@ -24,18 +24,33 @@ See [docs/deploy.md](../../docs/deploy.md) for the full decision tree. If the ch
 
 ## Commands reference
 
+### Per-cogent deploys (recommended)
+
 ```bash
-# Full CDK stack deploy (creates/updates all infra: Lambda, ECS, ALB, etc.)
-# This is slow (~3-5 min). Only use when infra definition changed.
+# Per-cogent CDK stack update
+cogent update stack
+
+# Update Lambda code
+cogent update lambda
+
+# Deploy dashboard
+cogent update dashboard
+
+# Update all components
+cogent update all
+```
+
+### Shared cogtainer infra (affects all cogents)
+
+```bash
+# Full CDK stack deploy (creates/updates all infra: VPC, ALB, Aurora cluster, etc.)
+# This is slow (~3-5 min). Only use when shared infra changed.
 cogtainer update <cogtainer-name>
 
-# Update Lambda code only (fast, ~15s)
+# Update Lambda code for all cogents
 cogtainer update <cogtainer-name> --lambdas
 
-# Deploy Lambda from local source
-cogtainer update <cogtainer-name> --from-source
-
-# Force new ECS deployment (restart containers with current image)
+# Force new ECS deployment
 cogtainer update <cogtainer-name> --services
 
 # Deploy specific image to ECS
@@ -43,19 +58,16 @@ cogtainer update <cogtainer-name> --services --image-tag <tag>
 
 # Check current infrastructure status
 cogtainer status <cogtainer-name>
-
-# CogOS commands (resolve cogent from .env)
-cogos status
-cogos restart
 ```
 
 ## When to use what
 
-- **`cogtainer update <name>`** (no flags): CDK stack changes — new resources, IAM policy changes, ALB rules, ECS task def changes, env var changes in CDK. This is the full deploy.
-- **`cogtainer update <name> --lambdas`**: Only Python code in `src/cogos/` changed. Zips and uploads to existing Lambda.
+- **`cogent update stack`**: Per-cogent CDK changes — IAM, Lambda config, ECS task def changes for a single cogent.
+- **`cogent update lambda`**: Only Python code in `src/cogos/` changed. Zips and uploads to existing Lambda.
+- **`cogent update dashboard`**: Deploy a new dashboard version to ECS.
+- **`cogtainer update <name>`** (no flags): Shared infra changes — VPC, ALB, Aurora cluster. This is the full deploy.
 - **`cogtainer update <name> --services`**: Need to restart ECS tasks (e.g. after ECR image push).
-- **`cogtainer update <name> --services --image-tag <tag>`**: Deploy a specific Docker image to ECS.
-- **Migrations**: DB migrations run automatically during image boot (`cogos start`). There is no separate migration command.
+- **Migrations**: DB migrations run automatically during image boot (`cogos start`), or manually via `cogent update rds`.
 
 ## Post-deploy
 

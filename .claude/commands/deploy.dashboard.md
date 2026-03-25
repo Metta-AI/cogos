@@ -6,7 +6,7 @@ Human-readable reference: [docs/deploy.md](../../docs/deploy.md)
 
 1. Ensure no uncommitted changes: `git status --porcelain` must be empty. If dirty, stop and ask.
 2. Pull latest: `git pull --ff-only`. If it fails (diverged), stop and ask.
-3. Identify the cogtainer name from context (default: `agora`).
+3. Ensure the right cogent is selected: check `.env` for COGTAINER/COGENT, or run `cogent select <name>` to set them.
 
 ## Decide what to deploy
 
@@ -14,27 +14,20 @@ Run `git diff HEAD~1 --name-only` (or broader if multiple commits since last dep
 
 | Changed paths | What's needed |
 |---|---|
-| `dashboard/frontend/**` only | **S3 bundle** — fast path, ~30s. Run: `cogtainer deploy-dashboard <cogtainer>` |
-| `src/dashboard/**` only (backend API) | **Docker image** — needs container rebuild. Run: `cogtainer deploy-dashboard <cogtainer> --docker` |
-| Both frontend + backend | **Docker image** — covers both. Run: `cogtainer deploy-dashboard <cogtainer> --docker` |
-| `DOCKER_VERSION` changed | **Docker image** — use `--docker` |
+| `dashboard/frontend/**` or `src/dashboard/**` | Dashboard deploy needed |
 | No dashboard changes | Nothing to deploy. Tell the user. |
 
 ## Deploy
 
 ```bash
-# Fast path: build Next.js -> tar.gz -> S3 -> restart ECS (~30s)
-uv run cogtainer deploy-dashboard agora
+# Deploy dashboard (resolves version from versions.defaults.json)
+cogent update dashboard
 
-# Full path: rebuild Docker image + push ECR + restart ECS
-uv run cogtainer deploy-dashboard agora --docker
-
-# With explicit AWS profile
-uv run cogtainer deploy-dashboard agora --profile softmax-org
+# Deploy specific SHA
+cogent update dashboard --sha <sha>
 ```
 
-IMPORTANT: Do NOT manually construct S3 bucket names. The `deploy-dashboard` command
-reads the correct bucket from the CloudFormation stack outputs automatically.
+Dashboard ECR tags use `sha-{sha}` format in the `cogent-dashboard` repo.
 
 ## Post-deploy
 

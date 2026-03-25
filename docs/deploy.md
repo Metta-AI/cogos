@@ -8,10 +8,11 @@ Four deployable components:
 
 | Component | Infrastructure | Deploy tool |
 |-----------|---------------|-------------|
-| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogtainer update <name> --lambdas` |
-| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogtainer update <name> --services --image-tag dashboard-<sha>` |
-| **Discord bridge** | ECS Fargate on cogtainer cluster | `cogtainer update <name> --services --image-tag discord-<sha>` |
-| **CDK stack** | All infrastructure definitions (IAM, VPC, ALB, ECS task defs) | `cogtainer update <name>` |
+| **Lambda functions** | event-router, executor, dispatcher, ingress | `cogent update lambda` |
+| **Dashboard / ECS** | ECS Fargate on cogtainer cluster | `cogent update dashboard` |
+| **Discord bridge** | ECS Fargate on cogtainer cluster | `cogent update discord` |
+| **CDK stack (per-cogent)** | Per-cogent infrastructure (IAM, Lambda, ECS task defs) | `cogent update stack` |
+| **CDK stack (shared)** | Shared cogtainer infra (VPC, ALB, Aurora cluster) | `cogtainer update <name>` |
 
 ## Decision Tree
 
@@ -20,21 +21,31 @@ What changed? Run `git diff HEAD~1 --name-only` and match:
 | Changed paths | Command |
 |---|---|
 | `images/**` | `cogos restart` |
-| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogtainer update <name> --lambdas` |
-| `src/cogos/capabilities/**` | `cogtainer update <name> --lambdas` + `cogos restart` |
-| `dashboard/frontend/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-<sha>` |
-| `src/dashboard/**` | CI builds automatically; then `cogtainer update <name> --services --image-tag dashboard-<sha>` |
-| `src/cogtainer/cdk/**`, IAM, VPC, ALB changes | `cogtainer update <name>` |
+| `src/cogos/executor/**`, `src/cogos/sandbox/**` | `cogent update lambda` |
+| `src/cogos/capabilities/**` | `cogent update lambda` + `cogos restart` |
+| `dashboard/frontend/**` | CI builds automatically; then `cogent update dashboard` |
+| `src/dashboard/**` | CI builds automatically; then `cogent update dashboard` |
+| `src/cogtainer/cdk/**` (per-cogent) | `cogent update stack` |
+| Shared infra (VPC, ALB, Aurora cluster) | `cogtainer update <name>` |
 
 ## Command Reference
 
-### Update all components
+### Per-cogent deploys (recommended)
 
 ```bash
-cogtainer update <name>                                    # Update all (Lambdas + ECS services)
-cogtainer update <name> --lambdas                          # Lambda code only
-cogtainer update <name> --services                         # ECS services only
-cogtainer update <name> --services --image-tag <tag>       # Specific ECS image
+cogent update lambda                  # Update Lambda function code
+cogent update dashboard               # Deploy dashboard to ECS
+cogent update rds                     # Run DB schema migrations
+cogent update all                     # Update all components
+cogent update stack                   # Full per-cogent CDK stack update
+```
+
+### Bulk cogtainer deploys (secondary — affects all cogents)
+
+```bash
+cogtainer update <name> --lambdas                          # Lambda code for all cogents
+cogtainer update <name> --services --image-tag <tag>       # Specific ECS image for all cogents
+cogtainer update <name>                                    # Full CDK stack deploy
 ```
 
 DB migrations run automatically during `cogos start` (image boot).
@@ -76,13 +87,13 @@ cogos restart
 
 **Executor code change** (`src/cogos/executor/`, `src/cogos/sandbox/`):
 ```bash
-cogtainer update <name> --lambdas
+cogent update lambda
 cogos restart    # if image also changed
 ```
 
 **Full infrastructure change** (CDK constructs, IAM, ALB):
 ```bash
-cogtainer update <name>
+cogent update stack    # per-cogent infra
 cogos restart
 ```
 

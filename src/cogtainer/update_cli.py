@@ -31,7 +31,9 @@ def _ecr_repo_from_ci_config() -> str:
     return naming.ecr_repo_name()
 
 
-def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor") -> str | None:
+def _check_ecr_image_for_commit(
+    session: boto3.Session, prefix: str = "executor", deploy_sha: str | None = None,
+) -> str | None:
     """Check that an ECR image exists for the current git commit.
 
     Returns the matching tag if found, or None. Prints a warning if no image
@@ -56,12 +58,15 @@ def _check_ecr_image_for_commit(session: boto3.Session, prefix: str = "executor"
         click.echo(f"  ECR image for HEAD ({sha_short}): {click.style('found', fg='green')}")
         return expected_tag
     except Exception:
+        deploy_msg = ""
+        if deploy_sha:
+            deploy_msg = f"\n  Deploying version {deploy_sha[:8]} from boot manifest."
         click.echo(
             click.style(
                 f"  Warning: No ECR image found for current commit ({sha_short}).\n"
                 f"  Expected tag: {expected_tag}\n"
                 f"  Check CI: gh run list --repo Metta-AI/cogos --workflow docker-build-{prefix}.yml\n"
-                f"  The deployed code may not match the running container.",
+                f"  The deployed code may not match the running container.{deploy_msg}",
                 fg="yellow",
             )
         )
@@ -216,15 +221,39 @@ def update_all(ctx: click.Context, profile: str | None, skip_health: bool):
     click.echo(f"\nTotal: {time.monotonic() - t0:.1f}s")
 
 
+def _read_local_versions() -> dict[str, str] | None:
+    """Read versions from local images/cogos/versions.defaults.json (updated by CI)."""
+    try:
+        import json as _json
+
+        versions_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "images", "cogos", "versions.defaults.json",
+        )
+        with open(versions_path) as f:
+            return _json.load(f)
+    except Exception:
+        return None
+
+
 def _read_boot_versions(name: str) -> dict[str, str] | None:
-    """Read versions.json from the cogent's database via FileStore."""
+    """Read versions: prefer local versions.defaults.json, fall back to DB."""
+    local = _read_local_versions()
+    if local:
+        return local
+
     try:
         _ensure_db_env(name)
         import json as _json
 
-        from cogos.db.repository import RdsDataApiRepository
+        from cogos.db.factory import create_repository
         from cogos.files.store import FileStore
-        repo = RdsDataApiRepository.create()
+        repo = create_repository(
+            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+            secret_arn=os.environ.get("DB_SECRET_ARN"),
+            database=os.environ.get("DB_NAME"),
+            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+        )
         fs = FileStore(repo)
         content = fs.get_content("mnt/boot/versions.json")
         if content:
@@ -232,6 +261,30 @@ def _read_boot_versions(name: str) -> dict[str, str] | None:
     except Exception:
         pass
     return None
+
+
+def _update_boot_versions(name: str, updates: dict[str, str]) -> None:
+    """Best-effort write-back of deployed versions to DB boot manifest."""
+    try:
+        import json as _json
+
+        _ensure_db_env(name)
+        from cogos.db.factory import create_repository
+        from cogos.files.store import FileStore
+
+        repo = create_repository(
+            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+            secret_arn=os.environ.get("DB_SECRET_ARN"),
+            database=os.environ.get("DB_NAME"),
+            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+        )
+        fs = FileStore(repo)
+        content = fs.get_content("mnt/boot/versions.json")
+        manifest = _json.loads(content) if content else {"components": {}}
+        manifest.setdefault("components", {}).update(updates)
+        fs.put_content("mnt/boot/versions.json", _json.dumps(manifest))
+    except Exception:
+        pass
 
 
 @update.command("lambda")
@@ -242,18 +295,20 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
     """Update Lambda function code."""
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
+    _ensure_db_env(name, profile)
     session = _get_session(profile)
     safe_name = name.replace(".", "-")
 
     cogtainer_name = (ctx.find_root().obj or {}).get("cogtainer_name", "")
     click.echo(f"Updating cogent-{name} Lambda functions...")
-    _check_ecr_image_for_commit(session, "executor")
 
     if not sha:
         versions = _read_boot_versions(name)
         if versions and versions.get("lambda") and versions["lambda"] != "local":
             sha = versions["lambda"]
             click.echo(f"  Using lambda version from boot manifest: {sha[:8]}")
+
+    _check_ecr_image_for_commit(session, "executor", deploy_sha=sha)
 
     if sha:
         full_sha = _resolve_commit_sha(sha)
@@ -308,14 +363,19 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
 
     # Record content deploy timestamp
     try:
-        _ensure_db_env(name)
-        from cogos.db.repository import RdsDataApiRepository
+        from cogos.db.factory import create_repository
 
-        repo = RdsDataApiRepository.create()
+        repo = create_repository(
+            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+            secret_arn=os.environ.get("DB_SECRET_ARN"),
+            database=os.environ.get("DB_NAME"),
+            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+        )
         repo.set_meta("content:deployed_at")
     except Exception:
         pass
 
+    _update_boot_versions(name, {"lambda": sha or "local"})
     click.echo(f"  Lambda: {time.monotonic() - t0:.1f}s")
 
 
@@ -544,15 +604,19 @@ def update_discord(ctx: click.Context, profile: str | None, skip_health: bool, t
 @click.pass_context
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
+    from cogos.db.factory import create_repository
     from cogos.db.migrations import apply_cogos_sql_migrations, apply_schema
-    from cogos.db.repository import RdsDataApiRepository
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
     _ensure_db_env(name, profile)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
-    version = apply_schema()
-    repo = RdsDataApiRepository.create(
+
+    admin_session = _get_admin_session(profile)
+    rds_client = admin_session.client("rds-data", region_name=DEFAULT_REGION)
+    version = apply_schema(client=rds_client)
+
+    repo = create_repository(
         resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
         secret_arn=os.environ.get("DB_SECRET_ARN"),
         database=os.environ.get("DB_NAME"),
@@ -722,6 +786,7 @@ def update_dashboard(ctx: click.Context, sha: str | None, skip_health: bool):
     if not skip_health:
         _wait_for_service_stable(ecs_client, safe_name)
 
+    _update_boot_versions(name, {"dashboard": sha or "local"})
     click.echo(f"  Dashboard: {click.style('deployed', fg='green')} ({time.monotonic() - t0:.1f}s)")
 
 
@@ -800,9 +865,14 @@ def update_stack(ctx: click.Context, profile: str | None):
     # Record stack update timestamp
     try:
         _ensure_db_env(name)
-        from cogos.db.repository import RdsDataApiRepository
+        from cogos.db.factory import create_repository
 
-        repo = RdsDataApiRepository.create()
+        repo = create_repository(
+            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+            secret_arn=os.environ.get("DB_SECRET_ARN"),
+            database=os.environ.get("DB_NAME"),
+            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+        )
         repo.set_meta("stack:updated_at")
     except Exception:
         pass

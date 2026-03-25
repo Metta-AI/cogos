@@ -95,6 +95,31 @@ cogtainer status
 cogtainer status my-cogtainer
 ```
 
+## Cogent Update (per-cogent deploys — recommended)
+
+The `cogent update` subcommands deploy individual components for the currently selected cogent.
+
+```bash
+cogent update lambda                  # Update Lambda function code
+cogent update dashboard               # Deploy dashboard to ECS
+cogent update rds                     # Run DB schema migrations
+cogent update all                     # Update all components
+cogent update stack                   # Full per-cogent CDK stack update
+```
+
+These commands resolve the cogent from `.env` (COGTAINER/COGENT) or `~/.cogos/cogtainers.yml`.
+
+## Cogtainer Update (bulk deploys — secondary)
+
+The `cogtainer update <name>` commands operate on the whole cogtainer and can affect all cogents.
+
+| Option | Description |
+|--------|-------------|
+| `--lambdas` | Update Lambda code for all cogents |
+| `--services` | Restart ECS services |
+| `--services --image-tag <tag>` | Deploy specific image to ECS |
+| _(no flags)_ | Full CDK stack deploy |
+
 ## Cogent Management
 
 ### `cogent create <name>`

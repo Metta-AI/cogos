@@ -212,19 +212,36 @@ Docker images are built automatically by GitHub Actions on push to main when rel
 
 Workflows can also be triggered manually via `gh workflow run`.
 
-All `cogtainer update` commands check that a CI-built ECR image exists for the current commit and warn if it doesn't. Check CI image availability via `gh run list` or `gh run watch`.
+All deploy commands check that a CI-built ECR image exists for the current commit and warn if it doesn't. Check CI image availability via `gh run list` or `gh run watch`.
 
 **Executor** images run as Lambda (not ECS). **Dashboard** images run as ECS. Don't mix them up.
 
+Dashboard ECR tags use `sha-{sha}` format in the `cogent-dashboard` repo, not `dashboard-{sha}`.
+
+**Per-cogent deploys (recommended):**
+
 ```bash
 # Deploy executor code to Lambda
+cogent update lambda
+
+# Deploy dashboard image to ECS (uses version from versions.defaults.json)
+cogent update dashboard
+
+# Run DB migrations
+cogent update rds
+
+# Update all components
+cogent update all
+
+# Full per-cogent CDK stack update
+cogent update stack
+```
+
+**Bulk cogtainer deploys (secondary — use `--image-tag` with care, it affects all cogents):**
+
+```bash
 cogtainer update <cogtainer-name> --lambdas
-
-# Deploy dashboard image to ECS (after CI builds it)
-cogtainer update <cogtainer-name> --services --image-tag dashboard-latest
-cogtainer update <cogtainer-name> --services --image-tag dashboard-abc1234
-
-# Update all (Lambda + ECS services + CDK stacks)
+cogtainer update <cogtainer-name> --services --image-tag <tag>
 cogtainer update <cogtainer-name>
 ```
 

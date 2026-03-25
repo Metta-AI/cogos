@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import click
@@ -29,8 +30,41 @@ def _get_runtime() -> tuple[CogtainerRuntime, str]:
 
 
 @click.group()
-def cli() -> None:
+@click.pass_context
+def cli(ctx: click.Context) -> None:
     """Manage cogents."""
+    ctx.ensure_object(dict)
+
+    cfg = load_config(_config_path())
+    cogtainer_name = resolve_cogtainer_name(cfg)
+    entry = cfg.cogtainers[cogtainer_name]
+    ctx.obj["cogtainer_name"] = cogtainer_name
+
+    try:
+        cogents = list(create_runtime(entry, cogtainer_name=cogtainer_name).list_cogents())
+        cogent_name = resolve_cogent_name(cogents)
+        ctx.obj["cogent_name"] = cogent_name
+        ctx.obj["cogent_id"] = cogent_name
+    except Exception:
+        cogent_name = None
+
+    if cogent_name and entry.type == "aws":
+        import cogtainer.deploy_config as deploy_config
+
+        deploy_config._config_cache = {"cogtainer_name": cogtainer_name}
+
+        runtime = create_runtime(entry, cogtainer_name=cogtainer_name)
+        try:
+            db_info = runtime._get_db_info()
+            if db_info.get("cluster_arn"):
+                os.environ.setdefault("DB_CLUSTER_ARN", db_info["cluster_arn"])
+                os.environ.setdefault("DB_RESOURCE_ARN", db_info["cluster_arn"])
+            if db_info.get("secret_arn"):
+                os.environ.setdefault("DB_SECRET_ARN", db_info["secret_arn"])
+            safe = cogent_name.replace(".", "-")
+            os.environ.setdefault("DB_NAME", f"cogent_{safe.replace('-', '_')}")
+        except Exception:
+            pass
 
 
 @cli.command()
@@ -133,6 +167,10 @@ def status(name: str | None) -> None:
     click.echo(f"  data_dir: {Path(data_dir) / name}")
     click.echo(f"  log_dir: {log_dir}")
 
+
+from cogtainer.update_cli import update  # noqa: E402
+
+cli.add_command(update)
 
 if __name__ == "__main__":
     cli()

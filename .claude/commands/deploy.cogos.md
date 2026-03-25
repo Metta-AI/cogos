@@ -39,13 +39,14 @@ cogos stop
 # Restart (stop + boot + start)
 cogos restart
 
-# Update Lambda function code only
+# Per-cogent deploys (recommended)
+cogent update lambda                  # Update Lambda function code
+cogent update rds                     # Run DB schema migrations
+cogent update all                     # Update all components
+
+# Bulk cogtainer deploys (secondary)
 cogtainer update <cogtainer-name> --lambdas
-
-# Update ECS services only
 cogtainer update <cogtainer-name> --services
-
-# Update all components (default if no flags)
 cogtainer update <cogtainer-name>
 ```
 
@@ -58,13 +59,13 @@ cogos restart
 
 **Executor code change** (edited `src/cogos/executor/`, `src/cogos/sandbox/`, etc.):
 ```bash
-cogtainer update <cogtainer-name> --lambdas
+cogent update lambda
 cogos restart  # if image also changed
 ```
 
 **Schema migration + executor change** (migrations run during image boot):
 ```bash
-cogtainer update <cogtainer-name> --lambdas
+cogent update lambda
 cogos restart
 ```
 

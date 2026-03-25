@@ -66,8 +66,8 @@ This returns the boot manifest with all component SHAs:
 Compare each component SHA against the expected version in `images/cogos/versions.defaults.json` to confirm the deploy is current.
 
 **Common version mismatches:**
-- `dashboard` stale → need `cogtainer deploy-dashboard <name> --sha sha-<short_sha>` (note the `sha-` prefix!)
-- `lambda`/`executor` stale → need `cogtainer update <name> --lambdas`
+- `dashboard` stale → need `cogent update dashboard` (or `cogent update dashboard --sha <sha>`)
+- `lambda`/`executor` stale → need `cogent update lambda`
 - `cogos` stale → need `cogos restart` to reboot the image
 
 ## Which cogent to use
@@ -145,7 +145,7 @@ print('All updated to epoch', epoch)
 git push
 
 # 2. Deploy Lambda (executor + event-router + dispatcher)
-cogtainer update <cogtainer-name> --lambdas
+cogent update lambda
 
 # 3. Load image files into DB
 cogos start
