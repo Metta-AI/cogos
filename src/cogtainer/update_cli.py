@@ -134,6 +134,19 @@ def _ensure_db_env(name: str, profile: str | None = None) -> None:
         os.environ["AWS_SESSION_TOKEN"] = creds.token
 
 
+def _create_repo(name: str, profile: str | None = None):  # noqa: ANN201
+    """Ensure DB env vars are set and return a repository instance."""
+    _ensure_db_env(name, profile)
+    from cogos.db.factory import create_repository
+
+    return create_repository(
+        resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
+        secret_arn=os.environ.get("DB_SECRET_ARN"),
+        database=os.environ.get("DB_NAME"),
+        region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+    )
+
+
 def _package_lambda_code() -> bytes:
     """Zip the src/ directory with pip-installed dependencies for Lambda deployment.
 
@@ -243,18 +256,10 @@ def _read_boot_versions(name: str) -> dict[str, str] | None:
         return local
 
     try:
-        _ensure_db_env(name)
         import json as _json
 
-        from cogos.db.factory import create_repository
         from cogos.files.store import FileStore
-        repo = create_repository(
-            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
-            secret_arn=os.environ.get("DB_SECRET_ARN"),
-            database=os.environ.get("DB_NAME"),
-            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
-        )
-        fs = FileStore(repo)
+        fs = FileStore(_create_repo(name))
         content = fs.get_content("mnt/boot/versions.json")
         if content:
             return _json.loads(content).get("components", {})
@@ -268,17 +273,9 @@ def _update_boot_versions(name: str, updates: dict[str, str]) -> None:
     try:
         import json as _json
 
-        _ensure_db_env(name)
-        from cogos.db.factory import create_repository
         from cogos.files.store import FileStore
 
-        repo = create_repository(
-            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
-            secret_arn=os.environ.get("DB_SECRET_ARN"),
-            database=os.environ.get("DB_NAME"),
-            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
-        )
-        fs = FileStore(repo)
+        fs = FileStore(_create_repo(name))
         content = fs.get_content("mnt/boot/versions.json")
         manifest = _json.loads(content) if content else {"components": {}}
         manifest.setdefault("components", {}).update(updates)
@@ -363,15 +360,7 @@ def update_lambda(ctx: click.Context, profile: str | None, sha: str | None):
 
     # Record content deploy timestamp
     try:
-        from cogos.db.factory import create_repository
-
-        repo = create_repository(
-            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
-            secret_arn=os.environ.get("DB_SECRET_ARN"),
-            database=os.environ.get("DB_NAME"),
-            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
-        )
-        repo.set_meta("content:deployed_at")
+        _create_repo(name).set_meta("content:deployed_at")
     except Exception:
         pass
 
@@ -604,24 +593,17 @@ def update_discord(ctx: click.Context, profile: str | None, skip_health: bool, t
 @click.pass_context
 def update_rds(ctx: click.Context, profile: str | None, force: bool):
     """Run database schema migrations via Data API."""
-    from cogos.db.factory import create_repository
     from cogos.db.migrations import apply_cogos_sql_migrations, apply_schema
 
     t0 = time.monotonic()
     name = get_cogent_name(ctx)
-    _ensure_db_env(name, profile)
     click.echo(f"Running migrations for cogent-{name} via Data API...")
 
     admin_session = _get_admin_session(profile)
     rds_client = admin_session.client("rds-data", region_name=DEFAULT_REGION)
     version = apply_schema(client=rds_client)
 
-    repo = create_repository(
-        resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
-        secret_arn=os.environ.get("DB_SECRET_ARN"),
-        database=os.environ.get("DB_NAME"),
-        region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
-    )
+    repo = _create_repo(name, profile)
     statements = apply_cogos_sql_migrations(repo)
 
     # Record schema migration timestamp
@@ -864,16 +846,7 @@ def update_stack(ctx: click.Context, profile: str | None):
 
     # Record stack update timestamp
     try:
-        _ensure_db_env(name)
-        from cogos.db.factory import create_repository
-
-        repo = create_repository(
-            resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
-            secret_arn=os.environ.get("DB_SECRET_ARN"),
-            database=os.environ.get("DB_NAME"),
-            region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
-        )
-        repo.set_meta("stack:updated_at")
+        _create_repo(name).set_meta("stack:updated_at")
     except Exception:
         pass
 

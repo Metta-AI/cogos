@@ -66,6 +66,9 @@ class AwsRuntime(CogtainerRuntime):
             }
         return self._db_info_cache
 
+    def get_db_info(self) -> dict[str, str]:
+        return self._get_db_info()
+
     # ── Repository ───────────────────────────────────────────
 
     def get_repository(self, cogent_name: str) -> Any:

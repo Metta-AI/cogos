@@ -94,6 +94,10 @@ class CogtainerRuntime(ABC):
     def get_bedrock_client(self) -> Any:
         """Return a Bedrock runtime client, or None if not applicable."""
 
+    def get_db_info(self) -> dict[str, str]:
+        """Return DB connection info (cluster_arn, secret_arn). Empty dict if not applicable."""
+        return {}
+
     @abstractmethod
     def get_session(self) -> Any:
         """Return the underlying cloud session (e.g. boto3.Session), or None."""
