@@ -218,6 +218,7 @@ def dashboard_init(
             "required_tags": p.required_tags,
             "model": p.model,
             "preemptible": p.preemptible,
+            "parent_process": str(p.parent_process) if p.parent_process else None,
             "epoch": p.epoch,
             "updated_at": str(p.updated_at) if p.updated_at else None,
             "created_at": str(p.created_at) if p.created_at else None,
