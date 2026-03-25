@@ -183,11 +183,11 @@ function parseAddress(address: string): { apiUrl: string; cogentName: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Remote MCP client — connects to CogOS fastapi-mcp at /mcp
+// Remote MCP client — connects to CogOS fastapi-mcp at /api/mcp
 // ---------------------------------------------------------------------------
 
 async function connectRemoteMcp(): Promise<void> {
-  const mcpUrl = new URL(`${state.apiUrl}/mcp`);
+  const mcpUrl = new URL(`${state.apiUrl}/api/mcp`);
 
   remoteTransport = new StreamableHTTPClientTransport(mcpUrl, {
     requestInit: { headers: headers() },

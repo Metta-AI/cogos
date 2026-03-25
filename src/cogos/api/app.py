@@ -299,8 +299,8 @@ def create_app() -> FastAPI:
         from fastapi_mcp import FastApiMCP
 
         mcp = FastApiMCP(app, name="cogos")
-        mcp.mount_http()
-        logger.info("FastAPI-MCP mounted at /mcp")
+        mcp.mount_http(mount_path="/api/mcp")
+        logger.info("FastAPI-MCP mounted at /api/mcp")
     except ImportError:
         logger.warning("fastapi-mcp not installed, /mcp endpoint unavailable")
 
