@@ -1,8 +1,8 @@
 """Verify all channels can be imported and instantiated."""
 
+from cogos.io.asana import AsanaIO
 from cogos.io.base import IOAdapter, IOMode
 from cogos.io.github import GitHubIO
-from cogos.io.asana import AsanaIO
 
 
 class TestAllChannelsImport:

@@ -82,13 +82,22 @@ class MessageRouter:
     def _detect_switch(self, content: str) -> str | None:
         if not content:
             return None
-        lower = content.strip().lower()
+        # Strip bot mentions (e.g. "<@123456>") from the start of the message
+        lower = re.sub(r"<@!?\d+>\s*", "", content.strip()).lower()
+        if not lower:
+            return None
         for name in self._lifecycle.personas:
-            if lower == name.lower():
+            nl = name.lower()
+            # Exact match: "alpha"
+            if lower == nl:
                 return name
-            if lower == f"@{name.lower()}":
+            # @-prefixed exact: "@alpha"
+            if lower == f"@{nl}":
                 return name
-            if re.match(rf"switch\s+to\s+{re.escape(name)}", lower, re.IGNORECASE):
+            # Name at start followed by separator (comma, space, etc.): "alpha, do X"
+            if re.match(rf"@?{re.escape(nl)}[\s,:]", lower):
+                return name
+            if re.match(rf"switch\s+to\s+{re.escape(nl)}", lower, re.IGNORECASE):
                 return name
         return None
 

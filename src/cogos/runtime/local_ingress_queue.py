@@ -44,6 +44,7 @@ class LocalIngressQueue:
     def __init__(self, maxsize: int = 1000) -> None:
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=maxsize)
         self._lock = threading.Lock()
+        self._event = threading.Event()
 
     # ── Producer (called by Repository._nudge_ingress) ────
 
@@ -55,6 +56,7 @@ class LocalIngressQueue:
             msg = {"source": "unknown", "raw": body}
         try:
             self._queue.put_nowait(msg)
+            self._event.set()
             logger.debug("local ingress: enqueued %s", msg)
         except queue.Full:
             logger.warning("local ingress queue full — dropping nudge %s", msg)
@@ -81,6 +83,17 @@ class LocalIngressQueue:
             return self._queue.get(timeout=timeout)
         except queue.Empty:
             return None
+
+    def wait_for_nudge(self, timeout: float = 1.0) -> bool:
+        """Block until a nudge arrives or *timeout* elapses.
+
+        Returns True if a nudge arrived, False on timeout.  Use this
+        instead of ``time.sleep()`` in the dispatcher loop so that
+        processes are dispatched immediately when they become runnable.
+        """
+        triggered = self._event.wait(timeout=timeout)
+        self._event.clear()
+        return triggered
 
     @property
     def pending(self) -> int:

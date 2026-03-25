@@ -343,6 +343,8 @@ class AwsRuntime(CogtainerRuntime):
             "--app", "python -m cogtainer.cdk.app",
             "-c", f"cogtainer_name={self._cogtainer_name}",
             "-c", f"cogent_name={cogent_name}",
+            "-c", "dashboard_sha=latest",
+            "-c", "bridge_image_tag=executor-latest",
             "--require-approval", "never",
         ]
         env = {**os.environ, "AWS_PROFILE": resolve_org_profile()}
@@ -352,7 +354,105 @@ class AwsRuntime(CogtainerRuntime):
             raise RuntimeError(f"CDK deploy failed for {stack_name}")
 
     def destroy_cogent(self, name: str) -> None:
-        """Remove cogent from status table."""
+        """Destroy a cogent and all its per-cogent resources.
+
+        Tears down: CDK stack (Lambdas, SQS, IAM, EventBridge, ECS services),
+        PostgreSQL database, DNS record, S3 data prefix, and DynamoDB entry.
+        Does NOT touch shared resources (Aurora cluster, sessions bucket,
+        ALB, VPC, ECS cluster, EventBridge bus, DynamoDB table).
+        """
+        import os
+        import subprocess
+
+        safe = self._safe(name)
+
+        # Pre-fetch cogtainer-level stack outputs (domain, etc.) before any teardown
+        outputs = self._get_stack_outputs()
+        domain = outputs.get("Domain", "")
+
+        # 1. Destroy per-cogent CDK stack
+        logger.info("Destroying CDK stack for cogent %s", name)
+        try:
+            from cogtainer.cogtainer_cli import resolve_org_profile
+
+            stack_name = f"cogtainer-{self._cogtainer_name}-{safe}"
+            cmd = [
+                "npx", "cdk", "destroy", stack_name,
+                "--app", "python -m cogtainer.cdk.app",
+                "-c", f"cogtainer_name={self._cogtainer_name}",
+                "-c", f"cogent_name={name}",
+                "--force",
+            ]
+            env = {**os.environ, "AWS_PROFILE": resolve_org_profile()}
+            result = subprocess.run(cmd, capture_output=False, env=env)
+            if result.returncode != 0:
+                logger.warning("CDK destroy failed for %s (may not exist)", stack_name)
+        except Exception:
+            logger.warning("Could not destroy CDK stack for %s", name, exc_info=True)
+
+        # 2. Drop per-cogent PostgreSQL database
+        logger.info("Dropping database for cogent %s", name)
+        try:
+            db_info = self._get_db_info()
+            db_name = f"cogent_{safe.replace('-', '_')}"
+            rds = self._session.client("rds-data", region_name=self._region)
+            # Terminate active connections first
+            rds.execute_statement(
+                resourceArn=db_info["cluster_arn"],
+                secretArn=db_info["secret_arn"],
+                database="postgres",
+                sql=(
+                    f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid()"
+                ),
+            )
+            rds.execute_statement(
+                resourceArn=db_info["cluster_arn"],
+                secretArn=db_info["secret_arn"],
+                database="postgres",
+                sql=f"DROP DATABASE IF EXISTS {db_name}",
+            )
+            logger.info("Dropped database %s", db_name)
+        except Exception:
+            logger.warning("Could not drop database for %s", name, exc_info=True)
+
+        # 3. Delete Cloudflare DNS record
+        logger.info("Deleting DNS record for cogent %s", name)
+        try:
+            # cloudflare module reads COGTAINER env var at import time
+            os.environ.setdefault("COGTAINER", self._cogtainer_name)
+            from cogtainer.cloudflare import delete_dns_record
+            from cogtainer.secret_store import SecretStore
+
+            store = SecretStore(session=self._session, region=self._region)
+            if domain:
+                delete_dns_record(store, safe, domain)
+                logger.info("Deleted DNS record for %s.%s", safe, domain)
+            else:
+                logger.warning("No domain in stack outputs, skipping DNS cleanup")
+        except Exception:
+            logger.warning("Could not delete DNS record for %s", name, exc_info=True)
+
+        # 4. Clean up S3 data prefix (per-cogent only, not shared dashboard/)
+        logger.info("Cleaning up S3 data for cogent %s", name)
+        try:
+            bucket = f"cogtainer-{self._cogtainer_name}-sessions"
+            s3 = self._session.client("s3", region_name=self._region)
+            prefix = f"{safe}/"
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                objects = page.get("Contents", [])
+                if objects:
+                    s3.delete_objects(
+                        Bucket=bucket,
+                        Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
+                    )
+            logger.info("Cleaned up S3 prefix %s in %s", prefix, bucket)
+        except Exception:
+            logger.warning("Could not clean up S3 data for %s", name, exc_info=True)
+
+        # 5. Remove from DynamoDB status table
+        logger.info("Removing cogent %s from status table", name)
         ddb = self._session.resource("dynamodb", region_name=self._region)
         ddb.Table(self._status_table).delete_item(Key={"cogent_name": name})
 

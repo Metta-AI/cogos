@@ -1,6 +1,6 @@
 """Tests for Discord message chunking."""
 
-from cogos.io.discord.chunking import chunk_message, DISCORD_MAX_LENGTH
+from cogos.io.discord.chunking import DISCORD_MAX_LENGTH, chunk_message
 
 
 class TestChunkMessage:

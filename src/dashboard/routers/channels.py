@@ -31,6 +31,45 @@ def _count_channel_messages(repo, channel_id: UUID) -> int:
     return 0
 
 
+def _batch_count_messages(repo, channel_ids: list[UUID]) -> dict[UUID, int]:
+    """Count messages per channel using a simple GROUP BY with a timeout fallback."""
+    if not channel_ids:
+        return {}
+    try:
+        response = repo._execute(
+            "SELECT channel, COUNT(*) AS cnt FROM cogos_channel_message GROUP BY channel",
+        )
+        result: dict[UUID, int] = {}
+        for row in response.get("records", []):
+            cid = UUID(row[0].get("stringValue", ""))
+            cnt = row[1].get("longValue", 0)
+            result[cid] = cnt
+        return result
+    except Exception:
+        logger.warning("Batch message count failed", exc_info=True)
+        return {}
+
+
+def _batch_count_handlers(repo, channel_ids: list[UUID]) -> dict[UUID, int]:
+    """Count enabled handlers for all channels in a single query."""
+    if not channel_ids:
+        return {}
+    try:
+        response = repo._execute(
+            "SELECT channel, COUNT(*) AS cnt FROM cogos_handler"
+            " WHERE enabled = TRUE AND channel IS NOT NULL GROUP BY channel",
+        )
+        result: dict[UUID, int] = {}
+        for row in response.get("records", []):
+            cid = UUID(row[0].get("stringValue", ""))
+            cnt = row[1].get("longValue", 0)
+            result[cid] = cnt
+        return result
+    except Exception:
+        logger.warning("Batch handler count failed", exc_info=True)
+        return {}
+
+
 class ChannelOut(BaseModel):
     id: str
     name: str
@@ -105,7 +144,7 @@ def list_channels(
     name: str,
     channel_type: str | None = Query(None),
     owner: str | None = Query(None),
-    limit: int = Query(500, ge=1, le=2000),
+    limit: int = Query(100, ge=1, le=2000),
 ) -> ChannelsResponse:
     repo = get_repo()
     owner_id = UUID(owner) if owner else None
@@ -113,12 +152,30 @@ def list_channels(
     if channel_type:
         channels = [ch for ch in channels if ch.channel_type.value == channel_type]
 
-    processes = repo.list_processes()
-    proc_names = {p.id: p.name for p in processes}
+    # Only build process name lookup for channels that have an owner
+    owner_pids = {ch.owner_process for ch in channels if ch.owner_process}
+    if owner_pids:
+        processes = repo.list_processes(limit=500)
+        proc_names = {p.id: p.name for p in processes if p.id in owner_pids}
+    else:
+        proc_names = {}
+
+    # Batch-fetch message counts and handler counts to avoid N+1 queries
+    channel_ids = [ch.id for ch in channels]
+    message_counts = _batch_count_messages(repo, channel_ids)
+    handler_counts = _batch_count_handlers(repo, channel_ids)
+
+    # Pre-fetch all schemas to avoid per-channel lookups
+    schemas_by_id = {}
+    try:
+        for s in repo.list_schemas():
+            schemas_by_id[s.id] = s
+    except Exception:
+        logger.warning("Failed to pre-fetch schemas for channel listing", exc_info=True)
 
     out = []
     for ch in channels:
-        handlers = repo.match_handlers_by_channel(ch.id)
+        schema = schemas_by_id.get(ch.schema_id) if ch.schema_id else None
         out.append(
             ChannelOut(
                 id=str(ch.id),
@@ -126,14 +183,14 @@ def list_channels(
                 channel_type=ch.channel_type.value,
                 owner_process=str(ch.owner_process) if ch.owner_process else None,
                 owner_process_name=proc_names.get(ch.owner_process) if ch.owner_process else None,
-                schema_name=_schema_name(repo, ch),
+                schema_name=schema.name if schema else None,
                 schema_id=str(ch.schema_id) if ch.schema_id else None,
-                schema_definition=_schema_definition(repo, ch),
-                inline_schema=ch.inline_schema,
+                schema_definition=None,  # omit from list view to reduce payload
+                inline_schema=None,  # omit from list view to reduce payload
                 auto_close=ch.auto_close,
                 closed_at=str(ch.closed_at) if ch.closed_at else None,
-                message_count=_count_channel_messages(repo, ch.id),
-                subscriber_count=len(handlers),
+                message_count=message_counts.get(ch.id, 0),
+                subscriber_count=handler_counts.get(ch.id, 0),
                 created_at=str(ch.created_at) if ch.created_at else None,
             )
         )
@@ -148,11 +205,20 @@ def get_channel(name: str, channel_id: str, limit: int = Query(50)) -> ChannelDe
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    processes = repo.list_processes()
-    proc_names = {p.id: p.name for p in processes}
     handlers = repo.match_handlers_by_channel(ch.id)
 
     msgs = repo.list_channel_messages(ch.id, limit=limit)
+
+    # Build process name lookup only for referenced processes
+    referenced_pids = {m.sender_process for m in msgs if m.sender_process}
+    if ch.owner_process:
+        referenced_pids.add(ch.owner_process)
+    if referenced_pids:
+        processes = repo.list_processes(limit=500)
+        proc_names: dict[UUID, str] = {p.id: p.name for p in processes if p.id in referenced_pids}
+    else:
+        proc_names = {}
+
     msg_out = [
         ChannelMessageOut(
             id=str(m.id),

@@ -1,11 +1,9 @@
 import json
-import os
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Channel,
@@ -21,6 +19,7 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.executor import handler as executor_handler
 from cogos.files.store import FileStore
 from cogos.runtime.local import run_and_complete
@@ -94,7 +93,7 @@ def test_executor_recreates_missing_dispatch_run(monkeypatch, tmp_path):
     monkeypatch.setattr(
         executor_handler,
         "execute_process",
-        lambda process, event_data, run, config, repo, **kwargs: run,
+        lambda process, event_data, run, config, repo, **kwargs: setattr(run, "model_version", "test") or run,
     )
     missing_run_id = uuid4()
 
@@ -145,7 +144,7 @@ def test_daemon_returns_to_runnable_when_more_deliveries_wait(monkeypatch, tmp_p
     monkeypatch.setattr(
         executor_handler,
         "execute_process",
-        lambda process, event_data, run, config, repo, **kwargs: run,
+        lambda process, event_data, run, config, repo, **kwargs: setattr(run, "model_version", "test") or run,
     )
 
     result = executor_handler.handler(
@@ -276,7 +275,7 @@ def test_daemon_suspended_after_consecutive_failures(monkeypatch, tmp_path):
     monkeypatch.setattr(executor_handler, "execute_process", _fail)
 
     # Run and fail 3 times — daemon should be suspended on the 3rd
-    for i in range(3):
+    for _ in range(3):
         result = executor_handler.handler(
             {"process_id": str(process.id)},
             None,
@@ -313,7 +312,7 @@ def test_daemon_not_suspended_with_fewer_than_threshold_failures(monkeypatch, tm
     monkeypatch.setattr(executor_handler, "execute_process", _fail)
 
     # Fail only twice — daemon should stay waiting
-    for i in range(2):
+    for _ in range(2):
         executor_handler.handler(
             {"process_id": str(process.id)},
             None,
@@ -343,13 +342,15 @@ def test_daemon_not_suspended_if_success_breaks_streak(monkeypatch, tmp_path):
         fail_count["n"] += 1
         if fail_count["n"] == 2:
             # Second call succeeds
-            return args[2]  # return the run
+            run = args[2]
+            run.model_version = "test"
+            return run
         raise RuntimeError("boom")
 
     monkeypatch.setattr(executor_handler, "execute_process", _sometimes_fail)
 
     # Fail, succeed, fail — should NOT suspend (no 3 consecutive failures)
-    for i in range(3):
+    for _ in range(3):
         executor_handler.handler(
             {"process_id": str(process.id)},
             None,
@@ -1159,7 +1160,8 @@ route = path.removeprefix("/api").strip("/")
 if route == "status":
     web.respond(request_id, status=200, headers={"content-type": "application/json"}, body=json.dumps({"status": "ok"}))
 else:
-    web.respond(request_id, status=404, headers={"content-type": "application/json"}, body=json.dumps({"error": "not found"}))
+    web.respond(request_id, status=404, headers={"content-type": "application/json"},
+                body=json.dumps({"error": "not found"}))
 """,
         status=ProcessStatus.RUNNABLE,
     )
@@ -1256,7 +1258,7 @@ def test_large_tool_output_spilled_to_file_store(monkeypatch, tmp_path):
 
     fake = _FakeBedrock(responses)
     monkeypatch.setattr(executor_handler, "_get_runtime", lambda: _FakeRuntime(fake))
-    result_run = executor_handler.execute_process(
+    _result_run = executor_handler.execute_process(
         process,
         {"process_id": str(process.id)},
         run,

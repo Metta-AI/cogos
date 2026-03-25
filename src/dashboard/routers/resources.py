@@ -12,15 +12,17 @@ router = APIRouter(tags=["resources"])
 def list_resources(name: str) -> ResourcesResponse:
     repo = get_repo()
     resources = repo.list_resources()
-    items = [
-        ResourceItem(
-            name=r.name,
-            resource_type=r.resource_type.value,
-            capacity=r.capacity,
-            used=0.0,
-            metadata=r.metadata or {},
-            created_at=str(r.created_at) if r.created_at else None,
+    items = []
+    for r in resources:
+        assert r.metadata is not None
+        items.append(
+            ResourceItem(
+                name=r.name,
+                resource_type=r.resource_type.value,
+                capacity=r.capacity,
+                used=0.0,
+                metadata=r.metadata,
+                created_at=str(r.created_at) if r.created_at else None,
+            )
         )
-        for r in resources
-    ]
     return ResourcesResponse(cogent_name=name, count=len(items), resources=items)

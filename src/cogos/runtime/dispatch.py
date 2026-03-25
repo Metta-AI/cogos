@@ -16,7 +16,10 @@ def _load_message_payload(repo: CogosRepositoryInterface, message_id: str | None
     if not message_id:
         return {}
     msg = repo.get_channel_message(UUID(message_id))
-    return msg.payload or {} if msg else {}
+    if msg is None:
+        return {}
+    assert isinstance(msg.payload, dict), "msg.payload must be a dict"
+    return msg.payload
 
 
 def _resolve_channel_name(repo: CogosRepositoryInterface, message_id: str | None) -> str | None:

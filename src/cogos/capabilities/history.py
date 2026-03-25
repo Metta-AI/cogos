@@ -134,11 +134,11 @@ class HistoryCapability(Capability):
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
         merged = {}
-        old_ops = set(existing.get("ops") or self.ALL_OPS)
-        new_ops = set(requested.get("ops") or self.ALL_OPS)
+        old_ops = set(existing.get("ops", self.ALL_OPS))
+        new_ops = set(requested.get("ops", self.ALL_OPS))
         merged["ops"] = sorted(old_ops & new_ops)
-        old_pids = set(existing.get("process_ids") or [])
-        new_pids = set(requested.get("process_ids") or [])
+        old_pids = set(existing.get("process_ids", []))
+        new_pids = set(requested.get("process_ids", []))
         if old_pids and new_pids:
             merged["process_ids"] = sorted(old_pids & new_pids)
         elif old_pids:
@@ -150,7 +150,7 @@ class HistoryCapability(Capability):
     def _check(self, op: str, **context: object) -> None:
         if not self._scope:
             return
-        allowed = set(self._scope.get("ops") or self.ALL_OPS)
+        allowed = set(self._scope.get("ops", self.ALL_OPS))
         if op not in allowed:
             raise PermissionError(f"Operation '{op}' not allowed (allowed: {sorted(allowed)})")
 

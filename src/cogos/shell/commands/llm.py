@@ -291,8 +291,9 @@ def _execute_prompt(state: ShellState, content: str, *, verbose: bool = False) -
                 lines.append(f"{_DIM}(no text response){_RESET}")
 
     lines.append(
-        f"{_DIM}tokens: {run_obj.tokens_in or 0} in, {run_obj.tokens_out or 0} out"
-        f" ({run_obj.duration_ms or 0}ms){_RESET}"
+        f"{_DIM}tokens: {run_obj.tokens_in if run_obj.tokens_in is not None else 0} in,"
+        f" {run_obj.tokens_out if run_obj.tokens_out is not None else 0} out"
+        f" ({run_obj.duration_ms if run_obj.duration_ms is not None else 0}ms){_RESET}"
     )
     if run_obj.status == RunStatus.FAILED:
         lines.append(f"{_RED}Error: {run_obj.error}{_RESET}")
@@ -483,8 +484,9 @@ def register(reg: CommandRegistry) -> None:
 
         lines = [f"Process {name} completed"]
         lines.append(
-            f"{_DIM}tokens: {run_obj.tokens_in or 0} in, {run_obj.tokens_out or 0} out"
-            f" ({run_obj.duration_ms or 0}ms){_RESET}"
+            f"{_DIM}tokens: {run_obj.tokens_in if run_obj.tokens_in is not None else 0} in,"
+            f" {run_obj.tokens_out if run_obj.tokens_out is not None else 0} out"
+            f" ({run_obj.duration_ms if run_obj.duration_ms is not None else 0}ms){_RESET}"
         )
         if run_obj.status == RunStatus.FAILED:
             lines.append(f"{_RED}Error: {run_obj.error}{_RESET}")

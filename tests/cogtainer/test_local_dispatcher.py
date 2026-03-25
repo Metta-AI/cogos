@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import signal
-import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +14,10 @@ from cogtainer.runtime.local import LocalRuntime
 
 @pytest.fixture()
 def local_runtime(tmp_path: Path) -> LocalRuntime:
-    entry = CogtainerEntry(type="local", data_dir=str(tmp_path), llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""))
+    entry = CogtainerEntry(
+        type="local", data_dir=str(tmp_path),
+        llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
+    )
     llm = MagicMock()
     return LocalRuntime(entry=entry, llm=llm)
 
@@ -122,25 +123,23 @@ def test_run_loop_uses_custom_tick_interval(local_runtime: LocalRuntime):
         tick_count += 1
         return {"dispatched": 0}
 
+    call_count = 0
+
+    def wait_then_stop(timeout=1.0):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise KeyboardInterrupt
+        return False
+
     with patch("cogtainer.local_dispatcher.run_tick", side_effect=mock_run_tick), \
-         patch("cogtainer.local_dispatcher.time.sleep") as mock_sleep:
-        call_count = 0
-
-        def sleep_then_stop(seconds):
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 2:
-                raise KeyboardInterrupt
-
-        mock_sleep.side_effect = sleep_then_stop
-
+         patch.object(local_runtime.ingress_queue, "wait_for_nudge", side_effect=wait_then_stop):
         try:
             run_loop(repo, local_runtime, cogent_name, tick_interval=5)
         except KeyboardInterrupt:
             pass
 
     assert tick_count >= 1
-    mock_sleep.assert_called_with(1)
 
 
 def test_run_loop_logs_custom_tick_interval(local_runtime: LocalRuntime):
@@ -150,10 +149,8 @@ def test_run_loop_logs_custom_tick_interval(local_runtime: LocalRuntime):
     repo = local_runtime.get_repository(cogent_name)
 
     with patch("cogtainer.local_dispatcher.run_tick", return_value={"dispatched": 0}), \
-         patch("cogtainer.local_dispatcher.time.sleep") as mock_sleep, \
+         patch.object(local_runtime.ingress_queue, "wait_for_nudge", side_effect=KeyboardInterrupt), \
          patch("cogtainer.local_dispatcher.logger") as mock_logger:
-        mock_sleep.side_effect = KeyboardInterrupt
-
         try:
             run_loop(repo, local_runtime, cogent_name, tick_interval=15)
         except KeyboardInterrupt:

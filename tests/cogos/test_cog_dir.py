@@ -9,7 +9,6 @@ import pytest
 
 from cogos.cog.cog import Cog, CogConfig, CogletRef, resolve_cog_paths
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

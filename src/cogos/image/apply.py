@@ -45,9 +45,9 @@ def _apply_image_inner(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean
             handler=cap_dict["handler"],
             description=cap_dict.get("description", ""),
             instructions=cap_dict.get("instructions", ""),
-            schema=cap_dict.get("schema") or {},
+            schema=cap_dict["schema"],
             iam_role_arn=cap_dict.get("iam_role_arn"),
-            metadata=cap_dict.get("metadata") or {},
+            metadata=cap_dict["metadata"],
         )
         repo.upsert_capability(cap)
         counts["capabilities"] += 1
@@ -58,7 +58,7 @@ def _apply_image_inner(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean
             name=res_dict["name"],
             resource_type=ResourceType(res_dict.get("resource_type", res_dict.get("type", "pool"))),
             capacity=float(res_dict.get("capacity", 1.0)),
-            metadata=res_dict.get("metadata") or {},
+            metadata=res_dict["metadata"],
         )
         repo.upsert_resource(r)
         counts["resources"] += 1
@@ -71,7 +71,7 @@ def _apply_image_inner(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean
         c = Cron(
             expression=cron_dict["expression"],
             channel_name=channel_name,
-            payload=cron_dict.get("payload") or {},
+            payload=cron_dict["payload"],
             enabled=cron_dict.get("enabled", True),
         )
         repo.upsert_cron(c)
@@ -145,7 +145,7 @@ def _apply_image_inner(spec: ImageSpec, repo: CogosRepositoryInterface, *, clean
                 if mode == ProcessMode.DAEMON and proc_dict["name"] != "init"
                 else ProcessStatus.RUNNABLE
             ),
-            metadata=proc_dict.get("metadata") or {},
+            metadata=proc_dict["metadata"],
             idle_timeout_ms=proc_dict.get("idle_timeout_ms"),
         )
         pid = repo.upsert_process(p)

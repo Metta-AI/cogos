@@ -68,7 +68,7 @@ class CommandRegistry:
         result = fn(state, args)
         if result is None:
             return None
-        return result or ""
+        return result
 
     @property
     def command_names(self) -> list[str]:

@@ -11,7 +11,6 @@ import functools
 import logging
 import os
 from pathlib import Path
-
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -21,8 +20,8 @@ logger = logging.getLogger(__name__)
 def get_repo() -> Any:
     if os.environ.get("USE_LOCAL_DB") == "1":
         try:
-            from cogtainer.config import load_config, resolve_cogent_name, resolve_cogtainer_name
             from cogtainer.cogtainer_cli import _config_path
+            from cogtainer.config import load_config, resolve_cogent_name, resolve_cogtainer_name
             from cogtainer.runtime.factory import create_runtime
 
             cfg = load_config(_config_path())
@@ -40,6 +39,7 @@ def get_repo() -> Any:
             return SqliteRepository(data_dir)
 
     import boto3
+
     from cogos.db.repository import RdsDataApiRepository
     region = os.environ.get("AWS_REGION", "us-east-1")
     client = boto3.client("rds-data", region_name=region)

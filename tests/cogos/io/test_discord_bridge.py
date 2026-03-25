@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import discord
 import pytest
 
 from cogos.io.discord.bridge import DiscordBridge, _reply_queue_latency_ms

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
-
-import pytest
 
 from cogos.capabilities.base import Capability
 from cogos.capabilities.loader import _resolve_handler, build_capability_proxies

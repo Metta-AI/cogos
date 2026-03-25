@@ -10,10 +10,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from cogos.capabilities.base import Capability
-from cogos.capabilities.loader import build_capability_proxies
 from cogos.api.auth import AuthContext, validate_token
 from cogos.api.db import get_repo
+from cogos.capabilities.base import Capability
+from cogos.capabilities.loader import build_capability_proxies
 
 logger = logging.getLogger(__name__)
 

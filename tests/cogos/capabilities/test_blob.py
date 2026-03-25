@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from cogos.capabilities.blob import BlobCapability, BlobRef, BlobContent, BlobError
+from cogos.capabilities.blob import BlobCapability, BlobContent, BlobError, BlobRef
 
 
 def _make_cap() -> tuple[BlobCapability, MagicMock]:

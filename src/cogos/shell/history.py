@@ -27,6 +27,8 @@ class CogOSHistory(History):
         yield from reversed(lines)
 
     def store_string(self, string: str) -> None:
-        content = self._fs.get_content(_HISTORY_KEY) or ""
+        content = self._fs.get_content(_HISTORY_KEY)
+        if content is None:
+            content = ""
         content += string + "\n"
         self._fs.upsert(_HISTORY_KEY, content, source="shell")

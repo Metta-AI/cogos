@@ -22,7 +22,9 @@ def register(reg: CommandRegistry) -> None:
             canonical = reg.get_canonical(name)
             if canonical and canonical != name:
                 continue  # skip aliases
-            h = reg.get_help(name) or ""
+            h = reg.get_help(name)
+            if h is None:
+                h = ""
             lines.append(f"  {name:<16} {h}")
         return "\n".join(lines)
 

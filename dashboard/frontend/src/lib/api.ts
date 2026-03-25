@@ -47,7 +47,16 @@ function encodeFileKey(key: string): string {
 async function fetchJSON<T>(path: string): Promise<T> {
   const resp = await fetch(path, { headers: headers() });
   if (resp.status === 401) throw new Error("unauthorized");
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  if (!resp.ok) {
+    let detail = `${resp.status} ${resp.statusText}`;
+    try {
+      const body = await resp.json();
+      if (body?.detail) detail = `${resp.status}: ${body.detail}`;
+    } catch {
+      // no JSON body
+    }
+    throw new Error(detail);
+  }
   return resp.json();
 }
 
@@ -190,6 +199,15 @@ export async function toggleCrons(
 export async function getCogosStatus(name: string, epoch?: string): Promise<CogosStatus> {
   const params = epoch ? `?epoch=${epoch}` : "";
   return fetchJSON(`/api/cogents/${name}/cogos-status${params}`);
+}
+
+export async function getDashboardInit(name: string, epoch?: string): Promise<{
+  cogos_status: CogosStatus;
+  processes: CogosProcess[];
+  alerts: Alert[];
+}> {
+  const params = epoch ? `?epoch=${epoch}` : "";
+  return fetchJSON(`/api/cogents/${name}/dashboard-init${params}`);
 }
 
 export async function getSetup(name: string): Promise<SetupResponse> {

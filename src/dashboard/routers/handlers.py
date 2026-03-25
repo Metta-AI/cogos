@@ -69,13 +69,15 @@ def list_handlers(
     pid = UUID(process) if process else None
     items = repo.list_handlers(process_id=pid)
 
-    # Build process name lookup
-    processes = repo.list_processes()
-    process_names = {p.id: p.name for p in processes}
+    # Build lookups only for referenced IDs
+    referenced_pids = {h.process for h in items if h.process}
+    referenced_cids = {h.channel for h in items if h.channel}
 
-    # Build channel name lookup
-    channels = repo.list_channels()
-    channel_names = {ch.id: ch.name for ch in channels}
+    processes = repo.list_processes(limit=500)
+    process_names = {p.id: p.name for p in processes if p.id in referenced_pids}
+
+    channels = repo.list_channels(limit=500)
+    channel_names = {ch.id: ch.name for ch in channels if ch.id in referenced_cids}
 
     out = [_to_out(h, process_names, channel_names) for h in items]
     return HandlersResponse(count=len(out), handlers=out)
@@ -91,10 +93,11 @@ def create_handler(name: str, body: HandlerCreate) -> HandlerOut:
     )
     repo.create_handler(h)
 
-    processes = repo.list_processes()
-    process_names = {p.id: p.name for p in processes}
-    channels = repo.list_channels()
-    channel_names = {ch.id: ch.name for ch in channels}
+    # Only look up the specific process and channel we just referenced
+    p = repo.get_process(h.process)
+    process_names = {h.process: p.name} if p else {}
+    ch = repo.get_channel(h.channel) if h.channel else None
+    channel_names: dict[UUID, str] = {h.channel: ch.name} if (ch and h.channel) else {}
 
     return _to_out(h, process_names, channel_names)
 

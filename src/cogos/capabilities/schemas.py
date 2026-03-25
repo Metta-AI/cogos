@@ -36,7 +36,7 @@ class SchemasCapability(Capability):
             if "*" in new:
                 return {"names": old}
             return {"names": [p for p in old if p in new]}
-        return {"names": old or new or ["*"]}
+        return {"names": old if old is not None else (new if new is not None else ["*"])}
 
     def _check(self, op: str, **context: object) -> None:
         if not self._scope:

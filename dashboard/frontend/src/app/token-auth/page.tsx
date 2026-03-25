@@ -68,6 +68,7 @@ function TokenAuthCard({
   const [resultToken, setResultToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const [autoCreated, setAutoCreated] = useState(false);
 
   const refreshTokens = useCallback(async () => {
     try {
@@ -95,6 +96,22 @@ function TokenAuthCard({
     },
     [callbackUrl],
   );
+
+  // Auto-create and deliver token when callback URL is present
+  useEffect(() => {
+    if (!callbackUrl || autoCreated) return;
+    setAutoCreated(true);
+    setCreating(true);
+    const name = `claude-code-${Date.now()}`;
+    createExecutorToken(cogentName, name)
+      .then((result) => {
+        deliverToken(result.token);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setCreating(false);
+      });
+  }, [callbackUrl, cogentName, deliverToken, autoCreated]);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -130,11 +147,11 @@ function TokenAuthCard({
     }
   };
 
-  if (redirecting) {
+  if (redirecting || (callbackUrl && creating && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-deep)]">
         <div className="text-[var(--text-muted)] text-sm">
-          Redirecting to Claude Code...
+          {redirecting ? "Redirecting to Claude Code..." : "Creating token..."}
         </div>
       </div>
     );

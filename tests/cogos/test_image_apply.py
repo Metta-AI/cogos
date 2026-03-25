@@ -12,9 +12,9 @@ def _make_spec() -> ImageSpec:
                 "handler": "cogos.capabilities.files.FilesCapability",
                 "description": "Directory access",
                 "instructions": "",
-                "schema": None,
+                "schema": {},
                 "iam_role_arn": None,
-                "metadata": None,
+                "metadata": {},
             },
         ],
         resources=[

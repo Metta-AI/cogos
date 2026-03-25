@@ -256,8 +256,8 @@ class CogentStack(Stack):
         )
 
         # Lambda code — from S3 (CI uploads) or inline placeholder
-        lambda_s3_bucket = self.node.try_get_context("lambda_s3_bucket") or ""
-        lambda_s3_key = self.node.try_get_context("lambda_s3_key") or ""
+        lambda_s3_bucket = self.node.try_get_context("lambda_s3_bucket")
+        lambda_s3_key = self.node.try_get_context("lambda_s3_key")
 
         if lambda_s3_bucket and lambda_s3_key:
             code = lambda_.Code.from_bucket(
@@ -504,7 +504,7 @@ class CogentStack(Stack):
 
         # Task definition
         task_def = ecs.FargateTaskDefinition(
-            self, "DashTaskDef", cpu=256, memory_limit_mib=512,
+            self, "DashTaskDef", cpu=512, memory_limit_mib=1024,
         )
 
         # Grant ECR pull to execution role (needed for private ECR images)
@@ -612,7 +612,14 @@ class CogentStack(Stack):
             iam.PolicyStatement(
                 actions=["ecs:DescribeServices"],
                 resources=["*"],
-                conditions={"ArnEquals": {"ecs:cluster": f"arn:aws:ecs:{self.region}:{self.account}:cluster/cogtainer-{cogtainer_name}"}},
+                conditions={
+                    "ArnEquals": {
+                        "ecs:cluster": (
+                            f"arn:aws:ecs:{self.region}:{self.account}"
+                            f":cluster/cogtainer-{cogtainer_name}"
+                        ),
+                    },
+                },
             )
         )
 

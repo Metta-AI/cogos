@@ -17,8 +17,8 @@ class CapabilityProxy:
     """
 
     def __init__(self, content: dict[str, Any] | None = None, methods: dict[str, Callable] | None = None) -> None:
-        self._content = content or {}
-        self._methods = methods or {}
+        self._content = content if content is not None else {}
+        self._methods = methods if methods is not None else {}
         for key, value in self._content.items():
             if not key.startswith("_"):
                 setattr(self, key, value)

@@ -8,11 +8,14 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.io.email.sender import SesSender
 from cogos.io.email.capability import (
-    EmailCapability, EmailError, EmailMessage, SendResult, _email_from_event,
+    EmailCapability,
+    EmailError,
+    EmailMessage,
+    SendResult,
+    _email_from_event,
 )
-
+from cogos.io.email.sender import SesSender
 
 # ── SesSender ─────────────────────────────────────────────────
 
@@ -65,7 +68,10 @@ class FakeEvent:
 
 class TestEmailFromEvent:
     def test_extracts_fields(self):
-        e = FakeEvent({"from": "a@b.com", "to": "ovo@x.com", "subject": "Hi", "body": "Hello", "date": "Mon", "message_id": "123"})
+        e = FakeEvent({
+            "from": "a@b.com", "to": "ovo@x.com", "subject": "Hi",
+            "body": "Hello", "date": "Mon", "message_id": "123",
+        })
         result = _email_from_event(e)
         assert isinstance(result, EmailMessage)
         assert result.sender == "a@b.com"
@@ -123,8 +129,14 @@ class TestEmailCapabilityReceive:
         fake_ch = FakeChannel(uuid4())
         repo.get_channel_by_name.return_value = fake_ch
         repo.list_channel_messages.return_value = [
-            FakeChannelMessage({"from": "a@b.com", "subject": "Hi", "body": "Hello", "to": "ovo@x.com", "date": "Mon", "message_id": "1"}),
-            FakeChannelMessage({"from": "c@d.com", "subject": "Hey", "body": "World", "to": "ovo@x.com", "date": "Tue", "message_id": "2"}),
+            FakeChannelMessage({
+                "from": "a@b.com", "subject": "Hi", "body": "Hello",
+                "to": "ovo@x.com", "date": "Mon", "message_id": "1",
+            }),
+            FakeChannelMessage({
+                "from": "c@d.com", "subject": "Hey", "body": "World",
+                "to": "ovo@x.com", "date": "Tue", "message_id": "2",
+            }),
         ]
 
         email = EmailCapability(repo, uuid4())

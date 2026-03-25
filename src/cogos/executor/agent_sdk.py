@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
+from decimal import Decimal
 from typing import Any, get_type_hints
+from uuid import UUID
 
-from claude_agent_sdk import create_sdk_mcp_server, tool
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, create_sdk_mcp_server, query, tool
 from pydantic import BaseModel
+
+from cogos.db.models import Process, Run
+from cogos.db.protocol import CogosRepositoryInterface
+from cogos.executor.capabilities import build_process_capabilities
+from cogos.executor.handler import _build_capability_help_text
+from cogos.files.context_engine import ContextEngine
+from cogos.files.store import FileStore
 
 logger = logging.getLogger(__name__)
 
@@ -128,17 +138,6 @@ def to_sdk_model(model_id: str) -> str:
     return model_id
 
 
-import asyncio
-from decimal import Decimal
-from uuid import UUID
-
-from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
-
-from cogos.db.models import Process, Run
-from cogos.db.protocol import CogosRepositoryInterface
-from cogos.executor.capabilities import build_process_capabilities
-
-
 def execute_agent_sdk_process(
     process: Process,
     event_data: dict,
@@ -166,17 +165,15 @@ async def _execute_agent_sdk_process(
     server = create_sdk_mcp_server(name="cogent", version="1.0.0", tools=[t.unwrap() for t in tools])
     tool_names = [f"mcp__cogent__{t.__tool_name__}" for t in tools]
 
-    from cogos.files.context_engine import ContextEngine
-    from cogos.files.store import FileStore
-
     file_store = FileStore(repo)
     ctx = ContextEngine(file_store)
     system_prompt = ctx.generate_full_prompt(process)
     if not system_prompt:
-        system_prompt = "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
+        system_prompt = (
+            "You are a CogOS process. Follow your instructions and use capabilities to accomplish your task."
+        )
 
     # Inject capability help text into system prompt
-    from cogos.executor.handler import _build_capability_help_text
     cap_help = _build_capability_help_text(capabilities)
     if cap_help:
         system_prompt += "\n\n--- Capabilities ---\n\n" + cap_help
@@ -197,10 +194,10 @@ async def _execute_agent_sdk_process(
 
     async for msg in query(prompt=user_text, options=options):
         if isinstance(msg, ResultMessage):
-            usage = msg.usage or {}
-            run.tokens_in = usage.get("input_tokens", 0)
-            run.tokens_out = usage.get("output_tokens", 0)
-            run.cost_usd = Decimal(str(msg.total_cost_usd or 0))
+            assert msg.usage is not None, "ResultMessage.usage must be set"
+            run.tokens_in = msg.usage.get("input_tokens", 0)
+            run.tokens_out = msg.usage.get("output_tokens", 0)
+            run.cost_usd = Decimal(str(msg.total_cost_usd if msg.total_cost_usd is not None else 0))
             if msg.subtype == "success":
                 run.result = {"text": msg.result} if msg.result else None
             else:

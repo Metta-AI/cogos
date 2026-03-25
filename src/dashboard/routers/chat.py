@@ -73,6 +73,8 @@ def send_chat_message(name: str, body: ChatMessageIn) -> ChatSendResult:
         "content": body.content,
         "author": "dashboard-user",
         "author_id": "dashboard",
+        "channel_id": "dashboard",
+        "channel_name": "dashboard",
         "message_id": message_id,
         "is_dm": True,
         "source": "dashboard",

@@ -10,7 +10,6 @@ Tests the full flow:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -18,9 +17,8 @@ from uuid import uuid4
 import pytest
 
 from cogos.cog.cog import Cog, CogConfig
-from cogos.io.discord.capability import DiscordCapability
 from cogos.io.discord.bridge import DiscordBridge
-
+from cogos.io.discord.capability import DiscordCapability
 
 # ── CogConfig emoji ──────────────────────────────────────
 
@@ -245,7 +243,10 @@ class TestWorkerMakeCogletEmoji:
         )
         (worker_dir / "main.md").write_text("# Worker\nDo the task.\n")
         (worker_dir / "make_coglet.py").write_text(
-            (Path(__file__).resolve().parents[3] / "images" / "cogos" / "cogos" / "worker" / "make_coglet.py").read_text()
+            (
+                Path(__file__).resolve().parents[3]
+                / "images" / "cogos" / "cogos" / "worker" / "make_coglet.py"
+            ).read_text()
         )
 
         cog = Cog(worker_dir)
@@ -264,7 +265,10 @@ class TestWorkerMakeCogletEmoji:
         )
         (worker_dir / "main.md").write_text("# Worker\nDo the task.\n")
         (worker_dir / "make_coglet.py").write_text(
-            (Path(__file__).resolve().parents[3] / "images" / "cogos" / "cogos" / "worker" / "make_coglet.py").read_text()
+            (
+                Path(__file__).resolve().parents[3]
+                / "images" / "cogos" / "cogos" / "worker" / "make_coglet.py"
+            ).read_text()
         )
 
         cog = Cog(worker_dir)

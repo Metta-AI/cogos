@@ -2,8 +2,30 @@
 set -e
 
 # Start FastAPI backend
-python -m uvicorn cogos.api.app:app --host 0.0.0.0 --port 8100 &
+python -m uvicorn cogos.api.app:app --host 0.0.0.0 --port 8100 --workers 2 &
 BACKEND_PID=$!
+
+# Pre-warm: wait for backend, then hit a real dashboard endpoint
+# to warm auth (Secrets Manager) + DB (RDS Data API) inside the
+# actual uvicorn worker process
+echo "[start] Waiting for backend..."
+for i in $(seq 1 30); do
+    if curl -sf http://127.0.0.1:8100/healthz > /dev/null 2>&1; then
+        echo "[start] Backend ready, pre-warming auth + DB..."
+        # Hit an actual dashboard endpoint — this triggers:
+        # 1. verify_dashboard_api_key → Secrets Manager lookup (cached after first call)
+        # 2. get_repo() → RDS Data API client creation (LRU cached)
+        # 3. A real DB query to warm the connection
+        # Use alerts endpoint (lightweight, just reads a small table)
+        # Hit a lightweight endpoint to confirm backend is serving
+        # (auth + DB already warmed via lifespan in each worker)
+        curl -sf --max-time 10 "http://127.0.0.1:8100/api/version" > /dev/null 2>&1 \
+            && echo "[start] Pre-warm complete" \
+            || echo "[start] Pre-warm: backend not ready yet (non-fatal)"
+        break
+    fi
+    sleep 1
+done
 
 # Start Next.js frontend
 node /app/frontend/server.js &

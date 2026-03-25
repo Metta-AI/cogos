@@ -72,8 +72,8 @@ class ChannelsCapability(Capability):
     def _narrow(self, existing: dict, requested: dict) -> dict:
         result = {}
         # Narrow ops
-        old_ops = set(existing.get("ops") or ALL_OPS)
-        new_ops = set(requested.get("ops") or ALL_OPS)
+        old_ops = set(existing.get("ops", ALL_OPS))
+        new_ops = set(requested.get("ops", ALL_OPS))
         result["ops"] = sorted(old_ops & new_ops)
         # Narrow name patterns
         for key in ("names",):
@@ -96,7 +96,7 @@ class ChannelsCapability(Capability):
         if not self._scope:
             return
         # Check op
-        allowed_ops = set(self._scope.get("ops") or ALL_OPS)
+        allowed_ops = set(self._scope.get("ops", ALL_OPS))
         if op not in allowed_ops:
             raise PermissionError(f"Operation '{op}' not allowed (allowed: {sorted(allowed_ops)})")
         # Check name pattern

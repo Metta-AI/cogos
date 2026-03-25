@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
-
-logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,9 +52,9 @@ def load_image(image_dir: Path) -> ImageSpec:
                 "handler": handler,
                 "description": description,
                 "instructions": instructions,
-                "schema": schema,
+                "schema": schema if schema is not None else {},
                 "iam_role_arn": iam_role_arn,
-                "metadata": metadata,
+                "metadata": metadata if metadata is not None else {},
             }
         )
 
@@ -64,7 +64,7 @@ def load_image(image_dir: Path) -> ImageSpec:
                 "name": name,
                 "resource_type": type,
                 "capacity": capacity,
-                "metadata": metadata or {},
+                "metadata": metadata if metadata is not None else {},
             }
         )
 
@@ -87,13 +87,13 @@ def load_image(image_dir: Path) -> ImageSpec:
                 "name": name,
                 "mode": mode,
                 "content": content,
-                "required_tags": required_tags or [],
+                "required_tags": required_tags if required_tags is not None else [],
                 "executor": executor,
                 "model": model,
                 "priority": priority,
-                "capabilities": capabilities or [],
-                "handlers": handlers or [],
-                "metadata": metadata or {},
+                "capabilities": capabilities if capabilities is not None else [],
+                "handlers": handlers if handlers is not None else [],
+                "metadata": metadata if metadata is not None else {},
                 "idle_timeout_ms": idle_timeout_ms,
             }
         )
@@ -106,7 +106,7 @@ def load_image(image_dir: Path) -> ImageSpec:
             {
                 "expression": expression,
                 "channel_name": target_channel,
-                "payload": payload or {},
+                "payload": payload if payload is not None else {},
                 "enabled": enabled,
             }
         )

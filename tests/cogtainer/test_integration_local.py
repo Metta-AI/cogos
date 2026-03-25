@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
 from click.testing import CliRunner
 
 from cogtainer.cogent_cli import cli as cogent_cli

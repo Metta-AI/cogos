@@ -1,5 +1,5 @@
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def test_cascade_kill_disables_children(tmp_path):
@@ -36,9 +36,9 @@ def test_cascade_kill_recursive(tmp_path):
     m = repo.get_process(mid_id)
     assert m is not None
     assert m.status == ProcessStatus.DISABLED
-    l = repo.get_process(leaf_id)
-    assert l is not None
-    assert l.status == ProcessStatus.DISABLED
+    leaf = repo.get_process(leaf_id)
+    assert leaf is not None
+    assert leaf.status == ProcessStatus.DISABLED
 
 
 def test_cascade_kill_does_not_affect_unrelated(tmp_path):
@@ -73,9 +73,9 @@ def test_already_disabled_child_not_touched(tmp_path):
 
 # ── Task 2: Detached processes ──────────────────────────────
 
-from cogos.capabilities.procs import ProcsCapability
-from cogos.image.apply import apply_image
-from cogos.image.spec import ImageSpec
+from cogos.capabilities.procs import ProcsCapability  # noqa: E402
+from cogos.image.apply import apply_image  # noqa: E402
+from cogos.image.spec import ImageSpec  # noqa: E402
 
 
 def _setup_with_procs(tmp_path):
@@ -87,9 +87,9 @@ def _setup_with_procs(tmp_path):
                 "handler": "cogos.capabilities.procs:ProcsCapability",
                 "description": "",
                 "instructions": "",
-                "schema": None,
+                "schema": {},
                 "iam_role_arn": None,
-                "metadata": None,
+                "metadata": {},
             },
         ]
     )
@@ -104,7 +104,7 @@ def _setup_with_procs(tmp_path):
 def test_spawn_detached_sets_init_parent(tmp_path):
     repo, init_id, parent_id = _setup_with_procs(tmp_path)
     procs = ProcsCapability(repo, parent_id)
-    result = procs.spawn(name="detached-child", content="hello", detached=True)
+    _result = procs.spawn(name="detached-child", content="hello", detached=True)
     child = repo.get_process_by_name("detached-child")
     assert child is not None
     assert child.parent_process == init_id
@@ -113,7 +113,7 @@ def test_spawn_detached_sets_init_parent(tmp_path):
 def test_spawn_normal_sets_caller_parent(tmp_path):
     repo, init_id, parent_id = _setup_with_procs(tmp_path)
     procs = ProcsCapability(repo, parent_id)
-    result = procs.spawn(name="normal-child", content="hello")
+    _result = procs.spawn(name="normal-child", content="hello")
     child = repo.get_process_by_name("normal-child")
     assert child is not None
     assert child.parent_process == parent_id
@@ -122,7 +122,7 @@ def test_spawn_normal_sets_caller_parent(tmp_path):
 def test_detach_reparents_to_init(tmp_path):
     repo, init_id, parent_id = _setup_with_procs(tmp_path)
     procs = ProcsCapability(repo, parent_id)
-    result = procs.spawn(name="child", content="hello")
+    _result = procs.spawn(name="child", content="hello")
     child = repo.get_process_by_name("child")
     assert child is not None
     assert child.parent_process == parent_id
@@ -159,7 +159,7 @@ def test_init_spawn_detached_does_not_crash(tmp_path):
     repo = SqliteRepository(str(tmp_path))
     spec = ImageSpec(capabilities=[
         {"name": "procs", "handler": "cogos.capabilities.procs:ProcsCapability",
-         "description": "", "instructions": "", "schema": None, "iam_role_arn": None, "metadata": None},
+         "description": "", "instructions": "", "schema": {}, "iam_role_arn": None, "metadata": {}},
     ])
     apply_image(spec, repo)
     init_proc = Process(name="init", mode=ProcessMode.DAEMON, status=ProcessStatus.RUNNABLE)

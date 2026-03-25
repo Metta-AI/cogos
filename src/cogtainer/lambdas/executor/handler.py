@@ -245,7 +245,12 @@ def execute_program(program: Program, event_data: dict, run: Run, config, task_d
 
     # Merge task tool overrides into a program copy
     if task_data:
-        merged_tools = list(set((program.tools or []) + (task_data.get("tools") or [])))
+        task_tools_raw = task_data.get("tools")
+        task_tools: list[str] = task_tools_raw if isinstance(task_tools_raw, list) else []
+        merged_tools = list(set(
+            (program.tools if program.tools is not None else [])
+            + task_tools
+        ))
         program = program.model_copy(
             update={
                 "tools": merged_tools,
@@ -273,7 +278,7 @@ def execute_program(program: Program, event_data: dict, run: Run, config, task_d
 
     # Code Mode: always use the two meta-tools
     tool_config = CODE_MODE_TOOL_CONFIG if program.tools else None
-    tool_names = program.tools or []
+    tool_names = program.tools if program.tools is not None else []
 
     model_id = program.metadata.get("model_version") or "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     run.model_version = model_id

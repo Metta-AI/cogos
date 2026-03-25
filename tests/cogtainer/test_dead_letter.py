@@ -1,18 +1,14 @@
 """Tests for the dead-letter queue mechanism in the dispatcher."""
 
-from datetime import UTC, datetime
-from uuid import uuid4
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
-    Channel,
-    ChannelType,
     Process,
     ProcessMode,
     ProcessStatus,
     Run,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def _repo(tmp_path) -> SqliteRepository:

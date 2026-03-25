@@ -5,10 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
-
 from cogtainer.event_router import EventRouter, match_pattern
-
 
 # ── match_pattern ────────────────────────────────────────────
 

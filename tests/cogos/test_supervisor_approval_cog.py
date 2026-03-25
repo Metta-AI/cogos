@@ -5,7 +5,6 @@ from pathlib import Path
 
 from cogos.cog.cog import Cog
 
-
 SUPERVISOR_DIR = Path(__file__).resolve().parents[2] / "images" / "cogos" / "cogos" / "supervisor"
 
 

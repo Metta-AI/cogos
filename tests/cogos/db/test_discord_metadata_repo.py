@@ -1,7 +1,7 @@
 """Tests for Discord metadata repository methods."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models.discord_metadata import DiscordChannel, DiscordGuild
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def test_upsert_and_get_guild(tmp_path):

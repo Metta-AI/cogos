@@ -46,7 +46,8 @@ def build_capability_proxies(
             continue
 
         # Use the grant name as the namespace key; fall back to capability name
-        ns = pc.name or cap.name.split("/")[0]
+        assert pc.name, f"ProcessCapability grant must have a name (cap={cap.name})"
+        ns = pc.name
 
         # Class capabilities get instantiated with repo and process_id
         if inspect.isclass(handler):

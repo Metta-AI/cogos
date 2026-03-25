@@ -449,7 +449,8 @@ class DiscordCapability(Capability):
 
 def _message_from_event(e) -> DiscordMessage:
     """Legacy helper for constructing DiscordMessage from an event-like object."""
-    p = e.payload or {}
+    assert isinstance(e.payload, dict), f"Expected dict payload, got {type(e.payload)}"
+    p = e.payload
     return DiscordMessage(
         content=p.get("content"),
         author=p.get("author"),
@@ -467,7 +468,8 @@ def _message_from_event(e) -> DiscordMessage:
 
 def _message_from_channel_message(msg) -> DiscordMessage:
     """Construct a DiscordMessage from a ChannelMessage."""
-    p = msg.payload or {}
+    assert isinstance(msg.payload, dict), f"Expected dict payload, got {type(msg.payload)}"
+    p = msg.payload
     return DiscordMessage(
         content=p.get("content"),
         author=p.get("author"),

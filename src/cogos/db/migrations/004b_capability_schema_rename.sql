@@ -15,14 +15,6 @@ ALTER TABLE cogos_process_capability ADD COLUMN IF NOT EXISTS name TEXT NOT NULL
 ALTER TABLE cogos_process_capability DROP COLUMN IF EXISTS delegatable;
 
 -- Step 5: Add unique constraint on (process, name) if not exists
--- Drop old unique constraint on (process, capability) first
-DO $$
-BEGIN
-    -- Try dropping old constraint
-    ALTER TABLE cogos_process_capability DROP CONSTRAINT IF EXISTS cogos_process_capability_process_capability_key;
-    ALTER TABLE cogos_process_capability DROP CONSTRAINT IF EXISTS cogos_process_capability_process_name_key;
-    -- Add new one
-    ALTER TABLE cogos_process_capability ADD CONSTRAINT cogos_process_capability_process_name_key UNIQUE (process, name);
-EXCEPTION WHEN OTHERS THEN
-    NULL;
-END $$;
+-- Uses CREATE UNIQUE INDEX which supports IF NOT EXISTS (no DO $$ block needed).
+ALTER TABLE cogos_process_capability DROP CONSTRAINT IF EXISTS cogos_process_capability_process_capability_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_process_capability_process_name ON cogos_process_capability (process, name);

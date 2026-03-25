@@ -7,8 +7,6 @@ import logging
 import os
 from typing import Any
 
-from cogtainer.secrets import cogent_key
-
 logger = logging.getLogger(__name__)
 
 

@@ -1,7 +1,7 @@
 """Test that build_dispatch_event includes channel_name."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelMessage, ChannelType
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.dispatch import build_dispatch_event
 
 

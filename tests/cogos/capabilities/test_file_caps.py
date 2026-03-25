@@ -341,7 +341,7 @@ class TestFileEdit:
             store = mock_cls.return_value
             store.get.return_value = f
             store.upsert.return_value = fv
-            result = cap.edit("test.py", "foo bar", "replaced")
+            _result = cap.edit("test.py", "foo bar", "replaced")
             store.upsert.assert_called_once()
             new_content = store.upsert.call_args[0][1]
             assert "replaced" in new_content
@@ -374,7 +374,7 @@ class TestFileEdit:
             store = mock_cls.return_value
             store.get.return_value = f
             store.upsert.return_value = fv
-            result = cap.edit("test.py", "aaa", "xxx", replace_all=True)
+            _result = cap.edit("test.py", "aaa", "xxx", replace_all=True)
             new_content = store.upsert.call_args[0][1]
             assert new_content == "xxx\nxxx\nbbb"
 

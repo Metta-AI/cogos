@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import yaml
 
-from cogtainer.ci_config import CIConfig, CICogtainerEntry, load_ci_config
+from cogtainer.ci_config import CICogtainerEntry, CIConfig, load_ci_config
 
 
 def test_load_ci_config(tmp_path):

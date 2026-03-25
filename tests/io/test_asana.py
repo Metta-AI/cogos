@@ -1,5 +1,5 @@
-from cogos.io.base import IOMode, InboundEvent
 from cogos.io.asana import AsanaIO
+from cogos.io.base import InboundEvent, IOMode
 
 
 class TestAsanaIO:

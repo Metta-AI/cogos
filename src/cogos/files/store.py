@@ -149,6 +149,18 @@ class FileStore:
     def list_files(self, *, prefix: str | None = None, limit: int = 200) -> list[File]:
         return self._repo.list_files(prefix=prefix, limit=limit)
 
+    def list_files_with_content(
+        self,
+        *,
+        prefix: str | None = None,
+        exclude_prefix: str | None = None,
+        limit: int = 200,
+    ) -> list[tuple[str, str]]:
+        """List files with their active version content in a single query."""
+        return self._repo.list_files_with_content(
+            prefix=prefix, exclude_prefix=exclude_prefix, limit=limit,
+        )
+
     def history(self, key: str) -> list[FileVersion]:
         f = self._repo.get_file_by_key(key)
         if f is None:

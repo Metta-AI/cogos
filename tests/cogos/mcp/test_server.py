@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 
-import pytest
 import httpx
+import pytest
 from pytest_httpx import HTTPXMock
 
 from cogos.mcp.server import CogosServer
-
 
 # ── Fixtures ────────────────────────────────────────────────────
 

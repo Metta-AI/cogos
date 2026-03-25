@@ -164,7 +164,7 @@ def handler(event: dict, context) -> dict:
                 continue
 
             # Determine runner: event payload override > program default > lambda
-            event_payload = brain_event.payload or {}
+            event_payload = brain_event.payload if brain_event.payload is not None else {}
             runner = event_payload.get("runner") or program.runner or "lambda"
 
             if runner == "ecs":
@@ -188,7 +188,8 @@ def handler(event: dict, context) -> dict:
 
 def _handle_task_run(config, repo, brain_event, event_id) -> dict:
     """Handle task:run events: look up task from DB, dispatch its program."""
-    event_payload = brain_event.payload or {}
+    assert brain_event.payload is not None, "task:run event must have a payload"
+    event_payload = brain_event.payload
     task_id = event_payload.get("task_id")
     if not task_id:
         logger.error("task:run event missing task_id in payload")
@@ -225,10 +226,10 @@ def _handle_task_run(config, repo, brain_event, event_id) -> dict:
         },
         "task": {
             "id": task_id,
-            "content": task.content or "",
-            "memory_keys": task.memory_keys or [],
-            "tools": task.tools or [],
-            "resources": task.resources or [],
+            "content": task.content if task.content is not None else "",
+            "memory_keys": task.memory_keys if task.memory_keys is not None else [],
+            "tools": task.tools if task.tools is not None else [],
+            "resources": task.resources if task.resources is not None else [],
             "clear_context": task.clear_context,
         },
         "session_id": session_id or f"program-{program_name}",

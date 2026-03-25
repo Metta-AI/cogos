@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Process,
@@ -20,11 +19,11 @@ from cogos.db.models import (
     ProcessMode,
     ProcessStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.context_engine import ContextEngine
 from cogos.files.store import FileStore
 from cogos.image.apply import apply_image
 from cogos.image.spec import load_image
-
 
 # ── Fixtures ──────────────────────────────────────────────
 

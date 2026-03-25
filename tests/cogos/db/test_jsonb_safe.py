@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 from cogos.db.repository import RdsDataApiRepository
 
-
 # ── _jsonb_safe ──────────────────────────────────────────────
 
 

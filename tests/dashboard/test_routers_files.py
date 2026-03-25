@@ -27,7 +27,10 @@ def test_files_route_uses_high_default_limit():
     mock_repo = MagicMock()
     with (
         patch("dashboard.routers.files.get_repo", return_value=mock_repo),
-        patch("dashboard.routers.files.FileStore.list_files", return_value=[_file("apps/newsfromthefront/researcher.md")]) as mock_list_files,
+        patch(
+            "dashboard.routers.files.FileStore.list_files",
+            return_value=[_file("apps/newsfromthefront/researcher.md")],
+        ) as mock_list_files,
     ):
         client = TestClient(create_app())
         response = client.get("/api/cogents/test/files")
@@ -41,7 +44,10 @@ def test_files_route_honors_limit_query_param():
     mock_repo = MagicMock()
     with (
         patch("dashboard.routers.files.get_repo", return_value=mock_repo),
-        patch("dashboard.routers.files.FileStore.list_files", return_value=[_file("whoami/index.md")]) as mock_list_files,
+        patch(
+            "dashboard.routers.files.FileStore.list_files",
+            return_value=[_file("whoami/index.md")],
+        ) as mock_list_files,
     ):
         client = TestClient(create_app())
         response = client.get("/api/cogents/test/files?limit=42")

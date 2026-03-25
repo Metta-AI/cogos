@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from cogos.db.models import Channel, ChannelMessage, ChannelType

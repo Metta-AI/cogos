@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
+
 import discord
+import pytest
 
-from cogos.io.discord.lifecycle import CogentPersona, LifecycleManager, ROLE_PREFIX
+from cogos.io.discord.lifecycle import ROLE_PREFIX, CogentPersona, LifecycleManager
 from cogos.io.discord.router import MessageRouter
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -214,6 +214,34 @@ class TestRouterDMRouting:
 
     def test_dm_switch_case_insensitive(self, router: MessageRouter):
         msg = _make_dm_message(author_id=42, content="Switch To Alpha")
+
+        result = router.route(msg)
+        assert result == ["alpha"]
+
+    def test_dm_cogent_name_with_message(self, router: MessageRouter):
+        """'alpha, make me a website' should route to alpha."""
+        msg = _make_dm_message(author_id=42, content="alpha, make me a website")
+
+        result = router.route(msg)
+        assert result == ["alpha"]
+
+    def test_dm_at_cogent_name_with_message(self, router: MessageRouter):
+        """'@alpha make me a website' should route to alpha."""
+        msg = _make_dm_message(author_id=42, content="@alpha make me a website")
+
+        result = router.route(msg)
+        assert result == ["alpha"]
+
+    def test_dm_bot_mention_then_cogent_name(self, router: MessageRouter):
+        """'<@123456> alpha, make me a website' should route to alpha."""
+        msg = _make_dm_message(author_id=42, content="<@123456> alpha, make me a website")
+
+        result = router.route(msg)
+        assert result == ["alpha"]
+
+    def test_dm_bot_mention_then_at_cogent(self, router: MessageRouter):
+        """'<@123456> @alpha make stuff' should route to alpha."""
+        msg = _make_dm_message(author_id=42, content="<@123456> @alpha make stuff")
 
         result = router.route(msg)
         assert result == ["alpha"]

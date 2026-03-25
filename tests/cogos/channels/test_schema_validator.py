@@ -1,7 +1,7 @@
 """Tests for schema validation -- type checking, nested schemas, inline schemas."""
 import pytest
 
-from cogos.channels.schema_validator import SchemaValidator, SchemaValidationError
+from cogos.channels.schema_validator import SchemaValidationError, SchemaValidator
 
 
 class TestBasicTypes:

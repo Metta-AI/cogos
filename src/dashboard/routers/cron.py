@@ -19,12 +19,13 @@ router = APIRouter(tags=["cron"])
 
 
 def _cron_to_item(c: Cron) -> CronItem:
+    assert c.payload is not None
     return CronItem(
         id=str(c.id),
         cron_expression=c.expression,
         channel_name=c.channel_name,
         enabled=c.enabled,
-        metadata=c.payload or {},
+        metadata=c.payload,
         created_at=str(c.created_at) if c.created_at else None,
     )
 
@@ -44,7 +45,7 @@ def create_cron(name: str, body: CronCreate) -> CronItem:
         expression=body.cron_expression,
         channel_name=body.channel_name,
         enabled=body.enabled,
-        payload=body.metadata or {},
+        payload=body.metadata if body.metadata is not None else {},
     )
     repo.upsert_cron(cron)
     return _cron_to_item(cron)

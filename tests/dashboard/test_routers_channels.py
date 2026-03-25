@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
 from unittest.mock import patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -125,10 +125,11 @@ def test_list_channels_includes_resolved_schema_metadata():
     request_channel = next(channel for channel in channels if channel["name"] == "test:requests")
     findings_channel = next(channel for channel in channels if channel["name"] == "test:findings")
 
-    assert request_channel["schema_definition"] == {"fields": {"prefix": "string", "reason": "string"}}
+    # List view omits schema_definition and inline_schema to reduce payload size
+    assert request_channel["schema_definition"] is None
     assert request_channel["schema_name"] is None
     assert findings_channel["schema_name"] == "audit-request"
-    assert findings_channel["schema_definition"] == {"fields": {"prefix": "string"}}
+    assert findings_channel["schema_definition"] is None
 
 
 def test_send_channel_message_validates_payload_against_channel_schema():

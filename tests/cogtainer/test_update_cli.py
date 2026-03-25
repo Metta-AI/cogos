@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from click.testing import CliRunner
 
+from cogtainer import naming
+from cogtainer.aws import ACCOUNT_ID
 from cogtainer.update_cli import (
     _find_dashboard_service,
     _is_dashboard_service_name,
     update,
 )
-from cogtainer.aws import ACCOUNT_ID
-from cogtainer import naming
 
 
 class _FakeEcsClient:

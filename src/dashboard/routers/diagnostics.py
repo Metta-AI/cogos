@@ -57,14 +57,14 @@ def get_diagnostics_history(name: str, limit: int = 10) -> dict:
 def get_diagnostics_changelog(name: str) -> dict:
     """Return diagnostic changelog."""
     content = _read_file("mnt/disk/diagnostics/changelog.md")
-    return {"content": content or ""}
+    return {"content": content if content is not None else ""}
 
 
 @router.get("/diagnostics/log")
 def get_diagnostics_log(name: str) -> dict:
     """Return diagnostic run log."""
     content = _read_file("mnt/disk/diagnostics/log.md")
-    return {"content": content or ""}
+    return {"content": content if content is not None else ""}
 
 
 @router.post("/diagnostics/run")

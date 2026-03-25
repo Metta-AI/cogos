@@ -53,7 +53,7 @@ class TestHistoryRequest:
         # No response messages -> will timeout
         repo.list_channel_messages.return_value = []
 
-        result = cap.history("123456", limit=25, before="msg1", after="msg2", _timeout=0.1, _poll_interval=0.05)
+        _result = cap.history("123456", limit=25, before="msg1", after="msg2", _timeout=0.1, _poll_interval=0.05)
 
         # Verify request was written
         assert repo.append_channel_message.call_count == 1

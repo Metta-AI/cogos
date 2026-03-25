@@ -490,11 +490,13 @@ export function Header({
               borderRadius: "6px",
               padding: "8px 12px",
               minWidth: "200px",
+              maxWidth: "500px",
               boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
               fontSize: "10px",
               fontFamily: "var(--font-mono)",
               color: error ? "var(--error)" : "var(--text-muted)",
-              whiteSpace: "nowrap",
+              whiteSpace: error ? "pre-wrap" : "nowrap",
+              wordBreak: error ? "break-word" : undefined,
             }}
           >
             {statusText}

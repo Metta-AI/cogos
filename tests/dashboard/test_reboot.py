@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def test_reboot_endpoint(tmp_path):

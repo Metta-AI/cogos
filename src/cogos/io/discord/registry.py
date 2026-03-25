@@ -65,7 +65,8 @@ def load_cogent_configs(
             manifest = manifest_raw
 
         # DB info: check top-level item first, then manifest
-        db_info = item.get("database") or manifest.get("database") or {}
+        db_info = item.get("database") or manifest.get("database")
+        assert isinstance(db_info, dict), f"Expected database config in item or manifest for cogent {name}"
 
         # Read persona config from secrets provider
         persona = _read_persona_secret(name, secrets_provider=secrets_provider)

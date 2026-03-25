@@ -211,6 +211,22 @@ class RdsDataApiRepository:
             logger.warning("_jsonb_safe: could not serialize %s, wrapping as string", type(value).__name__)
             return {"_raw": str(value)}
 
+    def _jsonb_safe_dict(self, value: Any) -> dict:
+        """Ensure value is a dict suitable for a ::jsonb column. Asserts type."""
+        result = self._jsonb_safe(value)
+        if result is None:
+            return {}
+        assert isinstance(result, dict), f"Expected dict for jsonb, got {type(result).__name__}"
+        return result
+
+    def _jsonb_safe_list(self, value: Any) -> list:
+        """Ensure value is a list suitable for a ::jsonb column. Asserts type."""
+        result = self._jsonb_safe(value)
+        if result is None:
+            return []
+        assert isinstance(result, list), f"Expected list for jsonb, got {type(result).__name__}"
+        return result
+
     def _extract_value(self, cell: dict) -> Any:
         if "isNull" in cell and cell["isNull"]:
             return None
@@ -345,7 +361,7 @@ class RdsDataApiRepository:
 
     def add_operation(self, op: CogosOperation) -> UUID:
         now = op.created_at or datetime.now(timezone.utc)
-        op.metadata = self._jsonb_safe(op.metadata) or {}
+        op.metadata = self._jsonb_safe_dict(op.metadata)
         self._execute(
             """INSERT INTO cogos_operation (id, epoch, type, metadata, created_at)
                VALUES (:id, :epoch, :type, :metadata::jsonb, :created_at)""",
@@ -382,9 +398,9 @@ class RdsDataApiRepository:
     def upsert_process(self, p: Process) -> UUID:
         if not p.epoch:
             p.epoch = self.reboot_epoch
-        p.model_constraints = self._jsonb_safe(p.model_constraints) or {}
+        p.model_constraints = self._jsonb_safe_dict(p.model_constraints)
         p.return_schema = self._jsonb_safe(p.return_schema)
-        p.metadata = self._jsonb_safe(p.metadata) or {}
+        p.metadata = self._jsonb_safe_dict(p.metadata)
         response = self._execute(
             """INSERT INTO cogos_process
                    (id, name, mode, content, priority, resources, required_tags, executor,
@@ -772,7 +788,12 @@ class RdsDataApiRepository:
         return h.id
 
     def list_handlers(
-        self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None,
+        self,
+        *,
+        process_id: UUID | None = None,
+        enabled_only: bool = False,
+        epoch: int | None = None,
+        limit: int = 0,
     ) -> list[Handler]:
         effective_epoch = self.reboot_epoch if epoch is None else epoch
         conditions = []
@@ -786,8 +807,12 @@ class RdsDataApiRepository:
         if enabled_only:
             conditions.append("enabled = TRUE")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        limit_clause = ""
+        if limit > 0:
+            limit_clause = " LIMIT :limit"
+            params.append(self._param("limit", limit))
         response = self._execute(
-            f"SELECT * FROM cogos_handler {where} ORDER BY created_at",
+            f"SELECT * FROM cogos_handler {where} ORDER BY created_at{limit_clause}",
             params or None,
         )
         return [self._handler_from_row(r) for r in self._rows_to_dicts(response)]
@@ -973,7 +998,7 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_cron(self, c: Cron) -> UUID:
-        c.payload = self._jsonb_safe(c.payload) or {}
+        c.payload = self._jsonb_safe_dict(c.payload)
         # Check for existing rule with same expression + channel name
         existing = self._first_row(self._execute(
             "SELECT id FROM cron WHERE cron_expression = :expr AND channel_name = :channel_name",
@@ -1046,7 +1071,7 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def insert_file(self, f: File) -> UUID:
-        f.includes = self._jsonb_safe(f.includes) or []
+        f.includes = self._jsonb_safe_list(f.includes)
         response = self._execute(
             """INSERT INTO cogos_file (id, key, includes)
                VALUES (:id, :key, :includes::jsonb)
@@ -1094,6 +1119,28 @@ class RdsDataApiRepository:
                 [self._param("limit", limit)],
             )
         return [self._file_from_row(r) for r in self._rows_to_dicts(response)]
+
+    def list_files_with_content(
+        self,
+        *,
+        prefix: str | None = None,
+        exclude_prefix: str | None = None,
+        limit: int = 200,
+    ) -> list[tuple[str, str]]:
+        sql = """SELECT f.key, fv.content FROM cogos_file f
+                 JOIN cogos_file_version fv ON fv.file_id = f.id
+                 WHERE fv.is_active = TRUE"""
+        params = []
+        if prefix:
+            sql += " AND f.key LIKE :prefix"
+            params.append(self._param("prefix", prefix + "%"))
+        if exclude_prefix:
+            sql += " AND f.key NOT LIKE :excl"
+            params.append(self._param("excl", exclude_prefix + "%"))
+        sql += " ORDER BY f.key LIMIT :limit"
+        params.append(self._param("limit", limit))
+        response = self._execute(sql, params)
+        return [(r["key"], r["content"]) for r in self._rows_to_dicts(response)]
 
     def grep_files(
         self, pattern: str, *, prefix: str | None = None, limit: int = 100
@@ -1153,7 +1200,7 @@ class RdsDataApiRepository:
     def update_file_includes(self, file_id: UUID, includes: list[str]) -> bool:
         response = self._execute(
             "UPDATE cogos_file SET includes = :includes::jsonb, updated_at = now() WHERE id = :id",
-            [self._param("id", file_id), self._param("includes", self._jsonb_safe(includes) or [])],
+            [self._param("id", file_id), self._param("includes", self._jsonb_safe_list(includes))],
         )
         return response.get("numberOfRecordsUpdated", 0) == 1
 
@@ -1184,7 +1231,7 @@ class RdsDataApiRepository:
                 "key": key,
                 "content": content,
                 "source": source,
-                "includes": self._jsonb_safe(includes) or [],
+                "includes": self._jsonb_safe_list(includes),
             })
 
         base_kwargs = {
@@ -1418,7 +1465,7 @@ class RdsDataApiRepository:
 
     def upsert_capability(self, cap: Capability) -> UUID:
         cap.schema = self._jsonb_safe(cap.schema)
-        cap.metadata = self._jsonb_safe(cap.metadata) or {}
+        cap.metadata = self._jsonb_safe_dict(cap.metadata)
         response = self._execute(
             """INSERT INTO cogos_capability
                    (id, name, description, instructions, handler,
@@ -1529,7 +1576,7 @@ class RdsDataApiRepository:
 
     def upsert_resource(self, resource: Resource) -> str:
         """Insert or update a resource by name."""
-        resource.metadata = self._jsonb_safe(resource.metadata) or {}
+        resource.metadata = self._jsonb_safe_dict(resource.metadata)
         response = self._execute(
             """INSERT INTO resources (name, resource_type, capacity, metadata)
                VALUES (:name, :resource_type, :capacity, :metadata::jsonb)
@@ -1573,7 +1620,7 @@ class RdsDataApiRepository:
             run.epoch = self.reboot_epoch
         run.result = self._jsonb_safe(run.result)
         run.snapshot = self._jsonb_safe(run.snapshot)
-        run.scope_log = self._jsonb_safe(run.scope_log) or []
+        run.scope_log = self._jsonb_safe_list(run.scope_log)
         response = self._execute(
             """INSERT INTO cogos_run
                    (id, process, message, conversation, status,
@@ -1688,7 +1735,7 @@ class RdsDataApiRepository:
             "UPDATE cogos_run SET metadata = :metadata::jsonb WHERE id = :id",
             [
                 self._param("id", run_id),
-                self._param("metadata", self._jsonb_safe(metadata) or {}),
+                self._param("metadata", self._jsonb_safe_dict(metadata)),
             ],
         )
 
@@ -1845,8 +1892,8 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def create_trace(self, trace: Trace) -> UUID:
-        trace.capability_calls = self._jsonb_safe(trace.capability_calls) or []
-        trace.file_ops = self._jsonb_safe(trace.file_ops) or []
+        trace.capability_calls = self._jsonb_safe_list(trace.capability_calls)
+        trace.file_ops = self._jsonb_safe_list(trace.file_ops)
         response = self._execute(
             """INSERT INTO cogos_trace (id, run, capability_calls, file_ops, model_version)
                VALUES (:id, :run, :capability_calls::jsonb, :file_ops::jsonb, :model_version)
@@ -1906,7 +1953,7 @@ class RdsDataApiRepository:
         )
 
     def create_span(self, span: Span) -> UUID:
-        span.metadata = self._jsonb_safe(span.metadata) or {}
+        span.metadata = self._jsonb_safe_dict(span.metadata)
         response = self._execute(
             """INSERT INTO cogos_span
                    (id, trace_id, parent_span_id, name, coglet, status, metadata)
@@ -1956,7 +2003,7 @@ class RdsDataApiRepository:
         return [self._span_from_row(r) for r in self._rows_to_dicts(response)]
 
     def create_span_event(self, event: SpanEvent) -> UUID:
-        event.metadata = self._jsonb_safe(event.metadata) or {}
+        event.metadata = self._jsonb_safe_dict(event.metadata)
         response = self._execute(
             """INSERT INTO cogos_span_event (id, span_id, event, message, metadata)
                VALUES (:id, :span_id, :event, :message, :metadata::jsonb)
@@ -2054,7 +2101,7 @@ class RdsDataApiRepository:
                 self._param("alert_type", alert_type),
                 self._param("source", source),
                 self._param("message", message),
-                self._param("metadata", self._jsonb_safe(metadata) or {}),
+                self._param("metadata", self._jsonb_safe_dict(metadata)),
             ],
         )
 
@@ -2069,10 +2116,13 @@ class RdsDataApiRepository:
         return [self._alert_from_row(r) for r in rows]
 
     def _alert_from_row(self, row: dict) -> Alert:
-        metadata = row.get("metadata") or {}
+        metadata = row.get("metadata")
         if isinstance(metadata, str):
             import json as _json
             metadata = _json.loads(metadata)
+        if metadata is None:
+            metadata = {}
+        assert isinstance(metadata, dict), f"Expected dict for metadata, got {type(metadata).__name__}"
         return Alert(
             id=UUID(row["id"]) if isinstance(row.get("id"), str) else row.get("id"),
             severity=AlertSeverity(row["severity"]),
@@ -2108,7 +2158,7 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def upsert_schema(self, s: Schema) -> UUID:
-        s.definition = self._jsonb_safe(s.definition) or {}
+        s.definition = self._jsonb_safe_dict(s.definition)
         response = self._execute(
             """INSERT INTO cogos_schema (id, name, definition, file_id)
                VALUES (:id, :name, :definition::jsonb, :file_id)
@@ -2211,20 +2261,24 @@ class RdsDataApiRepository:
         row = self._first_row(response)
         return self._channel_from_row(row) if row else None
 
+    _CHANNEL_LIST_COLS = "id, name, channel_type, owner_process, schema_id, auto_close, closed_at, created_at"
+
     def list_channels(self, *, owner_process: UUID | None = None, limit: int = 0) -> list[Channel]:
+        # Exclude inline_schema from list queries to stay within RDS Data API 1MB limit
+        cols = self._CHANNEL_LIST_COLS
         if owner_process is not None:
             response = self._execute(
-                "SELECT * FROM cogos_channel WHERE owner_process = :owner ORDER BY name",
+                f"SELECT {cols} FROM cogos_channel WHERE owner_process = :owner ORDER BY name",
                 [self._param("owner", owner_process)],
             )
         elif limit > 0:
             response = self._execute(
-                "SELECT * FROM cogos_channel ORDER BY name LIMIT :limit",
+                f"SELECT {cols} FROM cogos_channel ORDER BY name LIMIT :limit",
                 [self._param("limit", limit)],
             )
         else:
             response = self._execute(
-                "SELECT * FROM cogos_channel ORDER BY name",
+                f"SELECT {cols} FROM cogos_channel ORDER BY name",
             )
         return [self._channel_from_row(r) for r in self._rows_to_dicts(response)]
 
@@ -2253,7 +2307,7 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def append_channel_message(self, msg: ChannelMessage) -> UUID:
-        msg.payload = self._jsonb_safe(msg.payload) or {}
+        msg.payload = self._jsonb_safe_dict(msg.payload)
         msg.trace_meta = self._jsonb_safe(msg.trace_meta)
         if msg.idempotency_key:
             response = self._execute(
@@ -2384,7 +2438,7 @@ class RdsDataApiRepository:
                 response = self._execute(
                     """SELECT * FROM cogos_channel_message
                        WHERE channel = :channel
-                       ORDER BY created_at ASC
+                       ORDER BY created_at DESC
                        LIMIT :limit""",
                     [self._param("channel", channel_id), self._param("limit", limit)],
                 )
@@ -2578,9 +2632,9 @@ class RdsDataApiRepository:
             id=UUID(row["id"]),
             executor_id=row["executor_id"],
             channel_type=row.get("channel_type", "claude-code"),
-            executor_tags=tags or [],
+            executor_tags=tags if tags is not None else [],
             dispatch_type=row.get("dispatch_type", "channel"),
-            metadata=meta or {},
+            metadata=meta if meta is not None else {},
             status=ExecutorStatus(row.get("status", "idle")),
             current_run_id=UUID(run_id) if run_id else None,
             last_heartbeat_at=self._ts(row, "last_heartbeat_at"),
@@ -2618,8 +2672,10 @@ class RdsDataApiRepository:
 
         self._execute(
             """INSERT INTO cogos_executor
-               (id, executor_id, channel_type, executor_tags, dispatch_type, metadata, status, last_heartbeat_at, registered_at)
-               VALUES (:id, :executor_id, :channel_type, :executor_tags::jsonb, :dispatch_type, :metadata::jsonb, 'idle', now(), now())""",
+               (id, executor_id, channel_type, executor_tags, dispatch_type,
+                metadata, status, last_heartbeat_at, registered_at)
+               VALUES (:id, :executor_id, :channel_type, :executor_tags::jsonb,
+                :dispatch_type, :metadata::jsonb, 'idle', now(), now())""",
             [
                 self._param("id", executor.id),
                 self._param("executor_id", executor.executor_id),
@@ -2699,7 +2755,10 @@ class RdsDataApiRepository:
             self._param("current_run_id", current_run_id),
         ]
         if resource_usage:
-            meta_update = ", metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{resource_usage}', :resource_usage::jsonb)"
+            meta_update = (
+                ", metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),"
+                " '{resource_usage}', :resource_usage::jsonb)"
+            )
             params.append(self._param("resource_usage", resource_usage))
 
         response = self._execute(

@@ -137,7 +137,7 @@ def main() -> None:
 
     try:
         # Merge tools from program and task
-        all_tools = list(set((program.tools or []) + task_tools))
+        all_tools = list(set((program.tools if program.tools is not None else []) + task_tools))
 
         # Write MCP config for sandbox tools
         if all_tools:

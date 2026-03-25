@@ -3,7 +3,6 @@
 from cogos.capabilities.me import MeCapability
 from cogos.capabilities.process_handle import ProcessHandle
 from cogos.capabilities.procs import ProcessError, ProcsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Capability,
     Channel,
@@ -14,6 +13,7 @@ from cogos.db.models import (
     ProcessMode,
     ProcessStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.executor.handler import _publish_process_io
 
 # ── Process tty field ─────────────────────────────────────────
@@ -48,7 +48,7 @@ def _spawn_setup(tmp_path):
 
 def test_spawn_creates_stdio_channels(tmp_path):
     repo, procs = _spawn_setup(tmp_path)
-    handle = procs.spawn("worker", content="do stuff")
+    _handle = procs.spawn("worker", content="do stuff")
     for stream in ("stdin", "stdout", "stderr"):
         assert repo.get_channel_by_name(f"process:worker:{stream}") is not None
 
@@ -74,7 +74,7 @@ def _me_setup(tmp_path, *, tty=False):
         )
     for stream in ("stdout", "stderr"):
         repo.upsert_channel(Channel(name=f"io:{stream}", channel_type=ChannelType.NAMED))
-    repo.upsert_channel(Channel(name=f"io:stdin:worker", owner_process=proc.id, channel_type=ChannelType.NAMED))
+    repo.upsert_channel(Channel(name="io:stdin:worker", owner_process=proc.id, channel_type=ChannelType.NAMED))
     return repo, proc, MeCapability(repo, proc.id)
 
 
@@ -227,7 +227,7 @@ def test_tty_forwarding_e2e(tmp_path):
     for name in ("io:stdout", "io:stderr"):
         repo.upsert_channel(Channel(name=name, channel_type=ChannelType.NAMED))
 
-    handle = procs.spawn("tty-child", content="x", tty=True)
+    _handle = procs.spawn("tty-child", content="x", tty=True)
     child_proc = repo.get_process_by_name("tty-child")
     assert child_proc is not None
     me = MeCapability(repo, child_proc.id)

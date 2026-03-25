@@ -22,7 +22,7 @@ def register(reg: CommandRegistry) -> None:
             lines.append("-" * 60)
             for c in caps:
                 enabled = "\033[32myes\033[0m" if c.enabled else "\033[31mno\033[0m"
-                lines.append(f"{c.name:<20} {enabled:<19} {c.description or ''}")
+                lines.append(f"{c.name:<20} {enabled:<19} {c.description if c.description is not None else ''}")
             return "\n".join(lines)
 
         elif subcmd == "enable":

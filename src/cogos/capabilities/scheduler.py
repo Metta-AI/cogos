@@ -312,7 +312,8 @@ class SchedulerCapability(Capability):
         if proc.status != ProcessStatus.RUNNABLE:
             return SchedulerError(error=f"process is {proc.status.value}, expected runnable")
 
-        required_tags = proc.required_tags or []
+        assert proc.required_tags is not None
+        required_tags = proc.required_tags
 
         executor = self.repo.select_executor(
             required_tags=required_tags or None,

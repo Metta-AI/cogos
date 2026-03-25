@@ -59,3 +59,26 @@ body {
 .ws-reconnecting {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
+
+/* highlight.js token colors (dark theme matching dashboard palette) */
+.hljs { color: var(--text-primary); font-family: var(--font-mono); }
+.hljs-keyword,
+.hljs-selector-tag { color: #c678dd; }
+.hljs-string,
+.hljs-doctag { color: #98c379; }
+.hljs-number { color: #d19a66; }
+.hljs-literal { color: #d19a66; }
+.hljs-built_in { color: #56b6c2; }
+.hljs-title.function_,
+.hljs-title { color: #61afef; }
+.hljs-params { color: var(--text-secondary); }
+.hljs-comment { color: var(--text-muted); font-style: italic; }
+.hljs-type,
+.hljs-class .hljs-title { color: #e5c07b; }
+.hljs-attr { color: #d19a66; }
+.hljs-variable { color: #e06c75; }
+.hljs-meta { color: var(--text-muted); }
+.hljs-punctuation { color: var(--text-muted); }
+.hljs-operator { color: #56b6c2; }
+.hljs-decorator,
+.hljs-meta .hljs-keyword { color: #c678dd; }

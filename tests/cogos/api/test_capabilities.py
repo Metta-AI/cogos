@@ -10,11 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from cogos.capabilities.base import Capability
 from cogos.api.app import create_app
 from cogos.api.auth import AuthContext
+from cogos.capabilities.base import Capability
 from cogos.db.models import ExecutorToken
-
 
 # ── Test capability ──────────────────────────────────────────
 

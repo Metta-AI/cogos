@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -16,6 +15,7 @@ from cogos.db.models import (
     ProcessStatus,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.ingress import dispatch_ready_processes
 from cogos.runtime.schedule import apply_scheduled_messages
 from cogtainer.lambdas.dispatcher.handler import _apply_system_ticks

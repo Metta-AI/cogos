@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cogos.db.models import Process, ProcessMode, ProcessStatus
 from cogtainer.config import CogtainerEntry, LLMConfig
 from cogtainer.runtime.local import LocalRuntime
-from cogos.db.models import Process, ProcessMode, ProcessStatus
 
 
 @pytest.fixture()
@@ -44,8 +44,11 @@ def test_executor_handler_gets_repo_via_runtime(local_runtime, monkeypatch):
     repo.upsert_process(p)
 
     monkeypatch.setattr(executor_module, "_get_runtime", lambda: local_runtime)
-    monkeypatch.setattr(executor_module, "execute_process",
-                        lambda process, event_data, run, config, repo, **kw: run)
+    def _fake_execute(process, event_data, run, config, repo, **kw):
+        run.model_version = "test"
+        return run
+
+    monkeypatch.setattr(executor_module, "execute_process", _fake_execute)
 
     result = executor_module.handler(
         {"process_id": str(p.id), "run_id": None}, None,

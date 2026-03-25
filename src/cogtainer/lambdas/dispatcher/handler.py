@@ -35,6 +35,18 @@ def _is_throttle_cooldown_active(repo) -> bool:
     return any(r.status == RunStatus.THROTTLED for r in recent)
 
 
+def _run_migrations_once(repo) -> None:
+    """Apply CogOS SQL migrations on first invocation (cold start)."""
+    if getattr(_run_migrations_once, "_done", False):
+        return
+    try:
+        from cogos.db.migrations import apply_cogos_sql_migrations
+        apply_cogos_sql_migrations(repo, on_error=lambda f, e: logger.debug("migration %s: %s", f, e))
+    except Exception:
+        logger.debug("CogOS SQL migrations failed", exc_info=True)
+    _run_migrations_once._done = True
+
+
 def handler(event: dict, context) -> dict:
     """Lambda entry point: single-shot scheduler tick."""
     from cogos.capabilities.scheduler import SchedulerCapability
@@ -44,6 +56,8 @@ def handler(event: dict, context) -> dict:
     cogent_name = os.environ["COGENT"]
     runtime = create_executor_runtime()
     repo = runtime.get_repository(cogent_name)
+
+    _run_migrations_once(repo)
 
     scheduler = SchedulerCapability(repo, UUID("00000000-0000-0000-0000-000000000000"))
     lambda_client = boto3.client("lambda", region_name=config.region)
@@ -232,7 +246,7 @@ def _flush_dead_letters(repo) -> int:
         ))
 
         # Mark as reported to avoid duplicate dead-letters
-        run_meta = run.metadata or {}
+        run_meta = run.metadata if run.metadata is not None else {}
         run_meta["dead_letter_reported"] = True
         try:
             repo.update_run_metadata(run.id, run_meta)

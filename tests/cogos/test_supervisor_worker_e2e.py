@@ -15,7 +15,6 @@ from cogos.capabilities.coglet_runtime import CogletRuntimeCapability
 from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.cog.cog import CogConfig
 from cogos.cog.runtime import CogletManifest
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -26,6 +25,7 @@ from cogos.db.models import (
     ProcessStatus,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from cogos.runtime.local import run_local_tick
 

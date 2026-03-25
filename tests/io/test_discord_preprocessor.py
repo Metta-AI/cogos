@@ -1,13 +1,11 @@
 """Tests for Discord handler pre-processor (history enrichment)."""
 
-import os
-from uuid import uuid4
 
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
-from cogos.db.models import Channel, ChannelMessage, Process, ProcessMode, ProcessStatus
+from cogos.db.models import Channel, ChannelMessage
 from cogos.db.models.channel import ChannelType
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.io.discord.preprocessor import enrich_discord_payload
 
 

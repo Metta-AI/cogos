@@ -111,7 +111,9 @@ def _artifact_timestamp(payload: Any, fallback: datetime | None) -> str:
             value = payload.get(field)
             if isinstance(value, str) and value:
                 return value
-    return _iso(fallback) or ""
+    result = _iso(fallback)
+    assert result is not None
+    return result
 
 
 def _artifact_message(kind: str, key: str, payload: Any) -> str:
@@ -319,11 +321,13 @@ def list_runs(
     pid = UUID(process) if process else None
     ep = ALL_EPOCHS if epoch == "all" else None
     items = repo.list_runs(process_id=pid, limit=limit, epoch=ep)
+    # Only fetch processes referenced by these runs
+    referenced_pids = {r.process for r in items}
     proc_epoch = ALL_EPOCHS if epoch == "all" else None
-    processes = repo.list_processes(epoch=proc_epoch)
-    process_names = {p.id: p.name for p in processes}
-    process_runners = {p.id: p.required_tags for p in processes}
-    process_executors = {p.id: p.executor for p in processes}
+    processes = repo.list_processes(epoch=proc_epoch, limit=500)
+    process_names = {p.id: p.name for p in processes if p.id in referenced_pids}
+    process_runners = {p.id: p.required_tags for p in processes if p.id in referenced_pids}
+    process_executors = {p.id: p.executor for p in processes if p.id in referenced_pids}
     out = [_summary(r, process_names, process_runners, process_executors) for r in items]
     return RunsResponse(count=len(out), runs=out)
 

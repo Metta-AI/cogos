@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from cogos.capabilities.base import Capability
-
 import pytest
+
+from cogos.capabilities.base import Capability
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ class TestBuildProcessCapabilities:
             mock_instance.scope.return_value = mock_scoped
 
             mock_mod = MagicMock()
-            setattr(mock_mod, "SecretsCapability", mock_cls)
+            mock_mod.SecretsCapability = mock_cls
             mock_importlib.import_module.return_value = mock_mod
 
             from cogos.executor.capabilities import build_process_capabilities

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -190,21 +191,23 @@ def _sync_handlers(
     from cogos.db.models import Channel, ChannelType
 
     existing = repo.list_handlers(process_id=process_id)
-    # Build map of channel name -> handler
+    # Batch-fetch all channels once to map IDs to names
+    all_channels = repo.list_channels(limit=500)
+    channels_by_id = {ch.id: ch for ch in all_channels}
+    channels_by_name = {ch.name: ch for ch in all_channels}
+
     existing_by_name: dict[str, Handler] = {}
     for h in existing:
-        name = None
         if h.channel:
-            ch = repo.get_channel(h.channel)
-            name = ch.name if ch else None
-        if name:
-            existing_by_name[name] = h
+            ch = channels_by_id.get(h.channel)
+            if ch:
+                existing_by_name[ch.name] = h
 
     desired = set(channel_names)
 
     # Add new
     for ch_name in desired - set(existing_by_name.keys()):
-        ch = repo.get_channel_by_name(ch_name)
+        ch = channels_by_name.get(ch_name)
         if not ch:
             ch = Channel(name=ch_name, channel_type=ChannelType.NAMED)
             repo.upsert_channel(ch)
@@ -226,8 +229,11 @@ def _sync_capabilities_from_grants(
     existing_by_name = {pc.name: pc for pc in existing}
     desired_names = {g.grant_name for g in grants}
 
+    # Batch-fetch all capabilities once
+    caps_by_name = {c.name: c for c in repo.list_capabilities()}
+
     for g in grants:
-        c = repo.get_capability_by_name(g.capability_name)
+        c = caps_by_name.get(g.capability_name)
         if not c:
             continue
         cfg = g.config or None
@@ -260,11 +266,12 @@ def list_processes(
     name: str,
     status: str | None = Query(None, description="Filter by process status"),
     epoch: str | None = Query(None, description="Epoch filter: omit for current, 'all' for all epochs"),
+    limit: int = Query(200, ge=1, le=500),
 ) -> ProcessesResponse:
     repo = get_repo()
     ps = ProcessStatus(status) if status else None
     ep = ALL_EPOCHS if epoch == "all" else None
-    procs = repo.list_processes(status=ps, epoch=ep)
+    procs = repo.list_processes(status=ps, epoch=ep, limit=limit)
 
     details = [_detail(p) for p in procs]
 
@@ -300,11 +307,12 @@ def get_process(name: str, process_id: str) -> dict:
     resolved_prompt = ctx.generate_full_prompt(p)
     prompt_tree = ctx.resolve_prompt_tree(p)
 
-    # Capabilities granted to this process (named grants with scope config)
+    # Capabilities granted to this process — batch-fetch all capabilities
     pcs = repo.list_process_capabilities(p.id)
+    all_caps = {c.id: c for c in repo.list_capabilities()}
     cap_grants: list[dict] = []
     for pc in pcs:
-        c = repo.get_capability(pc.capability)
+        c = all_caps.get(pc.capability)
         if c:
             cap_grants.append(
                 {
@@ -324,15 +332,19 @@ def get_process(name: str, process_id: str) -> dict:
         if fv and fv.content:
             includes.append({"key": f.key, "content": fv.content})
 
-    # Channel subscriptions (handlers)
+    # Channel subscriptions (handlers) — batch-fetch channels
     handlers = repo.list_handlers(process_id=p.id)
+    channel_ids = [h.channel for h in handlers if h.channel]
+    channels_by_id = {ch.id: ch for ch in repo.list_channels(limit=500)} if channel_ids else {}
     handler_list = []
     for h in handlers:
         ch_name = None
         if h.channel:
-            ch = repo.get_channel(h.channel)
+            ch = channels_by_id.get(h.channel)
             ch_name = ch.name if ch else str(h.channel)
         handler_list.append({"id": str(h.id), "channel": ch_name, "enabled": h.enabled})
+
+    capability_configs = {g["grant_name"]: g["config"] for g in cap_grants}
 
     return {
         "process": _detail(p).model_dump(),
@@ -340,7 +352,7 @@ def get_process(name: str, process_id: str) -> dict:
         "resolved_prompt": resolved_prompt,
         "prompt_tree": prompt_tree,
         "capabilities": [g["grant_name"] for g in cap_grants],
-        "capability_configs": {g["grant_name"]: g["config"] or {} for g in cap_grants},
+        "capability_configs": capability_configs,
         "cap_grants": cap_grants,
         "includes": includes,
         "handlers": handler_list,
@@ -359,13 +371,13 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         status=ProcessStatus(body.status),
         parent_process=UUID(body.parent_process) if body.parent_process else None,
         model=body.model,
-        model_constraints=body.model_constraints or {},
+        model_constraints=body.model_constraints if body.model_constraints is not None else {},
         return_schema=body.return_schema,
         max_duration_ms=body.max_duration_ms,
         max_retries=body.max_retries,
         preemptible=body.preemptible,
         clear_context=body.clear_context,
-        metadata=body.metadata or {},
+        metadata=body.metadata if body.metadata is not None else {},
     )
     if body.output_events is not None:
         p.output_events = body.output_events
@@ -375,7 +387,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
         _sync_capabilities_from_grants(p.id, body.cap_grants, repo)
     elif body.capabilities is not None:
         # Legacy: convert capabilities list to grants
-        configs = body.capability_configs or {}
+        configs = body.capability_configs if body.capability_configs is not None else {}
         grants = [CapGrantIn(grant_name=n, capability_name=n, config=configs.get(n)) for n in body.capabilities]
         _sync_capabilities_from_grants(p.id, grants, repo)
     if body.handlers is not None:
@@ -425,7 +437,7 @@ def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDe
     if body.cap_grants is not None:
         _sync_capabilities_from_grants(p.id, body.cap_grants, repo)
     elif body.capabilities is not None:
-        configs = body.capability_configs or {}
+        configs = body.capability_configs if body.capability_configs is not None else {}
         grants = [CapGrantIn(grant_name=n, capability_name=n, config=configs.get(n)) for n in body.capabilities]
         _sync_capabilities_from_grants(p.id, grants, repo)
     if body.handlers is not None:
@@ -483,8 +495,10 @@ def get_process_logs(
                 )
             )
 
-    # Sort by created_at
-    entries.sort(key=lambda e: e.created_at or "")
+    # Sort by created_at — assert guarantees non-None, cast for pyright
+    for e in entries:
+        assert e.created_at is not None
+    entries.sort(key=lambda e: cast(str, e.created_at))
 
     return ProcessLogsResponse(
         process_id=str(p.id),

@@ -7,7 +7,10 @@ from cogos.files.store import FileStore
 from cogos.image.apply import apply_image
 from cogos.image.spec import load_image
 from cogos.image.versions import (
-    VersionManifest, load_defaults, resolve_versions, write_versions_to_filestore,
+    VersionManifest,
+    load_defaults,
+    resolve_versions,
+    write_versions_to_filestore,
 )
 
 

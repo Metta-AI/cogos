@@ -39,6 +39,37 @@ asana_get_project_sections — list project sections
 
 All tools are prefixed with `mcp__claude_ai_Asana__` and loaded via ToolSearch.
 
+## Checking Versions (do this first when debugging)
+
+Before debugging any issue, always check what versions are running:
+
+```bash
+curl -s https://<cogent>.softmax-cogents.com/api/version | python3 -m json.tool
+```
+
+This returns the boot manifest with all component SHAs:
+
+```json
+{
+  "components": {
+    "executor": "abc1234",
+    "dashboard": "def5678",
+    "discord_bridge": "local",
+    "lambda": "abc1234...",
+    "cogos": "abc1234..."
+  },
+  "booted_at": "2026-03-25T02:08:05Z",
+  "epoch": 2
+}
+```
+
+Compare each component SHA against the expected version in `images/cogos/versions.defaults.json` to confirm the deploy is current.
+
+**Common version mismatches:**
+- `dashboard` stale → need `cogtainer deploy-dashboard <name> --sha sha-<short_sha>` (note the `sha-` prefix!)
+- `lambda`/`executor` stale → need `cogtainer update <name> --lambdas`
+- `cogos` stale → need `cogos restart` to reboot the image
+
 ## Which cogent to use
 
 Each developer has their own test cogent. All examples below use `$COGENT`. Set it once:

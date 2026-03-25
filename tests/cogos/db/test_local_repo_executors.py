@@ -6,12 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Executor,
     ExecutorStatus,
     ExecutorToken,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 @pytest.fixture

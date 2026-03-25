@@ -61,7 +61,8 @@ def _get_sender(from_address: str, runtime=None) -> SesSender:
 
 def _email_from_event(e) -> EmailMessage:
     """Legacy helper for constructing EmailMessage from an event-like object."""
-    p = e.payload or {}
+    assert isinstance(e.payload, dict), f"Expected dict payload, got {type(e.payload)}"
+    p = e.payload
     return EmailMessage(
         sender=p.get("from"),
         to=p.get("to"),
@@ -74,7 +75,8 @@ def _email_from_event(e) -> EmailMessage:
 
 def _email_from_channel_message(msg) -> EmailMessage:
     """Construct an EmailMessage from a ChannelMessage."""
-    p = msg.payload or {}
+    assert isinstance(msg.payload, dict), f"Expected dict payload, got {type(msg.payload)}"
+    p = msg.payload
     return EmailMessage(
         sender=p.get("from"),
         to=p.get("to"),

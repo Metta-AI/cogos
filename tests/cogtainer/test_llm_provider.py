@@ -7,8 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cogtainer.config import LLMConfig
-from cogtainer.llm.provider import LLMProvider, create_provider
-
+from cogtainer.llm.provider import create_provider
 
 # ---------------------------------------------------------------------------
 # Factory tests

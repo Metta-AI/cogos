@@ -29,21 +29,24 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Apply CogOS SQL migrations on startup
+    # Pre-warm auth (Secrets Manager) — safe to run in each worker
     try:
-        from cogos.db.migrations import apply_cogos_sql_migrations
+        from dashboard.auth import _load_api_key
 
+        _load_api_key()
+        logger.info("Dashboard API key loaded")
+    except Exception:
+        logger.warning("Dashboard API key pre-warm failed", exc_info=True)
+
+    # Pre-warm DB connection — create client, skip migrations here
+    # (migrations run from the dispatcher Lambda on boot, not the API server)
+    try:
         from cogos.api.db import get_repo
 
-        repo = get_repo()
-        statements = apply_cogos_sql_migrations(
-            repo,
-            on_error=lambda name, exc: logger.warning("Migration %s: %s", name, exc),
-        )
-        if statements:
-            logger.info("Applied %d CogOS migration statements on startup", statements)
+        get_repo()
+        logger.info("DB connection ready")
     except Exception:
-        logger.warning("CogOS migrations failed on startup", exc_info=True)
+        logger.warning("DB pre-warm failed", exc_info=True)
     yield
 
 
@@ -78,8 +81,8 @@ def create_app() -> FastAPI:
         capabilities,
         channels,
         chat,
-        cogtainer,
         cogos_status,
+        cogtainer,
         cron,
         diagnostics,
         executors,
@@ -137,6 +140,34 @@ def create_app() -> FastAPI:
     async def healthz() -> dict:
         return {"ok": True}
 
+    @app.get("/api/version")
+    async def api_version() -> dict:
+        """Return component versions from the boot manifest and API metadata."""
+        from cogos.api.db import get_repo
+
+        # Load boot manifest from FileStore
+        components: dict = {}
+        booted_at = None
+        epoch = None
+        try:
+            repo = get_repo()
+            row = repo.get_file("mnt/boot/versions.json")
+            if row:
+                import json as _json
+
+                manifest = _json.loads(row.content)
+                components = manifest.get("components", {})
+                booted_at = manifest.get("booted_at")
+                epoch = manifest.get("epoch")
+        except Exception:
+            pass
+
+        return {
+            "components": components,
+            "booted_at": booted_at,
+            "epoch": epoch,
+        }
+
     # ── WebSocket ──────────────────────────────────────────────
 
     from dashboard.ws import manager
@@ -153,9 +184,9 @@ def create_app() -> FastAPI:
     # ── Web static content from FileStore (DB) ─────────────────
 
     def _serve_web_file(path: str) -> Response:
+        from cogos.api.db import get_repo
         from cogos.files.store import FileStore
         from cogos.io.web.serving import lookup_static_file
-        from cogos.api.db import get_repo
 
         store = FileStore(get_repo())
         web_file = lookup_static_file(store, path)
@@ -219,8 +250,8 @@ def create_app() -> FastAPI:
 
         import boto3
 
-        from cogos.db.models.channel_message import ChannelMessage
         from cogos.api.db import get_repo
+        from cogos.db.models.channel_message import ChannelMessage
 
         repo = get_repo()
         channel = repo.get_channel_by_name("io:web:request")
@@ -292,6 +323,17 @@ def create_app() -> FastAPI:
         except Exception:
             logger.exception("Executor invocation failed")
             return JSONResponse(status_code=502, content={"detail": "executor error"})
+
+    # ── MCP server — auto-expose all endpoints as tools ────────
+    # Must be mounted BEFORE the SPA catch-all route below.
+    try:
+        from fastapi_mcp import FastApiMCP
+
+        mcp = FastApiMCP(app, name="cogos")
+        mcp.mount_http(mount_path="/api/mcp")
+        logger.info("FastAPI-MCP mounted at /api/mcp")
+    except Exception:
+        logger.warning("fastapi-mcp setup failed", exc_info=True)
 
     # ── Static frontend files ──────────────────────────────────
 

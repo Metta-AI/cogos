@@ -1,9 +1,7 @@
 """Tests for SqliteRepository channel and schema CRUD."""
-from uuid import uuid4
 
 import pytest
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -14,6 +12,7 @@ from cogos.db.models import (
     ProcessStatus,
     Schema,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 @pytest.fixture
@@ -82,7 +81,7 @@ class TestChannelCRUD:
         baseline = len(repo.list_channels(owner_process=process.id))
         p2 = Process(name="other", mode=ProcessMode.ONE_SHOT, status=ProcessStatus.WAITING)
         repo.upsert_process(p2)
-        baseline_p2 = len(repo.list_channels(owner_process=p2.id))
+        _baseline_p2 = len(repo.list_channels(owner_process=p2.id))
         repo.upsert_channel(Channel(name="ch1", owner_process=process.id, channel_type=ChannelType.NAMED))
         repo.upsert_channel(Channel(name="ch2", owner_process=p2.id, channel_type=ChannelType.NAMED))
         assert len(repo.list_channels(owner_process=process.id)) == baseline + 1

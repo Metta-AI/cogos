@@ -1,64 +1,53 @@
 /**
- * CogOS Claude Code Plugin — Thin MCP Proxy Server
+ * CogOS Claude Code Plugin — Thin MCP Proxy
  *
- * Connects to a remote CogOS API and proxies the cogent's memory,
- * capabilities, and channels as MCP tools. Makes the Claude Code
- * session *be* the cogent.
+ * Connects to a remote CogOS FastAPI server's /mcp endpoint (powered by
+ * fastapi-mcp) and proxies the auto-generated tools to Claude Code.
  *
- * Starts with a single `connect` tool. After connecting, expands to
- * load_memory, search_capabilities, channels, and dynamically
- * discovered capability tools.
+ * Local responsibilities: auth, discovery, channel polling, executor lifecycle.
+ * Remote responsibilities: all tool definitions and execution (via fastapi-mcp).
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "http";
 import { exec } from "child_process";
-import { getCachedToken, cacheToken, removeCachedToken } from "./token-cache.js";
+import {
+  getCachedToken,
+  cacheToken,
+  removeCachedToken,
+} from "./token-cache.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface CapabilityInfo {
+interface RemoteTool {
   name: string;
-  description: string;
-}
-
-interface MethodParam {
-  name: string;
-  type: string;
-  required: boolean;
-}
-
-interface MethodDetail {
-  name: string;
-  docstring: string;
-  params: MethodParam[];
-}
-
-interface CapabilityTool {
-  name: string;
-  description: string;
+  description?: string;
   inputSchema: {
     type: "object";
-    properties: Record<string, unknown>;
-    required: string[];
+    properties?: Record<string, object>;
+    required?: string[];
+    [key: string]: unknown;
   };
-  capName: string;
-  methodName: string;
 }
 
 interface ConnectionState {
   address: string;
   apiUrl: string;
   cogentName: string;
+  processName: string;
   token: string;
   connected: boolean;
+  isExecutor: boolean;
+  executorId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,11 +58,16 @@ const state: ConnectionState = {
   address: "",
   apiUrl: "",
   cogentName: "",
+  processName: "supervisor",
   token: "",
   connected: false,
+  isExecutor: false,
+  executorId: "",
 };
 
-let capabilityTools: CapabilityTool[] = [];
+let remoteClient: Client | null = null;
+let remoteTransport: StreamableHTTPClientTransport | null = null;
+let remoteTools: RemoteTool[] = [];
 const seenMessages = new Set<string>();
 const channelIndex = new Map<string, string>();
 let currentRunId: string | null = null;
@@ -81,7 +75,7 @@ let pollInterval: ReturnType<typeof setInterval> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 // ---------------------------------------------------------------------------
-// HTTP helpers
+// HTTP helpers (for channel polling and executor lifecycle — not proxied)
 // ---------------------------------------------------------------------------
 
 function headers(): Record<string, string> {
@@ -97,33 +91,155 @@ function apiBase(): string {
   return `${state.apiUrl}/api/cogents/${state.cogentName}`;
 }
 
-function capApiBase(): string {
-  return `${state.apiUrl}/api/v1`;
-}
-
-function capHeaders(): Record<string, string> {
-  const h = headers();
-  // Capability proxy doesn't need process context for search
-  return h;
-}
-
 async function apiGet(url: string): Promise<unknown> {
-  const resp = await fetch(url, { headers: headers() });
-  if (!resp.ok) throw new Error(`GET ${url}: ${resp.status} ${resp.statusText}`);
-  return resp.json();
+  try {
+    const resp = await fetch(url, { headers: headers() });
+    if (!resp.ok) throw new Error(`GET ${url}: ${resp.status} ${resp.statusText}`);
+    return resp.json();
+  } catch (e: any) {
+    const cause = e?.cause ? ` cause=${e.cause?.code || e.cause?.message || JSON.stringify(e.cause)}` : "";
+    throw new Error(`GET ${url}: ${e?.message}${cause}`);
+  }
 }
 
-async function apiPost(
-  url: string,
-  body: unknown,
-): Promise<unknown> {
+async function apiPost(url: string, body: unknown): Promise<unknown> {
   const resp = await fetch(url, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`POST ${url}: ${resp.status} ${resp.statusText}`);
+  if (!resp.ok)
+    throw new Error(`POST ${url}: ${resp.status} ${resp.statusText}`);
   return resp.json();
+}
+
+// ---------------------------------------------------------------------------
+// Memory & capability discovery
+// ---------------------------------------------------------------------------
+
+interface CapabilityInfo {
+  name: string;
+  description: string;
+  handler: string;
+}
+
+interface CapabilityMethodParam {
+  name: string;
+  type: string;
+  default: string | null;
+}
+
+interface CapabilityMethodInfo {
+  name: string;
+  params: CapabilityMethodParam[];
+  return_type: string;
+}
+
+interface CapabilityTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+  capName: string;
+  methodName: string;
+}
+
+let capabilityTools: CapabilityTool[] = [];
+
+function pythonTypeToJsonSchema(pyType: string): string {
+  switch (pyType) {
+    case "str": return "string";
+    case "int": return "integer";
+    case "float": return "number";
+    case "bool": return "boolean";
+    default: return "string";
+  }
+}
+
+async function loadMemory(): Promise<string> {
+  try {
+    const url = `${apiBase()}/memory/rendered?process_name=${encodeURIComponent(state.processName)}`;
+    const data = (await apiGet(url)) as {
+      prompt?: string;
+    };
+    return data.prompt || "(no memory found)";
+  } catch (e) {
+    return `Error loading memory: ${e}`;
+  }
+}
+
+async function searchCapabilities(
+  query: string,
+): Promise<{ tools: CapabilityTool[]; summary: string }> {
+  const tools: CapabilityTool[] = [];
+  try {
+    // Use the dashboard capabilities endpoint (no X-Process-Id required)
+    const data = (await apiGet(`${apiBase()}/capabilities`)) as {
+      capabilities?: Array<{ name: string; description: string }>;
+    };
+    const capabilities = data.capabilities || [];
+
+    // Filter by query (case-insensitive substring match)
+    const q = query.toLowerCase();
+    const matched = capabilities.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q),
+    );
+
+    for (const cap of matched) {
+      try {
+        const methods = (await apiGet(
+          `${apiBase()}/capabilities/${cap.name}/methods`,
+        )) as CapabilityMethodInfo[];
+        for (const method of methods) {
+          tools.push({
+            name: `cogos_${cap.name}_${method.name}`,
+            description: `${cap.name}.${method.name}`,
+            inputSchema: {
+              type: "object" as const,
+              properties: Object.fromEntries(
+                method.params.map((p) => [
+                  p.name,
+                  { type: pythonTypeToJsonSchema(p.type) },
+                ]),
+              ),
+              required: method.params
+                .filter((p) => p.default === null)
+                .map((p) => p.name),
+            },
+            capName: cap.name,
+            methodName: method.name,
+          });
+        }
+      } catch {
+        // Skip capabilities that fail to load methods
+      }
+    }
+  } catch (e) {
+    return { tools: [], summary: `Error searching capabilities: ${e}` };
+  }
+
+  // Register discovered tools (deduplicate by name)
+  capabilityTools = [...capabilityTools, ...tools];
+  const seen = new Set<string>();
+  capabilityTools = capabilityTools.filter((t) => {
+    if (seen.has(t.name)) return false;
+    seen.add(t.name);
+    return true;
+  });
+
+  if (tools.length === 0) {
+    return { tools, summary: `No capabilities matched "${query}".` };
+  }
+  const toolNames = tools.map((t) => t.name).join("\n  ");
+  return {
+    tools,
+    summary: `Found ${tools.length} capability tools:\n  ${toolNames}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +293,6 @@ async function browserAuthFlow(address: string): Promise<string> {
       openBrowser(authUrl);
     });
 
-    // Timeout after 5 minutes
     setTimeout(() => {
       httpServer.close();
       reject(new Error("Auth flow timed out after 5 minutes"));
@@ -186,61 +301,124 @@ async function browserAuthFlow(address: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Address parsing
+// ---------------------------------------------------------------------------
+
+function parseAddress(address: string): {
+  apiUrl: string;
+  cogentName: string;
+  processName: string;
+  host: string;
+} {
+  // Support process@address syntax (e.g. "standup@alpha.softmax-cogents.com")
+  // Default process is "supervisor" when not specified.
+  let processName = "supervisor";
+  let host = address;
+  const atIdx = address.indexOf("@");
+  if (atIdx > 0) {
+    processName = address.slice(0, atIdx);
+    host = address.slice(atIdx + 1);
+  }
+
+  const parts = host.split(".");
+  if (parts.length >= 2) {
+    const cogentName = parts[0];
+    return { apiUrl: `https://${host}`, cogentName, processName, host };
+  }
+  return { apiUrl: `http://localhost:8100`, cogentName: host, processName, host };
+}
+
+// ---------------------------------------------------------------------------
+// Remote MCP client — connects to CogOS fastapi-mcp at /api/mcp
+// ---------------------------------------------------------------------------
+
+async function connectRemoteMcp(): Promise<void> {
+  const mcpUrl = new URL(`${state.apiUrl}/api/mcp`);
+
+  remoteTransport = new StreamableHTTPClientTransport(mcpUrl, {
+    requestInit: { headers: headers() },
+  });
+
+  remoteClient = new Client(
+    { name: "cogos-proxy", version: "1.0.0" },
+    { capabilities: {} },
+  );
+
+  await remoteClient.connect(remoteTransport);
+  process.stderr.write(`[cogos] Connected to remote MCP at ${mcpUrl}\n`);
+
+  // Fetch remote tools
+  await refreshRemoteTools();
+}
+
+async function refreshRemoteTools(): Promise<void> {
+  if (!remoteClient) return;
+  try {
+    const result = await remoteClient.listTools();
+    remoteTools = (result.tools || []) as RemoteTool[];
+    process.stderr.write(
+      `[cogos] Loaded ${remoteTools.length} remote tools\n`,
+    );
+  } catch (e) {
+    process.stderr.write(`[cogos] Failed to list remote tools: ${e}\n`);
+    remoteTools = [];
+  }
+}
+
+async function disconnectRemoteMcp(): Promise<void> {
+  if (remoteTransport) {
+    try {
+      await remoteTransport.close();
+    } catch {
+      // ignore
+    }
+    remoteTransport = null;
+  }
+  remoteClient = null;
+  remoteTools = [];
+}
+
+// ---------------------------------------------------------------------------
 // Connection
 // ---------------------------------------------------------------------------
 
-function parseAddress(address: string): { apiUrl: string; cogentName: string } {
-  // Format: cogent-name.domain.com — first segment is cogent name, full address is the host
-  const parts = address.split(".");
-  if (parts.length >= 2) {
-    const cogentName = parts[0];
-    return {
-      apiUrl: `https://${address}`,
-      cogentName,
-    };
-  }
-  // Fallback: treat as local
-  return {
-    apiUrl: `http://localhost:8100`,
-    cogentName: address,
-  };
-}
+async function connect(address: string, token?: string): Promise<string> {
+  // Disconnect existing connection first
+  await disconnect();
 
-async function connect(
-  address: string,
-  token?: string,
-): Promise<string> {
-  const { apiUrl, cogentName } = parseAddress(address);
+  const { apiUrl, cogentName, processName, host } = parseAddress(address);
   state.address = address;
   state.apiUrl = apiUrl;
   state.cogentName = cogentName;
+  state.processName = processName;
+
+  // Use host (without process@ prefix) for token cache and auth
+  const tokenKey = host;
 
   // Resolve token
   if (token) {
     state.token = token;
   } else {
-    const cached = getCachedToken(address);
+    const cached = getCachedToken(tokenKey);
     if (cached) {
       state.token = cached;
-      process.stderr.write(`[cogos] Using cached token for ${address}\n`);
-
-      // Validate cached token — if it fails, clear and re-auth
+      process.stderr.write(`[cogos] Using cached token for ${tokenKey}\n`);
       try {
-        await apiGet(`${apiBase()}/channels`);
+        await apiGet(`${apiBase()}/cogos-status`);
       } catch (e) {
         process.stderr.write(`[cogos] Cached token invalid, re-authenticating: ${e}\n`);
-        removeCachedToken(address);
+        removeCachedToken(tokenKey);
         state.token = "";
-        // Fall through to browser auth below
       }
     }
 
     if (!state.token) {
-      // Browser auth flow
       try {
-        state.token = await browserAuthFlow(address);
-        cacheToken(address, state.token, cogentName);
-        process.stderr.write(`[cogos] Token acquired and cached for ${address}\n`);
+        state.token = await browserAuthFlow(host);
+        cacheToken(tokenKey, state.token, cogentName);
+        process.stderr.write(
+          `[cogos] Token acquired and cached for ${tokenKey}\n`,
+        );
       } catch (e) {
         return `Auth failed: ${e}. You can retry with a token: connect("${address}", "your-token")`;
       }
@@ -249,165 +427,186 @@ async function connect(
 
   // Validate connection
   try {
-    await apiGet(`${apiBase()}/channels`);
+    await apiGet(`${apiBase()}/cogos-status`);
   } catch (e) {
     state.connected = false;
-    // Clear token if validation fails — it's likely invalid
-    removeCachedToken(address);
+    removeCachedToken(tokenKey);
     state.token = "";
     return `Failed to connect to ${address}: ${e}`;
   }
 
-  state.connected = true;
-
   // Cache token if provided directly
   if (token) {
-    cacheToken(address, token, cogentName);
+    cacheToken(tokenKey, token, cogentName);
   }
 
-  // Start polling and heartbeat
+  // If a non-default process was requested, check it exists; fall back to supervisor
+  if (processName !== "supervisor") {
+    try {
+      const memUrl = `${apiBase()}/memory/rendered?process_name=${encodeURIComponent(processName)}`;
+      await apiGet(memUrl);
+      process.stderr.write(`[cogos] Process "${processName}" found on cogent "${cogentName}"\n`);
+    } catch {
+      process.stderr.write(
+        `[cogos] Process "${processName}" not found, falling back to "supervisor"\n`,
+      );
+      state.processName = "supervisor";
+    }
+  }
+
+  // Connect to remote MCP
+  try {
+    await connectRemoteMcp();
+  } catch (e) {
+    process.stderr.write(
+      `[cogos] Warning: remote MCP connection failed: ${e}. Falling back to direct API.\n`,
+    );
+  }
+
+  state.connected = true;
+
+  // Start channel polling
   startPolling();
 
-  return `Connected to cogent "${cogentName}" at ${apiUrl}. Use load_memory to get the cogent's instructions, and search_capabilities to discover available tools.`;
-}
-
-// ---------------------------------------------------------------------------
-// Memory
-// ---------------------------------------------------------------------------
-
-async function loadMemory(): Promise<string> {
+  // Notify tool list changed
   try {
-    const data = (await apiGet(`${apiBase()}/memory/rendered`)) as {
-      prompt: string;
-      layers: Array<{ name: string; content: string; priority: number }>;
-    };
-    return data.prompt || "(no memory found)";
-  } catch (e) {
-    return `Error loading memory: ${e}`;
+    await mcpServer.notification({
+      method: "notifications/tools/list_changed",
+    });
+  } catch {
+    // May not be ready
   }
+
+  return `Connected to cogent "${cogentName}" (process: ${state.processName}) at ${apiUrl}. Use load_memory to get the cogent's instructions.`;
+}
+
+async function disconnect(): Promise<string> {
+  // Stop polling
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
+  // Disconnect remote MCP
+  await disconnectRemoteMcp();
+
+  // Clear state
+  const wasConnected = state.connected;
+  const oldCogent = state.cogentName;
+  state.address = "";
+  state.apiUrl = "";
+  state.cogentName = "";
+  state.token = "";
+  state.connected = false;
+  state.isExecutor = false;
+  state.executorId = "";
+  currentRunId = null;
+  seenMessages.clear();
+  channelIndex.clear();
+
+  // Notify tool list changed
+  try {
+    await mcpServer.notification({
+      method: "notifications/tools/list_changed",
+    });
+  } catch {
+    // May not be ready
+  }
+
+  return wasConnected
+    ? `Disconnected from cogent "${oldCogent}". Use connect to connect to another cogent.`
+    : "Not connected.";
 }
 
 // ---------------------------------------------------------------------------
-// Capabilities
+// Executor lifecycle
 // ---------------------------------------------------------------------------
 
-async function searchCapabilities(
-  query: string,
-): Promise<{ tools: CapabilityTool[]; summary: string }> {
-  const tools: CapabilityTool[] = [];
+async function registerExecutor(): Promise<string> {
+  if (!state.connected)
+    return "Not connected. Use connect first.";
+  if (state.isExecutor)
+    return `Already registered as executor ${state.executorId}`;
+
+  const executorId = `cc-${process.env.HOSTNAME || "local"}-${Math.random().toString(36).slice(2, 10)}`;
 
   try {
-    const data = (await apiGet(`${capApiBase()}/capabilities`)) as {
-      capabilities: CapabilityInfo[];
-    };
-    const capabilities = data.capabilities || [];
+    const data = (await apiPost(`${apiBase()}/executors/register`, {
+      executor_id: executorId,
+      channel_type: "claude-code",
+      executor_tags: ["claude-code"],
+      dispatch_type: "channel",
+      metadata: { mcp: true, hostname: process.env.HOSTNAME || "local" },
+    })) as { channel?: string };
 
-    // Filter by query (case-insensitive substring match)
-    const q = query.toLowerCase();
-    const matched = capabilities.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q),
-    );
+    state.isExecutor = true;
+    state.executorId = executorId;
 
-    for (const cap of matched) {
+    // Subscribe to executor's dedicated channel if provided
+    const executorChannel = data.channel;
+    if (executorChannel) {
+      process.stderr.write(
+        `[cogos] Subscribed to executor channel: ${executorChannel}\n`,
+      );
+    }
+
+    // Start heartbeat
+    heartbeatInterval = setInterval(async () => {
       try {
-        const methods = (await apiGet(
-          `${capApiBase()}/capabilities/${cap.name}/methods`,
-        )) as MethodDetail[];
-
-        for (const method of methods) {
-          tools.push({
-            name: `cogos_${cap.name}_${method.name}`,
-            description: `${cap.name}.${method.name}: ${method.docstring}`,
-            inputSchema: {
-              type: "object" as const,
-              properties: Object.fromEntries(
-                method.params.map((p) => [
-                  p.name,
-                  { type: pythonTypeToJsonSchema(p.type) },
-                ]),
-              ),
-              required: method.params
-                .filter((p) => p.required)
-                .map((p) => p.name),
-            },
-            capName: cap.name,
-            methodName: method.name,
-          });
-        }
+        await apiPost(
+          `${apiBase()}/executors/${state.executorId}/heartbeat`,
+          {
+            status: currentRunId ? "busy" : "idle",
+            current_run_id: currentRunId,
+          },
+        );
       } catch {
-        // Skip capabilities that fail to load methods
+        // Heartbeat failure is non-fatal
       }
+    }, 15000);
+
+    // Notify tool list changed (executor tools now available)
+    try {
+      await mcpServer.notification({
+        method: "notifications/tools/list_changed",
+      });
+    } catch {
+      // May not be ready
     }
+
+    return `Registered as executor ${executorId}. Heartbeat active. Channel notifications enabled.`;
   } catch (e) {
-    return { tools: [], summary: `Error searching capabilities: ${e}` };
+    return `Failed to register executor: ${e}`;
   }
-
-  // Register discovered tools
-  capabilityTools = [...capabilityTools, ...tools];
-
-  // Deduplicate by name
-  const seen = new Set<string>();
-  capabilityTools = capabilityTools.filter((t) => {
-    if (seen.has(t.name)) return false;
-    seen.add(t.name);
-    return true;
-  });
-
-  const names = tools.map((t) => t.name).join("\n  ");
-  return {
-    tools,
-    summary: tools.length > 0
-      ? `Found ${tools.length} capability tools:\n  ${names}`
-      : `No capabilities matched "${query}"`,
-  };
 }
 
-async function invokeCapability(
-  capName: string,
-  methodName: string,
-  args: Record<string, unknown>,
-): Promise<{ result?: unknown; error?: string }> {
+async function completeRun(
+  status: string,
+  output?: Record<string, unknown>,
+  error?: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  if (!currentRunId) return { ok: false, error: "no active run" };
+  const runId = currentRunId;
   try {
-    const resp = await fetch(
-      `${capApiBase()}/capabilities/${capName}/${methodName}`,
-      {
-        method: "POST",
-        headers: capHeaders(),
-        body: JSON.stringify({ args }),
-      },
-    );
-    if (!resp.ok) {
-      const err = (await resp.json().catch(() => ({}))) as Record<
-        string,
-        string
-      >;
-      return { error: err.detail || resp.statusText };
-    }
-    return (await resp.json()) as { result?: unknown; error?: string };
+    const data = (await apiPost(`${apiBase()}/runs/${runId}/complete`, {
+      executor_id: state.executorId,
+      status,
+      output: output || null,
+      error: error || null,
+    })) as { ok: boolean };
+    currentRunId = null;
+    return data;
   } catch (e) {
-    return { error: String(e) };
-  }
-}
-
-function pythonTypeToJsonSchema(pyType: string): string {
-  switch (pyType) {
-    case "str":
-      return "string";
-    case "int":
-      return "integer";
-    case "float":
-      return "number";
-    case "bool":
-      return "boolean";
-    default:
-      return "string";
+    return { ok: false, error: String(e) };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Channels
+// Channel polling
 // ---------------------------------------------------------------------------
 
 async function fetchChannels(): Promise<
@@ -459,64 +658,6 @@ async function fetchMessages(
   } catch {
     return [];
   }
-}
-
-async function sendMessage(
-  channelNameOrId: string,
-  payload: Record<string, unknown>,
-): Promise<{ id?: string; error?: string }> {
-  let channelId = channelIndex.get(channelNameOrId);
-  if (!channelId) {
-    await refreshChannelIndex();
-    channelId = channelIndex.get(channelNameOrId) || channelNameOrId;
-  }
-
-  try {
-    const data = (await apiPost(
-      `${apiBase()}/channels/${channelId}/messages`,
-      { payload },
-    )) as { id: string };
-    return data;
-  } catch (e) {
-    return { error: String(e) };
-  }
-}
-
-async function refreshChannelIndex(): Promise<void> {
-  const channels = await fetchChannels();
-  for (const ch of channels) {
-    channelIndex.set(ch.name, ch.id);
-  }
-}
-
-async function completeRun(
-  status: string,
-  output?: Record<string, unknown>,
-  error?: string,
-): Promise<{ ok?: boolean; error?: string }> {
-  if (!currentRunId) return { ok: false, error: "no active run" };
-  const runId = currentRunId;
-  try {
-    const data = (await apiPost(`${apiBase()}/runs/${runId}/complete`, {
-      status,
-      output: output || null,
-      error: error || null,
-    })) as { ok: boolean };
-    currentRunId = null;
-    return data;
-  } catch (e) {
-    return { ok: false, error: String(e) };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Polling
-// ---------------------------------------------------------------------------
-
-function matchesPattern(name: string, pattern: string): boolean {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$");
-  return regex.test(name);
 }
 
 async function pollOnce(): Promise<void> {
@@ -580,9 +721,7 @@ async function seedSeen(): Promise<void> {
 
 function startPolling(): void {
   if (pollInterval) clearInterval(pollInterval);
-  if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-  // Seed seen messages then start
   seedSeen().then(() => {
     pollInterval = setInterval(async () => {
       try {
@@ -592,11 +731,34 @@ function startPolling(): void {
       }
     }, 3000);
   });
+}
 
-  // Heartbeat (lightweight — just for presence, no executor registration)
-  heartbeatInterval = setInterval(async () => {
-    // No-op for now — we don't register as an executor in chat mode
-  }, 15000);
+// ---------------------------------------------------------------------------
+// Channel send helper (for local send/reply tools)
+// ---------------------------------------------------------------------------
+
+async function sendMessage(
+  channelNameOrId: string,
+  payload: Record<string, unknown>,
+): Promise<{ id?: string; error?: string }> {
+  let channelId = channelIndex.get(channelNameOrId);
+  if (!channelId) {
+    const channels = await fetchChannels();
+    for (const ch of channels) {
+      channelIndex.set(ch.name, ch.id);
+    }
+    channelId = channelIndex.get(channelNameOrId) || channelNameOrId;
+  }
+
+  try {
+    const data = (await apiPost(
+      `${apiBase()}/channels/${channelId}/messages`,
+      { payload },
+    )) as { id: string };
+    return data;
+  } catch (e) {
+    return { error: String(e) };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -604,7 +766,7 @@ function startPolling(): void {
 // ---------------------------------------------------------------------------
 
 const mcpServer = new Server(
-  { name: "cogos", version: "1.0.0" },
+  { name: "cogos", version: "2.0.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },
@@ -612,18 +774,20 @@ const mcpServer = new Server(
     },
     instructions:
       "CogOS plugin. Use the `connect` tool to connect to a cogent (e.g. connect with address 'alpha.softmax-cogents.com'). " +
-      "After connecting, use `load_memory` to get the cogent's full instructions.",
+      "Use 'process@address' to connect to a specific process (default: supervisor). " +
+      "After connecting, use `load_memory` to get the process's full instructions.",
   },
 );
 
 // ---------------------------------------------------------------------------
-// Tool definitions
+// Local tool definitions
 // ---------------------------------------------------------------------------
 
 const CONNECT_TOOL = {
   name: "connect",
   description:
-    "Connect to a CogOS cogent. Provide the cogent address (e.g. 'alpha.softmax-cogents.com'). " +
+    "Connect to a CogOS cogent process. Use 'process@address' to connect to a specific process (default: supervisor). " +
+    "Examples: 'alpha.softmax-cogents.com', 'supervisor@alpha.softmax-cogents.com', 'discord@alpha'. " +
     "If no token is cached, opens a browser for authentication.",
   inputSchema: {
     type: "object" as const,
@@ -631,7 +795,7 @@ const CONNECT_TOOL = {
       address: {
         type: "string",
         description:
-          "Cogent address (e.g. 'alpha.softmax-cogents.com' or just 'alpha' for localhost)",
+          "Cogent address with optional process prefix (e.g. 'alpha.softmax-cogents.com', 'supervisor@alpha.softmax-cogents.com')",
       },
       token: {
         type: "string",
@@ -642,123 +806,182 @@ const CONNECT_TOOL = {
   },
 };
 
-const CONNECTED_TOOLS = [
-  {
-    name: "load_memory",
-    description:
-      "Load the cogent's full memory/instructions. Call this after connecting to get the cogent's system prompt and context.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {},
-    },
+const DISCONNECT_TOOL = {
+  name: "disconnect",
+  description:
+    "Disconnect from the current cogent. Use this to switch to a different cogent without restarting Claude Code.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {},
   },
-  {
-    name: "search_capabilities",
-    description:
-      "Search for available cogent capabilities by keyword. Matched capabilities become available as individual tools (cogos_<cap>_<method>). Examples: 'file', 'discord', 'channels'.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: {
-          type: "string",
-          description: "Search keyword to filter capabilities",
-        },
+};
+
+const REGISTER_EXECUTOR_TOOL = {
+  name: "register_executor",
+  description:
+    "Register as an executor for the connected cogent. Enables heartbeat, channel notifications, and run assignments.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {},
+  },
+};
+
+const COMPLETE_RUN_TOOL = {
+  name: "complete_run",
+  description:
+    "Signal that the current executor run is complete. Call when you finish an assigned task.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      status: {
+        type: "string",
+        enum: ["completed", "failed"],
+        description: "Run completion status",
       },
-      required: ["query"],
+      summary: {
+        type: "string",
+        description: "Brief summary of what was done",
+      },
+      error: {
+        type: "string",
+        description: "Error message if failed",
+      },
     },
+    required: ["status"],
   },
-  {
-    name: "list_channels",
-    description: "List available CogOS channels and their message counts.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        pattern: {
-          type: "string",
-          description: "Optional glob pattern to filter (e.g. 'io:*')",
-        },
+};
+
+const SEND_TOOL = {
+  name: "send",
+  description: "Send a message to a CogOS channel by name.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      channel: {
+        type: "string",
+        description: "Channel name (e.g. 'io:discord:dm')",
+      },
+      payload: {
+        type: "object",
+        description: "Message payload",
+        additionalProperties: true,
+      },
+    },
+    required: ["channel", "payload"],
+  },
+};
+
+const LIST_CHANNELS_TOOL = {
+  name: "list_channels",
+  description: "List available CogOS channels and their message counts.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      pattern: {
+        type: "string",
+        description: "Optional glob pattern to filter (e.g. 'io:*')",
       },
     },
   },
-  {
-    name: "send",
-    description: "Send a message to a CogOS channel by name.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        channel: {
-          type: "string",
-          description: "Channel name (e.g. 'io:discord:dm')",
-        },
-        payload: {
-          type: "object",
-          description: "Message payload",
-          additionalProperties: true,
-        },
-      },
-      required: ["channel", "payload"],
-    },
+};
+
+const LOAD_MEMORY_TOOL = {
+  name: "load_memory",
+  description:
+    "Load the cogent's full memory/instructions. Call this after connecting to get the cogent's system prompt and context.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {},
   },
-  {
-    name: "reply",
-    description: "Reply to a CogOS channel event.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        channel: {
-          type: "string",
-          description: "Channel name or ID",
-        },
-        payload: {
-          type: "object",
-          description: "Message payload",
-          additionalProperties: true,
-        },
+};
+
+const SEARCH_CAPABILITIES_TOOL = {
+  name: "search_capabilities",
+  description:
+    "Search for available cogent capabilities by keyword. Matched capabilities become available as individual tools (cogos_<cap>_<method>). Examples: 'file', 'discord', 'channels'.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      query: {
+        type: "string",
+        description: "Search keyword to filter capabilities",
       },
-      required: ["channel", "payload"],
     },
+    required: ["query"],
   },
-  {
-    name: "complete_run",
-    description:
-      "Signal that the current executor run is complete. Call when you finish an assigned task.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        status: {
-          type: "string",
-          enum: ["completed", "failed"],
-          description: "Run completion status",
-        },
-        summary: {
-          type: "string",
-          description: "Brief summary of what was done",
-        },
-        error: {
-          type: "string",
-          description: "Error message if failed",
-        },
-      },
-      required: ["status"],
-    },
-  },
-];
+};
+
+// Set of local tool names for routing
+const LOCAL_TOOL_NAMES = new Set([
+  "connect",
+  "disconnect",
+  "register_executor",
+  "complete_run",
+  "send",
+  "reply",
+  "list_channels",
+  "load_memory",
+  "search_capabilities",
+]);
 
 // ---------------------------------------------------------------------------
 // Tool handlers
 // ---------------------------------------------------------------------------
 
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    CONNECT_TOOL,
-    ...(state.connected ? CONNECTED_TOOLS : []),
-    ...capabilityTools.map((ct) => ({
-      name: ct.name,
-      description: ct.description,
-      inputSchema: ct.inputSchema,
-    })),
-  ],
-}));
+mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+  const tools: Array<{
+    name: string;
+    description?: string;
+    inputSchema: Record<string, unknown>;
+  }> = [];
+
+  // Always available
+  tools.push(CONNECT_TOOL);
+
+  if (state.connected) {
+    tools.push(DISCONNECT_TOOL);
+    tools.push(LOAD_MEMORY_TOOL);
+    tools.push(SEARCH_CAPABILITIES_TOOL);
+    tools.push(LIST_CHANNELS_TOOL);
+    tools.push(SEND_TOOL);
+    // "reply" is an alias for send
+    tools.push({
+      ...SEND_TOOL,
+      name: "reply",
+      description: "Reply to a CogOS channel event.",
+    });
+
+    // Executor tools
+    if (!state.isExecutor) {
+      tools.push(REGISTER_EXECUTOR_TOOL);
+    } else {
+      tools.push(COMPLETE_RUN_TOOL);
+    }
+
+    // Dynamic capability tools from search_capabilities
+    for (const ct of capabilityTools) {
+      tools.push({
+        name: ct.name,
+        description: ct.description,
+        inputSchema: ct.inputSchema,
+      });
+    }
+
+    // Remote tools from fastapi-mcp
+    for (const rt of remoteTools) {
+      // Skip remote tools that collide with local tool names
+      if (LOCAL_TOOL_NAMES.has(rt.name)) continue;
+      if (capabilityTools.some((ct) => ct.name === rt.name)) continue;
+      tools.push({
+        name: rt.name,
+        description: rt.description,
+        inputSchema: rt.inputSchema,
+      });
+    }
+  }
+
+  return { tools };
+});
 
 mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
@@ -770,18 +993,12 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
       a.address as string,
       a.token as string | undefined,
     );
+    return { content: [{ type: "text" as const, text: result }] };
+  }
 
-    // Notify tool list changed after connect
-    if (state.connected) {
-      try {
-        await mcpServer.notification({
-          method: "notifications/tools/list_changed",
-        });
-      } catch {
-        // May not be ready
-      }
-    }
-
+  // --- disconnect ---
+  if (name === "disconnect") {
+    const result = await disconnect();
     return { content: [{ type: "text" as const, text: result }] };
   }
 
@@ -791,7 +1008,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
       content: [
         {
           type: "text" as const,
-          text: 'Not connected. Use the `connect` tool first.',
+          text: "Not connected. Use the `connect` tool first.",
         },
       ],
     };
@@ -806,7 +1023,6 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
   // --- search_capabilities ---
   if (name === "search_capabilities") {
     const { summary } = await searchCapabilities(a.query as string);
-
     // Notify tool list changed after capability discovery
     try {
       await mcpServer.notification({
@@ -815,52 +1031,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
     } catch {
       // May not be ready
     }
-
     return { content: [{ type: "text" as const, text: summary }] };
   }
 
-  // --- list_channels ---
-  if (name === "list_channels") {
-    const pattern = (a.pattern as string) || "*";
-    const channels = await fetchChannels();
-    const filtered = channels.filter((ch) => matchesPattern(ch.name, pattern));
-    const lines = filtered.map(
-      (ch) => `${ch.name} (${ch.channel_type}, ${ch.message_count} msgs)`,
-    );
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: lines.length > 0 ? lines.join("\n") : "No channels found",
-        },
-      ],
-    };
-  }
-
-  // --- send / reply ---
-  if (name === "send" || name === "reply") {
-    const result = await sendMessage(
-      a.channel as string,
-      a.payload as Record<string, unknown>,
-    );
-    if (result.error) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error: ${result.error}`,
-          },
-        ],
-      };
-    }
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Sent to ${a.channel} (id: ${result.id})`,
-        },
-      ],
-    };
+  // --- register_executor ---
+  if (name === "register_executor") {
+    const result = await registerExecutor();
+    return { content: [{ type: "text" as const, text: result }] };
   }
 
   // --- complete_run ---
@@ -890,38 +1067,76 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
     };
   }
 
-  // --- Dynamic capability tools (cogos_<cap>_<method>) ---
-  if (name.startsWith("cogos_")) {
-    const tool = capabilityTools.find((t) => t.name === name);
-    if (!tool) {
-      return {
-        content: [
-          { type: "text" as const, text: `Unknown capability tool: ${name}` },
-        ],
-      };
-    }
-    const result = await invokeCapability(tool.capName, tool.methodName, a);
+  // --- list_channels ---
+  if (name === "list_channels") {
+    const pattern = (a.pattern as string) || "*";
+    const channels = await fetchChannels();
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$");
+    const filtered = channels.filter((ch) => regex.test(ch.name));
+    const lines = filtered.map(
+      (ch) => `${ch.name} (${ch.channel_type}, ${ch.message_count} msgs)`,
+    );
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: lines.length > 0 ? lines.join("\n") : "No channels found",
+        },
+      ],
+    };
+  }
+
+  // --- send / reply ---
+  if (name === "send" || name === "reply") {
+    const result = await sendMessage(
+      a.channel as string,
+      a.payload as Record<string, unknown>,
+    );
     if (result.error) {
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error: ${result.error}`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `Error: ${result.error}` }],
       };
     }
     return {
       content: [
         {
           type: "text" as const,
-          text:
-            typeof result.result === "string"
-              ? result.result
-              : JSON.stringify(result.result, null, 2),
+          text: `Sent to ${a.channel} (id: ${result.id})`,
         },
       ],
     };
+  }
+
+  // --- Remote tool proxy ---
+  if (remoteClient) {
+    try {
+      const result = await remoteClient.callTool({ name, arguments: a });
+      // Pass through the remote result directly
+      if ("content" in result) {
+        return {
+          content: result.content as Array<{ type: "text"; text: string }>,
+        };
+      }
+      // Fallback: serialize the result
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Remote tool error: ${e}`,
+          },
+        ],
+      };
+    }
   }
 
   return {
@@ -936,7 +1151,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (req) => {
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
-  process.stderr.write("[cogos] CogOS plugin started. Waiting for connect...\n");
+  process.stderr.write("[cogos] CogOS plugin v2 started. Waiting for connect...\n");
 }
 
 main().catch((err) => {

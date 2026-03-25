@@ -96,7 +96,7 @@ class GitHubIO(IOAdapter):
             source="github",
             message_type=message_type,
             payload=payload,
-            raw_content=content or "",
+            raw_content=content,
             author=sender,
             external_id=external_id,
             external_url=external_url,

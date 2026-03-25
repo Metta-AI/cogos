@@ -39,7 +39,7 @@ class SchemaValidator:
         schema_registry: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._fields: dict[str, Any] = schema["fields"]
-        self._registry: dict[str, dict[str, Any]] = schema_registry or {}
+        self._registry: dict[str, dict[str, Any]] = schema_registry if schema_registry is not None else {}
 
     # ------------------------------------------------------------------
     # Public API

@@ -1,5 +1,6 @@
 """Tests for DiscordCapability list_channels/list_guilds."""
 from __future__ import annotations
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -62,7 +63,6 @@ def test_list_channels_no_scope_returns_all():
 def test_send_converts_blob_keys_to_file_specs():
     """send() with blob key strings should convert to s3_key dicts."""
     from unittest.mock import patch
-    import json
 
     cap = _make_cap()
     # Mock _send_sqs to capture the body

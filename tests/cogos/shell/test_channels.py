@@ -1,7 +1,7 @@
 """Tests for shell channel commands."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Channel, ChannelMessage, ChannelType
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.shell.commands import CommandRegistry, ShellState
 from cogos.shell.commands.channels import register
 

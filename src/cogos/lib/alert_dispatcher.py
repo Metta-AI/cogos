@@ -26,7 +26,8 @@ def _is_duplicate(action: Action, existing_alerts: list[Alert]) -> bool:
         if alert.created_at and alert.created_at < cutoff:
             continue
         # Match on key metadata fields (source + alert_type of the original alert)
-        meta = alert.metadata or {}
+        assert alert.metadata is not None, "Alert.metadata must be set for dedup check"
+        meta = alert.metadata
         if (
             meta.get("source") == action.metadata.get("source")
             and meta.get("alert_type") == action.metadata.get("alert_type")

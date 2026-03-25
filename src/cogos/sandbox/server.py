@@ -25,6 +25,7 @@ from mcp.types import TextContent, Tool
 
 from cogos.capabilities.loader import build_capability_proxies
 from cogos.db.protocol import CogosRepositoryInterface
+from cogos.db.repository import RdsDataApiRepository
 from cogos.sandbox.executor import SandboxExecutor, VariableTable
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ async def amain() -> None:
     args = parse_args()
     process_id = UUID(args.process_id)
 
-    repo = Repository.create(
+    repo = RdsDataApiRepository.create(
         resource_arn=args.db_resource_arn,
         secret_arn=args.db_secret_arn,
         database=args.db_name,

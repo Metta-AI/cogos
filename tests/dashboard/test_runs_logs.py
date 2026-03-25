@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 from dashboard.app import create_app
 

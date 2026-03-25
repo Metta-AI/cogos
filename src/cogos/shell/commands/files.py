@@ -165,8 +165,9 @@ def register(reg: CommandRegistry) -> None:
             return "Usage: edit <file>"
         key = _resolve_path(state, args[0])
         fs = FileStore(state.repo)
-        content = fs.get_content(key) or ""
-        is_new = fs.get(key) is None
+        existing_content = fs.get_content(key)
+        content = existing_content if existing_content is not None else ""
+        is_new = existing_content is None
 
         editor = os.environ.get("EDITOR", "vim")
         suffix = "." + key.rsplit(".", 1)[-1] if "." in key else ".txt"

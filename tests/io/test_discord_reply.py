@@ -1,15 +1,15 @@
 """Tests for Discord SQS reply helpers."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from cogos.io.discord.reply import (
-    queue_reply,
-    queue_reaction,
-    queue_thread_create,
     queue_dm,
+    queue_reaction,
+    queue_reply,
+    queue_thread_create,
 )
 
 

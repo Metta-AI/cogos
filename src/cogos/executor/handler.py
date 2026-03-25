@@ -319,18 +319,16 @@ def handler(event: dict, context: Any = None) -> dict:
         run.status = RunStatus.COMPLETED
         duration_ms = int((time.time() - start_time) * 1000)
 
+        assert run.model_version is not None, "model_version must be set"
         if run.cost_usd is None or run.cost_usd == 0:
-            cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
-            run.cost_usd = cost
-        else:
-            cost = run.cost_usd
+            run.cost_usd = _estimate_cost(run.model_version, run.tokens_in, run.tokens_out)
 
         repo.complete_run(
             run.id,
             status=RunStatus.COMPLETED,
             tokens_in=run.tokens_in,
             tokens_out=run.tokens_out,
-            cost_usd=cost,
+            cost_usd=run.cost_usd,
             duration_ms=duration_ms,
             model_version=run.model_version,
             result=run.result,
@@ -384,12 +382,15 @@ def handler(event: dict, context: Any = None) -> dict:
 
     except WaitSuspend:
         duration_ms = int((time.time() - start_time) * 1000)
+        assert run.model_version is not None, "model_version must be set"
+        if run.cost_usd is None or run.cost_usd == 0:
+            run.cost_usd = _estimate_cost(run.model_version, run.tokens_in, run.tokens_out)
         repo.complete_run(
             run.id,
             status=RunStatus.SUSPENDED,
             tokens_in=run.tokens_in,
             tokens_out=run.tokens_out,
-            cost_usd=run.cost_usd or _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out),
+            cost_usd=run.cost_usd,
             duration_ms=duration_ms,
             model_version=run.model_version,
             snapshot=run.snapshot,
@@ -403,10 +404,8 @@ def handler(event: dict, context: Any = None) -> dict:
         duration_ms = int((time.time() - start_time) * 1000)
 
         if run.cost_usd is None or run.cost_usd == 0:
-            cost = _estimate_cost(run.model_version or "", run.tokens_in, run.tokens_out)
-            run.cost_usd = cost
-        else:
-            cost = run.cost_usd
+            mv = run.model_version if run.model_version is not None else ""
+            run.cost_usd = _estimate_cost(mv, run.tokens_in, run.tokens_out)
 
         # Preserve THROTTLED status set by execute_process
         final_status = run.status if run.status == RunStatus.THROTTLED else RunStatus.FAILED
@@ -415,7 +414,7 @@ def handler(event: dict, context: Any = None) -> dict:
             status=final_status,
             tokens_in=run.tokens_in,
             tokens_out=run.tokens_out,
-            cost_usd=cost,
+            cost_usd=run.cost_usd,
             duration_ms=duration_ms,
             model_version=run.model_version,
             error=str(e)[:4000],
@@ -451,7 +450,7 @@ def handler(event: dict, context: Any = None) -> dict:
                 alert_severity = "critical"
                 alert_meta["tokens_in"] = run.tokens_in
                 alert_meta["tokens_out"] = run.tokens_out
-                alert_meta["model"] = run.model_version or ""
+                alert_meta["model"] = run.model_version
 
         try:
             repo.create_alert(
@@ -551,11 +550,13 @@ def _execute_python_process(
     from cogos.files.references import extract_file_references
     from cogos.files.store import FileStore
 
+    run.model_version = "python"
     file_store = FileStore(repo)
 
     # For Python executor, resolve @{file-key} references by reading raw content
     # (no headers/decoration like the LLM context engine adds).
-    content = process.content or ""
+    assert process.content is not None, "process.content must be set"
+    content = process.content
     refs = extract_file_references(content)
     if len(refs) == 1 and content.strip() == f"@{{{refs[0]}}}":
         # Entire content is a single file reference — use raw file content

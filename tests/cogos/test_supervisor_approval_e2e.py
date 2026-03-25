@@ -4,13 +4,10 @@ Tests the full approval flow using SqliteRepository with custom execute_fn.
 """
 from __future__ import annotations
 
-import json
 from uuid import uuid4
 
 import pytest
 
-from cogos.capabilities.procs import ProcsCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -19,10 +16,9 @@ from cogos.db.models import (
     Process,
     ProcessMode,
     ProcessStatus,
-    Run,
-    RunStatus,
 )
-from cogos.runtime.local import run_and_complete, run_local_tick
+from cogos.db.sqlite_repository import SqliteRepository
+from cogos.runtime.local import run_local_tick
 
 
 @pytest.fixture
@@ -59,7 +55,7 @@ def _setup_supervisor(repo):
 class TestSupervisorProposalFlow:
     def test_supervisor_creates_proposal_on_ambiguous_request(self, repo):
         """When supervisor decides to propose, it stashes to supervisor:proposals."""
-        supervisor = _setup_supervisor(repo)
+        _supervisor = _setup_supervisor(repo)
 
         help_ch = repo.get_channel_by_name("supervisor:help")
         repo.append_channel_message(ChannelMessage(

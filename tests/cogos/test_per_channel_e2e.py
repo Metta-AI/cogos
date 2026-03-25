@@ -11,7 +11,6 @@ from uuid import UUID
 
 from cogos.capabilities.procs import ProcsCapability
 from cogos.capabilities.scheduler import SchedulerCapability
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -21,6 +20,7 @@ from cogos.db.models import (
     ProcessMode,
     ProcessStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.local import run_local_tick
 
 

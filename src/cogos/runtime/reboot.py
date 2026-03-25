@@ -41,6 +41,13 @@ def reboot(repo) -> dict:
     picks up the latest code. Old processes stay in previous epochs.
     """
 
+    # 0. Ensure DB schema is up to date before touching anything
+    try:
+        from cogos.db.migrations import apply_cogos_sql_migrations
+        apply_cogos_sql_migrations(repo, on_error=lambda f, e: logger.debug("migration %s: %s", f, e))
+    except Exception:
+        logger.debug("CogOS SQL migrations failed", exc_info=True)
+
     # 1. Re-apply image to update FileStore with current code
     image_counts = {}
     image_dir = _find_image_dir()
@@ -78,19 +85,25 @@ def reboot(repo) -> dict:
         content=INIT_PROCESS_CONTENT,
         executor="python",
         priority=200.0,
-        runner="lambda",
         status=ProcessStatus.RUNNABLE,
         epoch=new_epoch,
     )
     pid = repo.upsert_process(init_proc)
 
     # 7. Bind capabilities — same set declared in init/processes.py
+    bound = 0
     for cap_name in INIT_CAPABILITIES:
         cap = repo.get_capability_by_name(cap_name)
         if cap:
-            repo.create_process_capability(
-                ProcessCapability(process=pid, capability=cap.id, name=cap_name)
-            )
+            try:
+                repo.create_process_capability(
+                    ProcessCapability(process=pid, capability=cap.id, name=cap_name, epoch=new_epoch)
+                )
+                bound += 1
+            except Exception:
+                logger.warning("Failed to bind capability %s to init", cap_name, exc_info=True)
+    if bound == 0:
+        logger.error("No capabilities bound to init — sandbox will crash")
 
     logger.info("Reboot complete: epoch=%d, prev_processes=%d", new_epoch, prev_count)
     return {"cleared_processes": prev_count, "epoch": new_epoch}

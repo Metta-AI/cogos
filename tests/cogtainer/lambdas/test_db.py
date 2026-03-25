@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def test_get_repo_passes_region_to_repository_create(monkeypatch):
     """get_repo should pass config.region to AwsCogtainerRepository.create."""
@@ -44,6 +42,7 @@ def test_get_repo_passes_region_to_repository_create(monkeypatch):
 def test_get_repo_no_boto3_import():
     """get_repo should not directly import boto3 (uses AwsCogtainerRepository.create with region)."""
     import inspect
+
     import cogtainer.lambdas.shared.db as db_mod
 
     source = inspect.getsource(db_mod)

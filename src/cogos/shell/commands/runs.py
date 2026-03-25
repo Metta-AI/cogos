@@ -43,8 +43,10 @@ def register(reg: CommandRegistry) -> None:
             if pkey not in proc_cache:
                 proc = state.repo.get_process(r.process)
                 proc_cache[pkey] = proc.name if proc else pkey[:8]
-            tokens = f"{r.tokens_in or 0}/{r.tokens_out or 0}"
-            dur = f"{r.duration_ms or 0}ms"
+            t_in = r.tokens_in if r.tokens_in is not None else 0
+            t_out = r.tokens_out if r.tokens_out is not None else 0
+            tokens = f"{t_in}/{t_out}"
+            dur = f"{r.duration_ms if r.duration_ms is not None else 0}ms"
             lines.append(
                 f"{str(r.id)[:12]} {proc_cache[pkey]:<20} {r.status.value:<12} {tokens:>12} {dur:>10}"
             )

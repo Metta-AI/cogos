@@ -1,7 +1,7 @@
 """Tests for system channels registry."""
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import Process, ProcessStatus
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.lib.channels import SYSTEM_CHANNELS, ensure_system_channels
 
 

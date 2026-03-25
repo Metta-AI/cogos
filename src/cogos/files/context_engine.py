@@ -19,7 +19,7 @@ from cogos.files.references import extract_file_references
 from cogos.files.store import FileStore
 
 if TYPE_CHECKING:
-    from cogos.db.models import Process
+    from cogos.db.models import File, Process
 
 logger = logging.getLogger(__name__)
 PROMPT_REF_RE = re.compile(r"@\{([^{}\n]+)\}")
@@ -30,6 +30,12 @@ class ContextEngine:
 
     def __init__(self, file_store: FileStore) -> None:
         self._store = file_store
+        # Caches to avoid repeated DB round-trips (esp. over RDS Data API)
+        self._grants_cache: dict[UUID, list] = {}  # process_id -> grants
+        self._capability_cache: dict[UUID, object | None] = {}  # capability_id -> Capability
+        self._process_cache: dict[UUID, Process | None] = {}  # process_id -> Process
+        self._file_cache: dict[str, File | None] = {}  # key -> File
+        self._content_cache: dict[str, str | None] = {}  # key -> content
 
     def resolve(self, key: str) -> str:
         """Resolve a file by *key*, recursively expanding includes.
@@ -37,7 +43,7 @@ class ContextEngine:
         Returns the fully assembled context string.
         Raises ``ValueError`` if the root file is not found.
         """
-        file = self._store.get(key)
+        file = self._get_file(key)
         if file is None:
             raise ValueError(f"File not found: {key}")
         return self._resolve_key(key, visited=set())
@@ -107,15 +113,30 @@ class ContextEngine:
             return
         seen.add(key)
 
-        file = self._store.get(key)
+        file = self._get_file(key)
         if file is None:
             result.append({"key": key, "content": f"[not found: {key}]", "is_direct": key in direct_keys})
             return
 
-        content = self._store.get_content(key) or ""
+        content = self._get_content(key)
+        assert content is not None, f"content must exist for file {key}"
         for ref_key in self._extract_refs(content):
             self._collect_tree(ref_key, seen, result, direct_keys)
         result.append({"key": key, "content": content, "is_direct": key in direct_keys})
+
+    # ------------------------------------------------------------------
+    # Cached file access
+    # ------------------------------------------------------------------
+
+    def _get_file(self, key: str) -> File | None:
+        if key not in self._file_cache:
+            self._file_cache[key] = self._store.get(key)
+        return self._file_cache[key]
+
+    def _get_content(self, key: str) -> str | None:
+        if key not in self._content_cache:
+            self._content_cache[key] = self._store.get_content(key)
+        return self._content_cache[key]
 
     # ------------------------------------------------------------------
     # Internal
@@ -123,7 +144,8 @@ class ContextEngine:
 
     def _resolve_prompt_reference_keys(self, process: Process) -> list[str]:
         keys: list[str] = []
-        for key in extract_file_references(process.content or ""):
+        assert process.content is not None, "process.content must be set"
+        for key in extract_file_references(process.content):
             if self._can_process_read_key(process, key):
                 keys.append(key)
             else:
@@ -137,21 +159,28 @@ class ContextEngine:
             if self._grants_allow_read(repo, current.id, key):
                 return True
             if current.parent_process:
-                current = repo.get_process(current.parent_process)
+                if current.parent_process not in self._process_cache:
+                    self._process_cache[current.parent_process] = repo.get_process(current.parent_process)
+                current = self._process_cache[current.parent_process]
             else:
                 current = None
         return False
 
     def _grants_allow_read(self, repo, process_id, key: str) -> bool:
-        grants = list(repo.list_process_capabilities(process_id))
+        if process_id not in self._grants_cache:
+            self._grants_cache[process_id] = list(repo.list_process_capabilities(process_id))
+        grants = self._grants_cache[process_id]
         if not grants:
             return False
         for grant in grants:
-            capability = repo.get_capability(grant.capability)
+            if grant.capability not in self._capability_cache:
+                self._capability_cache[grant.capability] = repo.get_capability(grant.capability)
+            capability = self._capability_cache[grant.capability]
             if not capability:
                 continue
 
-            cfg = grant.config or {}
+            assert isinstance(grant.config, dict), "grant.config must be a dict"
+            cfg = grant.config
             ops = cfg.get("ops")
             if isinstance(ops, list) and "read" not in ops:
                 continue
@@ -179,13 +208,14 @@ class ContextEngine:
 
         visited.add(key)
 
-        file = self._store.get(key)
+        file = self._get_file(key)
         if file is None:
             msg = f"[include not found: {key}]"
             logger.warning("Included file not found: %s", key)
             return msg
 
-        content = self._store.get_content(key) or ""
+        content = self._get_content(key)
+        assert content is not None, f"content must exist for file {key}"
 
         header = f"--- {key} ---"
         return f"{header}\n{self._expand_text(content, visited=set(visited))}"
@@ -217,7 +247,8 @@ class ContextEngine:
     def _extract_refs(text: str) -> list[str]:
         seen: set[str] = set()
         refs: list[str] = []
-        for match in PROMPT_REF_RE.finditer(text or ""):
+        assert text is not None, "text must not be None"
+        for match in PROMPT_REF_RE.finditer(text):
             key = match.group(1).strip()
             if not key or key in seen:
                 continue

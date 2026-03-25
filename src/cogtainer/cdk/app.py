@@ -29,7 +29,8 @@ from cogtainer.config import CogtainerEntry, load_config
 
 def _ctx(app: cdk.App, key: str, default: str = "") -> str:
     """Read a CDK context variable, falling back to *default*."""
-    return app.node.try_get_context(key) or default
+    value = app.node.try_get_context(key)
+    return value if value is not None else default
 
 
 def build_app() -> cdk.App:
@@ -70,9 +71,10 @@ def build_app() -> cdk.App:
         )
         sys.exit(1)
 
+    assert entry.account_id, f"cogtainer '{cogtainer_name}' has no account_id configured"
     env = cdk.Environment(
-        account=entry.account_id or "",
-        region=entry.region or "us-east-1",
+        account=entry.account_id,
+        region=entry.region if entry.region is not None else "us-east-1",
     )
 
     cogent_name = _ctx(app, "cogent_name")
@@ -123,7 +125,7 @@ def build_app() -> cdk.App:
             f"cogtainer-{cogtainer_name}-{safe_cogent}",
             cogtainer_name=cogtainer_name,
             cogent_name=cogent_name,
-            domain=entry.domain or "",
+            domain=entry.domain if entry.domain is not None else "",
             db_cluster_arn=db_cluster_arn,
             db_secret_arn=db_secret_arn,
             event_bus_name=event_bus_name,

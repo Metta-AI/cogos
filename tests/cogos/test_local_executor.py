@@ -2,7 +2,6 @@
 
 from datetime import datetime, timezone
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -14,6 +13,7 @@ from cogos.db.models import (
     Run,
     RunStatus,
 )
+from cogos.db.sqlite_repository import SqliteRepository
 from cogos.runtime.local import run_and_complete, run_local_tick
 
 
@@ -86,7 +86,7 @@ def test_run_and_complete_daemon_goes_to_waiting(tmp_path):
     process = _make_process(repo, mode=ProcessMode.DAEMON)
     run = _make_run(repo, process)
 
-    result = run_and_complete(
+    _result = run_and_complete(
         process,
         {},
         run,

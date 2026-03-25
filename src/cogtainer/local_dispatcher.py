@@ -285,13 +285,19 @@ def run_loop(
     Between full ticks the loop drains the local ingress queue (SQS mock)
     every second so that channel-message nudges trigger near-instant dispatch.
     """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     # Seed a local daemon executor so processes with no tags (or "python" tag) get dispatched
     from cogos.db.models.executor import Executor
     local_executor = Executor(
         executor_id="local-daemon",
         channel_type="local",
         executor_tags=["python"],
-        dispatch_type="channel",
+        dispatch_type="local",
         metadata={"local": True},
     )
     repo.register_executor(local_executor)
@@ -323,22 +329,25 @@ def run_loop(
         except Exception:
             logger.exception("Tick failed")
 
-        # Between ticks, sleep in 1-second increments but check the ingress
-        # queue each iteration for near-instant event-driven dispatch.
+        # Between ticks, wait on the ingress queue so nudged processes are
+        # dispatched immediately instead of sleeping a fixed interval.
         # Also periodically unblock processes and attempt dispatch.
-        for i in range(tick_interval):
-            if shutdown:
-                break
+        elapsed = 0
+        while elapsed < tick_interval and not shutdown:
             if ingress_queue is not None:
+                # Block until a nudge arrives or 1s elapses
+                ingress_queue.wait_for_nudge(timeout=1.0)
                 try:
                     _dispatch_nudged_processes(repo, runtime, cogent_name)
                 except Exception:
                     logger.debug("Ingress drain failed", exc_info=True)
-            if i % 5 == 4:
+            else:
+                time.sleep(1)
+            elapsed += 1
+            if elapsed % 5 == 4:
                 try:
                     _try_dispatch_blocked(repo, runtime, cogent_name)
                 except Exception:
                     logger.debug("Blocked dispatch failed", exc_info=True)
-            time.sleep(1)
 
     logger.info("Local dispatcher stopped")

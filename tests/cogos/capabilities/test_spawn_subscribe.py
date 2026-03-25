@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from cogos.capabilities.procs import ProcsCapability, ProcessError
+from cogos.capabilities.procs import ProcessError, ProcsCapability
 from cogos.db.models import Channel, ChannelType
 
 

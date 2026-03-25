@@ -6,6 +6,13 @@ import logging
 
 import requests
 
+from cogtainer.aws import ORG_EMAIL_DOMAIN
+from cogtainer.deploy_config import deploy_config
+from cogtainer.secret_store import SecretStore
+from cogtainer.secrets import cogtainer_key
+
+logger = logging.getLogger(__name__)
+
 # Default timeout for all Cloudflare API calls (connect, read) in seconds.
 # Applied via a shared session to avoid repeating timeout= on every call.
 _TIMEOUT = (10, 30)
@@ -20,14 +27,6 @@ class _TimeoutSession(requests.Session):
 
 
 requests = _TimeoutSession()  # type: ignore[assignment]
-
-from cogtainer.aws import ORG_EMAIL_DOMAIN
-from cogtainer.deploy_config import deploy_config
-from cogtainer.secret_store import SecretStore
-
-logger = logging.getLogger(__name__)
-
-from cogtainer.secrets import cogtainer_key
 
 # Single Access Application protects all cogent dashboards via wildcard.
 SECRET_PATH = cogtainer_key("cloudflare")

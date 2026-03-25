@@ -18,7 +18,8 @@ def _load_deploy_config() -> dict[str, Any]:
         return _config_cache
     if _CONFIG_PATH.is_file():
         with open(_CONFIG_PATH) as f:
-            result: dict[str, Any] = yaml.safe_load(f) or {}
+            loaded = yaml.safe_load(f)
+            result: dict[str, Any] = loaded if loaded is not None else {}
     else:
         result = {}
     _config_cache = result
@@ -124,5 +125,5 @@ class CogtainerConfig(BaseModel):
             "organization": self.organization,
             "owner": self.owner,
             "description": cogent.description,
-            "personality": cogent.personality or "",
+            "personality": cogent.personality if cogent.personality is not None else "",
         }

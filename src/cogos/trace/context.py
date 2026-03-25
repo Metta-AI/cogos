@@ -28,7 +28,7 @@ class TraceContext:
             parent=self,
             name=name,
             coglet=coglet,
-            metadata=metadata or {},
+            metadata=metadata if metadata is not None else {},
         )
 
     def log(self, event: str, message: str, metadata: dict | None = None) -> None:
@@ -38,7 +38,7 @@ class TraceContext:
                 span_id=self.span_id,
                 event=event,
                 message=message,
-                metadata=metadata or {},
+                metadata=metadata if metadata is not None else {},
             ))
         except Exception:
             logger.debug("Failed to log span event", exc_info=True)

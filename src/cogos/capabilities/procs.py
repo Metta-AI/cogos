@@ -65,14 +65,14 @@ class ProcsCapability(Capability):
     ALL_OPS = {"list", "get", "spawn", "detach"}
 
     def _narrow(self, existing: dict, requested: dict) -> dict:
-        old_ops = set(existing.get("ops") or self.ALL_OPS)
-        new_ops = set(requested.get("ops") or self.ALL_OPS)
+        old_ops = set(existing.get("ops", self.ALL_OPS))
+        new_ops = set(requested.get("ops", self.ALL_OPS))
         return {"ops": sorted(old_ops & new_ops)}
 
     def _check(self, op: str, **context: object) -> None:
         if not self._scope:
             return
-        allowed = set(self._scope.get("ops") or self.ALL_OPS)
+        allowed = set(self._scope.get("ops", self.ALL_OPS))
         if op not in allowed:
             raise PermissionError(f"Operation '{op}' not allowed by scope (allowed: {sorted(allowed)})")
 
@@ -181,7 +181,7 @@ class ProcsCapability(Capability):
             mode=proc_mode,
             content=content,
             priority=priority,
-            required_tags=required_tags or [],
+            required_tags=required_tags if required_tags is not None else [],
             executor=executor,
             status=initial_status,
             parent_process=parent_id,
@@ -212,7 +212,7 @@ class ProcsCapability(Capability):
                     # Look up by handler class path
                     handler_path = f"{type(real_instance).__module__}.{type(real_instance).__name__}"
                     cap = self.repo.get_capability_by_handler(handler_path)
-                child_scope = getattr(real_instance, "_scope", None) or None
+                child_scope = real_instance._scope or None
             else:
                 # Fallback: resolve capability type by grant name
                 cap_type_name = grant_name

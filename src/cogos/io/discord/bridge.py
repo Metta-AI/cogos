@@ -78,7 +78,7 @@ def _make_message_payload(
         "author": str(message.author),
         "author_id": str(message.author.id),
         "channel_id": str(message.channel.id),
-        "channel_name": getattr(message.channel, "name", None) or "",
+        "channel_name": getattr(message.channel, "name", ""),
         "guild_id": str(message.guild.id) if message.guild else None,
         "message_id": str(message.id),
         "message_type": message_type,
@@ -227,7 +227,7 @@ class DiscordBridge:
         return repo
 
     def _create_alert(
-        self, cogent_name: str, severity: str, alert_type: str, message: str, metadata: dict | None = None
+        self, cogent_name: str, severity: str, alert_type: str, message: str, metadata: dict
     ) -> None:
         """Create an alert in the cogent's DB (best-effort, never raises)."""
         try:
@@ -237,12 +237,12 @@ class DiscordBridge:
                 alert_type=alert_type,
                 source=f"discord:bridge:{cogent_name}",
                 message=message,
-                metadata=metadata or {},
+                metadata=metadata,
             )
         except Exception:
             logger.exception("Failed to create alert for %s: %s %s", cogent_name, alert_type, message)
 
-    def _create_alert_any(self, severity: str, alert_type: str, message: str, metadata: dict | None = None) -> None:
+    def _create_alert_any(self, severity: str, alert_type: str, message: str, metadata: dict) -> None:
         """Create an alert in ALL cogent DBs (best-effort)."""
         for cogent_name in self._configs:
             self._create_alert(cogent_name, severity, alert_type, message, metadata)
@@ -870,7 +870,10 @@ class DiscordBridge:
                             or (hasattr(exc, "status") and 400 <= exc.status < 500 and exc.status != 429)
                         )
                         if is_permanent:
-                            logger.error("Permanent Discord failure for reply %s (discarding): %s", msg.get("MessageId"), exc)
+                            logger.error(
+                                "Permanent Discord failure for reply %s (discarding): %s",
+                                msg.get("MessageId"), exc,
+                            )
                         else:
                             logger.exception("Transient Discord failure for reply %s: %s", msg.get("MessageId"), exc)
                         self._alert_reply_failure(msg, exc, permanent=is_permanent)
@@ -964,7 +967,7 @@ class DiscordBridge:
         content = body.get("content", "")
         if content:
             content = convert_markdown(content)
-        file_specs = body.get("files") or []
+        file_specs = body.get("files", [])
         thread_id = body.get("thread_id")
         _reply_to = body.get("reply_to")
 
@@ -1034,7 +1037,7 @@ class DiscordBridge:
         content = body.get("content", "")
         if content:
             content = convert_markdown(content)
-        file_specs = body.get("files") or []
+        file_specs = body.get("files", [])
         thread_id = body.get("thread_id")
         reply_to = body.get("reply_to")
 
@@ -1143,7 +1146,7 @@ class DiscordBridge:
         if cogent_name:
             self._router.update_last_interaction(int(user_id), cogent_name)
 
-        file_specs = body.get("files") or []
+        file_specs = body.get("files", [])
         discord_files = await self._download_files(file_specs)
         sent_message = None
         if discord_files:
@@ -1292,7 +1295,8 @@ class DiscordBridge:
                             continue
                         seen_requests[cogent_name].add(msg_id)
 
-                        payload = msg.payload or {}
+                        assert isinstance(msg.payload, dict), f"Expected dict payload, got {type(msg.payload)}"
+                        payload = msg.payload
                         request_id = payload.get("request_id", msg_id)
                         method = payload.get("method")
 

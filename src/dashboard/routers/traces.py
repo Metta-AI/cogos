@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json as _json
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
@@ -7,9 +9,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-
-import json as _json
-import logging
 
 from cogos.db.models import ChannelMessage, Delivery, Run
 from dashboard.db import get_repo
@@ -33,7 +32,8 @@ def _load_process_lookups(repo) -> tuple[dict[UUID, str], dict[UUID, list[str]]]
             tags = r.get("required_tags")
             if isinstance(tags, str):
                 tags = _json.loads(tags)
-            runners[pid] = tags or []
+            assert tags is not None
+            runners[pid] = tags
         return names, runners
     except Exception:
         logger.debug("Slim process lookup failed, falling back to full query", exc_info=True)
@@ -134,7 +134,8 @@ _UNTYPED_MESSAGE_TYPE = "__untyped__"
 
 
 def _message_type(message: ChannelMessage) -> str | None:
-    payload = message.payload or {}
+    assert message.payload is not None
+    payload = message.payload
     for key in ("message_type", "type"):
         value = payload.get(key)
         if isinstance(value, str):
@@ -145,7 +146,8 @@ def _message_type(message: ChannelMessage) -> str | None:
 
 
 def _request_id(message: ChannelMessage) -> str | None:
-    payload = message.payload or {}
+    assert message.payload is not None
+    payload = message.payload
     value = payload.get("request_id")
     if isinstance(value, str):
         normalized = value.strip()
@@ -217,7 +219,7 @@ def _message_out(
         request_id=_request_id(message),
         sender_process=str(message.sender_process) if message.sender_process else None,
         sender_process_name=process_names.get(message.sender_process) if message.sender_process else None,
-        payload=message.payload or {},
+        payload=message.payload,
         created_at=_iso(message.created_at),
     )
 
@@ -317,7 +319,10 @@ def list_message_traces(
     try:
         messages = repo.list_channel_messages(limit=fetch_limit, since=cutoff)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"list_channel_messages(limit={fetch_limit}, since={cutoff}) failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"list_channel_messages(limit={fetch_limit}, since={cutoff}) failed: {exc}",
+        ) from exc
     try:
         deliveries = repo.list_deliveries(limit=min(fetch_limit * 2, 250), since=cutoff)
     except Exception as exc:
@@ -342,6 +347,18 @@ def list_message_traces(
     deliveries_by_message: dict[UUID, list[Delivery]] = {}
     for delivery in deliveries:
         deliveries_by_message.setdefault(delivery.message, []).append(delivery)
+
+    # Pre-fetch any missing runs referenced by deliveries to avoid N+1 get_run calls
+    missing_run_ids = []
+    for delivery in deliveries:
+        if delivery.run and delivery.run not in runs_by_id:
+            missing_run_ids.append(delivery.run)
+    if missing_run_ids:
+        # Deduplicate and batch-fetch
+        for rid in set(missing_run_ids):
+            run = repo.get_run(rid)
+            if run is not None:
+                runs_by_id[run.id] = run
 
     candidate_messages = []
     for message in messages:
@@ -370,10 +387,6 @@ def list_message_traces(
             handler = handlers_by_id.get(delivery.handler)
             process_id = handler.process if handler else None
             run = runs_by_id.get(delivery.run) if delivery.run else None
-            if delivery.run is not None and run is None:
-                run = repo.get_run(delivery.run)
-                if run is not None:
-                    runs_by_id[run.id] = run
 
             emitted_messages = []
             if run is not None:

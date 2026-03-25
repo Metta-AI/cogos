@@ -118,7 +118,10 @@ def test_cogent_v1_recruiter_files():
     assert len(sourcer_files) >= 1
 
     assert "mnt/boot/recruiter/main.py" in recruiter_files
-    prompt_files = {k for k in recruiter_files if k.endswith((".md", ".json")) and "sourcer/" not in k and "init/" not in k}
+    prompt_files = {
+        k for k in recruiter_files
+        if k.endswith((".md", ".json")) and "sourcer/" not in k and "init/" not in k
+    }
     assert "mnt/boot/recruiter/discover.md" in prompt_files
 
 

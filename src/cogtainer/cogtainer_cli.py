@@ -146,8 +146,8 @@ def create(
 
     llm = LLMConfig(
         provider=llm_provider or "bedrock",
-        model=llm_model or "",
-        api_key_env=llm_api_key_env or "",
+        model=llm_model if llm_model is not None else "",
+        api_key_env=llm_api_key_env if llm_api_key_env is not None else "",
     )
 
     account_id = None
@@ -231,7 +231,7 @@ def _prompt_cogtainer_secrets(name: str, entry: CogtainerEntry) -> None:
         if entry.type == "aws":
             sp = AwsSecretsProvider(region=region)
         else:
-            data_dir = entry.data_dir or ""
+            data_dir = entry.data_dir if entry.data_dir is not None else ""
             sp = LocalSecretsProvider(str(Path(data_dir) / "secrets.json"))
 
         for key, value in secrets.items():
@@ -948,12 +948,21 @@ def deploy_dashboard_cmd(
             for c in task_def["containerDefinitions"]:
                 if c.get("name") == "web":
                     c["image"] = image_uri
-                    c["environment"] = [e for e in c.get("environment", []) if e["name"] not in ("DASHBOARD_ASSETS_S3", "DASHBOARD_DOCKER_VERSION")]
-            reg_fields = ["family", "containerDefinitions", "taskRoleArn", "executionRoleArn", "networkMode", "requiresCompatibilities", "cpu", "memory"]
+                    c["environment"] = [
+                        e for e in c.get("environment", [])
+                        if e["name"] not in ("DASHBOARD_ASSETS_S3", "DASHBOARD_DOCKER_VERSION")
+                    ]
+            reg_fields = [
+                "family", "containerDefinitions", "taskRoleArn", "executionRoleArn",
+                "networkMode", "requiresCompatibilities", "cpu", "memory",
+            ]
             reg_kwargs = {k: task_def[k] for k in reg_fields if k in task_def}
             new_td = ecs_client.register_task_definition(**reg_kwargs)
             new_td_arn = new_td["taskDefinition"]["taskDefinitionArn"]
-            ecs_client.update_service(cluster=cluster, service=svc_arn, taskDefinition=new_td_arn, forceNewDeployment=True)
+            ecs_client.update_service(
+                cluster=cluster, service=svc_arn,
+                taskDefinition=new_td_arn, forceNewDeployment=True,
+            )
             click.echo(f"  {svc_name}: updated to {image_tag}")
 
     click.echo(click.style("Dashboard deployed.", fg="green"))

@@ -9,12 +9,12 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from cogos.io.discord.setup import discord_persona_status, discord_secret_status, discord_service_status
+from cogtainer.secrets import AwsSecretsProvider
 from dashboard.db import get_repo
 
 logger = logging.getLogger(__name__)
 
 _region = os.environ.get("AWS_REGION", "us-east-1")
-from cogtainer.secrets import AwsSecretsProvider
 
 _secrets_provider = None
 
@@ -383,7 +383,8 @@ def _build_gemini_setup(name: str) -> ChannelSetup:
     )
     is_shared = secret_source is not None and secret_source.startswith("cogtainer/") if secret_source else False
     summary = (
-        f"Gemini API key is configured via {'shared' if is_shared else 'cogent-specific'} secret and ready for image generation."
+        f"Gemini API key is configured via {'shared' if is_shared else 'cogent-specific'}"
+        " secret and ready for image generation."
         if ready
         else "Some live checks were unavailable."
         if status == SetupStatus.UNKNOWN
@@ -623,7 +624,10 @@ def _build_anthropic_setup(name: str) -> ChannelSetup:
             detail=f"Expected secret path: {secret_path}.",
             action=SetupAction(
                 label="Write Anthropic API key",
-                command=f"""uv run cogtainer secrets set {secret_path} --value '{{"api_key":"YOUR_ANTHROPIC_API_KEY"}}'""",
+                command=(
+                    f"uv run cogtainer secrets set {secret_path}"
+                    """ --value '{"api_key":"YOUR_ANTHROPIC_API_KEY"}'"""
+                ),
             ),
         )
     else:
@@ -636,8 +640,17 @@ def _build_anthropic_setup(name: str) -> ChannelSetup:
         )
 
     ready = secret_configured is True
-    status = SetupStatus.READY if ready else SetupStatus.UNKNOWN if key_step.status == SetupStatus.UNKNOWN else SetupStatus.NEEDS_ACTION
-    summary = "Anthropic API key is configured." if ready else "Store an Anthropic API key to enable Claude model access."
+    if ready:
+        status = SetupStatus.READY
+    elif key_step.status == SetupStatus.UNKNOWN:
+        status = SetupStatus.UNKNOWN
+    else:
+        status = SetupStatus.NEEDS_ACTION
+    summary = (
+        "Anthropic API key is configured."
+        if ready
+        else "Store an Anthropic API key to enable Claude model access."
+    )
 
     return ChannelSetup(
         key="anthropic",

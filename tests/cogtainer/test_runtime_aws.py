@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import cast
 from unittest.mock import MagicMock, patch
 
@@ -74,7 +73,7 @@ def test_aws_runtime_get_repository(aws_runtime: AwsRuntime, monkeypatch):
     monkeypatch.setenv("DB_SECRET_ARN", "arn:aws:secretsmanager:us-east-1:123:secret:my-secret")
     monkeypatch.setenv("DB_NAME", "cogent_alpha")
 
-    repo = aws_runtime.get_repository("alpha")
+    _repo = aws_runtime.get_repository("alpha")
     # Should have created an rds-data client and a Repository
     aws_runtime._session.client.assert_called_with("rds-data", region_name="us-east-1")
 

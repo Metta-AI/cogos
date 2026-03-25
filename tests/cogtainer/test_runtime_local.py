@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
@@ -15,7 +14,10 @@ from cogtainer.runtime.local import LocalRuntime
 
 @pytest.fixture()
 def local_runtime(tmp_path: Path) -> LocalRuntime:
-    entry = CogtainerEntry(type="local", data_dir=str(tmp_path), llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""))
+    entry = CogtainerEntry(
+        type="local", data_dir=str(tmp_path),
+        llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
+    )
     llm = MagicMock()
     return LocalRuntime(entry=entry, llm=llm)
 

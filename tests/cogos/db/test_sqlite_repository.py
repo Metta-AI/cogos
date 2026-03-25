@@ -2,7 +2,7 @@ from cogos.db.sqlite_repository import SqliteRepository
 
 
 def test_creates_db_file(tmp_path):
-    repo = SqliteRepository(str(tmp_path))
+    _repo = SqliteRepository(str(tmp_path))
     assert (tmp_path / "cogos.db").exists()
 
 
@@ -136,9 +136,10 @@ def test_grep_files(tmp_path):
 
 def test_delivery_create_and_mark_delivered(tmp_path):
     from uuid import uuid4
-    from cogos.db.models import Delivery, DeliveryStatus
+
+    from cogos.db.models import DeliveryStatus
     repo = SqliteRepository(str(tmp_path))
-    from cogos.db.models import Process, ProcessMode, ProcessStatus, Channel, ChannelType, Handler
+    from cogos.db.models import Channel, ChannelType, Handler, Process, ProcessMode, ProcessStatus
     p = Process(name="dlv_proc", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING)
     repo.upsert_process(p)
     ch = Channel(name="dlv_ch", channel_type=ChannelType.NAMED)
@@ -160,7 +161,7 @@ def test_delivery_create_and_mark_delivered(tmp_path):
 # ── Channel message append triggers delivery + process wake ──
 
 def test_channel_message_wakes_process(tmp_path):
-    from cogos.db.models import Process, ProcessMode, ProcessStatus, Channel, ChannelType, Handler, ChannelMessage
+    from cogos.db.models import Channel, ChannelMessage, ChannelType, Handler, Process, ProcessMode, ProcessStatus
     repo = SqliteRepository(str(tmp_path))
     p = Process(name="wake_proc", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING)
     repo.upsert_process(p)
@@ -179,6 +180,7 @@ def test_channel_message_wakes_process(tmp_path):
 
 def test_run_create_and_complete(tmp_path):
     from decimal import Decimal
+
     from cogos.db.models import Process, ProcessMode, ProcessStatus, Run, RunStatus
     repo = SqliteRepository(str(tmp_path))
     p = Process(name="run_proc", mode=ProcessMode.DAEMON, status=ProcessStatus.WAITING)
@@ -200,7 +202,7 @@ def test_run_create_and_complete(tmp_path):
 # ── Executor register + select with tags ─────────────────
 
 def test_executor_register_and_select(tmp_path):
-    from cogos.db.models import Executor, ExecutorStatus
+    from cogos.db.models import Executor
     repo = SqliteRepository(str(tmp_path))
     e1 = Executor(executor_id="exec-gpu-1", executor_tags=["gpu", "large"])
     repo.register_executor(e1)

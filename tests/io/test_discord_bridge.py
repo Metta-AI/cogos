@@ -398,7 +398,10 @@ class TestBridgeInbound:
         await bridge._relay_to_db(msg)
 
         # Should have upserted the fine-grained channel
-        upsert_calls = [c for c in repo.upsert_channel.call_args_list if c.args[0].name == "io:discord:test-bot:message:100"]
+        upsert_calls = [
+            c for c in repo.upsert_channel.call_args_list
+            if c.args[0].name == "io:discord:test-bot:message:100"
+        ]
         assert len(upsert_calls) == 1
         assert repo.append_channel_message.call_count == 2
 
@@ -776,15 +779,21 @@ class TestAlertingAndTimeout:
         with caplog.at_level(logging.DEBUG):
             bridge._alert_reply_failure(msg, RuntimeError("boom"), permanent=False)
 
-        assert bridge._create_alert.call_count == 1, f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        assert bridge._create_alert.call_count == 1, (
+            f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        )
         assert bridge._create_alert.call_args.args[1] == "critical"
         assert bridge._create_alert.call_args.args[2] == "discord:send_failed"
 
         bridge._create_alert.reset_mock()
         with caplog.at_level(logging.DEBUG):
-            bridge._alert_reply_failure(msg, discord.errors.Forbidden(MagicMock(status=403), "no"), permanent=True)
+            bridge._alert_reply_failure(
+                msg, discord.errors.Forbidden(MagicMock(status=403), "no"), permanent=True,
+            )
 
-        assert bridge._create_alert.call_count == 1, f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        assert bridge._create_alert.call_count == 1, (
+            f"Expected 1 call, got {bridge._create_alert.call_count}. Logs: {caplog.text}"
+        )
         assert bridge._create_alert.call_args.args[1] == "warning"
         assert bridge._create_alert.call_args.args[2] == "discord:send_permanent_failure"
 
@@ -844,7 +853,7 @@ class TestAlertingAndTimeout:
         bridge._get_repo = MagicMock(return_value=repo)
 
         # Should not raise
-        bridge._create_alert("test-bot", "critical", "test:alert", "boom")
+        bridge._create_alert("test-bot", "critical", "test:alert", "boom", {})
 
     def test_sweep_alerts_on_timeout(self):
         """_sweep_pending_dms should alert when DM exceeds timeout."""

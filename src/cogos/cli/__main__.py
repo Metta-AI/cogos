@@ -266,7 +266,7 @@ def _boot_image(ctx: click.Context, image_name: str, clean: bool,
                 )
                 click.echo("All artifacts verified.")
         except ArtifactMissing as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
 
     repo = _repo()
     _run_migrations(repo)
@@ -461,7 +461,7 @@ def process_run(name: str, run_local: bool, event: str | None):
         click.echo(f"  Run status: {final_status}")
         if final_status == RunStatus.COMPLETED:
             r = db_run or run
-            click.echo(f"Run completed in {r.duration_ms or 0}ms")
+            click.echo(f"Run completed in {r.duration_ms if r.duration_ms is not None else 0}ms")
             click.echo(f"  Tokens: {r.tokens_in} in, {r.tokens_out} out")
             if r.result:
                 click.echo(f"  Output: {json.dumps(r.result)[:500]}")
@@ -1342,7 +1342,8 @@ def dashboard_start(ctx: click.Context):
     apply_local_checkout_env(env, repo_root=_REPO_ROOT)
 
     # Pass cogtainer/cogent so the dashboard backend can resolve the runtime
-    obj = ctx.obj or {}
+    assert ctx.obj is not None, "CLI context object must be set"
+    obj = ctx.obj
     ct_name = obj.get("cogtainer_name")
     cogent_name = obj.get("cogent_name")
     if ct_name:
@@ -1683,8 +1684,9 @@ def executor_daemon(ctx, executor_id: str | None, tags: str, poll_s: float, hear
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
     # Try cogtainer runtime first, fall back to SqliteRepository
-    runtime = (ctx.obj or {}).get("runtime")
-    cogent_name = (ctx.obj or {}).get("cogent_name", "")
+    assert ctx.obj is not None, "CLI context object must be set"
+    runtime = ctx.obj.get("runtime")
+    cogent_name = ctx.obj.get("cogent_name", "")
     if runtime:
         repo = runtime.get_repository(cogent_name)
     else:
@@ -1732,7 +1734,7 @@ def executor_token_create(name: str, scope: str):
     repo.create_executor_token(token)
 
     click.echo(f"Token created: {name}")
-    click.echo(f"Bearer token (save this — shown only once):")
+    click.echo("Bearer token (save this — shown only once):")
     click.echo(f"  {raw_token}")
 
 

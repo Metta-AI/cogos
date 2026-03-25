@@ -1,7 +1,6 @@
 import tempfile
 from uuid import uuid4
 
-from cogos.db.sqlite_repository import SqliteRepository
 from cogos.db.models import (
     Channel,
     ChannelMessage,
@@ -14,6 +13,7 @@ from cogos.db.models import (
     RunStatus,
 )
 from cogos.db.models.wait_condition import WaitCondition, WaitConditionType
+from cogos.db.sqlite_repository import SqliteRepository
 
 
 def _fresh_repo() -> SqliteRepository:

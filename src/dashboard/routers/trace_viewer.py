@@ -70,26 +70,29 @@ class TraceListResponse(BaseModel):
 @router.get("/trace-viewer", response_model=TraceListResponse)
 def list_traces(name: str, limit: int = 20) -> TraceListResponse:
     repo = get_repo()
+    capped_limit = min(limit, 100)
+    # Single query with LEFT JOIN to get span counts — avoids N+1
     rows = repo.query(
-        "SELECT id, cogent_id, source, source_ref, created_at"
-        " FROM cogos_request_trace ORDER BY created_at DESC LIMIT :limit",
-        {"limit": min(limit, 100)},
+        "SELECT t.id, t.cogent_id, t.source, t.source_ref, t.created_at,"
+        " COALESCE(s.cnt, 0) AS span_count"
+        " FROM cogos_request_trace t"
+        " LEFT JOIN ("
+        "   SELECT trace_id, COUNT(*) AS cnt FROM cogos_span GROUP BY trace_id"
+        " ) s ON s.trace_id = t.id"
+        " ORDER BY t.created_at DESC LIMIT :limit",
+        {"limit": capped_limit},
     )
-    items = []
-    for r in rows:
-        tid = UUID(r["id"])
-        span_count_rows = repo.query(
-            "SELECT COUNT(*) AS cnt FROM cogos_span WHERE trace_id = :tid",
-            {"tid": tid},
-        )
-        items.append(TraceListItem(
+    items = [
+        TraceListItem(
             id=r["id"],
             cogent_id=r.get("cogent_id", ""),
             source=r.get("source", ""),
             source_ref=r.get("source_ref"),
             created_at=r.get("created_at"),
-            span_count=span_count_rows[0]["cnt"] if span_count_rows else 0,
-        ))
+            span_count=r.get("span_count", 0),
+        )
+        for r in rows
+    ]
     return TraceListResponse(count=len(items), traces=items)
 
 
@@ -126,7 +129,8 @@ def get_trace(name: str, trace_id: str) -> TraceOut:
         if span.status.value == "errored":
             error_count += 1
 
-        meta = span.metadata or {}
+        assert span.metadata is not None
+        meta = span.metadata
         total_tokens_in += meta.get("tokens_in", 0)
         total_tokens_out += meta.get("tokens_out", 0)
         total_cost += meta.get("cost_usd", 0.0)

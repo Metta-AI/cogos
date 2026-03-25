@@ -7,7 +7,6 @@ from pathlib import Path
 from cogos.db.sqlite_repository import SqliteRepository
 from cogos.files.store import FileStore
 
-
 # ---------------------------------------------------------------------------
 # Image-level: add_cog + cog manifest
 # ---------------------------------------------------------------------------

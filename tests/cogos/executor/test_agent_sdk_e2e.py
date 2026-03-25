@@ -61,7 +61,10 @@ def test_agent_sdk_e2e():
         allowed_tools=tool_names,
         permission_mode="bypassPermissions",
         max_turns=5,
-        system_prompt="You have a memory tool. Store the value 'hello world' under key 'test', then read it back and confirm.",
+        system_prompt=(
+            "You have a memory tool. Store the value 'hello world' under key 'test',"
+            " then read it back and confirm."
+        ),
         model="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     )
 

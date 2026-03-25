@@ -175,26 +175,26 @@ class WebCapability(Capability):
         return f"{base_url}/{normalized}"
 
     def _static_base_url(self) -> str:
-        override = (os.environ.get("WEB_BASE_URL") or "").strip().rstrip("/")
+        override = os.environ.get("WEB_BASE_URL", "").strip().rstrip("/")
         if override:
             return override
 
         if os.environ.get("USE_LOCAL_DB") == "1":
-            frontend_port = (os.environ.get("DASHBOARD_FE_PORT") or "").strip()
-            backend_port = (os.environ.get("DASHBOARD_BE_PORT") or "").strip()
+            frontend_port = os.environ.get("DASHBOARD_FE_PORT", "").strip()
+            backend_port = os.environ.get("DASHBOARD_BE_PORT", "").strip()
             if frontend_port:
                 return f"http://localhost:{frontend_port}/web/static"
             if backend_port:
                 return f"http://localhost:{backend_port}/web/static"
 
-        cogent_name = (os.environ.get("COGENT") or "").strip()
+        cogent_name = os.environ.get("COGENT", "").strip()
         safe_name = cogent_name.replace(".", "-") if cogent_name else "local"
         domain = self._get_web_domain()
         return f"https://{safe_name}.{domain}/web/static"
 
     def _get_web_domain(self) -> str:
         """Read web domain from cogtainer secrets."""
-        cogtainer = (os.environ.get("COGTAINER") or "").strip()
+        cogtainer = os.environ.get("COGTAINER", "").strip()
         if self._secrets_provider and cogtainer:
             try:
                 return self._secrets_provider.get_secret(f"cogtainer/{cogtainer}/web/domain")

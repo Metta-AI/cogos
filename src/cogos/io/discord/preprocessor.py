@@ -60,7 +60,8 @@ def _fetch_history(
         ch = repo.get_channel_by_name(inbound_channel_name)
         if ch:
             for msg in repo.list_channel_messages(ch.id, limit=limit):
-                p = msg.payload or {}
+                assert isinstance(msg.payload, dict), f"Expected dict payload, got {type(msg.payload)}"
+                p = msg.payload
                 if not p.get("content") and not p.get("attachments"):
                     continue
                 messages.append((msg.created_at, _format_inbound(p)))
@@ -69,7 +70,8 @@ def _fetch_history(
     replies_ch = repo.get_channel_by_name(f"io:discord:{cogent_name}:replies")
     if replies_ch:
         for msg in repo.list_channel_messages(replies_ch.id, limit=limit * 2):
-            p = msg.payload or {}
+            assert isinstance(msg.payload, dict), f"Expected dict payload, got {type(msg.payload)}"
+            p = msg.payload
             # Match by Discord channel ID
             if p.get("channel") != channel_id:
                 continue

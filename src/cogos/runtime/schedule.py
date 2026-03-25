@@ -95,7 +95,7 @@ def emit_channel_message(repo, channel_name: str, payload: dict | None = None) -
         ChannelMessage(
             channel=channel.id,
             sender_process=None,
-            payload=payload or {},
+            payload=payload if payload is not None else {},
         )
     )
 

@@ -121,7 +121,12 @@ class CogosRepositoryInterface(Protocol):
     def create_handler(self, h: Handler) -> UUID: ...
 
     def list_handlers(
-        self, *, process_id: UUID | None = None, enabled_only: bool = False, epoch: int | None = None,
+        self,
+        *,
+        process_id: UUID | None = None,
+        enabled_only: bool = False,
+        epoch: int | None = None,
+        limit: int = 0,
     ) -> list[Handler]: ...
 
     def delete_handler(self, handler_id: UUID) -> bool: ...
@@ -186,6 +191,14 @@ class CogosRepositoryInterface(Protocol):
     def get_file_by_id(self, file_id: UUID) -> File | None: ...
 
     def list_files(self, *, prefix: str | None = None, limit: int = 200) -> list[File]: ...
+
+    def list_files_with_content(
+        self,
+        *,
+        prefix: str | None = None,
+        exclude_prefix: str | None = None,
+        limit: int = 200,
+    ) -> list[tuple[str, str]]: ...
 
     def grep_files(
         self, pattern: str, *, prefix: str | None = None, limit: int = 100,
