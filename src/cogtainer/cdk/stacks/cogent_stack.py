@@ -504,7 +504,7 @@ class CogentStack(Stack):
 
         # Task definition
         task_def = ecs.FargateTaskDefinition(
-            self, "DashTaskDef", cpu=256, memory_limit_mib=512,
+            self, "DashTaskDef", cpu=512, memory_limit_mib=1024,
         )
 
         # Grant ECR pull to execution role (needed for private ECR images)

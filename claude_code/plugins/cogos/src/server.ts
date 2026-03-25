@@ -90,10 +90,14 @@ function apiBase(): string {
 }
 
 async function apiGet(url: string): Promise<unknown> {
-  const resp = await fetch(url, { headers: headers() });
-  if (!resp.ok)
-    throw new Error(`GET ${url}: ${resp.status} ${resp.statusText}`);
-  return resp.json();
+  try {
+    const resp = await fetch(url, { headers: headers() });
+    if (!resp.ok) throw new Error(`GET ${url}: ${resp.status} ${resp.statusText}`);
+    return resp.json();
+  } catch (e: any) {
+    const cause = e?.cause ? ` cause=${e.cause?.code || e.cause?.message || JSON.stringify(e.cause)}` : "";
+    throw new Error(`GET ${url}: ${e?.message}${cause}`);
+  }
 }
 
 async function apiPost(url: string, body: unknown): Promise<unknown> {
@@ -250,11 +254,9 @@ async function connect(address: string, token?: string): Promise<string> {
       state.token = cached;
       process.stderr.write(`[cogos] Using cached token for ${address}\n`);
       try {
-        await apiGet(`${apiBase()}/channels`);
-      } catch {
-        process.stderr.write(
-          `[cogos] Cached token invalid, re-authenticating\n`,
-        );
+        await apiGet(`${apiBase()}/cogos-status`);
+      } catch (e) {
+        process.stderr.write(`[cogos] Cached token invalid, re-authenticating: ${e}\n`);
         removeCachedToken(address);
         state.token = "";
       }
@@ -275,7 +277,7 @@ async function connect(address: string, token?: string): Promise<string> {
 
   // Validate connection
   try {
-    await apiGet(`${apiBase()}/channels`);
+    await apiGet(`${apiBase()}/cogos-status`);
   } catch (e) {
     state.connected = false;
     removeCachedToken(address);
