@@ -1810,7 +1810,7 @@ class RdsDataApiRepository:
     def list_file_mutations(self, run_id: UUID) -> list[dict]:
         """List file versions created by a specific run."""
         response = self._execute(
-            """SELECT f.key, fv.version, fv.created_at
+            """SELECT f.key, fv.file_id, fv.version, fv.content, fv.created_at
                FROM cogos_file_version fv
                JOIN cogos_file f ON f.id = fv.file_id
                WHERE fv.run_id = :run_id
@@ -1818,6 +1818,43 @@ class RdsDataApiRepository:
             [self._param("run_id", run_id)],
         )
         return self._rows_to_dicts(response)
+
+    def get_file_version_content(self, file_id: UUID, version: int) -> str | None:
+        response = self._execute(
+            "SELECT content FROM cogos_file_version WHERE file_id = :fid AND version = :v",
+            [self._param("fid", file_id), self._param("v", version)],
+        )
+        row = self._first_row(response)
+        return row["content"] if row else None
+
+    def list_messages_sent_by_run(self, run_id: UUID) -> list[dict]:
+        response = self._execute(
+            """SELECT cm.id, cm.payload, cm.created_at, c.name AS channel_name
+               FROM cogos_delivery d
+               JOIN cogos_channel_message cm ON cm.id = d.message
+               JOIN cogos_channel c ON c.id = cm.channel
+               WHERE d.run = :rid
+               ORDER BY cm.created_at""",
+            [self._param("rid", run_id)],
+        )
+        rows = self._rows_to_dicts(response)
+        for r in rows:
+            if isinstance(r.get("payload"), str):
+                try:
+                    r["payload"] = json.loads(r["payload"])
+                except (json.JSONDecodeError, TypeError):
+                    r["payload"] = {}
+        return rows
+
+    def list_child_runs(self, process_id: UUID) -> list[Run]:
+        response = self._execute(
+            """SELECT r.* FROM cogos_run r
+               JOIN cogos_process p ON p.id = r.process
+               WHERE p.parent_process = :pid
+               ORDER BY r.created_at""",
+            [self._param("pid", process_id)],
+        )
+        return [self._run_from_row(r) for r in self._rows_to_dicts(response)]
 
     def list_runs_by_process_glob(
         self,

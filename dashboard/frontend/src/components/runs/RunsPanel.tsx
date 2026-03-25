@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { CogosRun, CogosRunLogsResponse } from "@/lib/types";
+import type { CogosRun, CogosRunLogsResponse, RunOutputsResponse } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { PrettyLogView } from "@/components/runs/PrettyLogView";
-import { fmtTimestamp, fmtMs, fmtCost, fmtNum } from "@/lib/format";
+import { fmtTimestamp, fmtMs, fmtCost, fmtNum, fmtTime } from "@/lib/format";
 import { buildCogentRunLogsUrl } from "@/lib/cloudwatch";
 import * as api from "@/lib/api";
 
@@ -19,6 +19,8 @@ interface Props {
 type RunRow = CogosRun & Record<string, unknown>;
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral" | "accent";
+
+type RunTab = "logs" | "files" | "messages" | "children";
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   running: "accent",
@@ -37,6 +39,157 @@ const STATUS_ABBREV: Record<string, string> = {
   timeout: "T",
   pending: "P",
 };
+
+function TabButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-mono transition-colors border ${
+        active
+          ? "border-[var(--accent-dim)] bg-[var(--accent-glow)] text-[var(--accent)]"
+          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+      }`}
+    >
+      {label}
+      {count != null && count > 0 && (
+        <span className={`text-[9px] ${active ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}`}>
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function DiffLine({ line }: { line: string }) {
+  if (line.startsWith("+") && !line.startsWith("+++")) {
+    return <span className="text-emerald-400">{line}</span>;
+  }
+  if (line.startsWith("-") && !line.startsWith("---")) {
+    return <span className="text-red-400">{line}</span>;
+  }
+  if (line.startsWith("@@")) {
+    return <span className="text-[var(--accent)]">{line}</span>;
+  }
+  return <span className="text-[var(--text-muted)]">{line}</span>;
+}
+
+function DiffView({ diff }: { diff: string }) {
+  const lines = diff.split("\n");
+  return (
+    <pre className="whitespace-pre-wrap break-words text-[10px] font-mono m-0 px-3 py-2 bg-[var(--bg-deep)] rounded">
+      {lines.map((line, i) => (
+        <div key={i}>
+          <DiffLine line={line} />
+        </div>
+      ))}
+    </pre>
+  );
+}
+
+function FilesTab({ files }: { files: RunOutputsResponse["files"] }) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  if (files.length === 0) {
+    return <div className="text-[11px] text-[var(--text-muted)]">No files touched.</div>;
+  }
+
+  const toggleFile = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+      {files.map((f, i) => {
+        const rowKey = `${f.key}-v${f.version}`;
+        const expanded = expandedKeys.has(rowKey);
+        return (
+          <div
+            key={rowKey}
+            className={i < files.length - 1 ? "border-b border-[var(--border)]" : ""}
+          >
+            <div
+              className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono cursor-pointer hover:bg-[var(--bg-deep)]"
+              onClick={() => f.diff && toggleFile(rowKey)}
+            >
+              {f.diff ? (
+                <span className="text-[var(--text-muted)] text-[9px] w-3">{expanded ? "\u25BC" : "\u25B6"}</span>
+              ) : (
+                <span className="w-3" />
+              )}
+              <span className="text-[var(--text-primary)] flex-1 truncate" title={f.key}>{f.key}</span>
+              <span className="text-[var(--text-muted)]">v{f.version}</span>
+              {f.created_at && <span className="text-[var(--text-muted)]">{fmtTime(f.created_at)}</span>}
+            </div>
+            {expanded && f.diff && <DiffView diff={f.diff} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessagesTab({ messages }: { messages: RunOutputsResponse["messages"] }) {
+  if (messages.length === 0) {
+    return <div className="text-[11px] text-[var(--text-muted)]">No messages sent.</div>;
+  }
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+      {messages.map((m, i) => (
+        <div
+          key={m.id}
+          className={`px-3 py-2 text-[11px] ${i < messages.length - 1 ? "border-b border-[var(--border)]" : ""}`}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-mono text-[var(--accent)]">{m.channel_name}</span>
+            {m.created_at && <span className="text-[var(--text-muted)]">{fmtTime(m.created_at)}</span>}
+          </div>
+          <pre className="whitespace-pre-wrap break-words text-[var(--text-secondary)] m-0 text-[10px]">
+            {JSON.stringify(m.payload, null, 2)}
+          </pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChildrenTab({ children }: { children: RunOutputsResponse["children"] }) {
+  if (children.length === 0) {
+    return <div className="text-[11px] text-[var(--text-muted)]">No children spawned.</div>;
+  }
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+      {children.map((c, i) => (
+        <div
+          key={c.id}
+          className={`flex items-center gap-3 px-3 py-1.5 text-[11px] ${i < children.length - 1 ? "border-b border-[var(--border)]" : ""}`}
+        >
+          <Badge variant={STATUS_VARIANT[c.status] || "neutral"}>
+            {STATUS_ABBREV[c.status] || c.status.charAt(0).toUpperCase()}
+          </Badge>
+          <span className="text-[var(--text-primary)] font-medium">{c.process_name || c.process}</span>
+          <span className="text-[var(--text-muted)]">{fmtMs(c.duration_ms)}</span>
+          {c.created_at && <span className="text-[var(--text-muted)] ml-auto">{fmtTime(c.created_at)}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function renderLogPreview(
   run: CogosRun,
@@ -119,6 +272,75 @@ function renderLogPreview(
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ExpandedRunView({
+  run,
+  logState,
+  logLoading,
+  outputs,
+  outputsLoading,
+  copiedRunId,
+  copyRunId,
+  prettyMode,
+  togglePrettyMode,
+  cogentName,
+}: {
+  run: CogosRun;
+  logState: CogosRunLogsResponse | undefined;
+  logLoading: boolean;
+  outputs: RunOutputsResponse | undefined;
+  outputsLoading: boolean;
+  copiedRunId: string | null;
+  copyRunId: (runId: string) => void;
+  prettyMode: boolean;
+  togglePrettyMode: () => void;
+  cogentName?: string;
+}) {
+  const [tab, setTab] = useState<RunTab>("logs");
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1">
+        <TabButton label="Logs" active={tab === "logs"} onClick={() => setTab("logs")} />
+        <TabButton
+          label="Files"
+          count={outputs?.files.length}
+          active={tab === "files"}
+          onClick={() => setTab("files")}
+        />
+        <TabButton
+          label="Messages"
+          count={outputs?.messages.length}
+          active={tab === "messages"}
+          onClick={() => setTab("messages")}
+        />
+        <TabButton
+          label="Children"
+          count={outputs?.children.length}
+          active={tab === "children"}
+          onClick={() => setTab("children")}
+        />
+      </div>
+      {tab === "logs" &&
+        renderLogPreview(run, logState, logLoading, copiedRunId, copyRunId, prettyMode, togglePrettyMode, cogentName)}
+      {tab === "files" && (
+        outputsLoading
+          ? <div className="text-[11px] text-[var(--text-muted)]">Loading...</div>
+          : outputs ? <FilesTab files={outputs.files} /> : null
+      )}
+      {tab === "messages" && (
+        outputsLoading
+          ? <div className="text-[11px] text-[var(--text-muted)]">Loading...</div>
+          : outputs ? <MessagesTab messages={outputs.messages} /> : null
+      )}
+      {tab === "children" && (
+        outputsLoading
+          ? <div className="text-[11px] text-[var(--text-muted)]">Loading...</div>
+          : outputs ? <ChildrenTab children={outputs.children} /> : null
       )}
     </div>
   );
@@ -234,7 +456,9 @@ function makeColumns(
 export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
   const [logPreviewByRun, setLogPreviewByRun] = useState<Record<string, CogosRunLogsResponse>>({});
+  const [outputsByRun, setOutputsByRun] = useState<Record<string, RunOutputsResponse>>({});
   const [loadingRunIds, setLoadingRunIds] = useState<Set<string>>(new Set());
+  const [loadingOutputIds, setLoadingOutputIds] = useState<Set<string>>(new Set());
   const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
   const [prettyMode, setPrettyMode] = useState(true);
   const copiedResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -276,26 +500,46 @@ export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
     }
 
     setExpandedRunIds((prev) => new Set(prev).add(runId));
-    if (loadingRunIds.has(runId)) return;
 
-    setLoadingRunIds((prev) => new Set(prev).add(runId));
-    try {
-      const preview = await api.getRunLogs(cogentName, runId);
-      setLogPreviewByRun((prev) => ({ ...prev, [runId]: preview }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load run log preview.";
-      setLogPreviewByRun((prev) => ({
-        ...prev,
-        [runId]: { log_group: "", log_stream: null, entries: [], error: message },
-      }));
-    } finally {
-      setLoadingRunIds((prev) => {
-        const next = new Set(prev);
-        next.delete(runId);
-        return next;
-      });
+    if (!loadingRunIds.has(runId) && !logPreviewByRun[runId]) {
+      setLoadingRunIds((prev) => new Set(prev).add(runId));
+      try {
+        const preview = await api.getRunLogs(cogentName, runId);
+        setLogPreviewByRun((prev) => ({ ...prev, [runId]: preview }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not load run log preview.";
+        setLogPreviewByRun((prev) => ({
+          ...prev,
+          [runId]: { log_group: "", log_stream: null, entries: [], error: message },
+        }));
+      } finally {
+        setLoadingRunIds((prev) => {
+          const next = new Set(prev);
+          next.delete(runId);
+          return next;
+        });
+      }
     }
-  }, [cogentName, expandedRunIds, loadingRunIds]);
+
+    if (!loadingOutputIds.has(runId) && !outputsByRun[runId]) {
+      setLoadingOutputIds((prev) => new Set(prev).add(runId));
+      try {
+        const outputs = await api.getRunOutputs(cogentName, runId);
+        setOutputsByRun((prev) => ({ ...prev, [runId]: outputs }));
+      } catch {
+        setOutputsByRun((prev) => ({
+          ...prev,
+          [runId]: { files: [], messages: [], children: [] },
+        }));
+      } finally {
+        setLoadingOutputIds((prev) => {
+          const next = new Set(prev);
+          next.delete(runId);
+          return next;
+        });
+      }
+    }
+  }, [cogentName, expandedRunIds, loadingRunIds, loadingOutputIds, logPreviewByRun, outputsByRun]);
 
   const columns = makeColumns(cogentName, toggleRunLogs);
   const rows = runs.map((r) => ({ ...r } as RunRow));
@@ -329,9 +573,20 @@ export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
           void toggleRunLogs(row.id);
         }}
         expandedRowIds={expandedRunIds}
-        renderExpandedRow={(row) =>
-          renderLogPreview(row, logPreviewByRun[row.id], loadingRunIds.has(row.id), copiedRunId, copyRunId, prettyMode, () => setPrettyMode((p) => !p), cogentName)
-        }
+        renderExpandedRow={(row) => (
+          <ExpandedRunView
+            run={row}
+            logState={logPreviewByRun[row.id]}
+            logLoading={loadingRunIds.has(row.id)}
+            outputs={outputsByRun[row.id]}
+            outputsLoading={loadingOutputIds.has(row.id)}
+            copiedRunId={copiedRunId}
+            copyRunId={copyRunId}
+            prettyMode={prettyMode}
+            togglePrettyMode={() => setPrettyMode((p) => !p)}
+            cogentName={cogentName}
+          />
+        )}
         getRowStyle={(row) =>
           currentEpoch != null && row.epoch < currentEpoch
             ? { opacity: 0.5 }

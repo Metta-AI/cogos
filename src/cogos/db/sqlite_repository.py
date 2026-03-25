@@ -1872,7 +1872,7 @@ class SqliteRepository:
 
     def list_file_mutations(self, run_id: UUID) -> list[dict]:
         rows = self._query(
-            """SELECT f.key, fv.version, fv.created_at
+            """SELECT f.key, fv.file_id, fv.version, fv.content, fv.created_at
                FROM cogos_file_version fv
                JOIN cogos_file f ON f.id = fv.file_id
                WHERE fv.run_id = :rid
@@ -1880,9 +1880,52 @@ class SqliteRepository:
             {"rid": str(run_id)},
         )
         return [
-            {"key": r["key"], "version": r["version"], "created_at": self._parse_dt(r["created_at"])}
+            {
+                "key": r["key"],
+                "file_id": r["file_id"],
+                "version": r["version"],
+                "content": r["content"],
+                "created_at": self._parse_dt(r["created_at"]),
+            }
             for r in rows
         ]
+
+    def get_file_version_content(self, file_id: UUID, version: int) -> str | None:
+        row = self._query_one(
+            "SELECT content FROM cogos_file_version WHERE file_id = :fid AND version = :v",
+            {"fid": str(file_id), "v": version},
+        )
+        return row["content"] if row else None
+
+    def list_messages_sent_by_run(self, run_id: UUID) -> list[dict]:
+        rows = self._query(
+            """SELECT cm.id, cm.payload, cm.created_at, c.name AS channel_name
+               FROM cogos_delivery d
+               JOIN cogos_channel_message cm ON cm.id = d.message
+               JOIN cogos_channel c ON c.id = cm.channel
+               WHERE d.run = :rid
+               ORDER BY cm.created_at""",
+            {"rid": str(run_id)},
+        )
+        return [
+            {
+                "id": r["id"],
+                "channel_name": r["channel_name"],
+                "payload": self._json_loads_dict(r["payload"]),
+                "created_at": self._parse_dt(r["created_at"]),
+            }
+            for r in rows
+        ]
+
+    def list_child_runs(self, process_id: UUID) -> list[Run]:
+        rows = self._query(
+            """SELECT r.* FROM cogos_run r
+               JOIN cogos_process p ON p.id = r.process
+               WHERE p.parent_process = :pid
+               ORDER BY r.created_at""",
+            {"pid": str(process_id)},
+        )
+        return [self._row_to_run(r) for r in rows]
 
     def list_runs_by_process_glob(
         self,
