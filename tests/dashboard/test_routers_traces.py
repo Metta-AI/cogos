@@ -131,6 +131,18 @@ class _TraceRepoStub:
     def get_run(self, run_id):
         return self.run if run_id == self.run.id else None
 
+    def get_channel_message(self, message_id):
+        for m in [self.message, self.lifecycle_message]:
+            if m.id == message_id:
+                return m
+        return None
+
+    def get_channel(self, channel_id):
+        for ch in [self.inbound_channel, self.lifecycle_channel]:
+            if ch.id == channel_id:
+                return ch
+        return None
+
 
 def test_message_traces_endpoint_returns_channel_delivery_run_graph():
     app = create_app()
