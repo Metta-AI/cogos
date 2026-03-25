@@ -143,7 +143,7 @@ def list_channels(
     name: str,
     channel_type: str | None = Query(None),
     owner: str | None = Query(None),
-    limit: int = Query(200, ge=1, le=2000),
+    limit: int = Query(100, ge=1, le=2000),
 ) -> ChannelsResponse:
     repo = get_repo()
     owner_id = UUID(owner) if owner else None
