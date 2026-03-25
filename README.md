@@ -151,7 +151,7 @@ uv run cogos start
 uv run cogos status
 
 # 6. Start the dashboard
-cd dashboard/frontend && npm ci && cd ../..
+(cd dashboard/frontend && npm ci)
 uv run cogos dashboard start
 ```
 
