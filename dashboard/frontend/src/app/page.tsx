@@ -101,7 +101,25 @@ export default function DashboardPage() {
 }
 
 function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId, initialSubTab }: { cogentName: string; activeTab: TabId; onTabChange: (tab: TabId) => void; initialTraceId?: string; initialSubTab?: string }) {
-  const { data, loading, error, refresh, timeRange, setTimeRange, connected, showHistory, setShowHistory } = useCogentData(cogentName);
+  const { data, loading, error, refresh, ensureLoaded, timeRange, setTimeRange, connected, showHistory, setShowHistory } = useCogentData(cogentName);
+
+  // Lazy-load data when switching tabs
+  useEffect(() => {
+    switch (activeTab) {
+      case "processes":
+        ensureLoaded("runs", "files", "capabilities", "resources", "executors");
+        break;
+      case "files":
+        ensureLoaded("files");
+        break;
+      case "events":
+        ensureLoaded("handlers", "crons", "traces");
+        break;
+      case "overview":
+        ensureLoaded("runs");
+        break;
+    }
+  }, [activeTab, ensureLoaded]);
 
   const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
   const stuckProcessCount = useMemo(() => {
