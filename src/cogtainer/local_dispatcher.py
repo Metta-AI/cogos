@@ -285,13 +285,19 @@ def run_loop(
     Between full ticks the loop drains the local ingress queue (SQS mock)
     every second so that channel-message nudges trigger near-instant dispatch.
     """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     # Seed a local daemon executor so processes with no tags (or "python" tag) get dispatched
     from cogos.db.models.executor import Executor
     local_executor = Executor(
         executor_id="local-daemon",
         channel_type="local",
         executor_tags=["python"],
-        dispatch_type="channel",
+        dispatch_type="local",
         metadata={"local": True},
     )
     repo.register_executor(local_executor)
