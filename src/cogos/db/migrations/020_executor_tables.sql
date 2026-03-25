@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS cogos_executor (
     UNIQUE(executor_id)
 );
 
+-- Backfill columns for tables created before executor_tags/dispatch_type existed.
+ALTER TABLE cogos_executor ADD COLUMN IF NOT EXISTS executor_tags JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE cogos_executor ADD COLUMN IF NOT EXISTS dispatch_type TEXT NOT NULL DEFAULT 'channel';
+
 CREATE INDEX IF NOT EXISTS idx_executor_status ON cogos_executor(status);
 
 CREATE TABLE IF NOT EXISTS cogos_executor_token (
