@@ -13,23 +13,15 @@ def test_healthz():
     assert resp.json() == {"ok": True}
 
 
-def test_lifespan_runs_cogos_migrations():
-    """Dashboard startup should apply CogOS SQL migrations."""
-    calls = {}
-
-    def fake_migrations(repo, on_error=None):
-        calls["repo"] = repo
-        return 5
-
+def test_lifespan_warms_db():
+    """Dashboard startup should pre-warm DB connection via get_repo()."""
     fake_repo = MagicMock()
-    with patch("cogos.db.migrations.apply_cogos_sql_migrations", fake_migrations), patch(
-        "cogos.api.db.get_repo", return_value=fake_repo
-    ):
+    with patch("cogos.api.db.get_repo", return_value=fake_repo) as mock_get_repo:
         app = create_app()
         with TestClient(app):
             pass  # triggers lifespan
 
-    assert calls["repo"] is fake_repo
+    mock_get_repo.assert_called()
 
 
 def test_web_static_extensionless_html_renders_in_browser():

@@ -29,8 +29,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-warm: load dashboard API key (Secrets Manager) + DB connection (RDS Data API)
-    # so the first user request doesn't pay the cold-start penalty
+    # Pre-warm auth (Secrets Manager) — safe to run in each worker
     try:
         from dashboard.auth import _load_api_key
 
@@ -39,21 +38,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Dashboard API key pre-warm failed", exc_info=True)
 
-    # Apply CogOS SQL migrations on startup
+    # Pre-warm DB connection — create client, skip migrations here
+    # (migrations run from the dispatcher Lambda on boot, not the API server)
     try:
-        from cogos.db.migrations import apply_cogos_sql_migrations
-
         from cogos.api.db import get_repo
 
-        repo = get_repo()
-        statements = apply_cogos_sql_migrations(
-            repo,
-            on_error=lambda name, exc: logger.warning("Migration %s: %s", name, exc),
-        )
-        if statements:
-            logger.info("Applied %d CogOS migration statements on startup", statements)
+        get_repo()
+        logger.info("DB connection ready")
     except Exception:
-        logger.warning("CogOS migrations failed on startup", exc_info=True)
+        logger.warning("DB pre-warm failed", exc_info=True)
     yield
 
 
