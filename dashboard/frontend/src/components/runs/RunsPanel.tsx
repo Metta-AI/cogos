@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CogosRun, CogosRunLogsResponse } from "@/lib/types";
 import { Badge } from "@/components/shared/Badge";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { PrettyLogView } from "@/components/runs/PrettyLogView";
 import { fmtTimestamp, fmtMs, fmtCost, fmtNum } from "@/lib/format";
 import { buildCogentRunLogsUrl } from "@/lib/cloudwatch";
 import * as api from "@/lib/api";
@@ -43,6 +44,8 @@ function renderLogPreview(
   loading: boolean,
   copiedRunId: string | null,
   copyRunId: (runId: string) => void,
+  prettyMode: boolean,
+  togglePrettyMode: () => void,
   cogentName?: string,
 ) {
   if (loading) {
@@ -83,11 +86,24 @@ function renderLogPreview(
             Open in CloudWatch
           </a>
         ) : null}
+        <button
+          type="button"
+          onClick={togglePrettyMode}
+          className={`ml-auto inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+            prettyMode
+              ? "border-[var(--accent-dim)] bg-[var(--accent-glow)] text-[var(--accent)]"
+              : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+          }`}
+        >
+          {prettyMode ? "pretty" : "raw"}
+        </button>
       </div>
       {state.error ? (
         <div className="text-[11px] text-red-400">{state.error}</div>
       ) : state.entries.length === 0 ? (
         <div className="text-[11px] text-[var(--text-muted)]">No run logs found for this run.</div>
+      ) : prettyMode ? (
+        <PrettyLogView entries={state.entries} />
       ) : (
         <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)]">
           {state.entries.map((entry, index) => (
@@ -220,6 +236,7 @@ export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
   const [logPreviewByRun, setLogPreviewByRun] = useState<Record<string, CogosRunLogsResponse>>({});
   const [loadingRunIds, setLoadingRunIds] = useState<Set<string>>(new Set());
   const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
+  const [prettyMode, setPrettyMode] = useState(true);
   const copiedResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -313,7 +330,7 @@ export function RunsPanel({ runs, cogentName, currentEpoch }: Props) {
         }}
         expandedRowIds={expandedRunIds}
         renderExpandedRow={(row) =>
-          renderLogPreview(row, logPreviewByRun[row.id], loadingRunIds.has(row.id), copiedRunId, copyRunId, cogentName)
+          renderLogPreview(row, logPreviewByRun[row.id], loadingRunIds.has(row.id), copiedRunId, copyRunId, prettyMode, () => setPrettyMode((p) => !p), cogentName)
         }
         getRowStyle={(row) =>
           currentEpoch != null && row.epoch < currentEpoch
