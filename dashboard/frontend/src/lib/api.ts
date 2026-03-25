@@ -12,7 +12,6 @@ import type {
   CogosRun,
   CogosRunLogsResponse,
   RunOutputsResponse,
-  CogosOperation,
   CogosExecutor,
   Resource,
   Alert,
@@ -238,7 +237,7 @@ export async function putIdentity(name: string, body: IdentitySecrets): Promise<
 export async function getProcesses(name: string, epoch?: string): Promise<CogosProcess[]> {
   const params = epoch ? `?epoch=${epoch}` : "";
   const r = await fetchJSON<{ processes: CogosProcess[] }>(
-    `/api/cogents/${name}/processes${params}`,
+    `/api/cogents/${name}/process${params}`,
   );
   return r.processes;
 }
@@ -247,14 +246,14 @@ export async function getProcessDetail(
   name: string,
   processId: string,
 ): Promise<{ process: CogosProcess; runs: CogosProcessRun[]; resolved_prompt: string; prompt_tree: Array<{ key: string; content: string; is_direct: boolean }>; capabilities: string[]; capability_configs: Record<string, Record<string, unknown>>; cap_grants: Array<{ id: string; grant_name: string; capability_name: string; config: Record<string, unknown> | null }>; includes: Array<{ key: string; content: string }>; handlers: Array<{ id: string; channel_name: string; channel?: string; enabled: boolean }> }> {
-  return fetchJSON(`/api/cogents/${name}/processes/${processId}`);
+  return fetchJSON(`/api/cogents/${name}/process/id/${processId}`);
 }
 
 export async function createProcess(
   name: string,
   body: Partial<Omit<CogosProcess, "id" | "created_at" | "updated_at" | "retry_count">> & { name: string },
 ): Promise<CogosProcess> {
-  const resp = await fetch(`/api/cogents/${name}/processes`, {
+  const resp = await fetch(`/api/cogents/${name}/process`, {
     method: "POST",
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -268,7 +267,7 @@ export async function updateProcess(
   processId: string,
   updates: Partial<Omit<CogosProcess, "id" | "created_at" | "updated_at" | "retry_count">>,
 ): Promise<CogosProcess> {
-  const resp = await fetch(`/api/cogents/${name}/processes/${processId}`, {
+  const resp = await fetch(`/api/cogents/${name}/process/id/${processId}`, {
     method: "PUT",
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify(updates),
@@ -278,7 +277,7 @@ export async function updateProcess(
 }
 
 export async function deleteProcess(name: string, processId: string): Promise<void> {
-  const resp = await fetch(`/api/cogents/${name}/processes/${processId}`, {
+  const resp = await fetch(`/api/cogents/${name}/process/id/${processId}`, {
     method: "DELETE",
     headers: headers(),
   });
@@ -291,7 +290,7 @@ export async function getProcessLogs(
   limit: number = 100,
 ): Promise<ProcessLogsResponse> {
   return fetchJSON(
-    `/api/cogents/${cogentName}/processes/${processId}/logs?limit=${limit}`,
+    `/api/cogents/${cogentName}/process/id/${processId}/logs?limit=${limit}`,
   );
 }
 
@@ -417,7 +416,7 @@ export async function getCapabilityProcesses(
   name: string,
   capName: string,
 ): Promise<CapabilityProcess[]> {
-  return fetchJSON(`/api/cogents/${name}/capabilities/${encodeURIComponent(capName)}/processes`);
+  return fetchJSON(`/api/cogents/${name}/capabilities/${encodeURIComponent(capName)}/process`);
 }
 
 export interface CapabilityMethod {
@@ -463,13 +462,6 @@ export async function getRuns(name: string, epoch?: string): Promise<CogosRun[]>
   return r.runs;
 }
 
-export async function getOperations(name: string): Promise<CogosOperation[]> {
-  const r = await fetchJSON<{ operations: CogosOperation[] }>(
-    `/api/cogents/${name}/operations`,
-  );
-  return r.operations;
-}
-
 export async function getRunLogs(
   name: string,
   runId: string,
@@ -484,46 +476,6 @@ export async function getRunOutputs(
 ): Promise<RunOutputsResponse> {
   return fetchJSON(`/api/cogents/${name}/runs/${runId}/outputs`);
 }
-
-// ── Trigger management (stubs until backend routes exist) ────────────────────
-
-export async function createTrigger(_name: string, _body: Record<string, unknown>): Promise<unknown> { return {}; }
-export async function updateTrigger(_name: string, _id: string, _body: Record<string, unknown>): Promise<unknown> { return {}; }
-export async function deleteTrigger(_name: string, _id: string): Promise<void> {}
-
-// ── Tool management (stubs until backend routes exist) ───────────────────────
-
-export async function updateTool(_name: string, _id: string, _body: Record<string, unknown>): Promise<unknown> { return {}; }
-export async function deleteTool(_name: string, _id: string): Promise<void> {}
-export async function toggleTools(_name: string, _ids: string[], _enabled: boolean): Promise<void> {}
-
-// ── Task management (stubs until backend routes exist) ───────────────────────
-
-export async function createTask(_name: string, _body: Record<string, unknown>): Promise<unknown> { return {}; }
-export async function updateTask(_name: string, _id: string, _body: Record<string, unknown>): Promise<unknown> { return {}; }
-export async function deleteTask(_name: string, _id: string): Promise<void> {}
-export async function getTaskDetail(_name: string, _id: string): Promise<{ runs: never[]; task: { content: string | null } }> { return { runs: [], task: { content: null } }; }
-
-// ── Memory management (stubs until backend routes exist) ─────────────────────
-
-export async function createMemory(
-  _name: string,
-  _body: { name: string; content: string; group?: string },
-): Promise<unknown> { return {}; }
-export async function updateMemory(
-  _name: string,
-  _key: string,
-  _body: { content: string },
-): Promise<{ versions: { version: number }[] }> { return { versions: [{ version: 1 }] }; }
-export async function deleteMemory(_name: string, _key: string): Promise<void> {}
-export async function activateVersion(_name: string, _key: string, _version: number): Promise<void> {}
-export async function updateVersionContent(
-  _name: string,
-  _key: string,
-  _version: number,
-  _content: string,
-): Promise<unknown> { return {}; }
-export async function deleteVersion(_name: string, _key: string, _version: number): Promise<void> {}
 
 // ── Alert management ─────────────────────────────────────────────────────────
 

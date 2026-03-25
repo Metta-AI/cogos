@@ -21,7 +21,7 @@ def test_all_rest_endpoints_registered():
 
     endpoints = [
         ("GET", "/api/cogents/test/cogos-status"),
-        ("GET", "/api/cogents/test/processes"),
+        ("GET", "/api/cogents/test/process"),
         ("GET", "/api/cogents/test/runs"),
         ("GET", "/api/cogents/test/message-traces"),
         ("GET", "/api/cogents/test/channels"),

@@ -22,7 +22,7 @@ def test_cogos_status_route_registered(client: TestClient):
 
 
 def test_processes_route_registered(client: TestClient):
-    resp = client.get("/api/cogents/test-cogent/processes")
+    resp = client.get("/api/cogents/test-cogent/process")
     assert resp.status_code != 404
 
 
@@ -59,5 +59,5 @@ def test_processes_with_mock_repo():
     with patch("dashboard.routers.processes.get_repo", return_value=mock_repo):
         app = create_app()
         client = TestClient(app)
-        resp = client.get("/api/cogents/test/processes")
+        resp = client.get("/api/cogents/test/process")
         assert resp.status_code == 200

@@ -244,7 +244,7 @@ class TestFetchProcess:
     @pytest.mark.anyio
     async def test_fetch_success(self, server: CogosServer, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
-            url="http://test-api:8100/api/cogents/test-cogent/processes/proc-1",
+            url="http://test-api:8100/api/cogents/test-cogent/process/id/proc-1",
             method="GET",
             json={"id": "proc-1", "name": "my-process", "runner": "claude-code"},
         )
@@ -256,7 +256,7 @@ class TestFetchProcess:
     @pytest.mark.anyio
     async def test_fetch_not_found(self, server: CogosServer, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
-            url="http://test-api:8100/api/cogents/test-cogent/processes/nonexistent",
+            url="http://test-api:8100/api/cogents/test-cogent/process/id/nonexistent",
             method="GET",
             status_code=404,
         )

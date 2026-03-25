@@ -67,9 +67,10 @@ class TestSendAndRead:
         assert hasattr(result, "error")
 
     def test_send_closed_channel(self, repo, pid):
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=datetime.utcnow())
+        now = datetime.now(timezone.utc)
+        ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=now)
         repo.get_channel_by_name.return_value = ch
         cap = ChannelsCapability(repo, pid)
         result = cap.send("ch1", {"body": "hello"})
@@ -103,9 +104,10 @@ class TestClose:
         ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED)
         repo.get_channel_by_name.return_value = ch
         repo.close_channel.return_value = True
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        closed_ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=datetime.utcnow())
+        now = datetime.now(timezone.utc)
+        closed_ch = Channel(name="ch1", owner_process=pid, channel_type=ChannelType.NAMED, closed_at=now)
         repo.get_channel.return_value = closed_ch
         cap = ChannelsCapability(repo, pid)
         result = cap.close("ch1")

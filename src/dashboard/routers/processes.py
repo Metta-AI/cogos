@@ -261,7 +261,7 @@ def _sync_capabilities_from_grants(
 # ── Routes ──────────────────────────────────────────────────────────
 
 
-@router.get("/processes", response_model=ProcessesResponse)
+@router.get("/process", response_model=ProcessesResponse)
 def list_processes(
     name: str,
     status: str | None = Query(None, description="Filter by process status"),
@@ -278,24 +278,7 @@ def list_processes(
     return ProcessesResponse(cogent_name=name, count=len(details), processes=details)
 
 
-@router.get("/processes/by-name/{process_name}")
-def get_process_by_name(name: str, process_name: str) -> dict:
-    """Look up a process by name and return its resolved prompt."""
-    repo = get_repo()
-    p = repo.get_process_by_name(process_name)
-    if not p:
-        raise HTTPException(status_code=404, detail=f"Process not found: {process_name}")
-
-    ctx = ContextEngine(FileStore(repo))
-    resolved_prompt = ctx.generate_full_prompt(p)
-
-    return {
-        "process": _detail(p).model_dump(),
-        "resolved_prompt": resolved_prompt,
-    }
-
-
-@router.get("/processes/{process_id}")
+@router.get("/process/id/{process_id}")
 def get_process(name: str, process_id: str) -> dict:
     repo = get_repo()
     p = repo.get_process(UUID(process_id))
@@ -376,7 +359,7 @@ def get_process(name: str, process_id: str) -> dict:
     }
 
 
-@router.post("/processes", response_model=ProcessDetail)
+@router.post("/process", response_model=ProcessDetail)
 def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
     repo = get_repo()
     p = Process(
@@ -412,7 +395,7 @@ def create_process(name: str, body: ProcessCreate) -> ProcessDetail:
     return _detail(p)
 
 
-@router.put("/processes/{process_id}", response_model=ProcessDetail)
+@router.put("/process/id/{process_id}", response_model=ProcessDetail)
 def update_process(name: str, process_id: str, body: ProcessUpdate) -> ProcessDetail:
     repo = get_repo()
     p = repo.get_process(UUID(process_id))
@@ -485,7 +468,7 @@ class ProcessLogsResponse(BaseModel):
     entries: list[ProcessLogEntry]
 
 
-@router.get("/processes/{process_id}/logs", response_model=ProcessLogsResponse)
+@router.get("/process/id/{process_id}/logs", response_model=ProcessLogsResponse)
 def get_process_logs(
     name: str,
     process_id: str,
@@ -524,7 +507,7 @@ def get_process_logs(
     )
 
 
-@router.delete("/processes/{process_id}")
+@router.delete("/process/id/{process_id}")
 def delete_process(name: str, process_id: str) -> dict:
     repo = get_repo()
     p = repo.get_process(UUID(process_id))
@@ -532,3 +515,16 @@ def delete_process(name: str, process_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Process not found")
     repo.delete_process(UUID(process_id))
     return {"deleted": True, "id": process_id}
+
+
+@router.get("/process/name/{process_name}/prompt")
+def get_process_prompt(name: str, process_name: str) -> dict:
+    """Return the fully rendered prompt for a process looked up by name."""
+    repo = get_repo()
+    process = repo.get_process_by_name(process_name)
+    if not process:
+        raise HTTPException(status_code=404, detail=f"Process not found: {process_name}")
+
+    ctx = ContextEngine(FileStore(repo))
+    prompt = ctx.generate_full_prompt(process)
+    return {"prompt": prompt}

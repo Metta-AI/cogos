@@ -447,8 +447,9 @@ The backend serves REST API under `/api/cogents/{name}/`:
 | `/api/cogents/{name}/alerts` | - | Alerts |
 | `/api/cogents/{name}/chat` | - | Chat |
 | `/api/cogents/{name}/cogos-status` | GET | CogOS status overview |
-| `/api/cogents/{name}/processes` | GET | Process list |
-| `/api/cogents/{name}/processes/{id}` | GET | Process detail |
+| `/api/cogents/{name}/process` | GET | Process list |
+| `/api/cogents/{name}/process/id/{id}` | GET | Process detail |
+| `/api/cogents/{name}/process/name/{name}/prompt` | GET | Rendered process prompt |
 | `/api/cogents/{name}/handlers` | GET | Event handler list |
 | `/api/cogents/{name}/files` | GET | File browser |
 | `/api/cogents/{name}/files/{key}` | GET | File detail with versions |

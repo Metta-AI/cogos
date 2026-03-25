@@ -47,7 +47,7 @@ def _grant_read_all(repo, process):
             process=process.id,
             capability=dir_cap.id,
             name="read_all",
-            config={"ops": ["read"]},
+            config={"ops": ["read"], "prefix": ""},
         ),
     )
 

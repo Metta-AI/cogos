@@ -109,7 +109,7 @@ def test_trace_viewer_list_uses_single_query():
 
 
 class _ProcessDetailRepo(_CountingRepoBase):
-    """Repo stub for GET /processes/{id} with multiple capabilities and handlers."""
+    """Repo stub for GET /process/id/{id} with multiple capabilities and handlers."""
 
     def __init__(self, n_caps: int = 5, n_handlers: int = 5) -> None:
         super().__init__()
@@ -189,7 +189,7 @@ class _ProcessDetailRepo(_CountingRepoBase):
 
 
 def test_get_process_batches_capability_lookups():
-    """GET /processes/{id} must batch-fetch capabilities, not one per grant."""
+    """GET /process/id/{id} must batch-fetch capabilities, not one per grant."""
     app = create_app()
     client = TestClient(app)
     n = 10
@@ -200,7 +200,7 @@ def test_get_process_batches_capability_lookups():
         patch("cogos.files.context_engine.ContextEngine.generate_full_prompt", return_value="prompt"),
         patch("cogos.files.context_engine.ContextEngine.resolve_prompt_tree", return_value=[]),
     ):
-        resp = client.get(f"/api/cogents/test/processes/{repo.process.id}")
+        resp = client.get(f"/api/cogents/test/process/id/{repo.process.id}")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -547,13 +547,13 @@ class _ProcessesListRepo(_CountingRepoBase):
 
 
 def test_list_processes_forwards_limit():
-    """GET /processes should forward limit param to repo.list_processes."""
+    """GET /process should forward limit param to repo.list_processes."""
     app = create_app()
     client = TestClient(app)
     repo = _ProcessesListRepo(n_procs=20)
 
     with patch("dashboard.routers.processes.get_repo", return_value=repo):
-        resp = client.get("/api/cogents/test/processes?limit=5")
+        resp = client.get("/api/cogents/test/process?limit=5")
 
     assert resp.status_code == 200
     assert resp.json()["count"] == 5

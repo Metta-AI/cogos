@@ -115,7 +115,7 @@ class CapabilityProcessOut(BaseModel):
     config: dict | None = None
 
 
-@router.get("/capabilities/{cap_name}/processes")
+@router.get("/capabilities/{cap_name}/process")
 def list_capability_processes(name: str, cap_name: str) -> list[dict]:
     repo = get_repo()
     c = repo.get_capability_by_name(cap_name)

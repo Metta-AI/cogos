@@ -7452,7 +7452,7 @@ function pythonTypeToJsonSchema(pyType) {
 }
 async function loadMemory() {
   try {
-    const url = `${apiBase()}/memory/rendered?process_name=${encodeURIComponent(state.processName)}`;
+    const url = `${apiBase()}/process/name/${encodeURIComponent(state.processName)}/prompt`;
     const data = await apiGet(url);
     return data.prompt || "(no memory found)";
   } catch (e) {
@@ -7673,8 +7673,8 @@ async function connect(address, token) {
   }
   if (processName !== "supervisor") {
     try {
-      const memUrl = `${apiBase()}/memory/rendered?process_name=${encodeURIComponent(processName)}`;
-      await apiGet(memUrl);
+      const checkUrl = `${apiBase()}/process/name/${encodeURIComponent(processName)}/prompt`;
+      await apiGet(checkUrl);
       process.stderr.write(`[cogos] Process "${processName}" found on cogent "${cogentName}"
 `);
     } catch {

@@ -11,7 +11,7 @@ from dashboard.app import create_app
 
 
 def test_get_process_logs_returns_stdout_stderr(tmp_path):
-    """GET /processes/{id}/logs returns stdout and stderr entries."""
+    """GET /process/id/{id}/logs returns stdout and stderr entries."""
     repo = SqliteRepository(str(tmp_path))
 
     process = Process(
@@ -44,7 +44,7 @@ def test_get_process_logs_returns_stdout_stderr(tmp_path):
     client = TestClient(app)
 
     with patch("dashboard.routers.processes.get_repo", return_value=repo):
-        resp = client.get(f"/api/cogents/test/processes/{process.id}/logs")
+        resp = client.get(f"/api/cogents/test/process/id/{process.id}/logs")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -56,20 +56,20 @@ def test_get_process_logs_returns_stdout_stderr(tmp_path):
 
 
 def test_get_process_logs_404_for_missing_process(tmp_path):
-    """GET /processes/{id}/logs returns 404 when process does not exist."""
+    """GET /process/id/{id}/logs returns 404 when process does not exist."""
     repo = SqliteRepository(str(tmp_path))
 
     app = create_app()
     client = TestClient(app)
 
     with patch("dashboard.routers.processes.get_repo", return_value=repo):
-        resp = client.get(f"/api/cogents/test/processes/{uuid4()}/logs")
+        resp = client.get(f"/api/cogents/test/process/id/{uuid4()}/logs")
 
     assert resp.status_code == 404
 
 
 def test_get_process_logs_empty_when_no_channels(tmp_path):
-    """GET /processes/{id}/logs returns empty entries when no IO channels exist."""
+    """GET /process/id/{id}/logs returns empty entries when no IO channels exist."""
     repo = SqliteRepository(str(tmp_path))
 
     process = Process(
@@ -85,7 +85,7 @@ def test_get_process_logs_empty_when_no_channels(tmp_path):
     client = TestClient(app)
 
     with patch("dashboard.routers.processes.get_repo", return_value=repo):
-        resp = client.get(f"/api/cogents/test/processes/{process.id}/logs")
+        resp = client.get(f"/api/cogents/test/process/id/{process.id}/logs")
 
     assert resp.status_code == 200
     data = resp.json()

@@ -161,11 +161,11 @@ function pythonTypeToJsonSchema(pyType: string): string {
 
 async function loadMemory(): Promise<string> {
   try {
-    const url = `${apiBase()}/processes/by-name/${encodeURIComponent(state.processName)}`;
+    const url = `${apiBase()}/process/name/${encodeURIComponent(state.processName)}/prompt`;
     const data = (await apiGet(url)) as {
-      resolved_prompt?: string;
+      prompt?: string;
     };
-    return data.resolved_prompt || "(no memory found)";
+    return data.prompt || "(no memory found)";
   } catch (e) {
     return `Error loading memory: ${e}`;
   }
@@ -462,7 +462,7 @@ async function connect(address: string, token?: string): Promise<string> {
   // If a non-default process was requested, check it exists; fall back to supervisor
   if (processName !== "supervisor") {
     try {
-      const checkUrl = `${apiBase()}/processes/by-name/${encodeURIComponent(processName)}`;
+      const checkUrl = `${apiBase()}/process/name/${encodeURIComponent(processName)}/prompt`;
       await apiGet(checkUrl);
       process.stderr.write(`[cogos] Process "${processName}" found on cogent "${cogentName}"\n`);
     } catch {

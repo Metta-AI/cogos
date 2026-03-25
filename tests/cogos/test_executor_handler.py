@@ -465,7 +465,7 @@ def test_execute_process_expands_prompt_refs_into_system_prompt(monkeypatch, tmp
             process=process.id,
             capability=dir_cap.id,
             name="read_all",
-            config={"ops": ["read"]},
+            config={"ops": ["read"], "prefix": ""},
         ),
     )
     run = Run(process=process.id, status=RunStatus.RUNNING)
@@ -856,7 +856,7 @@ def test_python_executor_resolves_file_refs(monkeypatch, tmp_path):
             process=process.id,
             capability=dir_cap.id,
             name="read_all",
-            config={"ops": ["read"]},
+            config={"ops": ["read"], "prefix": ""},
         ),
     )
     run = _make_run(repo, process)

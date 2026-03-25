@@ -202,12 +202,12 @@ class CogosServer:
     async def fetch_process(self, process_id: str) -> dict[str, Any] | None:
         """Fetch process details.
 
-        GET /api/cogents/{name}/processes/{id}
+        GET /api/cogents/{name}/process/id/{id}
         """
         client = await self._get_client()
         try:
             resp = await client.get(
-                f"{self._api_base()}/processes/{process_id}",
+                f"{self._api_base()}/process/id/{process_id}",
                 headers=self._headers(),
             )
             resp.raise_for_status()
