@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json as _json
 import logging
-from uuid import UUID
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -265,16 +264,7 @@ def dashboard_init(
         msg_counts = _batch_count_messages(repo, channel_ids)
         handler_counts = _batch_count_handlers(repo, channel_ids)
 
-        # Fetch recent messages for all channels in one query (last 20 per channel)
-        all_messages = repo.list_channel_messages(limit=2000)
-        msgs_by_channel: dict[UUID, list] = {}
-        for m in all_messages:
-            bucket = msgs_by_channel.setdefault(m.channel, [])
-            if len(bucket) < 20:
-                bucket.append(m)
-
         for ch in all_channels:
-            ch_msgs = msgs_by_channel.get(ch.id, [])
             channels_out.append({
                 "id": str(ch.id),
                 "name": ch.name,
@@ -286,17 +276,6 @@ def dashboard_init(
                 "auto_close": ch.auto_close,
                 "closed_at": str(ch.closed_at) if ch.closed_at else None,
                 "created_at": str(ch.created_at) if ch.created_at else None,
-                "messages": [
-                    {
-                        "id": str(m.id),
-                        "channel": str(m.channel),
-                        "sender_process": str(m.sender_process) if m.sender_process else None,
-                        "sender_process_name": proc_map.get(m.sender_process) if m.sender_process else None,
-                        "payload": m.payload,
-                        "created_at": str(m.created_at) if m.created_at else None,
-                    }
-                    for m in ch_msgs
-                ],
             })
     except Exception:
         logger.warning("Failed to fetch channels for dashboard-init", exc_info=True)
