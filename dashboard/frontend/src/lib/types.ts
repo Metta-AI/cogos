@@ -329,6 +329,7 @@ export interface DashboardData {
   runs: CogosRun[];
   eventTypes: EventType[];
   executors: CogosExecutor[];
+  channels: CogosChannel[];
 }
 
 export type SetupStatus = "ready" | "needs_action" | "manual" | "unknown";

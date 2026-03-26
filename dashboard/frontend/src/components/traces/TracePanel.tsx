@@ -14,6 +14,7 @@ interface TracePanelProps {
   cogentName: string;
   timeRange: TimeRange;
   onRefresh?: () => Promise<void> | void;
+  preloadedChannels?: CogosChannel[];
 }
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral" | "accent";
@@ -322,7 +323,7 @@ function LoadingSpinner({ label }: { label: string }) {
   );
 }
 
-export function TracePanel({ traces, cogentName, timeRange, onRefresh }: TracePanelProps) {
+export function TracePanel({ traces, cogentName, timeRange, onRefresh, preloadedChannels }: TracePanelProps) {
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenCategories, setHiddenCategories] = useState<Set<MessageCategory>>(new Set());
@@ -362,6 +363,13 @@ export function TracePanel({ traces, cogentName, timeRange, onRefresh }: TracePa
   }, [cogentName, hiddenCategories, searchQuery]);
 
   useEffect(() => {
+    if (preloadedChannels && preloadedChannels.length > 0) {
+      const named = preloadedChannels.filter((ch) => ch.channel_type === "named");
+      setChannels([...named].sort((left, right) => left.name.localeCompare(right.name)));
+      setChannelsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const loadChannels = async () => {
@@ -389,7 +397,7 @@ export function TracePanel({ traces, cogentName, timeRange, onRefresh }: TracePa
     return () => {
       cancelled = true;
     };
-  }, [cogentName]);
+  }, [cogentName, preloadedChannels]);
 
   useEffect(() => {
     let cancelled = false;

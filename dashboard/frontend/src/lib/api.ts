@@ -205,6 +205,7 @@ export async function getDashboardInit(name: string, epoch?: string): Promise<{
   cogos_status: CogosStatus;
   processes: CogosProcess[];
   alerts: Alert[];
+  channels: CogosChannel[] | null;
 }> {
   const params = epoch ? `?epoch=${epoch}` : "";
   return fetchJSON(`/api/cogents/${name}/dashboard-init${params}`);

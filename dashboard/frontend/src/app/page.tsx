@@ -197,7 +197,7 @@ function Dashboard({ cogentName, activeTab, onTabChange, initialTraceId, initial
           <FilesPanel files={data.files} cogentName={cogentName} onRefresh={refresh} />
         )}
         {activeTab === "events" && (
-          <EventsPanel handlers={data.handlers} crons={data.crons} traces={data.traces} cogentName={cogentName} timeRange={timeRange} onRefresh={refresh} initialTraceId={initialTraceId} />
+          <EventsPanel handlers={data.handlers} crons={data.crons} traces={data.traces} channels={data.channels} cogentName={cogentName} timeRange={timeRange} onRefresh={refresh} initialTraceId={initialTraceId} />
         )}
         {activeTab === "diagnostics" && (
           <DiagnosticsPanel cogentName={cogentName} />

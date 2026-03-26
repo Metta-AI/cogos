@@ -26,6 +26,7 @@ export function useCogentData(cogentName: string) {
     runs: [],
     eventTypes: [],
     executors: [],
+    channels: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +50,13 @@ export function useCogentData(cogentName: string) {
         cogosStatus: init.cogos_status,
         processes: init.processes,
         alerts: init.alerts,
+        ...(init.channels ? { channels: init.channels } : {}),
       }));
       setError(null);
     } catch (e) {
       setError(`Dashboard init failed: ${e}`);
     }
-    setLoaded((prev) => new Set([...prev, "cogosStatus", "processes", "alerts"]));
+    setLoaded((prev) => new Set([...prev, "cogosStatus", "processes", "alerts", "channels"]));
     setLoading(false);
   }, [cogentName, showHistory]);
 

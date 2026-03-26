@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -127,6 +128,7 @@ class DashboardInitResponse(BaseModel):
     cogos_status: CogosStatusResponse
     processes: list[dict]
     alerts: list[dict]
+    channels: list[dict] | None = None
 
 
 @router.get("/dashboard-init")
@@ -251,8 +253,57 @@ def dashboard_init(
     except Exception:
         logger.warning("Failed to fetch alerts for dashboard-init", exc_info=True)
 
+    # --- channels with recent messages (batch) ---
+    channels_out: list[dict] = []
+    try:
+        from dashboard.routers.channels import (
+            _batch_count_handlers,
+            _batch_count_messages,
+        )
+        all_channels = repo.list_channels(limit=200)
+        channel_ids = [ch.id for ch in all_channels]
+        msg_counts = _batch_count_messages(repo, channel_ids)
+        handler_counts = _batch_count_handlers(repo, channel_ids)
+
+        # Fetch recent messages for all channels in one query (last 20 per channel)
+        all_messages = repo.list_channel_messages(limit=2000)
+        msgs_by_channel: dict[UUID, list] = {}
+        for m in all_messages:
+            bucket = msgs_by_channel.setdefault(m.channel, [])
+            if len(bucket) < 20:
+                bucket.append(m)
+
+        for ch in all_channels:
+            ch_msgs = msgs_by_channel.get(ch.id, [])
+            channels_out.append({
+                "id": str(ch.id),
+                "name": ch.name,
+                "channel_type": ch.channel_type.value,
+                "owner_process": str(ch.owner_process) if ch.owner_process else None,
+                "owner_process_name": proc_map.get(ch.owner_process) if ch.owner_process else None,
+                "message_count": msg_counts.get(ch.id, 0),
+                "subscriber_count": handler_counts.get(ch.id, 0),
+                "auto_close": ch.auto_close,
+                "closed_at": str(ch.closed_at) if ch.closed_at else None,
+                "created_at": str(ch.created_at) if ch.created_at else None,
+                "messages": [
+                    {
+                        "id": str(m.id),
+                        "channel": str(m.channel),
+                        "sender_process": str(m.sender_process) if m.sender_process else None,
+                        "sender_process_name": proc_map.get(m.sender_process) if m.sender_process else None,
+                        "payload": m.payload,
+                        "created_at": str(m.created_at) if m.created_at else None,
+                    }
+                    for m in ch_msgs
+                ],
+            })
+    except Exception:
+        logger.warning("Failed to fetch channels for dashboard-init", exc_info=True)
+
     return DashboardInitResponse(
         cogos_status=cs,
         processes=process_list,
         alerts=alert_list,
+        channels=channels_out or None,
     )

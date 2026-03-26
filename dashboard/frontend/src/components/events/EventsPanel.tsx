@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CogosHandler, CronItem, MessageTrace, TimeRange } from "@/lib/types";
+import type { CogosChannel, CogosHandler, CronItem, MessageTrace, TimeRange } from "@/lib/types";
 import { HandlersTab } from "./HandlersTab";
 import { CronTab } from "./CronTab";
 import { TracePanel } from "@/components/traces/TracePanel";
@@ -11,6 +11,7 @@ interface EventsPanelProps {
   handlers: CogosHandler[];
   crons: CronItem[];
   traces: MessageTrace[];
+  channels: CogosChannel[];
   cogentName: string;
   timeRange: TimeRange;
   onRefresh: () => void;
@@ -19,7 +20,7 @@ interface EventsPanelProps {
 
 type SubTab = "handlers" | "cron" | "trace" | "viewer";
 
-export function EventsPanel({ handlers, crons, traces, cogentName, timeRange, onRefresh, initialTraceId }: EventsPanelProps) {
+export function EventsPanel({ handlers, crons, traces, channels, cogentName, timeRange, onRefresh, initialTraceId }: EventsPanelProps) {
   const [subTab, setSubTab] = useState<SubTab>(initialTraceId ? "viewer" : "handlers");
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -52,7 +53,7 @@ export function EventsPanel({ handlers, crons, traces, cogentName, timeRange, on
       </div>
       {subTab === "handlers" && <HandlersTab handlers={handlers} />}
       {subTab === "cron" && <CronTab crons={crons} cogentName={cogentName} onRefresh={onRefresh} />}
-      {subTab === "trace" && <TracePanel traces={traces} cogentName={cogentName} timeRange={timeRange} onRefresh={onRefresh} />}
+      {subTab === "trace" && <TracePanel traces={traces} cogentName={cogentName} timeRange={timeRange} onRefresh={onRefresh} preloadedChannels={channels} />}
       {subTab === "viewer" && <TraceViewerPanel cogentName={cogentName} initialTraceId={initialTraceId} />}
     </div>
   );
