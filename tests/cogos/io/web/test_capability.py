@@ -261,7 +261,7 @@ class TestUrl:
         cap._secrets_provider = mock_sp
 
         assert cap.url("least-favorite-fruit") == (
-            "https://dr-gamma.example.com/web/static/least-favorite-fruit"
+            "https://gamma.example.com/web/static/least-favorite-fruit"
         )
 
     def test_url_prefers_local_frontend_port(self, cap, monkeypatch):
