@@ -753,7 +753,9 @@ def update_dashboard(ctx: click.Context, sha: str | None, skip_health: bool):
 
     # Update ECS task def image tag and force new deployment
     from cogtainer.aws import ACCOUNT_ID
-    image_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent-dashboard:{sha}"
+    tag = sha if sha.startswith("sha-") or sha == "latest" else f"sha-{sha}"
+    click.echo(f"  Task def: {tag}")
+    image_uri = f"{ACCOUNT_ID}.dkr.ecr.{DEFAULT_REGION}.amazonaws.com/cogent-dashboard:{tag}"
 
     ecs_client = session.client("ecs", region_name=DEFAULT_REGION)
     service_arn = _find_dashboard_service(ecs_client, safe_name)

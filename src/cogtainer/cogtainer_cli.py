@@ -932,7 +932,8 @@ def deploy_dashboard_cmd(
         click.echo(f"No cogents found for cogtainer '{name}'.")
         return
 
-    image_tag = sha or "latest"
+    raw_tag = sha or "latest"
+    image_tag = raw_tag if raw_tag.startswith("sha-") or raw_tag == "latest" else f"sha-{raw_tag}"
     image_uri = f"{account_id}.dkr.ecr.{region}.amazonaws.com/cogent-dashboard:{image_tag}"
     click.echo(f"Deploying dashboard image {image_uri}")
 
