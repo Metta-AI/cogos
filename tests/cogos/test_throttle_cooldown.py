@@ -67,11 +67,11 @@ def test_is_throttle_cooldown_active_old_throttle(tmp_path):
     # Complete it as throttled, then backdate both timestamps in the DB
     repo.complete_run(run.id, status=RunStatus.THROTTLED, error="ThrottlingException")
     old_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    repo._b._conn.execute(
+    repo._b._conn.execute(  # type: ignore[attr-defined]
         "UPDATE cogos_run SET created_at = ?, completed_at = ? WHERE id = ?",
         (old_time, old_time, str(run.id)),
     )
-    repo._b._conn.commit()
+    repo._b._conn.commit()  # type: ignore[attr-defined]
 
     assert _is_throttle_cooldown_active(repo) is False
 

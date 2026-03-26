@@ -97,6 +97,7 @@ def test_apply_creates_processes_with_bindings(tmp_path):
     assert handlers is not None
     # upsert_process auto-creates 1 stdin IO handler; no user-defined handlers
     assert len(handlers) == 1
+    assert handlers[0].channel is not None
     ch = repo.get_channel(handlers[0].channel)
     assert ch is not None
     assert ch.name.startswith("io:stdin:")

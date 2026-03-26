@@ -130,7 +130,7 @@ def test_detach_reparents_to_init(tmp_path):
 
     assert child.id is not None
     result = procs.detach(str(child.id))
-    assert result.parent_process == str(init_id)
+    assert result.parent_process == str(init_id)  # type: ignore[union-attr]
 
 
 def test_cascade_kill_skips_detached(tmp_path):

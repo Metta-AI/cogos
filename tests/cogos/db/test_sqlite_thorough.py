@@ -89,7 +89,7 @@ def test_batch_depth_reset_after_exception(repo: UnifiedRepository) -> None:
     with pytest.raises(RuntimeError):
         with repo.batch():
             raise RuntimeError("fail")
-    assert repo._b._batch_depth == 0
+    assert repo._b._batch_depth == 0  # type: ignore[attr-defined]
     # Should work normally after
     repo.set_meta("after", "ok")
     assert repo.get_meta("after") is not None
