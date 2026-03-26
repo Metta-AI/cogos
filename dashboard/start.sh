@@ -2,7 +2,7 @@
 set -e
 
 # Start FastAPI backend
-python -m uvicorn cogos.api.app:app --host 0.0.0.0 --port 8100 --workers 4 &
+python -m uvicorn cogos.api.app:app --host 0.0.0.0 --port 8100 --workers 8 &
 BACKEND_PID=$!
 
 # Pre-warm: wait for backend, then hit a real dashboard endpoint
