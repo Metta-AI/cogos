@@ -140,7 +140,9 @@ def _create_repo(name: str, profile: str | None = None, client=None):  # noqa: A
     from cogos.db.factory import create_repository
 
     if client is None:
-        client = boto3.client("rds-data", region_name=DEFAULT_REGION)
+        admin_session = _get_admin_session(profile)
+        client = admin_session.client("rds-data", region_name=DEFAULT_REGION)
+
     return create_repository(
         resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
         secret_arn=os.environ.get("DB_SECRET_ARN"),
@@ -786,6 +788,7 @@ def update_stack(ctx: click.Context, profile: str | None):
 
     name = get_cogent_name(ctx)
     safe_name = name.replace(".", "-")
+    cogtainer_name = (ctx.find_root().obj or {}).get("cogtainer_name", "")
     profile = resolve_org_profile(profile)
 
     # Look up certificate ARN from cogtainer account
@@ -818,11 +821,14 @@ def update_stack(ctx: click.Context, profile: str | None):
     shared_alb_sg_id = cogtainer_outputs.get("SharedAlbSecurityGroupId", "")
 
     click.echo(f"Updating CDK stack for cogent-{name}...")
+    stack = f"cogtainer-{cogtainer_name}-{safe_name}" if cogtainer_name else naming.stack_name(name)
     cmd = [
         "npx",
         "cdk",
         "deploy",
-        naming.stack_name(name),
+        stack,
+        "-c",
+        f"cogtainer_name={cogtainer_name}",
         "-c",
         f"cogent_name={name}",
         "-c",

@@ -88,7 +88,8 @@ def _split_sql(sql: str) -> list[str]:
         stripped = line.strip()
 
         # Track $$ delimited blocks (DO $$, CREATE FUNCTION ... AS $$, etc.)
-        dollar_count = stripped.count("$$")
+        # Skip $$ detection in comment lines to avoid false toggles.
+        dollar_count = 0 if stripped.startswith("--") else stripped.count("$$")
         if dollar_count % 2 == 1:
             in_dollar_block = not in_dollar_block
             current.append(line)
