@@ -279,7 +279,7 @@ async function apiCreateToken(
   cogentName: string,
   host: string,
 ): Promise<string> {
-  const tokenName = `claude-code-${Date.now()}`;
+  const tokenName = `claude-code-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const url = `${apiUrl}/api/cogents/${cogentName}/executor-tokens`;
 
   // First attempt — no dashboard key (works for local dev)

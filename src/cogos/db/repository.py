@@ -686,7 +686,7 @@ class RdsDataApiRepository:
     # ═══════════════════════════════════════════════════════════
 
     def create_process_capability(self, pc: ProcessCapability) -> UUID:
-        pc.config = self._jsonb_safe(pc.config)
+        pc.config = self._jsonb_safe(pc.config) or {}
         response = self._execute(
             """INSERT INTO cogos_process_capability (id, process, capability, name, config, epoch)
                VALUES (:id, :process, :capability, :name, :config::jsonb, :epoch)

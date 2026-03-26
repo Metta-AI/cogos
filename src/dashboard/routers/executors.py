@@ -293,12 +293,21 @@ def create_token(name: str, body: CreateTokenRequest, request: Request):
         token_name = f"executor-{idx:03d}"
 
     raw_token = secrets.token_urlsafe(32)
-    token = ExecutorToken(
-        name=token_name,
-        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-        token_raw=raw_token,
-    )
-    repo.create_executor_token(token)
+
+    # Retry with a random suffix on name collision
+    for attempt in range(3):
+        suffix = f"-{secrets.token_hex(3)}" if attempt > 0 else ""
+        token = ExecutorToken(
+            name=f"{token_name}{suffix}",
+            token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+            token_raw=raw_token,
+        )
+        try:
+            repo.create_executor_token(token)
+            break
+        except Exception as exc:
+            if attempt == 2 or "unique constraint" not in str(exc).lower():
+                raise
 
     api_url = str(request.base_url).rstrip("/")
     launch_cmd = (
