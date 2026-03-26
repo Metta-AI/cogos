@@ -80,6 +80,15 @@ def _read_dotenv_var(key: str) -> str | None:
         return None
 
 
+_CANONICAL_ENV_VARS = {"COGTAINER", "COGENT"}
+
+
+def _publish(env_var: str, value: str) -> None:
+    """Set a resolved name into os.environ so downstream code can find it."""
+    if env_var in _CANONICAL_ENV_VARS:
+        os.environ.setdefault(env_var, value)
+
+
 def resolve_cogtainer_name(
     cfg: CogtainersConfig,
     env_var: str = "COGTAINER",
@@ -92,16 +101,24 @@ def resolve_cogtainer_name(
     3. Auto-select if only one cogtainer is defined
     4. defaults.cogtainer from config
     5. Raise ValueError
+
+    Sets the resolved name into os.environ so downstream code
+    (e.g. cogtainer_key()) can find it without re-resolving.
     """
     from_env = os.environ.get(env_var) or _read_dotenv_var(env_var)
     if from_env:
+        _publish(env_var, from_env)
         return from_env
 
+    name: str | None = None
     if len(cfg.cogtainers) == 1:
-        return next(iter(cfg.cogtainers))
+        name = next(iter(cfg.cogtainers))
+    elif cfg.defaults.cogtainer:
+        name = cfg.defaults.cogtainer
 
-    if cfg.defaults.cogtainer:
-        return cfg.defaults.cogtainer
+    if name:
+        _publish(env_var, name)
+        return name
 
     names = ", ".join(sorted(cfg.cogtainers.keys()))
     raise ValueError(
@@ -121,12 +138,17 @@ def resolve_cogent_name(
     2. .env file in repo root
     3. Auto-select if only one cogent is available
     4. Raise ValueError
+
+    Sets the resolved name into os.environ so downstream code
+    can find it without re-resolving.
     """
     from_env = os.environ.get(env_var) or _read_dotenv_var(env_var)
     if from_env:
+        _publish(env_var, from_env)
         return from_env
 
     if len(available) == 1:
+        _publish(env_var, available[0])
         return available[0]
 
     names = ", ".join(sorted(available))

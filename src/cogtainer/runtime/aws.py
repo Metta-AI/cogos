@@ -422,8 +422,6 @@ class AwsRuntime(CogtainerRuntime):
         # 3. Delete Cloudflare DNS record
         logger.info("Deleting DNS record for cogent %s", name)
         try:
-            # cloudflare module reads COGTAINER env var at import time
-            os.environ.setdefault("COGTAINER", self._cogtainer_name)
             from cogtainer.cloudflare import delete_dns_record
             from cogtainer.secret_store import SecretStore
 
