@@ -33,6 +33,11 @@ def test_all_rest_endpoints_registered():
         ("GET", "/api/cogents/test/files"),
         ("GET", "/api/cogents/test/handlers"),
         ("GET", "/api/cogents/test/setup"),
+        ("GET", "/api/cogents/test/diagnostics"),
+        ("GET", "/api/cogents/test/diagnostics/history"),
+        ("POST", "/api/cogents/test/diagnostics/run"),
+        ("GET", "/api/cogents/test/integrations"),
+        ("GET", "/api/cogents/test/executors"),
     ]
 
     for method, path in endpoints:

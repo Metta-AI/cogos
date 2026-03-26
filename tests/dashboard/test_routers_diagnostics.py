@@ -19,17 +19,6 @@ def _mock_repo():
     return mock
 
 
-def test_diagnostics_route_registered():
-    client = _client()
-    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
-    assert "/api/cogents/{name}/diagnostics" in routes
-
-
-def test_diagnostics_history_route_registered():
-    client = _client()
-    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
-    assert "/api/cogents/{name}/diagnostics/history" in routes
-
 
 def test_diagnostics_history_no_data():
     mock = _mock_repo()
@@ -114,11 +103,6 @@ def test_diagnostics_history_respects_limit():
     data = resp.json()
     assert len(data["runs"]) == 3
 
-
-def test_rerun_route_registered():
-    client = _client()
-    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
-    assert "/api/cogents/{name}/diagnostics/run" in routes
 
 
 def test_rerun_triggers_channel_message():

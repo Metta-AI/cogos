@@ -14,17 +14,6 @@ def _client() -> TestClient:
     return TestClient(create_app())
 
 
-def test_integrations_route_registered():
-    client = _client()
-    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
-    assert "/api/cogents/{name}/integrations" in routes
-
-
-def test_reveal_route_registered():
-    client = _client()
-    routes = [r.path for r in client.app.routes]  # type: ignore[attr-defined]
-    assert "/api/cogents/{name}/integrations/{integration_name}/reveal/{field_name}" in routes
-
 
 def test_reveal_rejects_non_secret_field(monkeypatch):
     """The reveal endpoint should reject non-secret fields with 400."""

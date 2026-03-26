@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -12,7 +13,8 @@ from cogtainer.config import load_config, resolve_cogtainer_name
 from cogtainer.runtime.factory import create_runtime
 
 
-def test_full_local_flow(tmp_path: Path, monkeypatch):
+@patch("cogos.io.google.provisioning.create_service_account")
+def test_full_local_flow(_mock_gsa, tmp_path: Path, monkeypatch):
     """End-to-end: create cogtainer -> create cogent -> get repo -> list cogents."""
     config_path = tmp_path / "cogtainers.yml"
     data_dir = tmp_path / "data"

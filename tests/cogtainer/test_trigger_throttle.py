@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+from unittest.mock import patch
 
 from cogtainer.db.local_repository import LocalCogtainerRepository
 from cogtainer.db.models import Trigger, TriggerConfig
@@ -89,11 +89,13 @@ class TestThrottleWindowExpiry:
         repo = _repo(tmp_path)
         t = _make_trigger(max_events=1, window=1)
         repo.insert_trigger(t)
-        repo.throttle_check(t.id, 1, 1)
-        r2 = repo.throttle_check(t.id, 1, 1)
+        fake_now = 1000.0
+        with patch("time.time", return_value=fake_now):
+            repo.throttle_check(t.id, 1, 1)
+            r2 = repo.throttle_check(t.id, 1, 1)
         assert r2.allowed is False
-        time.sleep(1.1)
-        r3 = repo.throttle_check(t.id, 1, 1)
+        with patch("time.time", return_value=fake_now + 1.1):
+            r3 = repo.throttle_check(t.id, 1, 1)
         assert r3.allowed is True
         assert r3.state_changed is True
         assert r3.throttle_active is False
@@ -102,10 +104,12 @@ class TestThrottleWindowExpiry:
         repo = _repo(tmp_path)
         t = _make_trigger(max_events=2, window=1)
         repo.insert_trigger(t)
-        repo.throttle_check(t.id, 2, 1)
-        repo.throttle_check(t.id, 2, 1)
-        time.sleep(1.1)
-        r1 = repo.throttle_check(t.id, 2, 1)
-        assert r1.allowed is True
-        r2 = repo.throttle_check(t.id, 2, 1)
-        assert r2.allowed is True
+        fake_now = 1000.0
+        with patch("time.time", return_value=fake_now):
+            repo.throttle_check(t.id, 2, 1)
+            repo.throttle_check(t.id, 2, 1)
+        with patch("time.time", return_value=fake_now + 1.1):
+            r1 = repo.throttle_check(t.id, 2, 1)
+            assert r1.allowed is True
+            r2 = repo.throttle_check(t.id, 2, 1)
+            assert r2.allowed is True

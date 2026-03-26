@@ -207,5 +207,7 @@ def test_aws_runtime_destroy_cogent(aws_runtime: AwsRuntime):
     """destroy_cogent removes from status table."""
     mock_table = MagicMock()
     aws_runtime._session.resource.return_value.Table.return_value = mock_table
-    aws_runtime.destroy_cogent("alpha")
+    with patch("subprocess.run"), \
+         patch("cogtainer.runtime.aws.delete_dns_record", create=True):
+        aws_runtime.destroy_cogent("alpha")
     mock_table.delete_item.assert_called_once_with(Key={"cogent_name": "alpha"})

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import yaml
 from click.testing import CliRunner
 
@@ -37,7 +39,8 @@ def test_cogent_create_local(tmp_path, monkeypatch):
     monkeypatch.delenv("COGENT", raising=False)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["create", "my-agent"])
+    with patch("cogos.io.google.provisioning.create_service_account"):
+        result = runner.invoke(cli, ["create", "my-agent"])
     assert result.exit_code == 0, result.output
     assert (data_dir / "my-agent").is_dir()
 
@@ -76,6 +79,7 @@ def test_cogent_destroy_local(tmp_path, monkeypatch):
     assert (data_dir / "doomed").is_dir()
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["destroy", "doomed"], input="y\n")
+    with patch("cogos.io.google.provisioning.delete_service_account"):
+        result = runner.invoke(cli, ["destroy", "doomed"], input="y\n")
     assert result.exit_code == 0, result.output
     assert not (data_dir / "doomed").exists()
