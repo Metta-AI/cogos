@@ -134,16 +134,19 @@ def _ensure_db_env(name: str, profile: str | None = None) -> None:
         os.environ["AWS_SESSION_TOKEN"] = creds.token
 
 
-def _create_repo(name: str, profile: str | None = None):  # noqa: ANN201
+def _create_repo(name: str, profile: str | None = None, client=None):  # noqa: ANN001, ANN201
     """Ensure DB env vars are set and return a repository instance."""
     _ensure_db_env(name, profile)
     from cogos.db.factory import create_repository
 
+    if client is None:
+        client = boto3.client("rds-data", region_name=DEFAULT_REGION)
     return create_repository(
         resource_arn=os.environ.get("DB_CLUSTER_ARN") or os.environ.get("DB_RESOURCE_ARN"),
         secret_arn=os.environ.get("DB_SECRET_ARN"),
         database=os.environ.get("DB_NAME"),
         region=os.environ.get("AWS_DEFAULT_REGION", DEFAULT_REGION),
+        client=client,
     )
 
 
@@ -603,7 +606,7 @@ def update_rds(ctx: click.Context, profile: str | None, force: bool):
     rds_client = admin_session.client("rds-data", region_name=DEFAULT_REGION)
     version = apply_schema(client=rds_client)
 
-    repo = _create_repo(name, profile)
+    repo = _create_repo(name, profile, client=rds_client)
     statements = apply_cogos_sql_migrations(repo)
 
     # Record schema migration timestamp

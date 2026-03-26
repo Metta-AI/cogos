@@ -98,8 +98,8 @@ uv run ruff check src/cogtainer/cogent_cli.py src/cogtainer/update_cli.py
 uv run python -m pytest tests/cogtainer/ -x -q
 ```
 
-## Known issues to NOT fix in this PR
+## Issues fixed in follow-up
 
-- Boot manifest write-back silently fails (DB env resolution from cogent CLI uses wrong account)
-- Multi-statement SQL migration in `apply_cogos_sql_migrations` fails on RDS Data API
-- CDN cache purge fails with "COGTAINER env var not set"
+- Boot manifest write-back: pass rds-data client to `create_repository()` in `_update_boot_versions` / `_read_boot_versions`
+- Multi-statement SQL migration: pass client in `update_rds`, strip comment lines (containing `;`) in `_split_sql`
+- CDN cache purge: set `COGTAINER` env var in cogent CLI group callback
