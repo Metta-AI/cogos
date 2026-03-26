@@ -73,9 +73,15 @@ def _execute_script(client, resource_arn: str, secret_arn: str, database: str, s
 
 
 def _split_sql(sql: str) -> list[str]:
-    """Split SQL script into individual statements, respecting $$ blocks."""
+    """Split SQL script into individual statements, respecting $$ blocks.
+
+    Standalone comment lines (starting with ``--``) are stripped outside of
+    ``$$`` blocks because the RDS Data API does not properly ignore semicolons
+    inside SQL comments, causing spurious "Multistatements aren't supported"
+    errors.
+    """
     statements = []
-    current = []
+    current: list[str] = []
     in_dollar_block = False
 
     for line in sql.split("\n"):
@@ -84,7 +90,6 @@ def _split_sql(sql: str) -> list[str]:
         # Track $$ delimited blocks (DO $$, CREATE FUNCTION ... AS $$, etc.)
         dollar_count = stripped.count("$$")
         if dollar_count % 2 == 1:
-            # Odd number of $$ toggles the block state
             in_dollar_block = not in_dollar_block
             current.append(line)
             if not in_dollar_block and stripped.endswith(";"):
@@ -96,15 +101,19 @@ def _split_sql(sql: str) -> list[str]:
             current.append(line)
             continue
 
+        # Skip standalone comment lines outside $$ blocks — they can contain
+        # semicolons which the RDS Data API misinterprets as statement separators.
+        if stripped.startswith("--"):
+            continue
+
         # Outside dollar blocks, split on semicolons
-        if stripped.endswith(";") and not stripped.startswith("--"):
+        if stripped.endswith(";"):
             current.append(line)
             statements.append("\n".join(current))
             current = []
         else:
             current.append(line)
 
-    # Any trailing content
     remainder = "\n".join(current).strip()
     if remainder:
         statements.append(remainder)

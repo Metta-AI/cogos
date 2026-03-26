@@ -39,6 +39,7 @@ def cli(ctx: click.Context) -> None:
     cogtainer_name = resolve_cogtainer_name(cfg)
     entry = cfg.cogtainers[cogtainer_name]
     ctx.obj["cogtainer_name"] = cogtainer_name
+    os.environ.setdefault("COGTAINER", cogtainer_name)
 
     try:
         cogents = list(create_runtime(entry, cogtainer_name=cogtainer_name).list_cogents())
