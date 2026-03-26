@@ -10,7 +10,7 @@ def get_cogent_name(ctx: click.Context) -> str:
     obj = ctx.find_root().obj
     name = (obj.get("cogent_name") or obj.get("cogent_id")) if obj else None
     if not name:
-        raise click.UsageError("No cogent specified. Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml")
+        raise click.UsageError("No cogent specified. Set COGENT env var or default_cogent in ~/.cogos/config.yml")
     return name
 
 
