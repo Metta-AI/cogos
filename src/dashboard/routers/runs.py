@@ -445,5 +445,17 @@ def get_run_logs(
     if session_preview is not None:
         return session_preview
 
+    # Python executor runs: surface stdout/result output as log entries
+    entries: list[RunLogEntry] = []
+    ts = _iso(run.completed_at) or _iso(run.created_at) or ""
+    if isinstance(run.result, dict) and run.result.get("output"):
+        output = run.result["output"]
+        if isinstance(output, str) and output.strip():
+            for line in output.strip().splitlines():
+                entries.append(RunLogEntry(timestamp=ts, message=line, log_stream="stdout"))
+
     _ = name
-    return RunLogsResponse(log_group="CogOS session artifacts", entries=[])
+    return RunLogsResponse(
+        log_group="Python executor output",
+        entries=entries[-limit:],
+    )

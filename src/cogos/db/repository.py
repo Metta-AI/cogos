@@ -1833,10 +1833,9 @@ class RdsDataApiRepository:
     def list_messages_sent_by_run(self, run_id: UUID) -> list[dict]:
         response = self._execute(
             """SELECT cm.id, cm.payload, cm.created_at, c.name AS channel_name
-               FROM cogos_delivery d
-               JOIN cogos_channel_message cm ON cm.id = d.message
+               FROM cogos_channel_message cm
                JOIN cogos_channel c ON c.id = cm.channel
-               WHERE d.run = :rid
+               WHERE cm.sender_run_id = :rid
                ORDER BY cm.created_at""",
             [self._param("rid", run_id)],
         )
@@ -2352,9 +2351,10 @@ class RdsDataApiRepository:
         if msg.idempotency_key:
             response = self._execute(
                 """INSERT INTO cogos_channel_message
-                   (id, channel, sender_process, payload, idempotency_key, trace_id, trace_meta)
-                   VALUES (:id, :channel, :sender_process, :payload::jsonb,
-                           :idempotency_key, :trace_id, :trace_meta::jsonb)
+                   (id, channel, sender_process, sender_run_id, payload,
+                    idempotency_key, trace_id, trace_meta)
+                   VALUES (:id, :channel, :sender_process, :sender_run_id,
+                           :payload::jsonb, :idempotency_key, :trace_id, :trace_meta::jsonb)
                    ON CONFLICT (channel, idempotency_key)
                    WHERE idempotency_key IS NOT NULL DO NOTHING
                    RETURNING id, created_at""",
@@ -2362,6 +2362,7 @@ class RdsDataApiRepository:
                     self._param("id", msg.id),
                     self._param("channel", msg.channel),
                     self._param("sender_process", msg.sender_process),
+                    self._param("sender_run_id", msg.sender_run_id),
                     self._param("payload", msg.payload),
                     self._param("idempotency_key", msg.idempotency_key),
                     self._param("trace_id", msg.trace_id),
@@ -2383,13 +2384,16 @@ class RdsDataApiRepository:
                 raise RuntimeError("Failed to append channel message")
         else:
             response = self._execute(
-                """INSERT INTO cogos_channel_message (id, channel, sender_process, payload, trace_id, trace_meta)
-                   VALUES (:id, :channel, :sender_process, :payload::jsonb, :trace_id, :trace_meta::jsonb)
+                """INSERT INTO cogos_channel_message
+                   (id, channel, sender_process, sender_run_id, payload, trace_id, trace_meta)
+                   VALUES (:id, :channel, :sender_process, :sender_run_id,
+                           :payload::jsonb, :trace_id, :trace_meta::jsonb)
                    RETURNING id, created_at""",
                 [
                     self._param("id", msg.id),
                     self._param("channel", msg.channel),
                     self._param("sender_process", msg.sender_process),
+                    self._param("sender_run_id", msg.sender_run_id),
                     self._param("payload", msg.payload),
                     self._param("trace_id", msg.trace_id),
                     self._param("trace_meta", msg.trace_meta),

@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS cogos_channel_message (
     id                  TEXT PRIMARY KEY,
     channel             TEXT NOT NULL REFERENCES cogos_channel(id) ON DELETE CASCADE,
     sender_process      TEXT,
+    sender_run_id       TEXT,
     payload             TEXT NOT NULL DEFAULT '{}',
     idempotency_key     TEXT,
     trace_id            TEXT,
@@ -1903,10 +1904,9 @@ class SqliteRepository:
     def list_messages_sent_by_run(self, run_id: UUID) -> list[dict]:
         rows = self._query(
             """SELECT cm.id, cm.payload, cm.created_at, c.name AS channel_name
-               FROM cogos_delivery d
-               JOIN cogos_channel_message cm ON cm.id = d.message
+               FROM cogos_channel_message cm
                JOIN cogos_channel c ON c.id = cm.channel
-               WHERE d.run = :rid
+               WHERE cm.sender_run_id = :rid
                ORDER BY cm.created_at""",
             {"rid": str(run_id)},
         )
@@ -2231,14 +2231,15 @@ class SqliteRepository:
 
         self._execute(
             """INSERT INTO cogos_channel_message
-               (id, channel, sender_process, payload,
+               (id, channel, sender_process, sender_run_id, payload,
                 idempotency_key, trace_id, trace_meta, created_at)
-               VALUES (:id, :channel, :sender_process, :payload,
+               VALUES (:id, :channel, :sender_process, :sender_run_id, :payload,
                 :idempotency_key, :trace_id, :trace_meta, :created_at)""",
             {
                 "id": str(msg.id),
                 "channel": str(msg.channel),
                 "sender_process": str(msg.sender_process) if msg.sender_process else None,
+                "sender_run_id": str(msg.sender_run_id) if msg.sender_run_id else None,
                 "payload": self._json_dumps(msg.payload),
                 "idempotency_key": msg.idempotency_key,
                 "trace_id": str(msg.trace_id) if msg.trace_id else None,

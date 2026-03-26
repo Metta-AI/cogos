@@ -12,6 +12,7 @@ class ChannelMessage(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     channel: UUID  # FK -> Channel.id
     sender_process: UUID | None = None  # FK -> Process.id
+    sender_run_id: UUID | None = None  # FK -> Run.id
     payload: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = None
     trace_id: UUID | None = None

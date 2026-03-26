@@ -658,6 +658,33 @@ def test_list_file_mutations(repo: SqliteRepository) -> None:
     assert mutations[0]["key"] == "test.txt"
 
 
+def test_list_messages_sent_by_run(repo: SqliteRepository) -> None:
+    p = Process(name="sender", mode=ProcessMode.ONE_SHOT)
+    repo.upsert_process(p)
+    run = Run(process=p.id)
+    repo.create_run(run)
+
+    ch = Channel(name="test-ch", owner_process=p.id, channel_type=ChannelType.NAMED)
+    repo.upsert_channel(ch)
+
+    msg = ChannelMessage(
+        channel=ch.id,
+        sender_process=p.id,
+        sender_run_id=run.id,
+        payload={"text": "hello"},
+    )
+    repo.append_channel_message(msg)
+
+    # Message without sender_run_id should not appear
+    msg2 = ChannelMessage(channel=ch.id, sender_process=p.id, payload={"text": "no run"})
+    repo.append_channel_message(msg2)
+
+    results = repo.list_messages_sent_by_run(run.id)
+    assert len(results) == 1
+    assert results[0]["channel_name"] == "test-ch"
+    assert results[0]["payload"]["text"] == "hello"
+
+
 # ── Traces & Spans ───────────────────────────────────────────
 
 def test_trace_crud(repo: SqliteRepository) -> None:

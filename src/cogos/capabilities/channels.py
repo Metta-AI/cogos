@@ -182,6 +182,7 @@ class ChannelsCapability(Capability):
         msg = ChannelMessage(
             channel=ch.id,
             sender_process=self.process_id,
+            sender_run_id=self.run_id,
             payload=payload,
             trace_id=ctx.trace_id if ctx else None,
             trace_meta=ctx.serialize() if ctx else None,

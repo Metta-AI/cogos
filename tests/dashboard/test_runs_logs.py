@@ -185,8 +185,41 @@ def test_run_logs_endpoint_without_session_artifacts_returns_empty(tmp_path):
 
     assert response.status_code == 200
     assert response.json() == {
-        "log_group": "CogOS session artifacts",
+        "log_group": "Python executor output",
         "log_stream": None,
         "entries": [],
         "error": None,
     }
+
+
+def test_run_logs_endpoint_surfaces_python_executor_output(tmp_path):
+    repo = SqliteRepository(str(tmp_path))
+    process = Process(
+        id=uuid4(),
+        name="init",
+        mode=ProcessMode.DAEMON,
+        status=ProcessStatus.WAITING,
+    )
+    repo.upsert_process(process)
+
+    run = Run(id=uuid4(), process=process.id, status=RunStatus.RUNNING)
+    repo.create_run(run)
+    repo.complete_run(
+        run.id,
+        status=RunStatus.COMPLETED,
+        result={"output": "Started cog: discord\nStarted cog: github\nInit complete"},
+    )
+
+    app = create_app()
+    client = TestClient(app)
+
+    with patch("dashboard.routers.runs.get_repo", return_value=repo):
+        response = client.get(f"/api/cogents/test/runs/{run.id}/logs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["log_group"] == "Python executor output"
+    assert len(payload["entries"]) == 3
+    assert payload["entries"][0]["message"] == "Started cog: discord"
+    assert payload["entries"][2]["message"] == "Init complete"
+    assert all(e["log_stream"] == "stdout" for e in payload["entries"])
