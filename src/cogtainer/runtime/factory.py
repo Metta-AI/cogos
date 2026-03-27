@@ -98,8 +98,7 @@ def create_executor_runtime() -> CogtainerRuntime:
     if cogtainer_type in ("local", "docker"):
         from cogtainer.runtime.local import LocalRuntime
 
-        data_dir = os.environ.get("SECRETS_DATA_DIR", "")
-        entry = CogtainerEntry(type=cogtainer_type, data_dir=data_dir, region=region, llm=llm_config)
+        entry = CogtainerEntry(type=cogtainer_type, region=region, llm=llm_config)
         llm = create_provider(entry.llm, region=region)
         return LocalRuntime(entry=entry, llm=llm)
 

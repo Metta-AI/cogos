@@ -16,9 +16,13 @@ from cogtainer.runtime.factory import create_runtime
 @patch("cogos.io.google.provisioning.create_service_account")
 def test_full_local_flow(_mock_gsa, tmp_path: Path, monkeypatch):
     """End-to-end: create cogtainer -> create cogent -> get repo -> list cogents."""
-    config_path = tmp_path / "cogtainers.yml"
-    data_dir = tmp_path / "data"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    # Point global config to an empty file to avoid loading the real ~/.cogos/cogtainers.yml
+    empty_global = tmp_path / "empty_global.yml"
+    empty_global.touch()
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(empty_global))
     monkeypatch.delenv("COGTAINER", raising=False)
     monkeypatch.delenv("COGENT", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-fake")
@@ -32,7 +36,6 @@ def test_full_local_flow(_mock_gsa, tmp_path: Path, monkeypatch):
         "--llm-provider", "openrouter",
         "--llm-model", "anthropic/claude-sonnet-4-20250514",
         "--llm-api-key-env", "OPENROUTER_API_KEY",
-        "--data-dir", str(data_dir),
     ], input="\n" * 10)
     assert result.exit_code == 0, result.output
     assert "Created cogtainer 'my-local'" in result.output
@@ -42,12 +45,14 @@ def test_full_local_flow(_mock_gsa, tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Created cogent 'agent-alpha'" in result.output
 
+    data_dir = project_dir / "data"
+
     # 3. Verify cogent directory and files/ subdir exist
     assert (data_dir / "agent-alpha").is_dir()
     assert (data_dir / "agent-alpha" / "files").is_dir()
 
-    # 4. Load config, resolve cogtainer, create runtime
-    cfg = load_config(config_path)
+    # 4. Load merged config, resolve cogtainer, create runtime
+    cfg = load_config()
     cogtainer_name = resolve_cogtainer_name(cfg)
     assert cogtainer_name == "my-local"
     entry = cfg.cogtainers[cogtainer_name]

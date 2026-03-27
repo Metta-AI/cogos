@@ -13,9 +13,10 @@ from cogtainer.runtime.local import LocalRuntime
 
 
 @pytest.fixture()
-def local_runtime(tmp_path: Path) -> LocalRuntime:
+def local_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalRuntime:
+    monkeypatch.chdir(tmp_path)
     entry = CogtainerEntry(
-        type="local", data_dir=str(tmp_path),
+        type="local",
         llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
     )
     llm = MagicMock()

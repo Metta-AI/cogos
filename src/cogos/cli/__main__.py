@@ -120,10 +120,9 @@ def cogos(ctx: click.Context):
 
     # --- Try new cogtainer config first ---
     try:
-        from cogtainer.cogtainer_cli import _config_path
         from cogtainer.config import load_config
 
-        cfg = load_config(_config_path())
+        cfg = load_config()
 
         if cfg.cogtainers:
             from cogtainer.config import resolve_cogent_name, resolve_cogtainer_name
@@ -981,8 +980,9 @@ def status():
     entry = ctx.obj.get("cogtainer_entry")
     cogent_name = ctx.obj.get("cogent_name")
     if entry and cogent_name:
-        data_dir = entry.data_dir or str(Path.home() / ".cogos" / "local")
-        log_dir = Path(data_dir) / cogent_name / "logs"
+        from cogtainer.config import local_data_dir
+
+        log_dir = local_data_dir() / cogent_name / "logs"
         click.echo(f"Log dir: {log_dir}")
 
     repo = _repo()
@@ -1160,9 +1160,9 @@ def start_cmd(ctx, image_name, clean, foreground, skip_boot,
         env = os.environ.copy()
         env["COGTAINER"] = ctx.obj["cogtainer_name"]
         env["COGENT"] = cogent_name
-        fallback = os.path.join(os.path.expanduser("~"), ".cogos", "local")
-        data_dir = entry.data_dir if entry and entry.data_dir else fallback
-        log_dir = os.path.join(data_dir, cogent_name, "logs")
+        from cogtainer.config import local_data_dir
+
+        log_dir = str(local_data_dir() / cogent_name / "logs")
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, "dispatcher.log")
         log_fh = open(log_file, "a")
@@ -1348,8 +1348,9 @@ def dashboard_start(ctx: click.Context):
         env["COGENT"] = cogent_name
 
     entry = obj.get("cogtainer_entry")
-    data_dir = entry.data_dir if entry and entry.data_dir else str(Path.home() / ".cogos" / "local")
-    log_dir = Path(data_dir) / (cogent_name or "default") / "logs"
+    from cogtainer.config import local_data_dir
+
+    log_dir = local_data_dir() / (cogent_name or "default") / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     be_log = log_dir / "dashboard-backend.log"
     fe_log = log_dir / "dashboard-frontend.log"
@@ -1686,10 +1687,11 @@ def executor_daemon(ctx, executor_id: str | None, tags: str, poll_s: float, hear
     if runtime:
         repo = runtime.get_repository(cogent_name)
     else:
+        from cogtainer.config import local_data_dir
         from cogos.db.sqlite_repository import SqliteBackend
         from cogos.db.unified_repository import UnifiedRepository
-        data_dir = str(Path.home() / ".cogos" / "local")
-        repo = UnifiedRepository(SqliteBackend(data_dir))
+
+        repo = UnifiedRepository(SqliteBackend(str(local_data_dir())))
 
     config = get_config()
 

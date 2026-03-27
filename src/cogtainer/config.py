@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
 
-_DEFAULT_CONFIG_PATH = Path.home() / ".cogos" / "cogtainers.yml"
+logger = logging.getLogger(__name__)
+
+_GLOBAL_CONFIG_PATH = Path.home() / ".cogos" / "cogtainers.yml"
+_LOCAL_CONFIG_NAME = "cogtainers.yml"
+_LOCAL_DATA_DIR = "data"
 
 
 class LLMConfig(BaseModel):
@@ -27,7 +32,6 @@ class CogtainerEntry(BaseModel):
     account_id: str | None = None
     profile: str | None = None
     domain: str | None = None
-    data_dir: str | None = None
     image: str | None = None
     llm: LLMConfig
     dashboard_be_port: int | None = None
@@ -48,12 +52,26 @@ class CogtainersConfig(BaseModel):
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
 
 
-def load_config(path: Path | None = None) -> CogtainersConfig:
-    """Load cogtainers config from YAML.
+def local_data_dir() -> Path:
+    """Return the local data directory (``./data/``)."""
+    return Path.cwd() / _LOCAL_DATA_DIR
 
-    If the file does not exist or is empty, returns an empty config.
-    """
-    path = path or _DEFAULT_CONFIG_PATH
+
+def local_config_path() -> Path:
+    """Return the local config file path (``./data/cogtainers.yml``)."""
+    return local_data_dir() / _LOCAL_CONFIG_NAME
+
+
+def global_config_path() -> Path:
+    """Return the global config file path (``~/.cogos/cogtainers.yml``)."""
+    env = os.environ.get("COGOS_CONFIG_PATH")
+    if env:
+        return Path(env)
+    return _GLOBAL_CONFIG_PATH
+
+
+def _load_yaml(path: Path) -> CogtainersConfig:
+    """Load a single cogtainers config from YAML."""
     if not path.is_file():
         return CogtainersConfig()
     with open(path) as f:
@@ -61,6 +79,50 @@ def load_config(path: Path | None = None) -> CogtainersConfig:
     if not data:
         return CogtainersConfig()
     return CogtainersConfig.model_validate(data)
+
+
+def load_config(path: Path | None = None) -> CogtainersConfig:
+    """Load and merge cogtainers config from global and local YAML files.
+
+    When *path* is given (e.g. in tests), only that single file is loaded.
+    Otherwise, loads ``~/.cogos/cogtainers.yml`` (AWS entries) and
+    ``./data/cogtainers.yml`` (local/docker entries) and merges them.
+    Defaults come from the local file only.
+    """
+    if path is not None:
+        return _load_yaml(path)
+
+    global_cfg = _load_yaml(global_config_path())
+    local_cfg = _load_yaml(local_config_path())
+
+    merged = CogtainersConfig()
+
+    # Global entries (AWS only — local/docker entries belong in ./data/cogtainers.yml)
+    for name, entry in global_cfg.cogtainers.items():
+        if entry.type in ("local", "docker"):
+            logger.warning(
+                "Skipping local/docker entry '%s' from global config — "
+                "use ./data/cogtainers.yml for local cogtainers",
+                name,
+            )
+            continue
+        merged.cogtainers[name] = entry
+
+    # Local entries overlay global ones
+    for name, entry in local_cfg.cogtainers.items():
+        if entry.type == "aws":
+            logger.warning(
+                "Skipping AWS entry '%s' from local config — "
+                "use ~/.cogos/cogtainers.yml for AWS cogtainers",
+                name,
+            )
+            continue
+        merged.cogtainers[name] = entry
+
+    # Defaults from local file only
+    merged.defaults = local_cfg.defaults
+
+    return merged
 
 
 def _read_dotenv_var(key: str) -> str | None:

@@ -13,9 +13,15 @@ from cogtainer.runtime.local import LocalRuntime
 
 
 @pytest.fixture()
-def local_runtime(tmp_path: Path) -> LocalRuntime:
+def local_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalRuntime:
+    # LocalRuntime uses local_data_dir() which is CWD/data/
+    # Point CWD so that data dir lands under tmp_path
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+
     entry = CogtainerEntry(
-        type="local", data_dir=str(tmp_path),
+        type="local",
         llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
     )
     llm = MagicMock()
@@ -31,7 +37,7 @@ def test_local_runtime_get_repository(local_runtime: LocalRuntime, tmp_path: Pat
     repo = local_runtime.get_repository("alpha")
     assert isinstance(repo, UnifiedRepository)
     # Data dir should be under the cogent subdirectory
-    assert (tmp_path / "alpha").is_dir()
+    assert (tmp_path / "project" / "data" / "alpha").is_dir()
 
 
 # ── File storage ─────────────────────────────────────────────

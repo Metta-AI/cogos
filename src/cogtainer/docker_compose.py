@@ -25,8 +25,9 @@ def generate_compose(
     base_port = 8080
 
     for i, cogent_name in enumerate(cogent_names):
-        data_dir = entry.data_dir or f"/data/{cogtainer_name}"
-        local_db_dir = f"{data_dir}/{cogent_name}"
+        from cogtainer.config import local_data_dir
+
+        host_data_dir = str(local_data_dir() / cogent_name)
 
         env: dict[str, str] = {
             "COGENT": cogent_name,
@@ -47,7 +48,7 @@ def generate_compose(
                 cogtainer_name, cogent_name,
             ],
             "environment": env.copy(),
-            "volumes": [f"{local_db_dir}:/data/{cogent_name}"],
+            "volumes": [f"{host_data_dir}:/data/{cogent_name}"],
             "restart": "unless-stopped",
         }
 
@@ -67,7 +68,7 @@ def generate_compose(
                 "--host", "0.0.0.0", "--port", "8080",
             ],
             "environment": dashboard_env,
-            "volumes": [f"{local_db_dir}:/data/{cogent_name}"],
+            "volumes": [f"{host_data_dir}:/data/{cogent_name}"],
             "ports": [f"{port}:8080"],
             "restart": "unless-stopped",
         }

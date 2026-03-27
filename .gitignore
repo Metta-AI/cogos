@@ -185,3 +185,6 @@ cdk.out.destroy/
 .claude/worktrees/
 .next/
 .cogos_executor
+
+# Local cogtainer data
+/data/

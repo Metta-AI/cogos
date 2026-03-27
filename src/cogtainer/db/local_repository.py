@@ -54,7 +54,9 @@ class LocalCogtainerRepository:
 
     def __init__(self, data_dir: str | None = None) -> None:
         if data_dir is None:
-            data_dir = str(Path.home() / ".cogos" / "local")
+            from cogtainer.config import local_data_dir
+
+            data_dir = str(local_data_dir())
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._file = self._data_dir / "data.json"

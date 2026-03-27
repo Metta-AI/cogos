@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
 import yaml
 
 from cogtainer.config import CogtainerEntry, LLMConfig
 from cogtainer.docker_compose import generate_compose
 
 
-def test_generate_docker_compose_single_cogent():
+@pytest.fixture(autouse=True)
+def _set_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure local_data_dir() resolves to a tmp dir."""
+    monkeypatch.chdir(tmp_path)
+
+
+def test_generate_docker_compose_single_cogent(tmp_path: Path):
     entry = CogtainerEntry(
         type="docker",
-        data_dir="/tmp/mydata",
         image="cogent:v1",
         llm=LLMConfig(
             provider="anthropic",
@@ -35,7 +43,8 @@ def test_generate_docker_compose_single_cogent():
     assert disp["environment"]["LLM_PROVIDER"] == "anthropic"
     assert disp["environment"]["DEFAULT_MODEL"] == "claude-sonnet-4-20250514"
     assert disp["environment"]["ANTHROPIC_API_KEY"] == "${ANTHROPIC_API_KEY}"
-    assert any("/tmp/mydata/agent1:" in v for v in disp["volumes"])
+    expected_vol = f"{tmp_path / 'data' / 'agent1'}:/data/agent1"
+    assert expected_vol in disp["volumes"]
 
     dash = parsed["services"]["dashboard-agent1"]
     assert "8080:8080" in dash["ports"]
@@ -45,7 +54,6 @@ def test_generate_docker_compose_single_cogent():
 def test_generate_docker_compose_multiple_cogents():
     entry = CogtainerEntry(
         type="docker",
-        data_dir="/data/prod",
         llm=LLMConfig(provider="bedrock", model="anthropic.claude-3-sonnet", api_key_env=""),
     )
     result = generate_compose(entry, "prod", ["alpha", "beta"])
@@ -66,7 +74,7 @@ def test_generate_docker_compose_multiple_cogents():
 
 def test_generate_docker_compose_default_llm():
     entry = CogtainerEntry(
-        type="docker", data_dir="/data/dev",
+        type="docker",
         llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
     )
     result = generate_compose(entry, "dev", ["bot"])
@@ -89,7 +97,6 @@ def test_generate_docker_compose_default_image():
 def test_generate_docker_compose_valid_yaml():
     entry = CogtainerEntry(
         type="docker",
-        data_dir="/tmp/test",
         llm=LLMConfig(provider="anthropic", model="claude-sonnet-4-20250514", api_key_env="KEY"),
     )
     result = generate_compose(entry, "c1", ["a", "b"])

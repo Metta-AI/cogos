@@ -27,7 +27,6 @@ SAMPLE_YAML = textwrap.dedent("""\
           api_key_env: AWS_ACCESS_KEY_ID
       dev-local:
         type: local
-        data_dir: /tmp/cogents
         llm:
           provider: anthropic
           model: claude-sonnet-4-20250514
@@ -60,7 +59,6 @@ def test_load_cogtainers_from_yaml(config_file: Path) -> None:
 
     local = cfg.cogtainers["dev-local"]
     assert local.type == "local"
-    assert local.data_dir == "/tmp/cogents"
 
     assert cfg.defaults.cogtainer == "prod-aws"
 
@@ -93,7 +91,6 @@ def test_resolve_auto_selects_single(tmp_path: Path) -> None:
         cogtainers:
           only-one:
             type: local
-            data_dir: /tmp/x
             llm:
               provider: anthropic
               model: claude-sonnet-4-20250514
@@ -144,7 +141,6 @@ def test_tick_interval_defaults_to_60() -> None:
 
     entry = CogtainerEntry(
         type="local",
-        data_dir="/tmp/x",
         llm=LLMConfig(provider="anthropic", model="test", api_key_env=""),
     )
     assert entry.tick_interval == 60
@@ -156,7 +152,6 @@ def test_tick_interval_custom_value(tmp_path: Path) -> None:
         cogtainers:
           fast:
             type: local
-            data_dir: /tmp/x
             tick_interval: 10
             llm:
               provider: anthropic
@@ -165,3 +160,96 @@ def test_tick_interval_custom_value(tmp_path: Path) -> None:
     """))
     cfg = load_config(p)
     assert cfg.cogtainers["fast"].tick_interval == 10
+
+
+# ── merge logic ──────────────────────────────────────────────────────
+
+def test_merge_global_and_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """load_config() without a path merges global + local configs."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    global_file = global_dir / "cogtainers.yml"
+    global_file.write_text(textwrap.dedent("""\
+        cogtainers:
+          prod:
+            type: aws
+            region: us-east-1
+            account_id: "111"
+            llm:
+              provider: bedrock
+              model: test
+              api_key_env: ""
+    """))
+
+    local_dir = tmp_path / "project" / "data"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "cogtainers.yml"
+    local_file.write_text(textwrap.dedent("""\
+        cogtainers:
+          dev:
+            type: local
+            llm:
+              provider: anthropic
+              model: test
+              api_key_env: KEY
+        defaults:
+          cogtainer: dev
+    """))
+
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_file))
+    monkeypatch.chdir(tmp_path / "project")
+
+    cfg = load_config()
+    assert "prod" in cfg.cogtainers
+    assert "dev" in cfg.cogtainers
+    assert cfg.defaults.cogtainer == "dev"
+
+
+def test_merge_skips_aws_in_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """AWS entries in the local config file are skipped."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    global_file = global_dir / "cogtainers.yml"
+    global_file.write_text("cogtainers: {}")
+
+    local_dir = tmp_path / "project" / "data"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "cogtainers.yml"
+    local_file.write_text(textwrap.dedent("""\
+        cogtainers:
+          bad:
+            type: aws
+            account_id: "999"
+            llm:
+              provider: bedrock
+              model: test
+              api_key_env: ""
+    """))
+
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_file))
+    monkeypatch.chdir(tmp_path / "project")
+
+    cfg = load_config()
+    assert "bad" not in cfg.cogtainers
+
+
+def test_merge_skips_local_in_global(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local/docker entries in the global config file are skipped."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    global_file = global_dir / "cogtainers.yml"
+    global_file.write_text(textwrap.dedent("""\
+        cogtainers:
+          stale-local:
+            type: local
+            llm:
+              provider: anthropic
+              model: test
+              api_key_env: KEY
+    """))
+
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_file))
+    monkeypatch.chdir(tmp_path)
+
+    cfg = load_config()
+    assert "stale-local" not in cfg.cogtainers

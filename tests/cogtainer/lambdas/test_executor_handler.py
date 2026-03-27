@@ -20,8 +20,9 @@ def local_runtime(tmp_path: Path, monkeypatch) -> LocalRuntime:
     monkeypatch.setenv("DB_CLUSTER_ARN", "arn:fake")
     monkeypatch.setenv("DB_SECRET_ARN", "arn:fake")
     monkeypatch.setenv("DB_NAME", "cogent_test")
+    monkeypatch.chdir(tmp_path)
     entry = CogtainerEntry(
-        type="local", data_dir=str(tmp_path),
+        type="local",
         llm=LLMConfig(provider="bedrock", model="test-model", api_key_env=""),
     )
     llm = MagicMock()

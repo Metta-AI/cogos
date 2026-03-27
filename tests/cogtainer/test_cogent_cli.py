@@ -10,13 +10,12 @@ from click.testing import CliRunner
 from cogtainer.cogent_cli import cli
 
 
-def _write_local_config(config_path, data_dir):
+def _write_local_config(config_path):
     """Write a minimal cogtainers.yml with a local cogtainer."""
     cfg = {
         "cogtainers": {
             "dev": {
                 "type": "local",
-                "data_dir": str(data_dir),
                 "llm": {
                     "provider": "openrouter",
                     "model": "anthropic/claude-sonnet-4",
@@ -26,35 +25,40 @@ def _write_local_config(config_path, data_dir):
         },
         "defaults": {"cogtainer": "dev"},
     }
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.dump(cfg))
 
 
 def test_cogent_create_local(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    data_dir = tmp_path / "data"
-    _write_local_config(config_path, data_dir)
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    # Set up local config at ./data/cogtainers.yml
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    _write_local_config(project_dir / "data" / "cogtainers.yml")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.delenv("COGTAINER", raising=False)
     monkeypatch.delenv("COGENT", raising=False)
+    monkeypatch.delenv("COGOS_CONFIG_PATH", raising=False)
 
     runner = CliRunner()
     with patch("cogos.io.google.provisioning.create_service_account"):
         result = runner.invoke(cli, ["create", "my-agent"])
     assert result.exit_code == 0, result.output
-    assert (data_dir / "my-agent").is_dir()
+    assert (project_dir / "data" / "my-agent").is_dir()
 
 
 def test_cogent_list_local(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    data_dir = tmp_path / "data"
-    _write_local_config(config_path, data_dir)
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    _write_local_config(project_dir / "data" / "cogtainers.yml")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.delenv("COGTAINER", raising=False)
     monkeypatch.delenv("COGENT", raising=False)
+    monkeypatch.delenv("COGOS_CONFIG_PATH", raising=False)
 
     # Create cogent dirs manually
+    data_dir = project_dir / "data"
     (data_dir / "alpha").mkdir(parents=True)
     (data_dir / "beta").mkdir(parents=True)
 
@@ -66,15 +70,17 @@ def test_cogent_list_local(tmp_path, monkeypatch):
 
 
 def test_cogent_destroy_local(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    data_dir = tmp_path / "data"
-    _write_local_config(config_path, data_dir)
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    _write_local_config(project_dir / "data" / "cogtainers.yml")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.delenv("COGTAINER", raising=False)
     monkeypatch.delenv("COGENT", raising=False)
+    monkeypatch.delenv("COGOS_CONFIG_PATH", raising=False)
 
     # Create cogent dir
+    data_dir = project_dir / "data"
     (data_dir / "doomed").mkdir(parents=True)
     assert (data_dir / "doomed").is_dir()
 

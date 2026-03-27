@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import click
 
-from cogtainer.cogtainer_cli import _config_path
 from cogtainer.config import (
     load_config,
     resolve_cogent_name,
@@ -22,7 +20,7 @@ def _get_runtime() -> tuple[CogtainerRuntime, str]:
 
     Returns (runtime, cogtainer_name).
     """
-    cfg = load_config(_config_path())
+    cfg = load_config()
     cogtainer_name = resolve_cogtainer_name(cfg)
     entry = cfg.cogtainers[cogtainer_name]
     runtime = create_runtime(entry, cogtainer_name=cogtainer_name)
@@ -35,7 +33,7 @@ def cli(ctx: click.Context) -> None:
     """Manage cogents."""
     ctx.ensure_object(dict)
 
-    cfg = load_config(_config_path())
+    cfg = load_config()
     cogtainer_name = resolve_cogtainer_name(cfg)
     entry = cfg.cogtainers[cogtainer_name]
     ctx.obj["cogtainer_name"] = cogtainer_name
@@ -158,15 +156,12 @@ def status(name: str | None) -> None:
         cogents = runtime.list_cogents()
         name = resolve_cogent_name(cogents)
 
-    cfg = load_config(_config_path())
-    entry = cfg.cogtainers[cogtainer_name]
-    data_dir = entry.data_dir or str(Path.home() / ".cogos" / "local")
-    log_dir = Path(data_dir) / name / "logs"
+    from cogtainer.config import local_data_dir
 
     click.echo(f"Cogent: {name}")
     click.echo(f"  cogtainer: {cogtainer_name}")
-    click.echo(f"  data_dir: {Path(data_dir) / name}")
-    click.echo(f"  log_dir: {log_dir}")
+    click.echo(f"  data_dir: {local_data_dir() / name}")
+    click.echo(f"  log_dir: {local_data_dir() / name / 'logs'}")
 
 
 from cogtainer.update_cli import update  # noqa: E402

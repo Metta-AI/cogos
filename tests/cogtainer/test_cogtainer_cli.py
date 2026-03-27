@@ -15,8 +15,10 @@ def _read_config(path):
 
 
 def test_cogtainer_create_local(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    """Local cogtainers are saved to ./data/cogtainers.yml."""
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
+    monkeypatch.chdir(tmp_path)
 
     runner = CliRunner()
     result = runner.invoke(cli, [
@@ -25,25 +27,27 @@ def test_cogtainer_create_local(tmp_path, monkeypatch):
         "--llm-provider", "anthropic",
         "--llm-model", "claude-sonnet-4-20250514",
         "--llm-api-key-env", "ANTHROPIC_API_KEY",
-        "--data-dir", str(tmp_path / "data"),
     ], input="\n" * 10)
     assert result.exit_code == 0, result.output
 
-    cfg = _read_config(config_path)
+    local_config = tmp_path / "data" / "cogtainers.yml"
+    assert local_config.is_file()
+    cfg = _read_config(local_config)
     assert "dev" in cfg["cogtainers"]
     entry = cfg["cogtainers"]["dev"]
     assert entry["type"] == "local"
-    assert entry["data_dir"] == str(tmp_path / "data")
     assert entry["llm"]["provider"] == "anthropic"
-    # Only cogtainer -> set as default
+    # Only local cogtainer -> set as default
     assert cfg["defaults"]["cogtainer"] == "dev"
     # Data dir created
     assert (tmp_path / "data").is_dir()
 
 
 def test_cogtainer_create_aws(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    """AWS cogtainers are saved to the global config."""
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
+    monkeypatch.chdir(tmp_path)
 
     with patch("cogtainer.cogtainer_cli._cdk_create_account", return_value="111222333444"):
         runner = CliRunner()
@@ -55,18 +59,18 @@ def test_cogtainer_create_aws(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
 
-    cfg = _read_config(config_path)
+    cfg = _read_config(global_config)
     assert "prod" in cfg["cogtainers"]
     entry = cfg["cogtainers"]["prod"]
     assert entry["type"] == "aws"
     assert entry["account_id"] == "111222333444"
     assert entry["region"] == "us-west-2"
-    assert cfg["defaults"]["cogtainer"] == "prod"
 
 
 def test_cogtainer_create_aws_default_region(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
+    monkeypatch.chdir(tmp_path)
 
     with patch("cogtainer.cogtainer_cli._cdk_create_account", return_value="999888777666") as mock:
         runner = CliRunner()
@@ -78,14 +82,15 @@ def test_cogtainer_create_aws_default_region(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     mock.assert_called_once_with("prod", region="us-east-1", profile=None)
 
-    cfg = _read_config(config_path)
+    cfg = _read_config(global_config)
     assert cfg["cogtainers"]["prod"]["account_id"] == "999888777666"
     assert cfg["cogtainers"]["prod"]["region"] == "us-east-1"
 
 
 def test_cogtainer_list_empty(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
+    monkeypatch.chdir(tmp_path)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["list"])
@@ -94,19 +99,11 @@ def test_cogtainer_list_empty(tmp_path, monkeypatch):
 
 
 def test_cogtainer_list_shows_entries(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
-
-    cfg = {
+    """List merges entries from both global and local configs."""
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    global_config.parent.mkdir(parents=True, exist_ok=True)
+    global_config.write_text(yaml.dump({
         "cogtainers": {
-            "dev": {
-                "type": "local",
-                "llm": {
-                    "provider": "anthropic",
-                    "model": "claude-sonnet-4-20250514",
-                    "api_key_env": "ANTHROPIC_API_KEY",
-                },
-            },
             "prod": {
                 "type": "aws",
                 "region": "us-east-1",
@@ -117,24 +114,13 @@ def test_cogtainer_list_shows_entries(tmp_path, monkeypatch):
                 },
             },
         },
-        "defaults": {"cogtainer": "dev"},
-    }
-    config_path.write_text(yaml.dump(cfg))
+    }))
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
 
-    runner = CliRunner()
-    result = runner.invoke(cli, ["list"])
-    assert result.exit_code == 0
-    assert "dev" in result.output
-    assert "prod" in result.output
-    assert "local" in result.output
-    assert "aws" in result.output
-
-
-def test_cogtainer_destroy(tmp_path, monkeypatch):
-    config_path = tmp_path / "cogtainers.yml"
-    monkeypatch.setenv("COGOS_CONFIG_PATH", str(config_path))
-
-    cfg = {
+    local_dir = tmp_path / "project" / "data"
+    local_dir.mkdir(parents=True)
+    local_config = local_dir / "cogtainers.yml"
+    local_config.write_text(yaml.dump({
         "cogtainers": {
             "dev": {
                 "type": "local",
@@ -146,12 +132,44 @@ def test_cogtainer_destroy(tmp_path, monkeypatch):
             },
         },
         "defaults": {"cogtainer": "dev"},
-    }
-    config_path.write_text(yaml.dump(cfg))
+    }))
+    monkeypatch.chdir(tmp_path / "project")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["list"])
+    assert result.exit_code == 0
+    assert "dev" in result.output
+    assert "prod" in result.output
+    assert "local" in result.output
+    assert "aws" in result.output
+
+
+def test_cogtainer_destroy_local(tmp_path, monkeypatch):
+    """Destroying a local cogtainer removes it from the local config."""
+    global_config = tmp_path / "global" / "cogtainers.yml"
+    monkeypatch.setenv("COGOS_CONFIG_PATH", str(global_config))
+
+    local_dir = tmp_path / "project" / "data"
+    local_dir.mkdir(parents=True)
+    local_config = local_dir / "cogtainers.yml"
+    local_config.write_text(yaml.dump({
+        "cogtainers": {
+            "dev": {
+                "type": "local",
+                "llm": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-20250514",
+                    "api_key_env": "ANTHROPIC_API_KEY",
+                },
+            },
+        },
+        "defaults": {"cogtainer": "dev"},
+    }))
+    monkeypatch.chdir(tmp_path / "project")
 
     runner = CliRunner()
     result = runner.invoke(cli, ["destroy", "dev"], input="y\n")
     assert result.exit_code == 0
 
-    cfg = _read_config(config_path)
+    cfg = _read_config(local_config)
     assert "dev" not in cfg["cogtainers"]

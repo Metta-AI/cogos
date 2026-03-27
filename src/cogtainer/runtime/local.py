@@ -28,8 +28,9 @@ class LocalRuntime(CogtainerRuntime):
     def __init__(self, entry: CogtainerEntry, llm: LLMProvider) -> None:
         self._entry = entry
         self._llm = llm
-        raw = entry.data_dir or str(Path.home() / ".cogos" / "local")
-        self._data_dir = Path(os.path.expanduser(os.path.expandvars(raw)))
+        from cogtainer.config import local_data_dir
+
+        self._data_dir = local_data_dir()
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._child_procs: list[tuple[subprocess.Popen, str]] = []
 
@@ -105,7 +106,6 @@ class LocalRuntime(CogtainerRuntime):
             "COGENT": cogent_name,
             "USE_LOCAL_DB": "1",
             "SECRETS_PROVIDER": "local",
-            "SECRETS_DATA_DIR": str(self._data_dir),
             "LLM_PROVIDER": llm_provider,
             "AWS_REGION": self._entry.region or "us-east-1",
         }

@@ -15,29 +15,65 @@ from cogtainer.config import (
     CogtainerEntry,
     CogtainersConfig,
     LLMConfig,
+    global_config_path,
     load_config,
+    local_config_path,
+    local_data_dir,
 )
 
 
 def _config_path() -> Path:
-    """Return the config file path from env or default."""
-    env = os.environ.get("COGOS_CONFIG_PATH")
-    if env:
-        return Path(env)
-    return Path.home() / ".cogos" / "cogtainers.yml"
+    """Return the global config file path from env or default.
+
+    Kept for callers that need the global path explicitly.
+    """
+    return global_config_path()
 
 
 def _load() -> CogtainersConfig:
-    """Load the cogtainers config."""
-    return load_config(_config_path())
+    """Load the merged cogtainers config (global + local)."""
+    return load_config()
 
 
-def _save_config(cfg: CogtainersConfig) -> None:
-    """Write CogtainersConfig to YAML."""
-    path = _config_path()
+def _save_entry(name: str, entry: CogtainerEntry, cfg: CogtainersConfig) -> None:
+    """Save an entry to the appropriate config file based on type."""
+    if entry.type == "aws":
+        _save_to_file(global_config_path(), name, entry, cfg)
+    else:
+        _save_to_file(local_config_path(), name, entry, cfg)
+
+
+def _save_to_file(
+    path: Path, name: str, entry: CogtainerEntry, merged_cfg: CogtainersConfig
+) -> None:
+    """Write entries belonging to this file, preserving others already in it."""
+    from cogtainer.config import _load_yaml
+
+    existing = _load_yaml(path)
+    existing.cogtainers[name] = entry
+
+    # For the local file, also save defaults
+    is_local = path == local_config_path()
+    if is_local:
+        existing.defaults = merged_cfg.defaults
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        yaml.dump(cfg.model_dump(exclude_none=True), f, default_flow_style=False)
+        yaml.dump(existing.model_dump(exclude_none=True), f, default_flow_style=False)
+
+
+def _remove_from_file(path: Path, name: str) -> None:
+    """Remove an entry from a config file."""
+    from cogtainer.config import _load_yaml
+
+    existing = _load_yaml(path)
+    if name in existing.cogtainers:
+        del existing.cogtainers[name]
+        if existing.defaults.cogtainer == name:
+            existing.defaults.cogtainer = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            yaml.dump(existing.model_dump(exclude_none=True), f, default_flow_style=False)
 
 
 def _pick(label: str, names: list[str]) -> str:
@@ -115,7 +151,6 @@ def cli() -> None:
 @click.option("--llm-model", default="us.anthropic.claude-sonnet-4-20250514-v1:0", help="Model name/ID")
 @click.option("--llm-api-key-env", default="", help="Env var holding the API key (optional for bedrock)")
 @click.option("--region", default=None)
-@click.option("--data-dir", default=None)
 @click.option("--domain", default=None)
 @click.option("--profile", default=None, help="AWS profile name (for aws type)")
 def create(
@@ -125,7 +160,6 @@ def create(
     llm_model: str | None,
     llm_api_key_env: str | None,
     region: str | None,
-    data_dir: str | None,
     domain: str | None,
     profile: str | None,
 ) -> None:
@@ -138,7 +172,7 @@ def create(
         if ctype == "aws" and existing.type == "aws" and not existing.account_id:
             click.echo(f"Cogtainer '{name}' exists without account_id, provisioning...")
             existing.account_id = _cdk_create_account(name, region=region or "us-east-1", profile=profile)
-            _save_config(cfg)
+            _save_entry(name, existing, cfg)
             click.echo(f"Updated cogtainer '{name}' (account_id={existing.account_id}).")
             return
         click.echo(f"Cogtainer '{name}' already exists.")
@@ -157,10 +191,6 @@ def create(
             region = "us-east-1"
         account_id = _cdk_create_account(name, region=region, profile=profile)
 
-    # Default data_dir for local/docker
-    if ctype in ("local", "docker") and not data_dir:
-        data_dir = str(Path.home() / ".cogos" / "cogtainers" / name)
-
     # Auto-assign unique dashboard ports for local/docker (base 8100/5200 + index)
     be_port = None
     fe_port = None
@@ -174,22 +204,21 @@ def create(
         region=region,
         account_id=account_id,
         domain=domain,
-        data_dir=data_dir,
         llm=llm,
         dashboard_be_port=be_port,
         dashboard_fe_port=fe_port,
     )
     cfg.cogtainers[name] = entry
 
-    # Set as default if it's the only cogtainer
-    if len(cfg.cogtainers) == 1:
-        cfg.defaults.cogtainer = name
+    # Set as default if it's the only local/docker cogtainer
+    if ctype in ("local", "docker"):
+        local_count = sum(1 for e in cfg.cogtainers.values() if e.type in ("local", "docker"))
+        if local_count == 1:
+            cfg.defaults.cogtainer = name
+        # Ensure local data dir exists
+        local_data_dir().mkdir(parents=True, exist_ok=True)
 
-    # Create data dir for local/docker
-    if ctype in ("local", "docker") and data_dir:
-        Path(data_dir).mkdir(parents=True, exist_ok=True)
-
-    _save_config(cfg)
+    _save_entry(name, entry, cfg)
     click.echo(f"Created cogtainer '{name}' (type={ctype}, account_id={account_id}).")
 
     # Prompt for cogtainer-level integration secrets
@@ -231,8 +260,7 @@ def _prompt_cogtainer_secrets(name: str, entry: CogtainerEntry) -> None:
         if entry.type == "aws":
             sp = AwsSecretsProvider(region=region)
         else:
-            data_dir = entry.data_dir if entry.data_dir is not None else ""
-            sp = LocalSecretsProvider(str(Path(data_dir) / "secrets.json"))
+            sp = LocalSecretsProvider(data_dir=str(local_data_dir()))
 
         for key, value in secrets.items():
             sp.set_secret(key, value)
@@ -255,12 +283,18 @@ def destroy(name: str) -> None:
         click.echo("Aborted.")
         return
 
+    entry = cfg.cogtainers[name]
     del cfg.cogtainers[name]
 
     if cfg.defaults.cogtainer == name:
         cfg.defaults.cogtainer = None
 
-    _save_config(cfg)
+    # Remove from the appropriate config file
+    if entry.type == "aws":
+        _remove_from_file(global_config_path(), name)
+    else:
+        _remove_from_file(local_config_path(), name)
+
     click.echo(f"Destroyed cogtainer '{name}'.")
 
 
@@ -323,9 +357,9 @@ def status(name: str | None) -> None:
     click.echo(f"  type: {entry.type}")
     if entry.region:
         click.echo(f"  region: {entry.region}")
-    data_dir = entry.data_dir or str(Path.home() / ".cogos" / "local")
-    click.echo(f"  data_dir: {data_dir}")
-    click.echo(f"  log_dir: {data_dir}/{{cogent}}/logs")
+    if entry.type in ("local", "docker"):
+        click.echo(f"  data_dir: {local_data_dir()}")
+        click.echo(f"  log_dir: {local_data_dir()}/{{cogent}}/logs")
     if entry.domain:
         click.echo(f"  domain: {entry.domain}")
     click.echo(f"  llm.provider: {entry.llm.provider}")
@@ -359,10 +393,8 @@ def compose(name: str, cogent_names: tuple[str, ...], output_path: str | None) -
 
     if output_path:
         out = Path(output_path)
-    elif entry.data_dir:
-        out = Path(entry.data_dir) / "docker-compose.yml"
     else:
-        out = Path("docker-compose.yml")
+        out = local_data_dir() / "docker-compose.yml"
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content)
@@ -428,9 +460,7 @@ def discover_aws(region: str, profile: str | None) -> None:
                 api_key_env="",
             ),
         )
-        if len(cfg.cogtainers) == 1:
-            cfg.defaults.cogtainer = "aws"
-        _save_config(cfg)
+        _save_entry("aws", cfg.cogtainers["aws"], cfg)
         click.echo(f"Created cogtainer 'aws' (account={account_id}, region={region}).")
     else:
         click.echo("Cogtainer 'aws' already exists, keeping existing config.")
