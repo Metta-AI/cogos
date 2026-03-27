@@ -152,6 +152,8 @@ def cogos(ctx: click.Context):
         # allow --help to still work
         if "--help" in sys.argv or "-h" in sys.argv:
             return
+        if ctx.invoked_subcommand == "scrimmage":
+            return
         raise
     except Exception:
         # cogtainer modules not available or config load failed — fall through
@@ -160,8 +162,10 @@ def cogos(ctx: click.Context):
     # --- Legacy path: COGENT_ID / default_cogent ---
     cogent = os.environ.get("COGENT_ID") or _default_cogent()
     if not cogent:
-        # Allow --help on subcommands without requiring a cogent
+        # Allow --help and standalone subcommands without requiring a cogent
         if ctx.invoked_subcommand is None or "--help" in sys.argv or "-h" in sys.argv:
+            return
+        if ctx.invoked_subcommand == "scrimmage":
             return
         raise click.UsageError("No cogent specified. Set COGENT_ID env var or default_cogent in ~/.cogos/config.yml")
     ctx.obj["cogent_name"] = cogent
@@ -1765,6 +1769,76 @@ def executor_token_revoke(name: str):
         click.echo(f"Token revoked: {name}")
     else:
         click.echo(f"Token not found or already revoked: {name}")
+
+
+@cogos.group("scrimmage")
+def scrimmage_group():
+    """CoGames scrimmage — multi-agent evaluation commands."""
+
+
+@scrimmage_group.command("run")
+@click.option("-m", "--mission", default="tutorial", help="Mission to evaluate.")
+@click.option("-p", "--policy", default="starter", help="Policy to evaluate.")
+@click.option("-e", "--episodes", default=10, type=int, help="Number of episodes.")
+@click.option("-s", "--steps", default=None, type=int, help="Max steps per episode.")
+@click.option("-c", "--cogs", default=None, type=int, help="Number of agents.")
+@click.option("--seed", default=42, type=int, help="RNG seed.")
+@click.option("--device", default="auto", help="Device (auto, cpu, cuda).")
+@click.option("--save-replay-dir", default=None, help="Directory to save replays.")
+def scrimmage_run(mission, policy, episodes, steps, cogs, seed, device, save_replay_dir):
+    """Run a scrimmage evaluation using cogames."""
+    from cogos.scrimmage import ScrimmageConfig, run_scrimmage
+
+    config = ScrimmageConfig(
+        mission=mission,
+        policy=policy,
+        episodes=episodes,
+        steps=steps,
+        seed=seed,
+        cogs=cogs,
+        device=device,
+        save_replay_dir=save_replay_dir,
+    )
+    try:
+        result = run_scrimmage(config)
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+    except Exception as e:
+        click.echo(f"Scrimmage failed: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Mission:  {result.mission_name}")
+    click.echo(f"Episodes: {result.episodes}")
+    click.echo(f"Agents:   {result.agent_count}")
+    click.echo()
+    click.echo("Agent Metrics:")
+    for k, v in sorted(result.avg_agent_metrics.items()):
+        click.echo(f"  {k}: {v}")
+
+
+@scrimmage_group.command("missions")
+def scrimmage_missions():
+    """List available cogames missions."""
+    from cogos.scrimmage import list_missions
+
+    try:
+        click.echo(list_missions())
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@scrimmage_group.command("policies")
+def scrimmage_policies():
+    """List available cogames policies."""
+    from cogos.scrimmage import list_policies
+
+    try:
+        click.echo(list_policies())
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 def entry():
