@@ -43,7 +43,7 @@ t_handle = tournament.register(player_config)
 async for score in t_handle.observe("score"):
     print(score)
 
-# Train
+# Practice
 playground = softmax.playground("practice")
 p_handle = playground.register(player_config)
 async for replay in p_handle.observe("replay"):
