@@ -39,14 +39,14 @@ PlayGround (COG — same interface as Tournament, for training)
 # Compete
 tournament = softmax.tournament("cvc-2026-08-01")
 player_config = PlayerConfig(repo="my-agent", llm=MyLLM)
-t_handle = tournament.register(player_config)
-async for score in t_handle.observe("score"):
+tournament_entry = tournament.register(player_config)
+async for score in tournament_entry.observe("score"):
     print(score)
 
 # Practice
 playground = softmax.playground("practice")
-p_handle = playground.register(player_config)
-async for replay in p_handle.observe("replay"):
+playground_entry = playground.register(player_config)
+async for replay in playground_entry.observe("replay"):
     analyze(replay)
 
 # Auto-improve with coaching
