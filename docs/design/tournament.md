@@ -57,57 +57,168 @@ async for score in coach.observe("score"):
     print(score)
 ```
 
-## 4. Coglet Roles
-
-### TournamentCoglet (Softmax, COG)
-
-Holds registered policy configs. Matchmaking logic is pluggable — the format (bracket, round-robin, ladder) is a policy that can be swapped by a parent COG.
-
-Per round: selects matchups, creates a MulLet of GameCoglets for parallel execution, collects round scores, transmits results to all registered handles, waits for ready, starts next round.
-
-### PlayGround (Softmax, COG)
-
-Same `register` interface as Tournament. Used for training and experimentation. A policy doesn't know which one it's in.
-
-### GameCoglet (Softmax, COG)
-
-Receives player configs for one matchup. Runs N EpisodeCoglets. Aggregates scores across episodes. Reports to parent.
-
-### EpisodeCoglet (Softmax, COG)
-
-Creates EnvCoglet + MulLet(8 player configs). Wires env↔players. Starts game. Saves replay and score on completion.
-
-### EnvCoglet (Softmax, LET)
-
-The game world. Talks to one CogletHandle (the MulLet). Steps the game.
-
-### MulLet (players)
-
-Maps per-player observations from env to the correct policy. Reduces all player actions into one step response back to env. Appears as one CogletHandle to EpisodeCoglet.
-
-### Coach (User, COG)
-
-Improvement loop. Registers policy into PlayGround and/or Tournament. Observes scores and replays between rounds. Guides PlayerPolicy to improve. Improvement strategy is pluggable.
+## 4. Coglet Pseudocode
 
 ### PlayerPolicy (User, LET)
 
-The user's agent. Receives observations via `on_message`, returns actions via `transmit`. Accepts improvement directives from Coach via `on_enact`.
+```python
+class PlayerPolicy(Coglet):
+    def on_message(self, obs):
+        action = self.model.forward(obs)
+        self.transmit("action", action)
 
-## 5. Data Flow
+    def on_enact(self, command):
+        if command.type == "update_weights":
+            self.model.load(command.weights)
+```
 
-1. **Coach** registers PlayerPolicy config into Tournament/PlayGround
-2. **TournamentCoglet** selects matchups, creates MulLet(GameCoglets) for parallel games
-3. **GameCoglet** runs N EpisodeCoglets per matchup
-4. **EpisodeCoglet** creates EnvCoglet + MulLet(8 player configs), wires them
-5. **EnvCoglet** steps the game, sends observations to MulLet, receives actions
-6. **MulLet** routes observations to correct policy, collects actions
-7. **EpisodeCoglet** saves replay/score on game end
-8. **GameCoglet** aggregates episode scores, reports to TournamentCoglet
-9. **TournamentCoglet** collects round scores, transmits to registered handles
-10. **Coach** observes scores, guides PlayerPolicy to improve, signals ready
-11. **TournamentCoglet** starts next round
+### Coach (User, COG)
 
-## 6. Key Design Points
+```python
+class Coach(Coglet):
+    def on_start(self):
+        self.policy = self.create(self.policy_config)
+        self.arena = self.tournament or self.playground
+        self.player = self.arena.register(self.policy_config)
+
+    def on_message(self, result):
+        # receives score/replay events from arena
+        if result.channel == "score":
+            self.scores.append(result)
+            self.transmit("score", result)
+
+        if result.channel == "round_end":
+            improved_weights = self.improve(self.scores)
+            self.guide(self.policy, Command("update_weights", improved_weights))
+            self.arena.register(self.policy_config)  # re-register with updated policy
+            self.transmit("policy", self.policy_config)
+            self.scores = []
+
+    def improve(self, scores):
+        # pluggable improvement strategy
+        ...
+```
+
+### TournamentCoglet (Softmax, COG)
+
+```python
+class TournamentCoglet(Coglet):
+    def on_start(self):
+        self.players = []
+        self.format = self.config.format  # pluggable: bracket, round-robin, ladder
+
+    def register(self, policy_config):
+        self.players.append(policy_config)
+        return CogletHandle(observe=["score", "replay", "round_end"])
+
+    def on_tick(self):
+        for round in self.format.rounds(self.players):
+            matchups = self.format.matchups(round, self.players)
+
+            # parallel games via MulLet
+            games = self.create(MulLet(
+                n=len(matchups),
+                configs=[GameConfig(players=m) for m in matchups]
+            ))
+
+            # observe all game results
+            async for result in self.observe(games, "score"):
+                round_scores.append(result)
+
+            # broadcast round results to all registered players
+            for player in self.players:
+                self.transmit("score", round_scores)
+            self.transmit("round_end", round)
+```
+
+### GameCoglet (Softmax, COG)
+
+```python
+class GameCoglet(Coglet):
+    def on_start(self):
+        self.scores = []
+        # run N episodes for this matchup
+        for i in range(self.config.episodes_per_game):
+            episode = self.create(EpisodeConfig(
+                players=self.config.players,
+                env=self.config.env
+            ))
+
+    def on_message(self, result):
+        if result.channel == "score":
+            self.scores.append(result)
+
+        if len(self.scores) == self.config.episodes_per_game:
+            aggregate = self.aggregate(self.scores)
+            self.transmit("score", aggregate)
+
+    def aggregate(self, scores):
+        # average, sum, elo update, etc.
+        ...
+```
+
+### EpisodeCoglet (Softmax, COG)
+
+```python
+class EpisodeCoglet(Coglet):
+    def on_start(self):
+        self.env = self.create(self.config.env)
+        self.players = self.create(MulLet(
+            n=len(self.config.players),
+            configs=self.config.players
+        ))
+        self.replay = []
+
+        # wire env → players → env
+        # env transmits observations, players transmit actions
+
+    def on_message(self, result):
+        if result.source == self.env and result.channel == "obs":
+            # env produced observations, route to players
+            self.guide(self.players, Command("step", result.data))
+            self.replay.append(result)
+
+        if result.source == self.players and result.channel == "action":
+            # players produced actions, route to env
+            self.guide(self.env, Command("step", result.data))
+            self.replay.append(result)
+
+        if result.source == self.env and result.channel == "done":
+            self.transmit("score", result.data.scores)
+            self.transmit("replay", self.replay)
+```
+
+### EnvCoglet (Softmax, LET)
+
+```python
+class EnvCoglet(Coglet):
+    def on_start(self):
+        self.env = self.config.make_env()
+        obs = self.env.reset()
+        self.transmit("obs", obs)
+
+    def on_enact(self, command):
+        if command.type == "step":
+            obs, rewards, done, info = self.env.step(command.actions)
+            self.transmit("obs", obs)
+            if done:
+                self.transmit("done", Scores(rewards))
+```
+
+### MulLet (players)
+
+```python
+class PlayerMulLet(MulLet):
+    def map(self, event):
+        # route per-player observation to correct policy
+        return [(player_id, obs) for player_id, obs in event.per_player()]
+
+    def reduce(self, results):
+        # collect all player actions into one response
+        return Actions({r.player_id: r.action for r in results})
+```
+
+## 5. Key Design Points
 
 ### Trust Boundary
 
