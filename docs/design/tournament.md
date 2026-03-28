@@ -12,11 +12,12 @@ Two independent hierarchies meet at an interface boundary. Softmax controls the 
 User side:
 
 Coach (COG — improvement loop between rounds)
-├── PlayerPolicy (COG — LLM improves policy on_tick)
-│   └── FastPolicy (GitLet LET — executes from HEAD)
+├── PlayerCoglet (COG — LLM patches git repo on_tick)
+│   └── PolicyCoglet (COG, GitLet — LLM rewrites functions on_tick)
+│       └── map[str, PythonFunc] — named functions loaded from repo
 ├── registers into Tournament + PlayGround
 ├── observes scores/replays between rounds
-└── guides PlayerPolicy between rounds
+└── guides PlayerCoglet between rounds
 
 Softmax side:
 
@@ -60,52 +61,81 @@ async for score in coach.observe("score"):
 
 ## 4. Coglet Pseudocode
 
-### PlayerPolicy (User, COG over GitLet)
+### PlayerCoglet (User, LLM COG over GitLet)
+
+The player's overall agent. The LLM is the COG — it observes game history
+and commits patches to the player's git repo to improve strategy.
 
 ```python
-class PlayerPolicy(Coglet, TickLet):
+class PlayerCoglet(Coglet, TickLet):
     def on_start(self):
-        self.policy = self.create(GitLetConfig(repo=self.config.repo))
+        self.policy = self.create(PolicyCogletConfig(repo=self.config.repo))
         self.llm = self.config.llm
         self.history = []
 
     def on_message(self, channel, data):
         if channel == "obs":
-            # forward observations to the GitLet policy
             self.guide(self.policy, Command("step", data))
 
         if channel == "action":
-            # policy produced an action, re-transmit
             self.transmit("action", data)
 
         if channel == "score":
             self.history.append(data)
 
+    def on_enact(self, command):
+        # COG above (Coach) can direct high-level strategy changes
+        if command.type == "strategy":
+            patch = self.llm.generate_patch(self.history, command.directive)
+            self.guide(self.policy, Command("commit", patch))
+
     def on_tick(self, elapsed):
-        # LLM reviews performance and patches the policy
+        # LLM reviews performance and patches the repo
         if self.should_improve():
             patch = self.llm.generate_patch(self.history)
             self.guide(self.policy, Command("commit", patch))
             self.history = []
-
-    def should_improve(self):
-        # enough data to make a meaningful improvement?
-        ...
 ```
 
-### FastPolicy (User, GitLet LET)
+### PolicyCoglet (User, LLM COG over map[str, PythonFunc])
+
+The policy is a named map of Python functions. The LLM is the COG —
+it observes execution traces and rewrites individual functions to improve them.
 
 ```python
-class FastPolicy(Coglet, GitLet):
+class PolicyCoglet(Coglet, GitLet, TickLet):
+    def on_start(self):
+        self.functions: dict[str, Callable] = {}
+        self.llm = self.config.llm
+        self.traces = []
+        self.load_from_repo()
+
+    def load_from_repo(self):
+        # load all Python functions from the git repo
+        for name, func in self.repo.load_functions().items():
+            self.functions[name] = func
+
     def on_enact(self, command):
         if command.type == "step":
-            action = self.model.forward(command.data)
+            # execute the policy: call functions by name
+            obs = command.data
+            action = self.functions["decide"](obs)
             self.transmit("action", action)
+            self.traces.append({"obs": obs, "action": action})
 
         if command.type == "commit":
-            # GitLet handles: commit patch, pull, reload model
+            # apply patch from PlayerCoglet, reload functions
             self.git_apply(command.patch)
-            self.model = self.reload()
+            self.load_from_repo()
+
+    def on_tick(self, elapsed):
+        # LLM reviews traces and rewrites individual functions
+        if self.traces:
+            for name, new_code in self.llm.improve_functions(self.traces, self.functions):
+                self.repo.write_function(name, new_code)
+            self.git_commit("improve functions")
+            self.load_from_repo()
+            self.traces = []
 ```
 
 ### Coach (User, COG)
