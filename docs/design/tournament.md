@@ -149,9 +149,9 @@ class PolicyCog(Coglet, CodeLet):
         self.llm = self.config.llm
         self.inventory_history = []
 
-    def vend(self) -> PolicyLet:
-        # create a PolicyLet bound to this COG's function table
-        return self.create(PolicyLetConfig(functions=self.functions))
+    def vend(self) -> PolicyLetConfig:
+        # return a config for a PolicyLet bound to this COG's function table
+        return PolicyLetConfig(functions=self.functions, cog=self)
 
     @on_message("inventory")
     def handle_inventory(self, data):
@@ -194,8 +194,9 @@ class PolicyLet(Coglet, CodeLet):
 ```
 
 The split form is useful when the same policy plays in multiple concurrent
-episodes — `vend()` creates lightweight PolicyLets that share the COG's
-function table and receive updates when the COG improves.
+episodes — `vend()` returns a PolicyLetConfig that something else (e.g.
+EpisodeCoglet) can create. The vended PolicyLets share the COG's function
+table and receive updates when the COG improves.
 
 ### Coach (Claude Code Prompt)
 
