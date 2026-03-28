@@ -11,13 +11,15 @@ Two independent hierarchies meet at an interface boundary. Softmax controls the 
 ```
 User side:
 
-Coach (COG — improvement loop between rounds)
-├── PlayerCoglet (COG — LLM patches git repo on_tick)
-│   └── PolicyCoglet (COG, GitLet — LLM rewrites functions on_tick)
-│       └── map[str, PythonFunc] — named functions loaded from repo
-├── registers into Tournament + PlayGround
+Coach (Claude Code prompt — not a Coglet)
+├── creates PlayerCoglet, registers into Tournament + PlayGround
 ├── observes scores/replays between rounds
-└── guides PlayerCoglet between rounds
+├── analyzes performance, writes patches
+└── calls player.enact(patch) to improve
+
+PlayerCoglet (COG — LLM patches git repo on_tick)
+└── PolicyCoglet (COG, GitLet — LLM rewrites functions on_tick)
+    └── map[str, PythonFunc] — named functions loaded from repo
 
 Softmax side:
 
@@ -36,24 +38,25 @@ PlayGround (COG — same interface as Tournament, for training)
 ## 3. User API
 
 ```python
+# Create player
+player = PlayerCoglet(repo="my-agent", llm=MyLLM)
+
 # Compete
 tournament = softmax.tournament("cvc-2026-08-01")
-player_config = PlayerConfig(repo="my-agent", llm=MyLLM)
-tournament_entry = tournament.register(player_config)
+tournament_entry = tournament.register(player)
 async for score in tournament_entry.observe("score"):
     print(score)
 
 # Practice
 playground = softmax.playground("practice")
-playground_entry = playground.register(player_config)
+playground_entry = playground.register(player)
 async for replay in playground_entry.observe("replay"):
     analyze(replay)
 
-# Auto-improve with coaching
-coach = Coach(player=player_config, tournament=tournament, playground=playground)
-async for score in coach.observe("score"):
-    analysis = coach.analyze(score)
-    coach.enact(analysis)
+# Coach: observe scores, analyze, enact improvements on player
+async for score in tournament_entry.observe("score"):
+    analysis = analyze(score)
+    player.enact(analysis)
 ```
 
 ## 4. Coglet Pseudocode
@@ -137,30 +140,35 @@ class PolicyCoglet(Coglet, GitLet, TickLet):
             self.traces = []
 ```
 
-### Coach (User, COG)
+### Coach (Claude Code Prompt)
 
-```python
-class Coach(Coglet):
-    def on_start(self):
-        self.player_config = PlayerConfig(
-            repo=self.config.repo,
-            llm=self.config.llm
-        )
-        self.player = self.create(self.player_config)
-        self.arena = self.tournament or self.playground
-        self.handle = self.arena.register(self.player_config)
-        self.scores = []
+The Coach is not a Coglet — it's a Claude Code session that uses the API.
 
-    @on_message("score")
-    def handle_score(self, result):
-        self.scores.append(result)
-        self.transmit("score", result)
+```markdown
+You are coaching a player in a Softmax tournament.
 
-    @on_message("round_end")
-    def handle_round_end(self, result):
-        # guide the PlayerCoglet to improve between rounds
-        self.guide(self.player, Command("improve", self.scores))
-        self.scores = []
+## Setup
+- Player: PlayerCoglet at repo "my-agent" with functions in src/
+- Tournament: softmax.tournament("cvc-2026-08-01")
+- Playground: softmax.playground("practice")
+
+## API
+- `player = PlayerCoglet(repo="my-agent", llm=you)`
+- `entry = tournament.register(player)` — register player in tournament
+- `entry = playground.register(player)` — register player in playground
+- `async for score in entry.observe("score")` — observe scores
+- `async for replay in entry.observe("replay")` — observe replays
+- `player.enact(patch)` — apply a code patch to improve the player
+
+## Loop
+1. Register the player in the playground
+2. Observe scores and replays from practice games
+3. Analyze what the player is doing wrong
+4. Write a code patch to improve the player's policy functions
+5. Call player.enact(patch) to apply it
+6. Repeat until scores improve
+7. When ready, register the player in the tournament
+8. Continue observing and improving between tournament rounds
 ```
 
 ### TournamentCoglet (Softmax, COG)
