@@ -67,7 +67,7 @@ The player's overall agent. The LLM is the COG — it observes game history
 and commits patches to the player's git repo to improve strategy.
 
 ```python
-class PlayerCoglet(Coglet, GitLet, TickLet):
+class PlayerCoglet(Coglet, GitLet):
     def on_start(self):
         self.policy = self.create(PolicyCogletConfig(repo=self.config.repo))
         self.llm = self.config.llm
@@ -94,12 +94,6 @@ class PlayerCoglet(Coglet, GitLet, TickLet):
         if command.type == "patch":
             self.guide(self.policy, Command("commit", command.patch))
 
-    def on_tick(self, elapsed):
-        # LLM reviews episode history and patches the policy
-        if self.should_improve():
-            patch = self.llm.generate_patch(self.history)
-            self.guide(self.policy, Command("commit", patch))
-            self.history = []
 ```
 
 ### PolicyCoglet (User, LLM COG over map[str, PythonFunc])
