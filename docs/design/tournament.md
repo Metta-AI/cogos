@@ -73,26 +73,27 @@ class PlayerCoglet(Coglet, TickLet):
         self.llm = self.config.llm
         self.history = []
 
-    @on_message("obs")
-    def handle_obs(self, data):
-        self.guide(self.policy, Command("step", data))
-
-    @on_message("action")
-    def handle_action(self, data):
-        self.transmit("action", data)
-
     @on_message("score")
     def handle_score(self, data):
         self.history.append(data)
+        self.transmit("score", data)
+
+    @on_message("replay")
+    def handle_replay(self, data):
+        self.history.append(data)
+        self.transmit("replay", data)
+
+    @on_message("logs")
+    def handle_logs(self, data):
+        self.history.append(data)
 
     def on_enact(self, command):
-        # COG above (Coach) can direct high-level strategy changes
-        if command.type == "strategy":
-            patch = self.llm.generate_patch(self.history, command.directive)
-            self.guide(self.policy, Command("commit", patch))
+        # Coach (Claude Code) can direct improvements via patches
+        if command.type == "patch":
+            self.guide(self.policy, Command("commit", command.patch))
 
     def on_tick(self, elapsed):
-        # LLM reviews performance and patches the repo
+        # LLM reviews episode history and patches the policy
         if self.should_improve():
             patch = self.llm.generate_patch(self.history)
             self.guide(self.policy, Command("commit", patch))
