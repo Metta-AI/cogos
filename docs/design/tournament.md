@@ -17,8 +17,9 @@ Coach (Claude Code prompt — not a Coglet)
 ├── analyzes performance, writes patches
 └── calls player.enact(patch) to improve
 
-PlayerCoglet (COG, CodeLet — LLM patches functions on @every)
-└── PolicyLet (LET, CodeLet — map[str, PythonFunc], fast execution)
+PlayerCoglet (COG, GitLet — LLM patches repo on @every)
+└── PolicyCog (COG, CodeLet — LLM rewrites functions on @every)
+    └── PolicyLet (LET — map[str, PythonFunc], fast execution)
 
 Softmax side:
 
@@ -60,19 +61,17 @@ async for score in tournament_entry.observe("score"):
 
 ## 4. Coglet Pseudocode
 
-### PlayerCoglet (User, COG + CodeLet)
+### PlayerCoglet (User, LLM COG over GitLet)
 
-The player's agent. LLM observes episode results and inventory changes,
-rewrites policy functions on a tick schedule. Coach (Claude Code) can
-also push function updates via enact.
+The player's overall agent. The LLM is the COG — it observes game history
+and commits patches to the player's git repo to improve strategy.
 
 ```python
-class PlayerCoglet(Coglet, CodeLet):
+class PlayerCoglet(Coglet, GitLet):
     def on_start(self):
-        self.policy = self.create(PolicyLetConfig())
+        self.policy = self.create(PolicyCogletConfig(repo=self.config.repo))
         self.llm = self.config.llm
         self.history = []
-        self.inventory_history = []
 
     @on_message("score")
     def handle_score(self, data):
@@ -86,20 +85,55 @@ class PlayerCoglet(Coglet, CodeLet):
     def handle_logs(self, data):
         self.history.append(data)
 
+    def on_patch(self, patch):
+        # GitLet hook: called when a patch is applied (by Coach or on_tick)
+        print(patch)
+
+    @every(10, "m")
+    def improve(self):
+        # LLM reviews episode history and patches the policy
+        if self.history:
+            patch = self.llm.generate_patch(self.history)
+            self.guide(self.policy, Command("commit", patch))
+            self.history = []
+
+    @on_enact("patch")
+    def handle_patch(self, patch):
+        # Coach (Claude Code) can direct improvements via patches
+        self.guide(self.policy, Command("commit", patch))
+```
+
+### PolicyCog (User, LLM COG over PolicyLet)
+
+The LLM observes execution traces and rewrites individual functions
+in the PolicyLet to improve them. Uses CodeLet — functions are registered
+in a dict, not a git repo.
+
+```python
+class PolicyCog(Coglet, CodeLet):
+    def on_start(self):
+        self.policy_let = self.create(PolicyLetConfig())
+        self.llm = self.config.llm
+        self.inventory_history = []
+        self.ticks = 0
+
     @on_message("inventory")
     def handle_inventory(self, data):
         self.inventory_history.append(data)
 
+    @on_message("tick")
+    def handle_tick(self, data):
+        self.ticks = data
+
     @on_enact("register")
     def handle_register(self, funcs: dict[str, Callable]):
-        # Coach (Claude Code) can push function updates
-        self.guide(self.policy, Command("register", funcs))
+        self.guide(self.policy_let, Command("register", funcs))
 
     @every(10, "ticks")
     def improve(self):
-        # LLM reviews history and inventory, rewrites policy functions
-        new_funcs = self.llm.improve_functions(self.history, self.inventory_history)
-        self.guide(self.policy, Command("register", new_funcs))
+        # LLM reviews inventory changes and rewrites functions
+        new_funcs = self.llm.improve_functions(self.inventory_history, self.functions)
+        self.guide(self.policy_let, Command("register", new_funcs))
         self.inventory_history = []
 ```
 
