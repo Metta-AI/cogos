@@ -37,18 +37,24 @@ PlayGround (COG — same interface as Tournament, for training)
 # Compete
 tournament = softmax.tournament("cvc-2026-08-01")
 t_handle = tournament.register(MyPolicyConfig)
+async for score in t_handle.observe("score"):
+    print(score)
 
 # Train
 playground = softmax.playground("practice")
 p_handle = playground.register(MyPolicyConfig)
+async for replay in p_handle.observe("replay"):
+    analyze(replay)
 
 # Auto-improve
 coach = Coach(policy=MyPolicyConfig, playground=playground)
-improved = await coach.observe()  # emits improved policy configs
+async for policy in coach.observe("policy"):
+    print(f"improved: {policy}")
 
 # Compete with coaching
 coach = Coach(policy=MyPolicyConfig, tournament=tournament, playground=playground)
-scores = await coach.observe("scores")
+async for score in coach.observe("score"):
+    print(score)
 ```
 
 ## 4. Coglet Roles

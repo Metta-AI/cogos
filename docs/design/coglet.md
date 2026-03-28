@@ -24,7 +24,7 @@ Event-driven. The framework owns the channels and dispatches to the Coglet.
 |---|---|---|
 | `on_message(event)` | framework | Handle an incoming environment event |
 | `on_enact(command)` | COG (via framework) | Apply a control plane directive — fire-and-forget |
-| `transmit(result)` | self | Push output to the environment |
+| `transmit(channel, result)` | self | Push output to a named channel |
 
 `on_message` is the data plane. `on_enact` is the control plane. `transmit` is the only outbound call.
 
@@ -37,7 +37,7 @@ A COG supervises one or more LETs. The 1:1 case (one COG paired with one LET) is
 
 | Method | Purpose |
 |---|---|
-| `observe(let_id) → AsyncStream[Result]` | Subscribe to a LET's transmit stream |
+| `observe(let_id, channel) → AsyncStream[Result]` | Subscribe to a named channel on a LET's transmit stream |
 | `guide(let_id, command)` | Send a command to a LET's `on_enact` — fire-and-forget |
 | `create(config) → CogletHandle` | Spawn a new LET, return its handle |
 
