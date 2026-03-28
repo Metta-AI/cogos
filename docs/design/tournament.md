@@ -52,7 +52,8 @@ async for replay in playground_entry.observe("replay"):
 # Auto-improve with coaching
 coach = Coach(player=player_config, tournament=tournament, playground=playground)
 async for score in coach.observe("score"):
-    print(score)
+    analysis = coach.analyze(score)
+    coach.enact(analysis)
 ```
 
 ## 4. Coglet Pseudocode
