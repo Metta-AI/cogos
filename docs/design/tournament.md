@@ -63,7 +63,7 @@ async for score in coach.observe("score"):
 
 ```python
 class PlayerPolicy(Coglet):
-    def on_message(self, obs):
+    def on_message(self, channel, obs):
         action = self.model.forward(obs)
         self.transmit("action", action)
 
@@ -81,13 +81,13 @@ class Coach(Coglet):
         self.arena = self.tournament or self.playground
         self.player = self.arena.register(self.policy_config)
 
-    def on_message(self, result):
+    def on_message(self, channel, result):
         # receives score/replay events from arena
-        if result.channel == "score":
+        if channel == "score":
             self.scores.append(result)
             self.transmit("score", result)
 
-        if result.channel == "round_end":
+        if channel == "round_end":
             improved_weights = self.improve(self.scores)
             self.guide(self.policy, Command("update_weights", improved_weights))
             self.arena.register(self.policy_config)  # re-register with updated policy
@@ -144,8 +144,8 @@ class GameCoglet(Coglet):
                 env=self.config.env
             ))
 
-    def on_message(self, result):
-        if result.channel == "score":
+    def on_message(self, channel, result):
+        if channel == "score":
             self.scores.append(result)
 
         if len(self.scores) == self.config.episodes_per_game:
@@ -172,19 +172,19 @@ class EpisodeCoglet(Coglet):
         # wire env → players → env
         # env transmits observations, players transmit actions
 
-    def on_message(self, result):
-        if result.source == self.env and result.channel == "obs":
+    def on_message(self, channel, data):
+        if channel == "obs":
             # env produced observations, route to players
-            self.guide(self.players, Command("step", result.data))
-            self.replay.append(result)
+            self.guide(self.players, Command("step", data))
+            self.replay.append(data)
 
-        if result.source == self.players and result.channel == "action":
+        if channel == "action":
             # players produced actions, route to env
-            self.guide(self.env, Command("step", result.data))
-            self.replay.append(result)
+            self.guide(self.env, Command("step", data))
+            self.replay.append(data)
 
-        if result.source == self.env and result.channel == "done":
-            self.transmit("score", result.data.scores)
+        if channel == "done":
+            self.transmit("score", data.scores)
             self.transmit("replay", self.replay)
 ```
 

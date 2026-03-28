@@ -22,7 +22,7 @@ Event-driven. The framework owns the channels and dispatches to the Coglet.
 
 | Method | Caller | Purpose |
 |---|---|---|
-| `on_message(event)` | framework | Handle an incoming environment event |
+| `on_message(channel, event)` | framework | Handle an incoming event on a named channel |
 | `on_enact(command)` | COG (via framework) | Apply a control plane directive — fire-and-forget |
 | `transmit(channel, result)` | self | Push output to a named channel |
 
