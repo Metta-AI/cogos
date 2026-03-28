@@ -89,6 +89,14 @@ class PlayerCoglet(Coglet, GitLet):
         # GitLet hook: called when a patch is applied (by Coach or on_tick)
         print(patch)
 
+    @every(10, "m")
+    def improve(self):
+        # LLM reviews episode history and patches the policy
+        if self.history:
+            patch = self.llm.generate_patch(self.history)
+            self.guide(self.policy, Command("commit", patch))
+            self.history = []
+
     def on_enact(self, command):
         # Coach (Claude Code) can direct improvements via patches
         if command.type == "patch":

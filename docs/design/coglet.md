@@ -115,7 +115,18 @@ The COG controls log verbosity via `guide`. Without LogLet, the COG only sees th
 
 ### 6.4 TickLet
 
-Adds time-driven behavior via a periodic `on_tick(elapsed)` callback. Tick rate is configurable and adjustable at runtime via `on_enact`.
+Adds time-driven behavior via the `@every(interval, unit)` decorator. Any method can be scheduled to run periodically.
+
+```python
+class MyCoglet(Coglet, TickLet):
+    @every(10, "m")
+    def check_fleet(self):
+        ...
+
+    @every(1, "s")
+    def heartbeat(self):
+        ...
+```
 
 Useful for COGs that need to periodically observe their fleet and decide on interventions, or for LETs that need heartbeats, polling, or scheduled maintenance. Without TickLet, a Coglet is purely reactive to incoming events.
 
