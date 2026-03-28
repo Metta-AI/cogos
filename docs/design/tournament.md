@@ -18,7 +18,7 @@ Coach (Claude Code prompt — not a Coglet)
 └── calls player.enact(patch) to improve
 
 PlayerCoglet (COG, GitLet — LLM patches repo on @every)
-└── PolicyCog (COG, CodeLet — LLM rewrites functions on @every)
+└── PolicyCogletlet (COG, CodeLet — LLM rewrites functions on @every)
     └── PolicyLet (LET — map[str, PythonFunc], fast execution)
 
 Softmax side:
@@ -69,7 +69,7 @@ and commits patches to the player's git repo to improve strategy.
 ```python
 class PlayerCoglet(Coglet, GitLet):
     def on_start(self):
-        self.policy = self.create(PolicyCogletConfig(repo=self.config.repo))
+        self.policy = self.create(PolicyCogletletConfig(repo=self.config.repo))
         self.llm = self.config.llm
         self.history = []
 
@@ -103,14 +103,14 @@ class PlayerCoglet(Coglet, GitLet):
         self.guide(self.policy, Command("commit", patch))
 ```
 
-### PolicyCog (User, LLM COG over PolicyLet)
+### PolicyCoglet (User, LLM COG over PolicyLet)
 
 The LLM observes execution traces and rewrites individual functions
 in the PolicyLet to improve them. Uses CodeLet — functions are registered
 in a dict, not a git repo.
 
 ```python
-class PolicyCog(Coglet, CodeLet):
+class PolicyCoglet(Coglet, CodeLet):
     def on_start(self):
         self.policy_let = self.create(PolicyLetConfig())
         self.llm = self.config.llm
