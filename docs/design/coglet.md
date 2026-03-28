@@ -134,7 +134,25 @@ class MyCoglet(Coglet, TickLet):
 
 Useful for COGs that need to periodically observe their fleet and decide on interventions, or for LETs that need heartbeats, polling, or scheduled maintenance. Without TickLet, a Coglet is purely reactive to incoming events.
 
-### 6.5 MulLet
+### 6.5 CodeLet
+
+The Coglet's behavior is a `dict[str, Callable]`. Functions are registered and replaced at runtime via `@on_enact("register")`. No repo, no serialization — just live Python functions in a dict.
+
+```python
+class MyPolicy(Coglet, CodeLet):
+    @on_message("obs")
+    def step(self, obs):
+        action = self.functions["step"](obs)
+        self.transmit("action", action)
+
+    @on_enact("register")
+    def register(self, funcs: dict[str, Callable]):
+        self.functions.update(funcs)
+```
+
+Where GitLet versions behavior as commits in a repo, CodeLet keeps it in-memory as a mutable function table. Useful for fast iteration loops where persistence isn't needed.
+
+### 6.6 MulLet
 
 Manages N identical LETs as a single logical unit. The parent COG sees one CogletHandle.
 

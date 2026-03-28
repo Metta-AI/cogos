@@ -18,7 +18,7 @@ Coach (Claude Code prompt — not a Coglet)
 └── calls player.enact(patch) to improve
 
 PlayerCoglet (COG, GitLet — LLM patches repo on @every)
-└── PolicyCog (COG, GitLet — LLM rewrites functions on @every)
+└── PolicyCog (COG, CodeLet — LLM rewrites functions on @every)
     └── PolicyLet (LET — map[str, PythonFunc], fast execution)
 
 Softmax side:
@@ -106,12 +106,13 @@ class PlayerCoglet(Coglet, GitLet):
 ### PolicyCog (User, LLM COG over PolicyLet)
 
 The LLM observes execution traces and rewrites individual functions
-in the PolicyLet to improve them.
+in the PolicyLet to improve them. Uses CodeLet — functions are registered
+in a dict, not a git repo.
 
 ```python
-class PolicyCog(Coglet, GitLet):
+class PolicyCog(Coglet, CodeLet):
     def on_start(self):
-        self.policy_let = self.create(PolicyLetConfig(repo=self.config.repo))
+        self.policy_let = self.create(PolicyLetConfig())
         self.llm = self.config.llm
         self.traces = []
 
@@ -119,36 +120,28 @@ class PolicyCog(Coglet, GitLet):
     def handle_trace(self, data):
         self.traces.append(data)
 
-    @on_enact("commit")
-    def handle_commit(self, patch):
-        self.git_apply(patch)
-        self.guide(self.policy_let, Command("reload"))
+    @on_enact("register")
+    def handle_register(self, funcs: dict[str, Callable]):
+        self.guide(self.policy_let, Command("register", funcs))
 
     @every(10, "m")
     def improve(self):
         # LLM reviews traces and rewrites individual functions
         if self.traces:
-            for name, new_code in self.llm.improve_functions(self.traces):
-                self.repo.write_function(name, new_code)
-            self.git_commit("improve functions")
-            self.guide(self.policy_let, Command("reload"))
+            new_funcs = self.llm.improve_functions(self.traces, self.functions)
+            self.guide(self.policy_let, Command("register", new_funcs))
             self.traces = []
 ```
 
 ### PolicyLet (User, LET — map[str, PythonFunc])
 
-The fast execution layer. A named map of Python functions loaded from the repo.
+The fast execution layer. A named map of Python functions.
 No LLM — just executes functions and emits traces.
 
 ```python
 class PolicyLet(Coglet):
     def on_start(self):
         self.functions: dict[str, Callable] = {}
-        self.load_from_repo()
-
-    def load_from_repo(self):
-        for name, func in self.repo.load_functions().items():
-            self.functions[name] = func
 
     @on_message("obs")
     def step(self, obs):
@@ -156,9 +149,9 @@ class PolicyLet(Coglet):
         self.transmit("action", action)
         self.transmit("trace", {"obs": obs, "action": action})
 
-    @on_enact("reload")
-    def reload(self):
-        self.load_from_repo()
+    @on_enact("register")
+    def register(self, funcs: dict[str, Callable]):
+        self.functions.update(funcs)
 ```
 
 ### Coach (Claude Code Prompt)
