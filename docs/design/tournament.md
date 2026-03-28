@@ -38,23 +38,19 @@ PlayGround (COG — same interface as Tournament, for training)
 ```python
 # Compete
 tournament = softmax.tournament("cvc-2026-08-01")
-t_handle = tournament.register(MyPolicyConfig)
+player_config = PlayerConfig(repo="my-agent", llm=MyLLM)
+t_handle = tournament.register(player_config)
 async for score in t_handle.observe("score"):
     print(score)
 
 # Train
 playground = softmax.playground("practice")
-p_handle = playground.register(MyPolicyConfig)
+p_handle = playground.register(player_config)
 async for replay in p_handle.observe("replay"):
     analyze(replay)
 
-# Auto-improve
-coach = Coach(policy=MyPolicyConfig, playground=playground)
-async for policy in coach.observe("policy"):
-    print(f"improved: {policy}")
-
-# Compete with coaching
-coach = Coach(policy=MyPolicyConfig, tournament=tournament, playground=playground)
+# Auto-improve with coaching
+coach = Coach(player=player_config, tournament=tournament, playground=playground)
 async for score in coach.observe("score"):
     print(score)
 ```
@@ -145,9 +141,14 @@ class PolicyCoglet(Coglet, GitLet, TickLet):
 ```python
 class Coach(Coglet):
     def on_start(self):
-        self.policy = self.create(self.policy_config)
+        self.player_config = PlayerConfig(
+            repo=self.config.repo,
+            llm=self.config.llm
+        )
+        self.player = self.create(self.player_config)
         self.arena = self.tournament or self.playground
-        self.player = self.arena.register(self.policy_config)
+        self.handle = self.arena.register(self.player_config)
+        self.scores = []
 
     @on_message("score")
     def handle_score(self, result):
@@ -156,15 +157,9 @@ class Coach(Coglet):
 
     @on_message("round_end")
     def handle_round_end(self, result):
-        improved_weights = self.improve(self.scores)
-        self.guide(self.policy, Command("update_weights", improved_weights))
-        self.arena.register(self.policy_config)  # re-register with updated policy
-        self.transmit("policy", self.policy_config)
+        # guide the PlayerCoglet to improve between rounds
+        self.guide(self.player, Command("improve", self.scores))
         self.scores = []
-
-    def improve(self, scores):
-        # pluggable improvement strategy
-        ...
 ```
 
 ### TournamentCoglet (Softmax, COG)
