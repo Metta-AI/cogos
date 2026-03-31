@@ -22,8 +22,10 @@
 
         packagesList = with pkgs; [
           graphite-cli
+          moreutils # ts for timestamped logs in Tilt
           nodejs_20
           sqlite # For inspecting the db
+          tilt
           uv
         ];
       in
