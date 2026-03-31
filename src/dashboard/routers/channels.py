@@ -37,14 +37,13 @@ def _batch_count_messages(repo, channel_ids: list[UUID]) -> dict[UUID, int]:
     if not channel_ids:
         return {}
     try:
-        response = repo._execute(
+        rows = repo.query(
             "SELECT channel, COUNT(*) AS cnt FROM cogos_channel_message GROUP BY channel",
         )
         result: dict[UUID, int] = {}
-        for row in response.get("records", []):
-            cid = UUID(row[0].get("stringValue", ""))
-            cnt = row[1].get("longValue", 0)
-            result[cid] = cnt
+        for row in rows:
+            cid = UUID(str(row["channel"]))
+            result[cid] = int(row["cnt"])
         return result
     except Exception:
         logger.warning("Batch message count failed", exc_info=True)
@@ -56,15 +55,14 @@ def _batch_count_handlers(repo, channel_ids: list[UUID]) -> dict[UUID, int]:
     if not channel_ids:
         return {}
     try:
-        response = repo._execute(
+        rows = repo.query(
             "SELECT channel, COUNT(*) AS cnt FROM cogos_handler"
             " WHERE enabled = TRUE AND channel IS NOT NULL GROUP BY channel",
         )
         result: dict[UUID, int] = {}
-        for row in response.get("records", []):
-            cid = UUID(row[0].get("stringValue", ""))
-            cnt = row[1].get("longValue", 0)
-            result[cid] = cnt
+        for row in rows:
+            cid = UUID(str(row["channel"]))
+            result[cid] = int(row["cnt"])
         return result
     except Exception:
         logger.warning("Batch handler count failed", exc_info=True)
