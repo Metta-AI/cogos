@@ -1,5 +1,26 @@
 {
+  "enabledPlugins": {
+    "pr-workflow@softmax-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "softmax-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "Metta-AI/softmax-plugins"
+      }
+    }
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
